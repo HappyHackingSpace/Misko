@@ -1,0 +1,49 @@
+name: misko
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-misko}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-misko}
+      POSTGRES_DB: ${POSTGRES_DB:-misko}
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-misko} -d ${POSTGRES_DB:-misko}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      DATABASE_URL: postgresql://${POSTGRES_USER:-misko}:${POSTGRES_PASSWORD:-misko}@db:5432/${POSTGRES_DB:-misko}?schema=public
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      JWT_TTL: ${JWT_TTL:-7d}
+      CORS_ORIGIN: ${CORS_ORIGIN:-*}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@fare.lab}
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "${BACKEND_PORT:-4000}:4000"
+
+  frontend:
+    build:
+      context: ./frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "${FRONTEND_PORT:-8080}:80"
+
+volumes:
+  db-data:

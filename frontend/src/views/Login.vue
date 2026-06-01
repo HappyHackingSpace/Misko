@@ -1,0 +1,55 @@
+<script setup>
+import { ref } from "vue";
+import { useRouter } from "vue-router";
+import { useAuth } from "../stores/auth.js";
+
+const auth = useAuth();
+const router = useRouter();
+
+const email = ref("");
+const password = ref("");
+const err = ref("");
+const busy = ref(false);
+
+async function submit() {
+  err.value = "";
+  busy.value = true;
+  try {
+    await auth.login(email.value, password.value);
+    router.push("/");
+  } catch (e) {
+    err.value = e.message;
+  } finally {
+    busy.value = false;
+  }
+}
+</script>
+
+<template>
+  <div class="center">
+    <div class="card authbox">
+      <div class="brand" style="font-size:22px;font-weight:800;margin-bottom:2px">🐭 Mişko</div>
+      <p class="muted" style="margin:0 0 10px">Laboratuvar fareleri için davranış testi yönetim sistemi</p>
+      <p class="muted">Operatör girişi</p>
+
+      <form @submit.prevent="submit">
+        <div class="field">
+          <label>E-posta</label>
+          <input v-model="email" type="email" required />
+        </div>
+        <div class="field">
+          <label>Şifre</label>
+          <input v-model="password" type="password" required />
+        </div>
+        <button class="primary" style="width:100%" :disabled="busy">
+          {{ busy ? "..." : "Giriş" }}
+        </button>
+      </form>
+
+      <p class="err" v-if="err">{{ err }}</p>
+      <p class="muted" style="margin-top:14px;font-size:13px">
+        Hesabınız yoksa yöneticinizden talep edin — bu sistemde kayıt içeriden yapılır.
+      </p>
+    </div>
+  </div>
+</template>

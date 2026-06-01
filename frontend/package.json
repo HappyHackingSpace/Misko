@@ -1,0 +1,31 @@
+{
+  "name": "@misko/frontend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write ."
+  },
+  "dependencies": {
+    "pinia": "^2.2.6",
+    "vue": "^3.5.13",
+    "vue-router": "^4.4.5"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.15.0",
+    "@vitejs/plugin-vue": "^5.2.0",
+    "eslint": "^9.15.0",
+    "eslint-plugin-vue": "^9.31.0",
+    "globals": "^15.12.0",
+    "prettier": "^3.4.1",
+    "vite": "^5.4.11"
+  }
+}

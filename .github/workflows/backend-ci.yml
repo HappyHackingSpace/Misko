@@ -1,0 +1,99 @@
+name: Backend CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend-ci.yml"
+  pull_request:
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend-ci.yml"
+
+concurrency:
+  group: backend-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: backend
+
+permissions:
+  contents: read
+
+jobs:
+  lint-and-test:
+    name: Lint & migrate
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: misko
+          POSTGRES_PASSWORD: misko
+          POSTGRES_DB: misko_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U misko -d misko_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://misko:misko@localhost:5432/misko_test?schema=public
+      JWT_SECRET: ci-test-secret
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Prisma generate
+        run: npx prisma generate
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Validate schema
+        run: npx prisma validate
+
+      - name: Apply migrations
+        run: npx prisma migrate deploy
+
+      - name: Smoke test (boot + health)
+        run: |
+          npm start &
+          SERVER_PID=$!
+          for i in $(seq 1 20); do
+            if curl -sf http://localhost:4000/api/health > /dev/null; then
+              echo "API ayakta"; break
+            fi
+            sleep 1
+          done
+          curl -sf http://localhost:4000/api/health
+          kill $SERVER_PID
+
+  docker:
+    name: Docker build
+    runs-on: ubuntu-latest
+    needs: lint-and-test
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          push: false
+          tags: misko-backend:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

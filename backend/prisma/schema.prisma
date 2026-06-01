@@ -1,0 +1,82 @@
+// Mişko — veri modeli (PostgreSQL)
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Operatör — testi yapan kişi (auth ile gelir)
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  name      String
+  role      String   @default("OPERATOR") // ADMIN | OPERATOR
+  createdAt DateTime @default(now())
+  tests     Test[]
+}
+
+// Test cihazı (telefon)
+model Device {
+  id         String    @id @default(cuid())
+  name       String
+  platform   String? // ios | android | ...
+  lastSeenAt DateTime?
+  createdAt  DateTime  @default(now())
+  tests      Test[]
+}
+
+// Denek / Fare
+model Subject {
+  id        String    @id @default(cuid())
+  code      String    @unique // kafes/etiket kodu
+  sex       String? // M | F
+  groupName String? // deney grubu
+  birthDate DateTime?
+  notes     String?
+  createdAt DateTime  @default(now())
+  tests     Test[]
+}
+
+// Test senaryosu (havuz / labirent / sopa / yol)
+model Scenario {
+  id          String   @id @default(cuid())
+  name        String
+  type        String // POOL | MAZE | STICK | PATH
+  description String?
+  config      String? // JSON: geometri / kabul kriterleri (içerik sonra)
+  createdAt   DateTime @default(now())
+  tests       Test[]
+}
+
+// Test (bir senaryonun bir denekle, bir cihazda, bir operatörce koşulması)
+model Test {
+  id         String    @id @default(cuid())
+  scenario   Scenario  @relation(fields: [scenarioId], references: [id])
+  scenarioId String
+  subject    Subject   @relation(fields: [subjectId], references: [id])
+  subjectId  String
+  operator   User      @relation(fields: [operatorId], references: [id])
+  operatorId String
+  device     Device?   @relation(fields: [deviceId], references: [id])
+  deviceId   String?
+  status     String    @default("PENDING") // PENDING | RUNNING | DONE | FAILED
+  startedAt  DateTime?
+  endedAt    DateTime?
+  result     String? // JSON: metrikler
+  passed     Boolean?
+  notes      String?
+  createdAt  DateTime  @default(now())
+
+  // Postgres FK kolonlarına otomatik index koymaz; liste/filtre sorguları için ekliyoruz
+  @@index([scenarioId])
+  @@index([subjectId])
+  @@index([operatorId])
+  @@index([deviceId])
+  @@index([status])
+  @@index([createdAt])
+}
