@@ -1,30 +1,42 @@
-:root{
+/* Dark is the default theme. Light overrides live in [data-theme="light"].
+   All colors are variables so adding/adjusting a theme is a one-stop change. */
+:root, :root[data-theme="dark"]{
   --bg:#0b0f14; --panel:#121a24; --panel2:#0e151d; --line:#233244;
   --txt:#e6edf3; --muted:#8a9bb0; --accent:#4cc2ff; --good:#46d369; --bad:#ff5c7a; --warn:#ffb454;
+  --input-bg:#0e151d; --btn-bg:#1b2734; --active-bg:#1b2734;
+}
+:root[data-theme="light"]{
+  --bg:#f6f8fa; --panel:#ffffff; --panel2:#ffffff; --line:#d0d7de;
+  --txt:#1f2328; --muted:#57606a; --accent:#0969da; --good:#1a7f37; --bad:#cf222e; --warn:#9a6700;
+  --input-bg:#ffffff; --btn-bg:#f3f4f6; --active-bg:#eaeef2;
 }
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--txt);
-  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  transition:background .15s ease,color .15s ease}
 a{color:var(--accent);text-decoration:none}
 .app{display:flex;flex-direction:column;min-height:100vh}
 .topbar{display:flex;align-items:center;gap:18px;flex-wrap:wrap;
   background:var(--panel2);border-bottom:1px solid var(--line);
   padding:10px 22px;position:sticky;top:0;z-index:10}
-.topbar .brand{font-weight:800;font-size:18px;white-space:nowrap}
+.topbar .brand{font-weight:800;font-size:18px;white-space:nowrap;display:flex;align-items:baseline;gap:8px}
+.topbar .brand .lab{font-weight:600;font-size:13px;color:var(--muted);padding-left:8px;border-left:1px solid var(--line)}
 .topbar .nav{display:flex;gap:4px;flex-wrap:wrap}
 .topbar .nav a{padding:8px 12px;border-radius:9px;color:var(--muted);font-weight:600}
-.topbar .nav a.router-link-active{background:#1b2734;color:var(--txt)}
+.topbar .nav a.router-link-active{background:var(--active-bg);color:var(--txt)}
 .topbar .spacer{flex:1}
 .topbar .who{font-size:12px;color:var(--muted);white-space:nowrap}
+.icon-btn{display:inline-flex;align-items:center;justify-content:center;padding:7px 9px;line-height:1}
+.lang-select{width:auto;min-width:0;padding:7px 8px;font-weight:700}
 .main{flex:1;padding:22px;max-width:1000px;width:100%;margin:0 auto}
 h1{font-size:20px;margin:0 0 16px}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:16px}
 .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
 label{font-size:12px;color:var(--muted);display:block;margin-bottom:4px}
-input,select,textarea{width:100%;background:#0e151d;color:var(--txt);border:1px solid var(--line);
+input,select,textarea{width:100%;background:var(--input-bg);color:var(--txt);border:1px solid var(--line);
   border-radius:9px;padding:9px 11px;font:inherit}
 .field{margin-bottom:12px;flex:1;min-width:160px}
-button{cursor:pointer;border-radius:9px;border:1px solid var(--line);background:#1b2734;color:var(--txt);
+button{cursor:pointer;border-radius:9px;border:1px solid var(--line);background:var(--btn-bg);color:var(--txt);
   padding:9px 14px;font-weight:700}
 button.primary{background:var(--accent);color:#04141d;border-color:var(--accent)}
 button.danger{color:var(--bad)}

@@ -1,11 +1,13 @@
 <script setup>
 import { ref, onMounted } from "vue";
+import { useI18n } from "vue-i18n";
 import { api } from "../api.js";
 
+const { t, locale } = useI18n();
 const items = ref([]);
 const form = ref({ name: "", email: "", role: "OPERATOR", password: "" });
 const err = ref("");
-const notice = ref(""); // üretilen şifreyi bir kez göstermek için
+const notice = ref(""); // show the generated password once
 
 async function load() {
   items.value = await api("/users");
@@ -20,7 +22,7 @@ async function create() {
     if (form.value.password) body.password = form.value.password;
     const { user, generatedPassword } = await api("/users", { method: "POST", body });
     if (generatedPassword) {
-      notice.value = `Kullanıcı oluşturuldu — ${user.email} için üretilen şifre (bir kez gösterilir): ${generatedPassword}`;
+      notice.value = t("users.createdWithPassword", { email: user.email, password: generatedPassword });
     }
     form.value = { name: "", email: "", role: "OPERATOR", password: "" };
     await load();
@@ -32,10 +34,10 @@ async function create() {
 async function resetPassword(u) {
   err.value = "";
   notice.value = "";
-  if (!confirm(`${u.email} için şifre sıfırlansın mı?`)) return;
+  if (!confirm(t("users.confirmReset", { email: u.email }))) return;
   try {
     const { generatedPassword } = await api(`/users/${u.id}/reset-password`, { method: "POST", body: {} });
-    notice.value = `${u.email} için yeni şifre (bir kez gösterilir): ${generatedPassword}`;
+    notice.value = t("users.newPassword", { email: u.email, password: generatedPassword });
   } catch (e) {
     err.value = e.message;
   }
@@ -54,7 +56,7 @@ async function changeRole(u, role) {
 
 async function remove(u) {
   err.value = "";
-  if (!confirm(`${u.email} silinsin mi?`)) return;
+  if (!confirm(t("users.confirmDelete", { email: u.email }))) return;
   try {
     await api(`/users/${u.id}`, { method: "DELETE" });
     await load();
@@ -65,25 +67,22 @@ async function remove(u) {
 </script>
 
 <template>
-  <h1>Kullanıcı Yönetimi</h1>
+  <h1>{{ $t("users.title") }}</h1>
 
   <div class="card">
-    <p class="muted" style="margin-top:0">
-      Bu internal bir uygulamadır — kayıt yok. Kullanıcıları buradan açın. Şifreyi boş bırakırsanız
-      sistem güçlü bir şifre üretir ve <strong>bir kez</strong> gösterir.
-    </p>
+    <p class="muted" style="margin-top:0">{{ $t("users.intro") }}</p>
     <div class="row">
-      <div class="field"><label>Ad</label><input v-model="form.name" placeholder="Ahmet Yılmaz" /></div>
-      <div class="field"><label>E-posta</label><input v-model="form.email" type="email" placeholder="ahmet@fare.lab" /></div>
+      <div class="field"><label>{{ $t("common.name") }}</label><input v-model="form.name" :placeholder="$t('users.namePlaceholder')" /></div>
+      <div class="field"><label>{{ $t("users.email") }}</label><input v-model="form.email" type="email" :placeholder="$t('users.emailPlaceholder')" /></div>
       <div class="field">
-        <label>Rol</label>
+        <label>{{ $t("users.role") }}</label>
         <select v-model="form.role">
           <option value="OPERATOR">OPERATOR</option>
           <option value="ADMIN">ADMIN</option>
         </select>
       </div>
-      <div class="field"><label>Şifre (opsiyonel)</label><input v-model="form.password" placeholder="boşsa üretilir" /></div>
-      <div><label>&nbsp;</label><button class="primary" @click="create" :disabled="!form.name || !form.email">Ekle</button></div>
+      <div class="field"><label>{{ $t("users.passwordOptional") }}</label><input v-model="form.password" :placeholder="$t('users.passwordPlaceholder')" /></div>
+      <div><label>&nbsp;</label><button class="primary" @click="create" :disabled="!form.name || !form.email">{{ $t("common.add") }}</button></div>
     </div>
     <p class="err" v-if="err">{{ err }}</p>
     <p v-if="notice" class="notice">{{ notice }}</p>
@@ -91,7 +90,7 @@ async function remove(u) {
 
   <div class="card">
     <table>
-      <thead><tr><th>Ad</th><th>E-posta</th><th>Rol</th><th>Eklendi</th><th></th></tr></thead>
+      <thead><tr><th>{{ $t("common.name") }}</th><th>{{ $t("users.email") }}</th><th>{{ $t("users.role") }}</th><th>{{ $t("common.addedAt") }}</th><th></th></tr></thead>
       <tbody>
         <tr v-for="u in items" :key="u.id">
           <td>{{ u.name }}</td>
@@ -102,14 +101,14 @@ async function remove(u) {
               <option value="ADMIN">ADMIN</option>
             </select>
           </td>
-          <td class="muted">{{ new Date(u.createdAt).toLocaleDateString("tr-TR") }}</td>
+          <td class="muted">{{ new Date(u.createdAt).toLocaleDateString(locale) }}</td>
           <td>
-            <button @click="resetPassword(u)">Şifre sıfırla</button>
-            <button class="danger" @click="remove(u)">Sil</button>
+            <button @click="resetPassword(u)">{{ $t("users.resetPassword") }}</button>
+            <button class="danger" @click="remove(u)">{{ $t("common.delete") }}</button>
           </td>
         </tr>
       </tbody>
     </table>
-    <p v-if="!items.length" class="muted">Kullanıcı yok.</p>
+    <p v-if="!items.length" class="muted">{{ $t("users.empty") }}</p>
   </div>
 </template>

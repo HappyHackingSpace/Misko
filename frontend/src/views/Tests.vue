@@ -1,6 +1,9 @@
 <script setup>
 import { ref, onMounted, computed } from "vue";
+import { useI18n } from "vue-i18n";
 import { api } from "../api.js";
+
+const { t } = useI18n();
 
 const items = ref([]);
 const scenarios = ref([]);
@@ -35,43 +38,43 @@ async function setStatus(t, status) {
   await load();
 }
 async function remove(id) {
-  if (!confirm("Test silinsin mi?")) return;
+  if (!confirm(t("tests.confirmDelete"))) return;
   await api(`/tests/${id}`, { method: "DELETE" });
   await load();
 }
 </script>
 
 <template>
-  <h1>Testler</h1>
+  <h1>{{ $t("tests.title") }}</h1>
   <div class="card">
     <div class="row">
-      <div class="field"><label>Senaryo</label>
+      <div class="field"><label>{{ $t("tests.scenario") }}</label>
         <select v-model="form.scenarioId">
-          <option value="" disabled>Seç…</option>
+          <option value="" disabled>{{ $t("common.select") }}</option>
           <option v-for="s in scenarios" :key="s.id" :value="s.id">{{ s.name }} ({{ s.type }})</option>
         </select>
       </div>
-      <div class="field"><label>Denek</label>
+      <div class="field"><label>{{ $t("tests.subject") }}</label>
         <select v-model="form.subjectId">
-          <option value="" disabled>Seç…</option>
+          <option value="" disabled>{{ $t("common.select") }}</option>
           <option v-for="s in subjects" :key="s.id" :value="s.id">{{ s.code }}</option>
         </select>
       </div>
-      <div class="field"><label>Cihaz</label>
+      <div class="field"><label>{{ $t("tests.device") }}</label>
         <select v-model="form.deviceId">
-          <option value="">(yok)</option>
+          <option value="">{{ $t("common.none") }}</option>
           <option v-for="d in devices" :key="d.id" :value="d.id">{{ d.name }}</option>
         </select>
       </div>
-      <div><label>&nbsp;</label><button class="primary" @click="create" :disabled="!canCreate">Test oluştur</button></div>
+      <div><label>&nbsp;</label><button class="primary" @click="create" :disabled="!canCreate">{{ $t("tests.createTest") }}</button></div>
     </div>
-    <p class="muted" v-if="!scenarios.length || !subjects.length">Önce en az bir senaryo ve bir denek ekle.</p>
+    <p class="muted" v-if="!scenarios.length || !subjects.length">{{ $t("tests.needFirst") }}</p>
     <p class="err" v-if="err">{{ err }}</p>
   </div>
 
   <div class="card">
     <table>
-      <thead><tr><th>Senaryo</th><th>Denek</th><th>Operatör</th><th>Cihaz</th><th>Durum</th><th>İşlem</th></tr></thead>
+      <thead><tr><th>{{ $t("tests.scenario") }}</th><th>{{ $t("tests.subject") }}</th><th>{{ $t("tests.operator") }}</th><th>{{ $t("tests.device") }}</th><th>{{ $t("tests.status") }}</th><th>{{ $t("common.actions") }}</th></tr></thead>
       <tbody>
         <tr v-for="t in items" :key="t.id">
           <td>{{ t.scenario?.name }}</td>
@@ -81,15 +84,15 @@ async function remove(id) {
           <td :class="'status-' + t.status">{{ t.status }}</td>
           <td>
             <div class="row">
-              <button v-if="t.status === 'PENDING'" @click="setStatus(t, 'RUNNING')">Başlat</button>
-              <button v-if="t.status === 'RUNNING'" @click="setStatus(t, 'DONE')">Bitir</button>
-              <button v-if="t.status === 'RUNNING'" class="danger" @click="setStatus(t, 'FAILED')">İptal</button>
-              <button class="danger" @click="remove(t.id)">Sil</button>
+              <button v-if="t.status === 'PENDING'" @click="setStatus(t, 'RUNNING')">{{ $t("tests.start") }}</button>
+              <button v-if="t.status === 'RUNNING'" @click="setStatus(t, 'DONE')">{{ $t("tests.finish") }}</button>
+              <button v-if="t.status === 'RUNNING'" class="danger" @click="setStatus(t, 'FAILED')">{{ $t("tests.cancel") }}</button>
+              <button class="danger" @click="remove(t.id)">{{ $t("common.delete") }}</button>
             </div>
           </td>
         </tr>
       </tbody>
     </table>
-    <p v-if="!items.length" class="muted">Test yok.</p>
+    <p v-if="!items.length" class="muted">{{ $t("tests.empty") }}</p>
   </div>
 </template>

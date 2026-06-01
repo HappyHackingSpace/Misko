@@ -1,0 +1,55 @@
+---
+title: Mişko
+description: Behavioral test management system for laboratory mice — the system of record for studies, subjects, apparatuses and results.
+template: splash
+hero:
+  tagline: Behavioral test management for laboratory mice. Plan studies, track subjects, run paradigms, and keep summary results — while computer vision stays an independent service.
+  image:
+    file: ../../assets/logo.svg
+  actions:
+    - text: Get started
+      link: ./overview/
+      icon: right-arrow
+      variant: primary
+    - text: View on GitHub
+      link: https://github.com/HappyHackingSpace/Misko
+      icon: external
+      variant: minimal
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+## What is Mişko?
+
+Mişko is an **internal, on-prem SaaS** for biology labs that run behavioral
+tests on mice. It is the **system of record** for the lab workflow — studies,
+subjects, apparatuses, tests and summary results — while the heavy
+computer-vision work (frame telemetry, tracking, video) lives in a **separate,
+independent service**.
+
+<CardGrid stagger>
+  <Card title="Paradigm-as-code" icon="seti:typescript">
+    Scientific test types (MWM, Open Field, EPM, Rotarod) are defined in code as
+    SOLID specs. Labs enable a subset and fill in values per apparatus.
+  </Card>
+  <Card title="Research-grade domain" icon="approve-check">
+    Rich subjects (strain, genotype, weight logs), disease models, treatments,
+    and longitudinal studies with comparison groups.
+  </Card>
+  <Card title="Two independent systems" icon="puzzle">
+    Mişko keeps summary metrics + artifact URLs. The CV service owns raw
+    telemetry and video in its own database. One thin contract connects them.
+  </Card>
+  <Card title="Internal SaaS, single-tenant" icon="setting">
+    One laboratory per installation. No public sign-up — the superadmin is
+    bootstrapped at startup and manages users from inside.
+  </Card>
+</CardGrid>
+
+## Where to next
+
+- **[Overview](./overview/)** — what the system does and who it is for.
+- **[Architecture](./architecture/)** — layers, stack, and the system boundary.
+- **[Domain model](./domain/)** — the research-grade data model.
+- **[Integration](./integration/)** — the Mişko ↔ CV service contract.
+- **[Roadmap](./roadmap/)** — the phased plan.

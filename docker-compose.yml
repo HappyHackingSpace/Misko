@@ -30,6 +30,7 @@ services:
       JWT_TTL: ${JWT_TTL:-7d}
       CORS_ORIGIN: ${CORS_ORIGIN:-*}
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@fare.lab}
+      LAB_NAME: ${LAB_NAME:-Mişko Laboratuvarı}
     depends_on:
       db:
         condition: service_healthy
