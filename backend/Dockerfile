@@ -3,7 +3,7 @@
 ###############################################
 # 1) Bağımlılıklar + Prisma client (engine'ler dahil)
 ###############################################
-FROM node:20-alpine AS deps
+FROM node:26-alpine AS deps
 WORKDIR /app
 RUN apk add --no-cache openssl
 COPY package*.json ./
@@ -14,7 +14,7 @@ RUN npm ci && npx prisma generate
 ###############################################
 # 2) Çalışma imajı
 ###############################################
-FROM node:20-alpine AS runner
+FROM node:26-alpine AS runner
 ENV NODE_ENV=production
 WORKDIR /app
 RUN apk add --no-cache openssl
