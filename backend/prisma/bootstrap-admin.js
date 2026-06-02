@@ -6,16 +6,43 @@ import { prisma } from "../src/lib/prisma.js";
 import { generateStrongPassword } from "../src/utils/password.js";
 
 /**
- * Superadmin bootstrap — Docker açılışında çalışır.
+ * Setup wizard (CLI) - runs at Docker startup.
  *
- * - Sistemde zaten bir SUPERADMIN varsa: hiçbir şey yapmaz (idempotent).
- * - Yoksa: ADMIN_EMAIL ile bir SUPERADMIN oluşturur, GÜÇLÜ bir şifre üretir ve
- *   bu şifreyi açılış log'una **bir kez** yazar. İlk girişten sonra şifre
- *   içeriden (User management) değiştirilmelidir.
+ * Prepares two things together (single tenant / on-prem):
+ *  1. Laboratory singleton (exactly ONE laboratory per install).
+ *  2. SUPERADMIN user.
  *
- * Internal SaaS: public signup yoktur; ilk ve tek otomatik kullanıcı budur.
+ * Everything is idempotent: a second run skips what already exists and does not
+ * create a second laboratory (singleton guarantee).
  */
-async function main() {
+
+/**
+ * Ensures the Laboratory singleton. Returns it if it already exists; otherwise
+ * creates it with LAB_NAME. A second laboratory is never created.
+ */
+async function ensureLaboratory() {
+  const existing = await prisma.laboratory.findFirst({ orderBy: { createdAt: "asc" } });
+  if (existing) {
+    console.log(`→ Laboratuvar zaten mevcut ('${existing.name}'), oluşturma atlandı.`);
+    return existing;
+  }
+  const lab = await prisma.laboratory.create({ data: { name: config.labName } });
+  console.log(`→ Laboratuvar oluşturuldu: '${lab.name}'.`);
+  return lab;
+}
+
+/**
+ * Superadmin bootstrap.
+ *
+ * - If a SUPERADMIN already exists in the system: does nothing (idempotent).
+ * - Otherwise: creates a SUPERADMIN with ADMIN_EMAIL, generates a STRONG
+ *   password, and writes it to the startup log **once**. After first login the
+ *   password should be changed internally (User management).
+ *
+ * Internal SaaS: there is no public signup; this is the first and only
+ * automatically created user.
+ */
+async function ensureSuperadmin() {
   const superadminCount = await prisma.user.count({ where: { role: ROLES.SUPERADMIN } });
   if (superadminCount > 0) {
     console.log("→ Superadmin zaten mevcut, bootstrap atlandı.");
@@ -48,6 +75,11 @@ async function main() {
   console.log(line);
   console.log("  İlk girişten sonra şifreyi değiştirin (User management).");
   console.log(`${line}\n`);
+}
+
+async function main() {
+  await ensureLaboratory();
+  await ensureSuperadmin();
 }
 
 main()

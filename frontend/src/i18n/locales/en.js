@@ -12,6 +12,7 @@ export default {
       tests: "Tests",
       scenarios: "Scenarios",
       paradigms: "Paradigms",
+      environments: "Environments",
       subjects: "Subjects",
       devices: "Devices",
       users: "Users",
@@ -34,10 +35,14 @@ export default {
     common: {
       add: "Add",
       create: "Create",
+      edit: "Edit",
       delete: "Delete",
       save: "Save",
+      saved: "Saved",
+      reset: "Reset",
       cancel: "Cancel",
       select: "Select…",
+      back: "Back",
       none: "(none)",
       actions: "Actions",
       name: "Name",
@@ -123,6 +128,7 @@ export default {
       schemaVersion: "Schema v",
       metricsShort: "metrics",
       apparatusParams: "Apparatus parameters",
+      value: "Value",
       field: "Field",
       unit: "Unit",
       range: "Range",
@@ -130,7 +136,7 @@ export default {
       zones: "Zones",
       zoneType: "Type",
       zoneRole: "Role",
-      // Sabit zone tipi enum'lari (anahtarlar backend zone.type ile birebir).
+      // Fixed zone type enums (keys match the backend zone.type exactly).
       zoneTypes: {
         circle: "Circle",
         quadrant: "Quadrant",
@@ -138,7 +144,7 @@ export default {
         polygon: "Polygon",
         line: "Line",
       },
-      // Sabit zone rolu enum'lari (anahtarlar backend zone.role ile birebir).
+      // Fixed zone role enums (keys match the backend zone.role exactly).
       zoneRoles: {
         target: "Target",
         periphery: "Periphery",
@@ -148,7 +154,7 @@ export default {
         control: "Control",
         risk: "Risk",
       },
-      // Tur enum'lari (anahtarlar backend species ile birebir).
+      // Species enums (keys match the backend species exactly).
       species: {
         mouse: "Mouse",
         rat: "Rat",
@@ -159,6 +165,21 @@ export default {
       acceptance: "Acceptance criteria",
       suggested: "suggested",
       qc: "Quality control",
+      createEnvironment: "Create environment from this paradigm",
+    },
+    environments: {
+      title: "Environments",
+      intro:
+        "Named test setups created from a paradigm template. A lab can hold several environments per paradigm (e.g. two distinct Morris water tanks). Physical values are set here and locked at test time.",
+      new: "New environment",
+      paradigm: "Paradigm",
+      pickParadigm: "Select paradigm",
+      paradigmLocked: "Paradigm cannot be changed later.",
+      apparatus: "Apparatus values",
+      namePlaceholder: "Tank A",
+      confirmDelete: "Delete this environment?",
+      empty: "No environments yet.",
+      count: "environments",
     },
     subjects: {
       title: "Subjects (Mice)",

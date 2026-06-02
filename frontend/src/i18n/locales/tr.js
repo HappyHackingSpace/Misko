@@ -1,5 +1,5 @@
-// Türkçe: tüm metinler burada. Yeni dil eklemek için bu dosyayı kopyalayıp
-// çevirin (ör. `en.js`); i18n/index.js otomatik olarak algılar.
+// Turkish: all UI strings live here. To add a language, copy this file and
+// translate it (e.g. `en.js`); i18n/index.js picks it up automatically.
 export default {
   name: "Türkçe",
   messages: {
@@ -12,6 +12,7 @@ export default {
       tests: "Testler",
       scenarios: "Senaryolar",
       paradigms: "Paradigmalar",
+      environments: "Ortamlar",
       subjects: "Denekler",
       devices: "Cihazlar",
       users: "Kullanıcılar",
@@ -23,7 +24,7 @@ export default {
       light: "Açık",
       dark: "Koyu",
     },
-    // RBAC rol etiketleri (anahtarlar backend rolleriyle birebir).
+    // RBAC role labels (keys match the backend roles exactly).
     roles: {
       SUPERADMIN: "Süper Yönetici",
       LAB_MANAGER: "Laboratuvar Yöneticisi",
@@ -34,10 +35,14 @@ export default {
     common: {
       add: "Ekle",
       create: "Oluştur",
+      edit: "Düzenle",
       delete: "Sil",
       save: "Kaydet",
+      saved: "Kaydedildi",
+      reset: "Sıfırla",
       cancel: "İptal",
       select: "Seç…",
+      back: "Geri",
       none: "(yok)",
       actions: "İşlem",
       name: "Ad",
@@ -123,6 +128,7 @@ export default {
       schemaVersion: "Şema v",
       metricsShort: "metrik",
       apparatusParams: "Apparatus parametreleri",
+      value: "Değer",
       field: "Alan",
       unit: "Birim",
       range: "Aralık",
@@ -130,7 +136,7 @@ export default {
       zones: "Bölgeler",
       zoneType: "Tür",
       zoneRole: "Rol",
-      // Sabit zone tipi enum'ları (anahtarlar backend zone.type ile birebir).
+      // Fixed zone type enums (keys match the backend zone.type exactly).
       zoneTypes: {
         circle: "Daire",
         quadrant: "Çeyrek",
@@ -138,7 +144,7 @@ export default {
         polygon: "Çokgen",
         line: "Çizgi",
       },
-      // Sabit zone rolü enum'ları (anahtarlar backend zone.role ile birebir).
+      // Fixed zone role enums (keys match the backend zone.role exactly).
       zoneRoles: {
         target: "Hedef",
         periphery: "Çevre",
@@ -148,7 +154,7 @@ export default {
         control: "Kontrol",
         risk: "Risk",
       },
-      // Tür enum'ları (anahtarlar backend species ile birebir).
+      // Species enums (keys match the backend species exactly).
       species: {
         mouse: "Fare",
         rat: "Sıçan",
@@ -159,6 +165,21 @@ export default {
       acceptance: "Kabul kriterleri",
       suggested: "önerilen",
       qc: "Kalite kontrol",
+      createEnvironment: "Bu paradigmadan ortam oluştur",
+    },
+    environments: {
+      title: "Ortamlar",
+      intro:
+        "Bir paradigma template'inden oluşturulmuş, isimli test düzenekleri. Aynı paradigmadan birden çok ortam olabilir (ör. iki ayrı Morris tankı). Fiziksel değerler burada belirlenir ve testte kilitlidir.",
+      new: "Yeni ortam",
+      paradigm: "Paradigma",
+      pickParadigm: "Paradigma seç",
+      paradigmLocked: "Paradigma sonradan değiştirilemez.",
+      apparatus: "Apparatus değerleri",
+      namePlaceholder: "Tank A",
+      confirmDelete: "Ortam silinsin mi?",
+      empty: "Henüz ortam yok.",
+      count: "ortam",
     },
     subjects: {
       title: "Denekler (Fareler)",

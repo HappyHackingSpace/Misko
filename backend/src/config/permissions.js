@@ -1,10 +1,10 @@
 /**
- * RBAC — rol ve izin matrisi (koda gömülü, DB'de düzenlenmez).
+ * RBAC - role and permission matrix (in-code, not editable in the DB).
  *
- * Tasarım: izinler kodda tanımlıdır; basit, SOLID, test edilebilir ve
- * değişiklikler deploy ile gelir (bkz. docs/DOMAIN.md §5b).
+ * Design: permissions are defined in code; simple, SOLID, testable, and
+ * changes ship via deploy (see docs/DOMAIN.md section 5b).
  *
- * İzin biçimi: `resource:action`. Okuma izni tüm rollerde vardır (`*:read`).
+ * Permission format: `resource:action`. Read permission exists in all roles (`*:read`).
  */
 
 export const ROLES = {
@@ -20,7 +20,6 @@ export const ROLE_LIST = Object.values(ROLES);
 export const PERMISSIONS = {
   USER_MANAGE: "user:manage",
   LAB_CONFIGURE: "lab:configure",
-  PARADIGM_TOGGLE: "paradigm:toggle",
   STUDY_WRITE: "study:write",
   SUBJECT_WRITE: "subject:write",
   WEIGHT_WRITE: "weight:write",
@@ -32,7 +31,7 @@ export const PERMISSIONS = {
 
 const P = PERMISSIONS;
 
-// RESEARCHER'ın izinleri (çalışmaları/denekleri/aparatları yönetir, test koşar).
+// RESEARCHER permissions (manages studies/subjects/apparatuses, runs tests).
 const RESEARCHER_PERMS = [
   P.STUDY_WRITE,
   P.SUBJECT_WRITE,
@@ -43,7 +42,7 @@ const RESEARCHER_PERMS = [
   P.READ,
 ];
 
-// SUPERADMIN ve LAB_MANAGER tüm izinlere sahiptir (matris aynı).
+// SUPERADMIN and LAB_MANAGER have all permissions (same matrix).
 const ALL_PERMS = Object.values(P);
 
 /** ROLE -> Set<permission> */
@@ -56,7 +55,7 @@ export const ROLE_PERMISSIONS = {
 };
 
 /**
- * Bir rolün belirli bir izne sahip olup olmadığını döner.
+ * Returns whether a role has a specific permission.
  * @param {string} role
  * @param {string} permission
  * @returns {boolean}
@@ -67,8 +66,8 @@ export function hasPermission(role, permission) {
 }
 
 /**
- * SUPERADMIN/LAB_MANAGER gibi kullanıcı yönetimi yapabilen "ayrıcalıklı" roller.
- * "Son yönetici kaldırılamaz" kuralı bu küme üzerinden işler.
+ * "Privileged" roles that can manage users, such as SUPERADMIN/LAB_MANAGER.
+ * The "last admin cannot be removed" rule operates over this set.
  */
 export const PRIVILEGED_ROLES = [ROLES.SUPERADMIN, ROLES.LAB_MANAGER];
 

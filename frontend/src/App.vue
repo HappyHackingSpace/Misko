@@ -5,6 +5,7 @@ import { useLab } from "./stores/lab.js";
 import ThemeToggle from "./components/ThemeToggle.vue";
 import LangSelect from "./components/LangSelect.vue";
 import UserMenu from "./components/UserMenu.vue";
+import Breadcrumb from "./components/Breadcrumb.vue";
 
 const auth = useAuth();
 const lab = useLab();
@@ -24,6 +25,7 @@ onMounted(() => lab.load());
         <RouterLink to="/tests">{{ $t("nav.tests") }}</RouterLink>
         <RouterLink to="/scenarios">{{ $t("nav.scenarios") }}</RouterLink>
         <RouterLink to="/paradigms">{{ $t("nav.paradigms") }}</RouterLink>
+        <RouterLink to="/environments">{{ $t("nav.environments") }}</RouterLink>
         <RouterLink to="/subjects">{{ $t("nav.subjects") }}</RouterLink>
         <RouterLink to="/devices">{{ $t("nav.devices") }}</RouterLink>
         <RouterLink v-if="auth.isAdmin" to="/users">{{ $t("nav.users") }}</RouterLink>
@@ -34,6 +36,7 @@ onMounted(() => lab.load());
       <UserMenu />
     </header>
     <main class="main">
+      <Breadcrumb />
       <RouterView />
     </main>
   </div>
