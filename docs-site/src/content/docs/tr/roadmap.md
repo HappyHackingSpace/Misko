@@ -28,9 +28,11 @@ Kamera karesi
 
 - `Laboratory` singleton: kurulum başına bir lab.
 - Kurulum sihirbazı lab ve `SUPERADMIN`'i birlikte oluşturur.
-- Beş rol: `SUPERADMIN`, `LAB_MANAGER`, `RESEARCHER`, `TECHNICIAN`, `VIEWER`.
-- `requirePermission(...)` ile kodda tanımlı izin matrisi.
+- Beş rol: `SUPERADMIN`, `LAB_MANAGER`, `RESEARCHER`, `TECHNICIAN`, `VIEWER`. ✅
+- `requirePermission(...)` ile kodda tanımlı izin matrisi. ✅
 - `LabParadigm` yöneticilerin paradigmaları açıp kapatmasını sağlar.
+
+Tamamlandı: beş rollü izin matrisi (`backend/src/config/permissions.js`) ve subject, scenario, device, test, user route'larında `requirePermission(...)` denetimi, ayrıca ADMIN/OPERATOR'dan SUPERADMIN/RESEARCHER'a geçiş migration'ı. Bekleyen: `Laboratory` singleton ve kurulum sihirbazı.
 
 ## Adım 2 - Bilimsel kontrat
 

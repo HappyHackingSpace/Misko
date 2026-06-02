@@ -8,13 +8,15 @@ datasource db {
   provider = "postgresql"
 }
 
-// Operatör — testi yapan kişi (auth ile gelir)
+// Kullanıcı (auth ile gelir). Rol koda gömülü izin matrisini sürer (bkz.
+// src/config/permissions.js, docs/DOMAIN.md §5b).
 model User {
   id        String   @id @default(cuid())
   email     String   @unique
   password  String
   name      String
-  role      String   @default("OPERATOR") // ADMIN | OPERATOR
+  // SUPERADMIN | LAB_MANAGER | RESEARCHER | TECHNICIAN | VIEWER
+  role      String   @default("RESEARCHER")
   createdAt DateTime @default(now())
   tests     Test[]
 }

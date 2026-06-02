@@ -1,22 +1,23 @@
 import "dotenv/config";
 import bcrypt from "bcryptjs";
 import { config } from "../src/config/index.js";
+import { ROLES } from "../src/config/permissions.js";
 import { prisma } from "../src/lib/prisma.js";
 import { generateStrongPassword } from "../src/utils/password.js";
 
 /**
  * Superadmin bootstrap — Docker açılışında çalışır.
  *
- * - Sistemde zaten bir ADMIN varsa: hiçbir şey yapmaz (idempotent).
- * - Yoksa: ADMIN_EMAIL ile bir superadmin oluşturur, GÜÇLÜ bir şifre üretir ve
+ * - Sistemde zaten bir SUPERADMIN varsa: hiçbir şey yapmaz (idempotent).
+ * - Yoksa: ADMIN_EMAIL ile bir SUPERADMIN oluşturur, GÜÇLÜ bir şifre üretir ve
  *   bu şifreyi açılış log'una **bir kez** yazar. İlk girişten sonra şifre
  *   içeriden (User management) değiştirilmelidir.
  *
  * Internal SaaS: public signup yoktur; ilk ve tek otomatik kullanıcı budur.
  */
 async function main() {
-  const adminCount = await prisma.user.count({ where: { role: "ADMIN" } });
-  if (adminCount > 0) {
+  const superadminCount = await prisma.user.count({ where: { role: ROLES.SUPERADMIN } });
+  if (superadminCount > 0) {
     console.log("→ Superadmin zaten mevcut, bootstrap atlandı.");
     return;
   }
@@ -24,7 +25,7 @@ async function main() {
   const email = config.adminEmail;
   const existing = await prisma.user.findUnique({ where: { email } });
   if (existing) {
-    console.log(`→ '${email}' zaten kayıtlı ama ADMIN değil. Bootstrap atlandı.`);
+    console.log(`→ '${email}' zaten kayıtlı ama SUPERADMIN değil. Bootstrap atlandı.`);
     return;
   }
 
@@ -33,7 +34,7 @@ async function main() {
     data: {
       email,
       name: "Superadmin",
-      role: "ADMIN",
+      role: ROLES.SUPERADMIN,
       password: await bcrypt.hash(password, config.bcryptRounds),
     },
   });

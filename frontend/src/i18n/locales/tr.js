@@ -22,6 +22,14 @@ export default {
       light: "Açık",
       dark: "Koyu",
     },
+    // RBAC rol etiketleri (anahtarlar backend rolleriyle birebir).
+    roles: {
+      SUPERADMIN: "Süper Yönetici",
+      LAB_MANAGER: "Laboratuvar Yöneticisi",
+      RESEARCHER: "Araştırmacı",
+      TECHNICIAN: "Teknisyen",
+      VIEWER: "İzleyici",
+    },
     common: {
       add: "Ekle",
       create: "Oluştur",
@@ -107,7 +115,7 @@ export default {
       passwordOptional: "Şifre (opsiyonel)",
       passwordPlaceholder: "boşsa üretilir",
       namePlaceholder: "Ahmet Yılmaz",
-      emailPlaceholder: "ahmet@fare.lab",
+      emailPlaceholder: "ahmet{'@'}fare.lab",
       resetPassword: "Şifre sıfırla",
       createdWithPassword:
         "Kullanıcı oluşturuldu — {email} için üretilen şifre (bir kez gösterilir): {password}",

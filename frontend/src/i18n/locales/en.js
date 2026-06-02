@@ -22,6 +22,14 @@ export default {
       light: "Light",
       dark: "Dark",
     },
+    // RBAC role labels (keys match the backend roles exactly).
+    roles: {
+      SUPERADMIN: "Superadmin",
+      LAB_MANAGER: "Lab Manager",
+      RESEARCHER: "Researcher",
+      TECHNICIAN: "Technician",
+      VIEWER: "Viewer",
+    },
     common: {
       add: "Add",
       create: "Create",
@@ -107,7 +115,7 @@ export default {
       passwordOptional: "Password (optional)",
       passwordPlaceholder: "generated if empty",
       namePlaceholder: "Jane Doe",
-      emailPlaceholder: "jane@mouse.lab",
+      emailPlaceholder: "jane{'@'}mouse.lab",
       resetPassword: "Reset password",
       createdWithPassword:
         "User created — generated password for {email} (shown once): {password}",

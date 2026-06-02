@@ -1,11 +1,15 @@
 import { defineStore } from "pinia";
 import { api, setToken, getToken } from "../api.js";
+import { PRIVILEGED_ROLES } from "../constants/roles.js";
 
 export const useAuth = defineStore("auth", {
   state: () => ({ user: null, ready: false }),
   getters: {
     isLoggedIn: (s) => !!s.user,
-    isAdmin: (s) => s.user?.role === "ADMIN",
+    // user:manage iznine sahip roller (SUPERADMIN / LAB_MANAGER).
+    canManageUsers: (s) => PRIVILEGED_ROLES.includes(s.user?.role),
+    // Geriye dönük uyumluluk: yönetici sayfaları/menüleri bu getter'ı kullanır.
+    isAdmin: (s) => PRIVILEGED_ROLES.includes(s.user?.role),
   },
   actions: {
     async init() {
