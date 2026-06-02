@@ -70,6 +70,12 @@ function sortIcon(col) {
   return props.sort.order === "asc" ? "▲" : "▼";
 }
 
+// aria-sort value for assistive tech on sortable headers.
+function ariaSort(col) {
+  if (props.sort.field !== col.key) return "none";
+  return props.sort.order === "asc" ? "ascending" : "descending";
+}
+
 function prev() {
   if (props.page > 1) emit("page", props.page - 1);
 }
@@ -101,8 +107,13 @@ function stamp() {
 }
 
 function csvCell(value) {
-  if (/[",\r\n]/.test(value)) return `"${value.replace(/"/g, '""')}"`;
-  return value;
+  // Neutralize spreadsheet formula injection: a cell starting with =, +, -, @ or
+  // a leading tab/CR can be evaluated as a formula by Excel/Sheets. Prefix it with
+  // a single quote so it is treated as plain text.
+  let v = value;
+  if (/^[=+\-@\t\r]/.test(v)) v = `'${v}`;
+  if (/[",\r\n]/.test(v)) return `"${v.replace(/"/g, '""')}"`;
+  return v;
 }
 
 function exportCsv() {
@@ -203,7 +214,12 @@ function onExport(e) {
               v-for="col in columns"
               :key="col.key"
               :class="{ sortable: col.sortable }"
+              :tabindex="col.sortable ? 0 : null"
+              :role="col.sortable ? 'button' : null"
+              :aria-sort="col.sortable ? ariaSort(col) : null"
               @click="toggleSort(col)"
+              @keydown.enter.prevent="toggleSort(col)"
+              @keydown.space.prevent="toggleSort(col)"
             >
               {{ col.label }}
               <span v-if="col.sortable" class="dt-sort">{{ sortIcon(col) }}</span>

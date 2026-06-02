@@ -48,8 +48,11 @@ export async function create({ name, email, role, password }) {
 }
 
 export async function update(id, data) {
-  // Run the privileged-user guard and the write in one transaction so concurrent
-  // demotions cannot both pass the count check and drive privileged users to zero.
+  // Run the privileged-user guard and the write in one Serializable transaction.
+  // Postgres interactive transactions inherit the database isolation level
+  // (READ COMMITTED by default), under which two concurrent demotions could both
+  // observe privileged > 1 and commit, leaving zero privileged users. Serializable
+  // makes such interleavings fail instead of silently breaking the invariant.
   return prisma.$transaction(async (tx) => {
     const user = await tx.user.findUnique({ where: { id } });
     if (!user) throw ApiError.notFound("User not found", "user.notFound");
@@ -61,7 +64,7 @@ export async function update(id, data) {
 
     const updated = await tx.user.update({ where: { id }, data });
     return toPublicUser(updated);
-  });
+  }, { isolationLevel: "Serializable" });
 }
 
 export async function resetPassword(id, password) {
@@ -81,7 +84,7 @@ export async function remove(id, currentUserId) {
     if (isPrivilegedRole(user.role)) await assertNotLastPrivileged(tx);
 
     await tx.user.delete({ where: { id } });
-  });
+  }, { isolationLevel: "Serializable" });
 }
 
 async function assertNotLastPrivileged(tx) {

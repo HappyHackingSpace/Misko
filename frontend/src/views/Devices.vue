@@ -46,6 +46,7 @@ const columns = computed(() => [
       @search="table.setSearch"
     >
       <template #cell-name="{ row }"><RouterLink class="link" :to="`/devices/${row.id}`">{{ row.name }}</RouterLink></template>
+      <template #cell-platform="{ row }">{{ row.platform === "ios" ? "iOS" : "Android" }}</template>
       <template #cell-createdAt="{ row }">{{ new Date(row.createdAt).toLocaleDateString(locale) }}</template>
     </DataTable>
   </div>

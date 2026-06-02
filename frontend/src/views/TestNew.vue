@@ -19,14 +19,19 @@ const saving = ref(false);
 const canCreate = computed(() => form.value.scenarioId && form.value.subjectId);
 
 async function load() {
-  const [sc, su, dv] = await Promise.all([
-    api("/scenarios?all=true"),
-    api("/subjects?all=true"),
-    api("/devices?all=true"),
-  ]);
-  scenarios.value = sc.data;
-  subjects.value = su.data;
-  devices.value = dv.data;
+  err.value = "";
+  try {
+    const [sc, su, dv] = await Promise.all([
+      api("/scenarios?all=true"),
+      api("/subjects?all=true"),
+      api("/devices?all=true"),
+    ]);
+    scenarios.value = sc.data;
+    subjects.value = su.data;
+    devices.value = dv.data;
+  } catch (e) {
+    err.value = e.message;
+  }
   crumb.set([
     { label: t("nav.dashboard"), to: "/" },
     { label: t("tests.title"), to: "/tests" },

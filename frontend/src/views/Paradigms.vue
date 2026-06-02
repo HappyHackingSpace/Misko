@@ -12,7 +12,7 @@ const table = useDataTable("/paradigms", {
 });
 
 const columns = computed(() => [
-  { key: "name", label: t("paradigms.field"), sortable: true },
+  { key: "name", label: t("common.name"), sortable: true },
   {
     key: "category", label: t("paradigms.category"), sortable: true,
     exportValue: (row) => t("paradigms.categories." + row.category),

@@ -43,20 +43,29 @@ async function load() {
 }
 
 async function loadDropdowns() {
-  const [pa, op] = await Promise.all([
-    api(`/paradigms?all=true&lang=${locale.value}`),
-    api("/paradigms/acceptance-operators"),
-  ]);
-  paradigms.value = pa.data;
-  operators.value = op;
+  try {
+    const [pa, op] = await Promise.all([
+      api(`/paradigms?all=true&lang=${locale.value}`),
+      api("/paradigms/acceptance-operators"),
+    ]);
+    paradigms.value = pa.data;
+    operators.value = op;
+  } catch (e) {
+    err.value = e.message;
+  }
 }
 
 async function setStatus(status) {
-  const body = { status };
-  if (status === "RUNNING") body.startedAt = new Date().toISOString();
-  if (status === "DONE" || status === "FAILED") body.endedAt = new Date().toISOString();
-  await api(`/tests/${route.params.id}`, { method: "PATCH", body });
-  await load();
+  err.value = "";
+  try {
+    const body = { status };
+    if (status === "RUNNING") body.startedAt = new Date().toISOString();
+    if (status === "DONE" || status === "FAILED") body.endedAt = new Date().toISOString();
+    await api(`/tests/${route.params.id}`, { method: "PATCH", body });
+    await load();
+  } catch (e) {
+    err.value = e.message;
+  }
 }
 
 async function saveCriteria() {
@@ -69,8 +78,13 @@ async function saveCriteria() {
 
 async function remove() {
   if (!confirm(t("tests.confirmDelete"))) return;
-  await api(`/tests/${route.params.id}`, { method: "DELETE" });
-  router.push("/tests");
+  err.value = "";
+  try {
+    await api(`/tests/${route.params.id}`, { method: "DELETE" });
+    router.push("/tests");
+  } catch (e) {
+    err.value = e.message;
+  }
 }
 
 function passedLabel(row) {
