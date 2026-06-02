@@ -28,9 +28,11 @@ Camera frame
 
 - `Laboratory` singleton: one lab per installation.
 - Installation wizard creates the lab and `SUPERADMIN` together.
-- Five roles: `SUPERADMIN`, `LAB_MANAGER`, `RESEARCHER`, `TECHNICIAN`, `VIEWER`.
-- Code-defined permission matrix with `requirePermission(...)`.
+- Five roles: `SUPERADMIN`, `LAB_MANAGER`, `RESEARCHER`, `TECHNICIAN`, `VIEWER`. ✅
+- Code-defined permission matrix with `requirePermission(...)`. ✅
 - `LabParadigm` lets admins enable or disable paradigms.
+
+Done: the five-role permission matrix (`backend/src/config/permissions.js`) and `requirePermission(...)` gating on subject, scenario, device, test and user routes, plus the ADMIN/OPERATOR to SUPERADMIN/RESEARCHER migration. Pending: the `Laboratory` singleton and installation wizard.
 
 ## Step 2 - Scientific contract
 

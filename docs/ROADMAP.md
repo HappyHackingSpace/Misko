@@ -47,9 +47,9 @@ Goal: establish the operational shell before science data grows.
 - `Laboratory` singleton: one lab per installation.
 - Installation wizard creates the laboratory and `SUPERADMIN` together.
 - Singleton guard refuses a second laboratory.
-- Five roles: `SUPERADMIN`, `LAB_MANAGER`, `RESEARCHER`, `TECHNICIAN`, `VIEWER`.
-- Code-defined permission matrix with `requirePermission(...)`.
-- Migrate existing `ADMIN` and `OPERATOR` users to the new roles.
+- Five roles: `SUPERADMIN`, `LAB_MANAGER`, `RESEARCHER`, `TECHNICIAN`, `VIEWER`. (done)
+- Code-defined permission matrix with `requirePermission(...)`. (done)
+- Migrate existing `ADMIN` and `OPERATOR` users to the new roles. (done)
 - `LabParadigm` lets admins enable or disable paradigms for the lab.
 
 Exit criteria:
