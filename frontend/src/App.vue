@@ -1,31 +1,36 @@
 <script setup>
-import { useRouter } from "vue-router";
+import { onMounted } from "vue";
 import { useAuth } from "./stores/auth.js";
+import { useLab } from "./stores/lab.js";
+import ThemeToggle from "./components/ThemeToggle.vue";
+import LangSelect from "./components/LangSelect.vue";
+import UserMenu from "./components/UserMenu.vue";
 
 const auth = useAuth();
-const router = useRouter();
+const lab = useLab();
 
-function logout() {
-  auth.logout();
-  router.push("/login");
-}
+onMounted(() => lab.load());
 </script>
 
 <template>
   <div v-if="auth.isLoggedIn" class="app">
     <header class="topbar">
-      <div class="brand">🐭 Mişko</div>
+      <div class="brand">
+        {{ $t("app.name") }}
+        <span class="lab" v-if="lab.labName">{{ lab.labName }}</span>
+      </div>
       <nav class="nav">
-        <RouterLink to="/">Panel</RouterLink>
-        <RouterLink to="/tests">Testler</RouterLink>
-        <RouterLink to="/scenarios">Senaryolar</RouterLink>
-        <RouterLink to="/subjects">Denekler</RouterLink>
-        <RouterLink to="/devices">Cihazlar</RouterLink>
-        <RouterLink v-if="auth.isAdmin" to="/users">Kullanıcılar</RouterLink>
+        <RouterLink to="/">{{ $t("nav.dashboard") }}</RouterLink>
+        <RouterLink to="/tests">{{ $t("nav.tests") }}</RouterLink>
+        <RouterLink to="/scenarios">{{ $t("nav.scenarios") }}</RouterLink>
+        <RouterLink to="/subjects">{{ $t("nav.subjects") }}</RouterLink>
+        <RouterLink to="/devices">{{ $t("nav.devices") }}</RouterLink>
+        <RouterLink v-if="auth.isAdmin" to="/users">{{ $t("nav.users") }}</RouterLink>
       </nav>
       <div class="spacer"></div>
-      <div class="who">{{ auth.user.name }} <span class="muted">· {{ auth.user.role }}</span></div>
-      <button @click="logout">Çıkış</button>
+      <ThemeToggle />
+      <LangSelect />
+      <UserMenu />
     </header>
     <main class="main">
       <RouterView />

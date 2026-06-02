@@ -31,4 +31,7 @@ export const config = {
   bcryptRounds: Number(process.env.BCRYPT_ROUNDS || 10),
   // Docker açılışında superadmin bootstrap'i için e-posta (şifreyi sistem üretir)
   adminEmail: process.env.ADMIN_EMAIL || "admin@fare.lab",
+  // Tek kiracı (on-prem) kurulumun laboratuvar adı. Phase 1'de Laboratory
+  // singleton'ı gelene kadar markalama bunu kullanır.
+  labName: process.env.LAB_NAME || "Mişko Laboratuvarı",
 };

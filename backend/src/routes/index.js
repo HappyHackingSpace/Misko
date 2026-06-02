@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { config } from "../config/index.js";
 import { authenticate } from "../middleware/authenticate.js";
 import { authRouter } from "../modules/auth/auth.routes.js";
 import { userRouter } from "../modules/users/user.routes.js";
@@ -10,6 +11,11 @@ import { testRouter } from "../modules/tests/test.routes.js";
 export const apiRouter = Router();
 
 apiRouter.get("/health", (_req, res) => res.json({ ok: true, ts: Date.now() }));
+
+// Public markalama bilgisi (giriş ekranında da gösterilir)
+apiRouter.get("/meta", (_req, res) =>
+  res.json({ appName: "Mişko", labName: config.labName }),
+);
 
 apiRouter.use("/auth", authRouter);
 
