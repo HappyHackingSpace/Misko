@@ -7,6 +7,9 @@ Bu, ince başlangıç şemasını gerçek davranışsal-sinirbilim iş akışlar
 destekleyen bir modele dönüştüren hedef modeldir. Mişko bu modeli **system of
 record** olarak sahiplenir; CV servisi bağımsız kalır.
 
+Metrik tanımları, MWM normalizasyonu ve kalite kontrol semantiği
+[Ölçüm mimarisi](../measurements/) sayfasında detaylandırılır.
+
 ## Kiracılık (tek kiracı, on-prem)
 
 Mişko **kurulum başına bir laboratuvar** çalıştırır — singleton, çok kiracılı
@@ -49,11 +52,15 @@ interface ParadigmSpec {
   zones(config): Zone[];  // yapılandırılmış geometriden somut bölgeler
   metrics: MetricDef[];   // CV servisinin hesaplaması gerekenler
   acceptance(config): Rule | null;
+  qc: QualityRequirement[];
   validate(config): void;
 }
 ```
 
 Başlangıç kayıt defteri: `MWM`, `OPEN_FIELD`, `EPM`, `ROTAROD`.
+
+Sonuç JSON'u aktif paradigmanın metrik sözlüğüne, sonuç şemasına, QC
+gereksinimlerine ve protokol versiyonuna göre doğrulanmalıdır.
 
 ### Cihaz (fiziksel "ortam")
 

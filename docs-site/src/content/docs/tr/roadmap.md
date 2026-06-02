@@ -1,68 +1,133 @@
 ---
 title: Yol haritası
-description: Fazlı plan — önce omurgayı uçtan uca çalıştır, sonra her fazda et ekle.
+description: Video-only davranış testi platformu için adım adım mimari.
 ---
 
-Felsefe: **önce omurgayı uçtan uca çalıştır** (sahte veriyle bile), sonra her
-fazda et ekle. İki sistem (Mişko + CV servisi) baştan bağımsız kalır; tek temas
-noktaları [entegrasyon kontratıdır](../integration/).
+Mişko **video-only davranış testi platformu** olarak başlar. Core roadmap içinde
+sensör yoktur. Tüm ölçümler kamera karelerinden, kalibrasyondan, apparatus
+geometrisinden ve kod sahipli paradigma spec'lerinden türetilir.
 
-## Faz 0 — Kimlik & içeriden SaaS modeli ✅
+```txt
+Kamera karesi
+  -> detection veya segmentation
+  -> tracking
+  -> pikselden cm'ye kalibrasyon
+  -> apparatus koordinatlarında trajectory
+  -> zone ve event metrikleri
+  -> kalite kontrol metrikleri
+  -> Mişko'da valide edilmiş özet sonuç
+```
 
-Mişko on-prem dağıtılan **içeriden (yalnızca kurum) bir SaaS**'tır. Public kayıt
-yoktur.
+## Adım 0 - Kimlik ✅
 
-- Docker açılışında superadmin bootstrap (sistem üretimi güçlü şifre, bir kez
-  yazılır; idempotent).
-- Kayıt kaldırıldı (frontend + backend).
-- İçeriden kullanıcı yönetimi (yalnızca admin).
+- Docker açılışında superadmin bootstrap.
+- Public kayıt kaldırıldı.
+- İçeriden kullanıcı yönetimi.
 
-## Faz 1 — Temel: kiracılık + RBAC + paradigma kayıt defteri
+## Adım 1 - Lab temeli
 
-- **Kiracılık (`Laboratory`, tek kiracı):** kurulum başına tam olarak bir lab;
-  singleton guard'lı bir kurulum sihirbazı ile oluşturulur.
-- **RBAC (5 rol, kod matrisi):** SUPERADMIN, LAB_MANAGER, RESEARCHER, TECHNICIAN,
-  VIEWER; kodda tanımlı izin matrisi.
-- **Paradigma kayıt defteri (hardcoded, SOLID):** `ParadigmSpec` kayıt defteri
-  (MWM, OPEN_FIELD, EPM, ROTAROD); UI formu paradigmanın parametrelerinden otomatik
-  oluşturulur.
-- **`LabParadigm`:** yöneticiler lab başına hangi paradigmaların aktif olduğunu
-  açıp kapatır.
+- `Laboratory` singleton: kurulum başına bir lab.
+- Kurulum sihirbazı lab ve `SUPERADMIN`'i birlikte oluşturur.
+- Beş rol: `SUPERADMIN`, `LAB_MANAGER`, `RESEARCHER`, `TECHNICIAN`, `VIEWER`.
+- `requirePermission(...)` ile kodda tanımlı izin matrisi.
+- `LabParadigm` yöneticilerin paradigmaları açıp kapatmasını sağlar.
 
-## Faz 2 — Alan modeli (bilim)
+## Adım 2 - Bilimsel kontrat
 
-- Zengin `Subject` + `WeightLog` zaman serisi.
-- `DiseaseModel` & `Treatment` katalogları + N–N join'ler.
-- `Apparatus` — fiziksel düzenek (cm geometri, yüzey rengi/malzemesi, bölgeler).
-- `Study → Group` + boylamsal test.
+- Kod sahipli `ParadigmSpec` kayıt defteri: `MWM`, `OPEN_FIELD`, `EPM`, `ROTAROD`.
+- [Ölçüm mimarisi](../measurements/) içindeki kod sahipli metrik sözlüğü.
+- Kanonik birimler: `cm`, `cm_s`, `s`, `ratio`, `count`.
+- Paradigma başına parametreler, bölgeler, metrikler, kabul kriterleri, QC gereksinimleri ve artefakt beklentileri.
+- `schemaVersion` ve `protocolVersion` ile sonuç şema versiyonlama.
 
-## Faz 3 — Omurga: sınır kontratı (sahte CV ile)
+Çıkış kriteri: her metriğin birimi, tanımı, input listesi ve aggregation davranışı vardır.
 
-- `POST /api/tests/:id/result` (servis auth, idempotent).
-- Kalibrasyon Test'e bağlanır.
-- Kendi PostgreSQL'i olan CV servisi iskeleti + stub sonuç push.
-- Object storage için MinIO.
+## Adım 3 - Araştırma domain modeli
 
-## Faz 4 — Senaryo zekâsı
+- Zengin `Subject` ve `WeightLog`.
+- Denek join'leriyle `DiseaseModel` ve `Treatment` katalogları.
+- Boylamsal çalışma için `Study -> Group`.
+- Fiziksel düzenekler için `Apparatus`.
+- Sabit kurulum veya oturum override için `Calibration`.
+- `Test` paradigma, apparatus, denek, operatör, cihaz, çalışma, timepoint ve kalibrasyonu referans alır.
+- `Test.result` yapılandırılmış JSON olur.
 
-- Senaryo/cihaz geometri editörü (bölge çizimi, cm ölçeği).
-- Paradigma başına kabul kriterleri + metrik motoru.
+## Adım 4 - Fake CV ile video-only sınır
 
-## Faz 5 — Gerçek CV
+- `X-Service-Key` ile `POST /api/tests/:id/result`.
+- `captureSessionId` ile idempotency.
+- Aktif paradigma spec'i ve metrik sözlüğüne göre sonuç validasyonu.
+- Kendi PostgreSQL'i ve `/health` endpoint'i olan `cv-service/` iskeleti.
+- Sahte ama geçerli metriklerle stub sonuç push.
+- Video ve artefaktlar için MinIO.
 
-- `local_usb` adapter (OpenCV) + YOLOv8 + ByteTrack.
+## Adım 5 - Geometri ve kalibrasyon
 
-## Faz 6 — Canlı izleme & çoklu kaynak
+- Circle, rectangle, plus ve custom polygon için apparatus geometri editörü.
+- Platform, center, periphery, quadrant, wall annulus ve arm zone editörü.
+- Referans kareyle pikselden cm'ye kalibrasyon ve reprojection error.
+- Sabit apparatus kalibrasyonu ve test başına override.
+- Tank merkezli koordinatlar, ham cm değerleri ve normalize mesafelerle MWM normalizasyonu.
 
-- CV → Vue paneli WebSocket/SSE ile (Mişko'yu baypas eder).
-- `rtsp/http` ve `ws_push` (telefon) adapter'ları.
+## Adım 6 - Gerçek video CV MVP
 
-## Faz 7 — Dağıtım
+- Kamera adapter'ları: `local_usb`, yüklenen video dosyası ve sonra telefon stream'i.
+- Fare lokalizasyonu için detection veya segmentation modeli.
+- ByteTrack veya eşdeğer tracker.
+- OpenCV preprocessing ve homography.
+- Kare bazlı telemetri CV servisinde kalır.
+- Özet metrikler Mişko'ya push edilir.
 
-- İmaj registry (GHCR) + staging/prod dağıtımı.
-- (Opsiyonel) CV tarafında TimescaleDB.
+| Paradigma | MVP metrikleri |
+|---|---|
+| MWM | Escape latency, path length, swim speed, quadrant time, thigmotaxis, probe trial için platform crossings. |
+| Open Field | Distance, mean speed, center time, periphery time, immobility. |
+| EPM | Open arm time, closed arm time, open arm entries, closed arm entries. |
+| Rotarod | İlk aşamada manuel incelemeyle trial duration ve fall candidate event'leri. |
 
----
+## Adım 7 - Kalite kontrol ve inceleme
 
-**Sınır hatırlatması:** ham telemetri, event'ler ve video **CV servisinde** durur;
-Mişko yalnızca **özet metrikleri + artefakt URL'lerini** tutar.
+- Tracking confidence, dropped frame ratio, calibration error, occlusion ratio, out-of-bounds ratio, lighting warning ve contrast warning.
+- QC durumları: `PASS`, `WARN`, `REVIEW_REQUIRED`, `FAIL`.
+- QC davranışsal `passed` değerinden ayrıdır.
+- Video, overlay, trajectory ve metrik özetiyle manuel inceleme ekranı.
+- Study export'ları düşük kaliteli koşuları varsayılan olarak filtreler.
+
+## Adım 8 - Analiz ve raporlama
+
+- Grup ve timepoint bazlı study dashboard'ları.
+- Boylamsal denek görünümü.
+- MWM acquisition curve ve probe summary.
+- Open Field ve EPM özetleri.
+- Rotarod tekrarlı trial curve'leri.
+- Metrik tanımları ve QC durumuyla CSV ve JSON export.
+
+## Adım 9 - Gelişmiş davranış modülleri
+
+- Opsiyonel pose-estimation adapter'ı: DeepLabCut, SLEAP veya başka açık kaynak model.
+- Rearing, grooming, freezing, risk assessment ve head direction classifier'ları.
+- İyileştirilmiş Rotarod fall detection.
+- Single-animal iş akışları stabil olduktan sonra multi-animal desteği.
+
+## Adım 10 - Canlı izleme ve kaynaklar
+
+- WebSocket veya SSE ile CV'den Vue live paneline akış.
+- RTSP ve HTTP adapter'ları.
+- Telefon `getUserMedia` push adapter'ı.
+- Canlı QC uyarıları.
+
+## Adım 11 - Açık kaynak deployment
+
+- Mişko ve CV servisi için final lisans stratejisi.
+- Tüm local stack için Docker Compose profili.
+- GHCR image publishing.
+- GitHub Pages docs deploy.
+- Örnek dataset'ler, demo videolar ve örnek apparatus tanımları.
+
+## Non-goals
+
+- Core mimaride sensor fusion yok.
+- RFID, accelerometer, load cell veya IR beam bağımlılığı yok.
+- Mişko PostgreSQL içinde ham kare telemetrisi yok.
+- Bilimsel paradigma tanımları için editable DB row yok.
+- İlk mimaride cross-lab multi-tenant deployment yok.

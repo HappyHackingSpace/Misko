@@ -39,6 +39,7 @@ export default defineConfig({
           translations: { tr: "Tasarım" },
           items: [
             { label: "Domain model", translations: { tr: "Alan modeli" }, slug: "domain" },
+            { label: "Measurement architecture", translations: { tr: "Ölçüm mimarisi" }, slug: "measurements" },
             { label: "Integration (CV)", translations: { tr: "Entegrasyon (CV)" }, slug: "integration" },
             { label: "Roadmap", translations: { tr: "Yol haritası" }, slug: "roadmap" },
           ],
