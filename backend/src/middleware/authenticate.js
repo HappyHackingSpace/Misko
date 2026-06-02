@@ -1,5 +1,6 @@
 import jwt from "jsonwebtoken";
 import { config } from "../config/index.js";
+import { hasPermission } from "../config/permissions.js";
 import { prisma } from "../lib/prisma.js";
 import { ApiError } from "../utils/ApiError.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
@@ -27,11 +28,24 @@ export const authenticate = asyncHandler(async (req, _res, next) => {
 });
 
 /**
- * Belirli rolleri zorunlu kılan middleware (örn. requireRole("ADMIN")).
+ * Belirli rolleri zorunlu kılan middleware (örn. requireRole("SUPERADMIN")).
+ * Kaba kontroller için kalır; asıl yetki kapısı `requirePermission`'dır.
  */
 export const requireRole = (...roles) =>
   (req, _res, next) => {
     if (!req.user || !roles.includes(req.user.role)) {
+      throw ApiError.forbidden("Bu işlem için yetkiniz yok");
+    }
+    next();
+  };
+
+/**
+ * Koda gömülü izin matrisine göre yetki kontrolü yapan middleware
+ * (örn. requirePermission("subject:write")). Birincil yetki kapısı budur.
+ */
+export const requirePermission = (permission) =>
+  (req, _res, next) => {
+    if (!req.user || !hasPermission(req.user.role, permission)) {
       throw ApiError.forbidden("Bu işlem için yetkiniz yok");
     }
     next();

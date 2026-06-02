@@ -1,5 +1,6 @@
 import bcrypt from "bcryptjs";
 import { config } from "../../config/index.js";
+import { PRIVILEGED_ROLES, isPrivilegedRole } from "../../config/permissions.js";
 import { prisma } from "../../lib/prisma.js";
 import { ApiError } from "../../utils/ApiError.js";
 import { generateStrongPassword } from "../../utils/password.js";
@@ -32,9 +33,9 @@ export async function update(id, data) {
   const user = await prisma.user.findUnique({ where: { id } });
   if (!user) throw ApiError.notFound("Kullanıcı bulunamadı");
 
-  // Son ADMIN'i OPERATOR'a düşürmeyi engelle.
-  if (user.role === "ADMIN" && data.role === "OPERATOR") {
-    await assertNotLastAdmin(id);
+  // Son yetkili (user:manage olan) kullanıcıyı yetkisiz role düşürmeyi engelle.
+  if (isPrivilegedRole(user.role) && data.role && !isPrivilegedRole(data.role)) {
+    await assertNotLastPrivileged(id);
   }
 
   const updated = await prisma.user.update({ where: { id }, data });
@@ -54,13 +55,15 @@ export async function remove(id, currentUserId) {
   const user = await prisma.user.findUnique({ where: { id } });
   if (!user) throw ApiError.notFound("Kullanıcı bulunamadı");
   if (id === currentUserId) throw ApiError.badRequest("Kendi hesabınızı silemezsiniz");
-  if (user.role === "ADMIN") await assertNotLastAdmin(id);
+  if (isPrivilegedRole(user.role)) await assertNotLastPrivileged(id);
 
   await prisma.user.delete({ where: { id } });
 }
 
-async function assertNotLastAdmin(id) {
-  const admins = await prisma.user.count({ where: { role: "ADMIN" } });
-  if (admins <= 1) throw ApiError.badRequest("Son ADMIN kullanıcı kaldırılamaz/değiştirilemez");
+async function assertNotLastPrivileged(id) {
+  const privileged = await prisma.user.count({ where: { role: { in: PRIVILEGED_ROLES } } });
+  if (privileged <= 1) {
+    throw ApiError.badRequest("Son yetkili kullanıcı kaldırılamaz/değiştirilemez");
+  }
   return id;
 }

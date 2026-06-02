@@ -2,10 +2,11 @@
 import { ref, onMounted } from "vue";
 import { useI18n } from "vue-i18n";
 import { api } from "../api.js";
+import { ROLES, DEFAULT_ROLE } from "../constants/roles.js";
 
 const { t, locale } = useI18n();
 const items = ref([]);
-const form = ref({ name: "", email: "", role: "OPERATOR", password: "" });
+const form = ref({ name: "", email: "", role: DEFAULT_ROLE, password: "" });
 const err = ref("");
 const notice = ref(""); // show the generated password once
 
@@ -24,7 +25,7 @@ async function create() {
     if (generatedPassword) {
       notice.value = t("users.createdWithPassword", { email: user.email, password: generatedPassword });
     }
-    form.value = { name: "", email: "", role: "OPERATOR", password: "" };
+    form.value = { name: "", email: "", role: DEFAULT_ROLE, password: "" };
     await load();
   } catch (e) {
     err.value = e.message;
@@ -77,8 +78,7 @@ async function remove(u) {
       <div class="field">
         <label>{{ $t("users.role") }}</label>
         <select v-model="form.role">
-          <option value="OPERATOR">OPERATOR</option>
-          <option value="ADMIN">ADMIN</option>
+          <option v-for="r in ROLES" :key="r" :value="r">{{ r }}</option>
         </select>
       </div>
       <div class="field"><label>{{ $t("users.passwordOptional") }}</label><input v-model="form.password" :placeholder="$t('users.passwordPlaceholder')" /></div>
@@ -97,8 +97,7 @@ async function remove(u) {
           <td class="muted">{{ u.email }}</td>
           <td>
             <select :value="u.role" @change="changeRole(u, $event.target.value)">
-              <option value="OPERATOR">OPERATOR</option>
-              <option value="ADMIN">ADMIN</option>
+              <option v-for="r in ROLES" :key="r" :value="r">{{ r }}</option>
             </select>
           </td>
           <td class="muted">{{ new Date(u.createdAt).toLocaleDateString(locale) }}</td>
