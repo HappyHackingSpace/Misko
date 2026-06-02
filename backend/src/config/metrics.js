@@ -1,0 +1,535 @@
+/**
+ * Olcum sozlugu (Step 2 - bilimsel kontrat).
+ *
+ * Kod sahipli MetricDefinition kayit defteri. Amac: iki servisin ayni ismi
+ * farkli hesaplamalar icin kullanmasini engellemek. Sonuc gonderiminde
+ * (Step 4) tanimsiz metrik anahtarlari reddedilir.
+ *
+ * Kaynak: docs/MEASUREMENTS.md, bolum 3.
+ *
+ * Sablonlu anahtarlar (or. `zone_time_s.{zoneKey}`) `templated: true` ile
+ * isaretlenir; gercek anahtar paradigmanin zone tanimindan turetilir.
+ */
+import { UNITS } from "./units.js";
+
+/**
+ * @typedef {Object} MetricDefinition
+ * @property {string} key                Kanonik metrik anahtari (veya sablon).
+ * @property {string} label              Insan tarafindan okunabilir etiket.
+ * @property {string[]} paradigmKeys     Bu metrigin gecerli oldugu paradigmalar.
+ * @property {string} unit               UNITS icinden kanonik birim.
+ * @property {"number"|"integer"|"boolean"|"object"} valueType
+ * @property {boolean} required          Sonucta zorunlu mu?
+ * @property {boolean} [templated]       Anahtar bir zone/quadrant ile mi tamamlanir?
+ * @property {string} definition         Metrigin ne oldugu.
+ * @property {string} formula            Hesaplama ozeti.
+ * @property {string[]} inputs           Hesaplama girdileri.
+ * @property {("per_trial"|"per_session"|"per_subject_timepoint"|"study_summary")} aggregation
+ * @property {[number, number]|null} validRange
+ * @property {string[]} qcDependencies   Bagimli oldugu QC kurallari.
+ */
+
+/** @type {MetricDefinition[]} */
+const BASELINE = [
+  {
+    key: "duration_s",
+    label: "Analiz suresi",
+    paradigmKeys: ["MWM", "OPEN_FIELD", "EPM", "ROTAROD"],
+    unit: UNITS.S,
+    valueType: "number",
+    required: true,
+    definition: "Gecersiz kareler kirpildiktan sonra analiz edilen zaman penceresi.",
+    formula: "last_valid_t - first_valid_t",
+    inputs: ["timestamps", "valid_frame_mask"],
+    aggregation: "per_trial",
+    validRange: [0, 86400],
+    qcDependencies: ["min_tracking_confidence", "max_dropped_frames"],
+  },
+  {
+    key: "distance_cm",
+    label: "Toplam yol",
+    paradigmKeys: ["MWM", "OPEN_FIELD", "EPM"],
+    unit: UNITS.CM,
+    valueType: "number",
+    required: true,
+    definition: "Apparatus koordinatlarinda toplam yol uzunlugu.",
+    formula: "sum(|p[i] - p[i-1]|) for valid frames",
+    inputs: ["trajectory_cm", "valid_frame_mask"],
+    aggregation: "per_trial",
+    validRange: [0, 1000000],
+    qcDependencies: ["calibration_error", "min_tracking_confidence"],
+  },
+  {
+    key: "mean_speed_cm_s",
+    label: "Ortalama hiz",
+    paradigmKeys: ["MWM", "OPEN_FIELD", "EPM"],
+    unit: UNITS.CM_S,
+    valueType: "number",
+    required: false,
+    definition: "Analiz penceresi boyunca ortalama hareket hizi.",
+    formula: "distance_cm / duration_s",
+    inputs: ["distance_cm", "duration_s"],
+    aggregation: "per_trial",
+    validRange: [0, 10000],
+    qcDependencies: ["calibration_error"],
+  },
+  {
+    key: "max_speed_cm_s",
+    label: "Maksimum hiz",
+    paradigmKeys: ["MWM", "OPEN_FIELD", "EPM"],
+    unit: UNITS.CM_S,
+    valueType: "number",
+    required: false,
+    definition: "Yumusatilmis anlik hizin maksimumu.",
+    formula: "max(smoothed_instantaneous_speed)",
+    inputs: ["trajectory_cm", "timestamps"],
+    aggregation: "per_trial",
+    validRange: [0, 10000],
+    qcDependencies: ["calibration_error", "min_tracking_confidence"],
+  },
+  {
+    key: "immobility_s",
+    label: "Hareketsizlik suresi",
+    paradigmKeys: ["OPEN_FIELD", "EPM"],
+    unit: UNITS.S,
+    valueType: "number",
+    required: false,
+    definition: "Paradigmaya ozgu hareket esiginin altinda gecirilen sure.",
+    formula: "sum(dt where speed < immobility_threshold_cm_s)",
+    inputs: ["instantaneous_speed", "timestamps"],
+    aggregation: "per_trial",
+    validRange: [0, 86400],
+    qcDependencies: ["min_tracking_confidence"],
+  },
+  {
+    key: "zone_time_s",
+    label: "Bolge suresi",
+    paradigmKeys: ["MWM", "OPEN_FIELD", "EPM"],
+    unit: UNITS.S,
+    valueType: "number",
+    required: false,
+    templated: true,
+    definition: "Tanimli bir bolge icinde gecirilen sure (anahtar: zone_time_s.{zoneKey}).",
+    formula: "sum(dt where position in zone)",
+    inputs: ["trajectory_cm", "zone_geometry_cm", "timestamps"],
+    aggregation: "per_trial",
+    validRange: [0, 86400],
+    qcDependencies: ["calibration_error"],
+  },
+  {
+    key: "zone_entries",
+    label: "Bolge girisleri",
+    paradigmKeys: ["MWM", "OPEN_FIELD", "EPM"],
+    unit: UNITS.COUNT,
+    valueType: "integer",
+    required: false,
+    templated: true,
+    definition: "Debounce sonrasi bir bolgeye giris sayisi (anahtar: zone_entries.{zoneKey}).",
+    formula: "count(transitions outside->inside after debounce)",
+    inputs: ["trajectory_cm", "zone_geometry_cm", "entry_debounce_s"],
+    aggregation: "per_trial",
+    validRange: [0, 100000],
+    qcDependencies: ["calibration_error"],
+  },
+  {
+    key: "latency_to_zone_s",
+    label: "Bolgeye varis gecikmesi",
+    paradigmKeys: ["MWM", "EPM"],
+    unit: UNITS.S,
+    valueType: "number",
+    required: false,
+    templated: true,
+    definition: "Deneme baslangicindan bir bolgeye ilk gecerli girise kadar gecen sure (anahtar: latency_to_zone_s.{zoneKey}).",
+    formula: "first_valid_entry_t - trial_start_t",
+    inputs: ["trajectory_cm", "zone_geometry_cm", "trial_start_t"],
+    aggregation: "per_trial",
+    validRange: [0, 86400],
+    qcDependencies: ["calibration_error"],
+  },
+  {
+    key: "path_efficiency_ratio",
+    label: "Yol verimliligi",
+    paradigmKeys: ["MWM"],
+    unit: UNITS.RATIO,
+    valueType: "number",
+    required: false,
+    definition: "Hedefe duz cizgi mesafesinin gercek yol uzunluguna orani.",
+    formula: "straight_line_to_target_cm / distance_cm",
+    inputs: ["trajectory_cm", "target_center_cm"],
+    aggregation: "per_trial",
+    validRange: [0, 1],
+    qcDependencies: ["calibration_error"],
+  },
+];
+
+/** @type {MetricDefinition[]} */
+const MWM = [
+  {
+    key: "escape_latency_s",
+    label: "Kacis gecikmesi",
+    paradigmKeys: ["MWM"],
+    unit: UNITS.S,
+    valueType: "number",
+    required: true,
+    definition: "Ilk surekli platform-bolgesi girisine kadar gecen sure.",
+    formula: "first_sustained_platform_entry_t - trial_start_t",
+    inputs: ["trajectory_cm", "platform_zone_cm", "trial_start_t"],
+    aggregation: "per_trial",
+    validRange: [0, 300],
+    qcDependencies: ["calibration_error", "min_tracking_confidence"],
+  },
+  {
+    key: "path_length_cm",
+    label: "Yuzme yolu",
+    paradigmKeys: ["MWM"],
+    unit: UNITS.CM,
+    valueType: "number",
+    required: true,
+    definition: "Platforma veya deneme sonuna kadar toplam yuzme yolu.",
+    formula: "sum(|p[i] - p[i-1]|) until platform or trial end",
+    inputs: ["trajectory_cm", "platform_zone_cm"],
+    aggregation: "per_trial",
+    validRange: [0, 1000000],
+    qcDependencies: ["calibration_error"],
+  },
+  {
+    key: "mean_swim_speed_cm_s",
+    label: "Ortalama yuzme hizi",
+    paradigmKeys: ["MWM"],
+    unit: UNITS.CM_S,
+    valueType: "number",
+    required: false,
+    definition: "Ogrenme etkisini motor bozukluktan ayirmak icin kullanilir.",
+    formula: "path_length_cm / duration_s",
+    inputs: ["path_length_cm", "duration_s"],
+    aggregation: "per_trial",
+    validRange: [0, 200],
+    qcDependencies: ["calibration_error"],
+  },
+  {
+    key: "platform_crossings_count",
+    label: "Platform gecisleri",
+    paradigmKeys: ["MWM"],
+    unit: UNITS.COUNT,
+    valueType: "integer",
+    required: false,
+    definition: "Sadece prob denemeleri: eski platform bolgesinden gecis sayisi.",
+    formula: "count(crossings through former platform zone)",
+    inputs: ["trajectory_cm", "platform_zone_cm"],
+    aggregation: "per_trial",
+    validRange: [0, 1000],
+    qcDependencies: ["calibration_error"],
+  },
+  {
+    key: "target_quadrant_time_ratio",
+    label: "Hedef ceyrek suresi orani",
+    paradigmKeys: ["MWM"],
+    unit: UNITS.RATIO,
+    valueType: "number",
+    required: false,
+    definition: "Hedef ceyrekte gecen surenin gecerli analiz suresine orani.",
+    formula: "quadrant_time_s.target / duration_s",
+    inputs: ["trajectory_cm", "quadrant_geometry_cm", "duration_s"],
+    aggregation: "per_trial",
+    validRange: [0, 1],
+    qcDependencies: ["calibration_error"],
+  },
+  {
+    key: "quadrant_time_s",
+    label: "Ceyrek suresi",
+    paradigmKeys: ["MWM"],
+    unit: UNITS.S,
+    valueType: "number",
+    required: false,
+    templated: true,
+    definition: "Bir ceyrekte gecen sure (anahtar: quadrant_time_s.{quadrant}, or. NE/NW/SE/SW).",
+    formula: "sum(dt where position in quadrant)",
+    inputs: ["trajectory_cm", "quadrant_geometry_cm"],
+    aggregation: "per_trial",
+    validRange: [0, 86400],
+    qcDependencies: ["calibration_error"],
+  },
+  {
+    key: "thigmotaxis_time_ratio",
+    label: "Tigmotaksi suresi orani",
+    paradigmKeys: ["MWM"],
+    unit: UNITS.RATIO,
+    valueType: "number",
+    required: false,
+    definition: "Tank duvarina yakin halka bolgede gecen sure orani.",
+    formula: "annulus_time_s / duration_s",
+    inputs: ["trajectory_cm", "wall_annulus_cm", "duration_s"],
+    aggregation: "per_trial",
+    validRange: [0, 1],
+    qcDependencies: ["calibration_error"],
+  },
+  {
+    key: "mean_distance_to_platform_cm",
+    label: "Platforma ortalama mesafe",
+    paradigmKeys: ["MWM"],
+    unit: UNITS.CM,
+    valueType: "number",
+    required: false,
+    definition: "Hedefe ortalama yakinlik; prob denemelerinde saglam bir olcut.",
+    formula: "mean(|position - platform_center_cm|)",
+    inputs: ["trajectory_cm", "platform_center_cm"],
+    aggregation: "per_trial",
+    validRange: [0, 100000],
+    qcDependencies: ["calibration_error"],
+  },
+  {
+    key: "heading_error_deg",
+    label: "Yonelim hatasi",
+    paradigmKeys: ["MWM"],
+    unit: UNITS.DEG,
+    valueType: "number",
+    required: false,
+    definition: "Opsiyonel; heading veya yumusatilmis yol vektoru gerektirir.",
+    formula: "angle(path_vector, vector_to_target)",
+    inputs: ["trajectory_cm", "platform_center_cm"],
+    aggregation: "per_trial",
+    validRange: [0, 180],
+    qcDependencies: ["min_tracking_confidence"],
+  },
+];
+
+/** @type {MetricDefinition[]} */
+const OPEN_FIELD = [
+  {
+    key: "center_time_ratio",
+    label: "Merkez suresi orani",
+    paradigmKeys: ["OPEN_FIELD"],
+    unit: UNITS.RATIO,
+    valueType: "number",
+    required: true,
+    definition: "Merkez bolgede gecen surenin gecerli sureye orani.",
+    formula: "zone_time_s.center / duration_s",
+    inputs: ["trajectory_cm", "center_zone_cm", "duration_s"],
+    aggregation: "per_trial",
+    validRange: [0, 1],
+    qcDependencies: ["calibration_error"],
+  },
+  {
+    key: "periphery_time_ratio",
+    label: "Cevre suresi orani",
+    paradigmKeys: ["OPEN_FIELD"],
+    unit: UNITS.RATIO,
+    valueType: "number",
+    required: false,
+    definition: "Cevre bolgede gecen surenin gecerli sureye orani.",
+    formula: "zone_time_s.periphery / duration_s",
+    inputs: ["trajectory_cm", "periphery_zone_cm", "duration_s"],
+    aggregation: "per_trial",
+    validRange: [0, 1],
+    qcDependencies: ["calibration_error"],
+  },
+  {
+    key: "center_entries_count",
+    label: "Merkez girisleri",
+    paradigmKeys: ["OPEN_FIELD"],
+    unit: UNITS.COUNT,
+    valueType: "integer",
+    required: false,
+    definition: "Debounce sonrasi merkez bolge girisleri.",
+    formula: "count(transitions periphery->center after debounce)",
+    inputs: ["trajectory_cm", "center_zone_cm", "entry_debounce_s"],
+    aggregation: "per_trial",
+    validRange: [0, 100000],
+    qcDependencies: ["calibration_error"],
+  },
+];
+
+/** @type {MetricDefinition[]} */
+const EPM = [
+  {
+    key: "open_arm_time_ratio",
+    label: "Acik kol suresi orani",
+    paradigmKeys: ["EPM"],
+    unit: UNITS.RATIO,
+    valueType: "number",
+    required: true,
+    definition: "Acik kollarda gecen surenin gecerli sureye orani.",
+    formula: "zone_time_s.open / duration_s",
+    inputs: ["trajectory_cm", "open_arm_zone_cm", "duration_s"],
+    aggregation: "per_trial",
+    validRange: [0, 1],
+    qcDependencies: ["calibration_error"],
+  },
+  {
+    key: "closed_arm_time_ratio",
+    label: "Kapali kol suresi orani",
+    paradigmKeys: ["EPM"],
+    unit: UNITS.RATIO,
+    valueType: "number",
+    required: false,
+    definition: "Kapali kollarda gecen surenin gecerli sureye orani.",
+    formula: "zone_time_s.closed / duration_s",
+    inputs: ["trajectory_cm", "closed_arm_zone_cm", "duration_s"],
+    aggregation: "per_trial",
+    validRange: [0, 1],
+    qcDependencies: ["calibration_error"],
+  },
+  {
+    key: "open_arm_entries_count",
+    label: "Acik kol girisleri",
+    paradigmKeys: ["EPM"],
+    unit: UNITS.COUNT,
+    valueType: "integer",
+    required: false,
+    definition: "Debounce sonrasi acik kol girisleri.",
+    formula: "count(transitions ->open arm after debounce)",
+    inputs: ["trajectory_cm", "open_arm_zone_cm", "entry_debounce_s"],
+    aggregation: "per_trial",
+    validRange: [0, 100000],
+    qcDependencies: ["calibration_error"],
+  },
+  {
+    key: "closed_arm_entries_count",
+    label: "Kapali kol girisleri",
+    paradigmKeys: ["EPM"],
+    unit: UNITS.COUNT,
+    valueType: "integer",
+    required: false,
+    definition: "Debounce sonrasi kapali kol girisleri.",
+    formula: "count(transitions ->closed arm after debounce)",
+    inputs: ["trajectory_cm", "closed_arm_zone_cm", "entry_debounce_s"],
+    aggregation: "per_trial",
+    validRange: [0, 100000],
+    qcDependencies: ["calibration_error"],
+  },
+  {
+    key: "latency_to_open_arm_s",
+    label: "Acik kola varis gecikmesi",
+    paradigmKeys: ["EPM"],
+    unit: UNITS.S,
+    valueType: "number",
+    required: false,
+    definition: "Bir acik kola ilk giris suresi.",
+    formula: "first_open_arm_entry_t - trial_start_t",
+    inputs: ["trajectory_cm", "open_arm_zone_cm", "trial_start_t"],
+    aggregation: "per_trial",
+    validRange: [0, 86400],
+    qcDependencies: ["calibration_error"],
+  },
+  {
+    key: "risk_assessment_count",
+    label: "Risk degerlendirme sayisi",
+    paradigmKeys: ["EPM"],
+    unit: UNITS.COUNT,
+    valueType: "integer",
+    required: false,
+    definition: "Opsiyonel; davranis siniflandirici varsa olay sayisi.",
+    formula: "count(risk_assessment_events)",
+    inputs: ["behavior_events"],
+    aggregation: "per_trial",
+    validRange: [0, 100000],
+    qcDependencies: ["min_tracking_confidence"],
+  },
+];
+
+/** @type {MetricDefinition[]} */
+const ROTAROD = [
+  {
+    key: "latency_to_fall_s",
+    label: "Dusme gecikmesi",
+    paradigmKeys: ["ROTAROD"],
+    unit: UNITS.S,
+    valueType: "number",
+    required: true,
+    definition: "Deneme baslangicindan dusme olayina kadar gecen sure.",
+    formula: "fall_event_t - trial_start_t",
+    inputs: ["fall_event_t", "trial_start_t"],
+    aggregation: "per_trial",
+    validRange: [0, 3600],
+    qcDependencies: ["min_tracking_confidence"],
+  },
+  {
+    key: "rpm_at_fall",
+    label: "Dusme anindaki devir",
+    paradigmKeys: ["ROTAROD"],
+    unit: UNITS.RPM,
+    valueType: "number",
+    required: false,
+    definition: "Mod ve gecen sureden turetilir.",
+    formula: "rpm(mode, latency_to_fall_s)",
+    inputs: ["latency_to_fall_s", "rotation_mode"],
+    aggregation: "per_trial",
+    validRange: [0, 100],
+    qcDependencies: [],
+  },
+  {
+    key: "trial_duration_s",
+    label: "Deneme suresi",
+    paradigmKeys: ["ROTAROD"],
+    unit: UNITS.S,
+    valueType: "number",
+    required: false,
+    definition: "Denek dusmezse maksimum sureye esit olabilir.",
+    formula: "min(fall_event_t - trial_start_t, max_trial_duration_s)",
+    inputs: ["fall_event_t", "trial_start_t", "max_trial_duration_s"],
+    aggregation: "per_trial",
+    validRange: [0, 3600],
+    qcDependencies: [],
+  },
+  {
+    key: "fall_detected",
+    label: "Dusme algilandi",
+    paradigmKeys: ["ROTAROD"],
+    unit: UNITS.BOOLEAN,
+    valueType: "boolean",
+    required: false,
+    definition: "Bir dusme olayinin algilanip algilanmadigi.",
+    formula: "fall_event_t != null",
+    inputs: ["fall_event_t"],
+    aggregation: "per_trial",
+    validRange: null,
+    qcDependencies: ["min_tracking_confidence"],
+  },
+  {
+    key: "learning_slope",
+    label: "Ogrenme egimi",
+    paradigmKeys: ["ROTAROD"],
+    unit: UNITS.RATIO,
+    valueType: "number",
+    required: false,
+    definition: "Tekrarli denemeler arasinda calisma seviyesinde toplanir; tek deneme CV metrigi degildir.",
+    formula: "slope(latency_to_fall_s over trial_index)",
+    inputs: ["latency_to_fall_s", "trial_index"],
+    aggregation: "study_summary",
+    validRange: null,
+    qcDependencies: [],
+  },
+];
+
+/** @type {MetricDefinition[]} */
+export const METRIC_DEFINITIONS = Object.freeze(
+  [...BASELINE, ...MWM, ...OPEN_FIELD, ...EPM, ...ROTAROD].map((m) =>
+    Object.freeze({ normalization: null, ...m }),
+  ),
+);
+
+const BY_KEY = new Map(METRIC_DEFINITIONS.map((m) => [m.key, m]));
+
+/** Tek bir metrik tanimini anahtariyla getirir (sablon kok anahtari dahil). */
+export function getMetricDefinition(key) {
+  return BY_KEY.get(key) ?? null;
+}
+
+/** Bir paradigmaya ait metrik tanimlarini dondurur. */
+export function metricsForParadigm(paradigmKey) {
+  return METRIC_DEFINITIONS.filter((m) => m.paradigmKeys.includes(paradigmKey));
+}
+
+/**
+ * Bir sonuc anahtarinin sozlukte tanimli olup olmadigini soyler.
+ * Sablonlu anahtarlar (`zone_time_s.center`) kok anahtara (`zone_time_s`)
+ * gore eslenir.
+ */
+export function isKnownMetricKey(key) {
+  if (BY_KEY.has(key)) return true;
+  const dot = key.indexOf(".");
+  if (dot === -1) return false;
+  const root = key.slice(0, dot);
+  const def = BY_KEY.get(root);
+  return Boolean(def && def.templated);
+}
