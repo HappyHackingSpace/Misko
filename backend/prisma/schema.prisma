@@ -1,4 +1,4 @@
-// Mişko — veri modeli (PostgreSQL)
+// Mişko - data model (PostgreSQL)
 generator client {
   provider      = "prisma-client-js"
   binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
@@ -8,8 +8,44 @@ datasource db {
   provider = "postgresql"
 }
 
-// Kullanıcı (auth ile gelir). Rol koda gömülü izin matrisini sürer (bkz.
-// src/config/permissions.js, docs/DOMAIN.md §5b).
+// Laboratory (single tenant / on-prem singleton). Exactly ONE row per install;
+// creating a second laboratory is rejected at the application layer (see
+// bootstrap-admin.js and src/modules/lab, docs/DOMAIN.md §0).
+model Laboratory {
+  id        String   @id @default(cuid())
+  name      String
+  code      String?  @unique // short institutional code (optional)
+  timezone  String   @default("Europe/Istanbul")
+  settings  Json     @default("{}") // free-form configuration (branding etc.)
+  createdAt DateTime @default(now())
+
+  environments Environment[]
+}
+
+// Environment (test setup / "Ortam"). A named, persisted instance created FROM a
+// paradigm template. A lab can hold MANY environments per paradigm (e.g. two
+// distinct Morris water tanks). The physical configuration is captured as a full,
+// self-contained snapshot in `config` and is LOCKED at test time (a test cannot
+// override an environment's physical values). The paradigm DEFINITION still lives
+// in code (src/config/paradigms.js); only the chosen VALUES are stored here.
+model Environment {
+  id           String     @id @default(cuid())
+  laboratory   Laboratory @relation(fields: [laboratoryId], references: [id], onDelete: Cascade)
+  laboratoryId String
+  name         String // operator-given name, e.g. "Tank A"
+  paradigmKey  String // MWM | OPEN_FIELD | ... (registry key)
+  // Full resolved snapshot: { paradigmKey, schemaVersion, apparatus: {...}, zones: [...] }
+  config       Json
+  notes        String?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@index([laboratoryId])
+  @@index([paradigmKey])
+}
+
+// User (comes via auth). The role drives the code-embedded permission matrix
+// (see src/config/permissions.js, docs/DOMAIN.md §5b).
 model User {
   id        String   @id @default(cuid())
   email     String   @unique
@@ -21,7 +57,7 @@ model User {
   tests     Test[]
 }
 
-// Test cihazı (telefon)
+// Test device (phone)
 model Device {
   id         String    @id @default(cuid())
   name       String
@@ -31,50 +67,50 @@ model Device {
   tests      Test[]
 }
 
-// Denek / Fare
+// Subject / Mouse
 model Subject {
   id        String    @id @default(cuid())
-  code      String    @unique // kafes/etiket kodu
+  code      String    @unique // cage/tag code
   sex       String? // M | F
-  groupName String? // deney grubu
+  groupName String? // experiment group
   birthDate DateTime?
   notes     String?
   createdAt DateTime  @default(now())
   tests     Test[]
 }
 
-// Test senaryosu (havuz / labirent / sopa / yol)
+// Test scenario (pool / maze / stick / path)
 model Scenario {
   id          String   @id @default(cuid())
   name        String
   type        String // POOL | MAZE | STICK | PATH
   description String?
-  config      String? // JSON: geometri / kabul kriterleri (içerik sonra)
+  config      String? // JSON: geometry / acceptance criteria (content later)
   createdAt   DateTime @default(now())
   tests       Test[]
 }
 
-// Test (bir senaryonun bir denekle, bir cihazda, bir operatörce koşulması)
+// Test (running a scenario with a subject, on a device, by an operator)
 model Test {
-  id         String    @id @default(cuid())
-  scenario   Scenario  @relation(fields: [scenarioId], references: [id])
-  scenarioId String
-  subject    Subject   @relation(fields: [subjectId], references: [id])
-  subjectId  String
-  operator   User      @relation(fields: [operatorId], references: [id])
-  operatorId String
-  device     Device?   @relation(fields: [deviceId], references: [id])
-  deviceId   String?
-  status     String    @default("PENDING") // PENDING | RUNNING | DONE | FAILED
-  startedAt  DateTime?
-  endedAt    DateTime?
-  result     String? // JSON: metrikler
-  passed     Boolean? // kabul kriterleri varsa degerlendirme sonucu; kriter yoksa null
-  acceptanceCriteria String? // JSON: kullanici tanimli kabul kriterleri [{ metricKey, operator, value }]
-  notes      String?
-  createdAt  DateTime  @default(now())
+  id                 String    @id @default(cuid())
+  scenario           Scenario  @relation(fields: [scenarioId], references: [id])
+  scenarioId         String
+  subject            Subject   @relation(fields: [subjectId], references: [id])
+  subjectId          String
+  operator           User      @relation(fields: [operatorId], references: [id])
+  operatorId         String
+  device             Device?   @relation(fields: [deviceId], references: [id])
+  deviceId           String?
+  status             String    @default("PENDING") // PENDING | RUNNING | DONE | FAILED
+  startedAt          DateTime?
+  endedAt            DateTime?
+  result             String? // JSON: metrics
+  passed             Boolean? // evaluation result when acceptance criteria exist; null if no criteria
+  acceptanceCriteria String? // JSON: user-defined acceptance criteria [{ metricKey, operator, value }]
+  notes              String?
+  createdAt          DateTime  @default(now())
 
-  // Postgres FK kolonlarına otomatik index koymaz; liste/filtre sorguları için ekliyoruz
+  // Postgres does not auto-index FK columns; we add these for list/filter queries
   @@index([scenarioId])
   @@index([subjectId])
   @@index([operatorId])

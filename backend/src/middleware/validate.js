@@ -1,6 +1,6 @@
 /**
- * Zod şemasıyla istek gövdesini doğrulayan middleware fabrikası.
- * Doğrulanan (ve dönüştürülen) veriyi req.body'ye yazar.
+ * Middleware factory that validates the request body against a Zod schema.
+ * Writes the validated (and transformed) data back to req.body.
  */
 export const validateBody = (schema) => (req, _res, next) => {
   req.body = schema.parse(req.body ?? {});

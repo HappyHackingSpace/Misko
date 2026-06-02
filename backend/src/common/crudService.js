@@ -2,11 +2,11 @@ import { prisma } from "../lib/prisma.js";
 import { ApiError } from "../utils/ApiError.js";
 
 /**
- * Basit kaynaklar için yeniden kullanılabilir CRUD servis fabrikası.
+ * Reusable CRUD service factory for simple resources.
  *
  * @param {object} opts
- * @param {string} opts.model    Prisma model adı (örn. "device")
- * @param {string[]} opts.allowed Yazılabilir alanların beyaz listesi
+ * @param {string} opts.model    Prisma model name (e.g. "device")
+ * @param {string[]} opts.allowed Whitelist of writable fields
  * @param {object} [opts.include] Prisma include
  */
 export function createCrudService({ model, allowed, include }) {

@@ -7,7 +7,7 @@ const scenarioService = createCrudService({
   allowed: ["name", "type", "description", "config"],
 });
 
-// Senaryo, ileride Apparatus'a evrilecek fiziksel kurulum tanımıdır.
+// A scenario is a physical setup definition that will later evolve into Apparatus.
 export const scenarioRouter = createCrudRouter(scenarioService, {
   writePermission: PERMISSIONS.APPARATUS_WRITE,
 });

@@ -6,47 +6,47 @@ import { ApiError } from "../utils/ApiError.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 
 /**
- * Bearer token doğrular ve req.user'ı doldurur.
+ * Verifies the Bearer token and populates req.user.
  */
 export const authenticate = asyncHandler(async (req, _res, next) => {
   const header = req.headers.authorization || "";
   const token = header.startsWith("Bearer ") ? header.slice(7) : null;
-  if (!token) throw ApiError.unauthorized("Token gerekli");
+  if (!token) throw ApiError.unauthorized("Token required");
 
   let payload;
   try {
     payload = jwt.verify(token, config.jwt.secret);
   } catch {
-    throw ApiError.unauthorized("Geçersiz token");
+    throw ApiError.unauthorized("Invalid token");
   }
 
   const user = await prisma.user.findUnique({ where: { id: payload.sub } });
-  if (!user) throw ApiError.unauthorized("Kullanıcı bulunamadı");
+  if (!user) throw ApiError.unauthorized("User not found");
 
   req.user = { id: user.id, email: user.email, name: user.name, role: user.role };
   next();
 });
 
 /**
- * Belirli rolleri zorunlu kılan middleware (örn. requireRole("SUPERADMIN")).
- * Kaba kontroller için kalır; asıl yetki kapısı `requirePermission`'dır.
+ * Middleware that enforces specific roles (e.g. requireRole("SUPERADMIN")).
+ * Kept for coarse checks; the real authorization gate is `requirePermission`.
  */
 export const requireRole = (...roles) =>
   (req, _res, next) => {
     if (!req.user || !roles.includes(req.user.role)) {
-      throw ApiError.forbidden("Bu işlem için yetkiniz yok");
+      throw ApiError.forbidden("You do not have permission for this action");
     }
     next();
   };
 
 /**
- * Koda gömülü izin matrisine göre yetki kontrolü yapan middleware
- * (örn. requirePermission("subject:write")). Birincil yetki kapısı budur.
+ * Middleware that checks authorization against the in-code permission matrix
+ * (e.g. requirePermission("subject:write")). This is the primary authorization gate.
  */
 export const requirePermission = (permission) =>
   (req, _res, next) => {
     if (!req.user || !hasPermission(req.user.role, permission)) {
-      throw ApiError.forbidden("Bu işlem için yetkiniz yok");
+      throw ApiError.forbidden("You do not have permission for this action");
     }
     next();
   };

@@ -6,11 +6,11 @@ import { api } from "../api.js";
 const { locale } = useI18n();
 
 /**
- * Kullanici tanimli kabul kriteri olusturucu.
+ * User-defined acceptance criteria builder.
  *
- * Kullanici once bir paradigma secer (metrik listesini kaynaklamak icin),
- * sonra metrik + operator + esik degeriyle kriter satirlari ekler. Kriterler
- * opsiyoneldir; bos liste, testin degerlendirilmeyecegi anlamina gelir.
+ * The user first picks a paradigm (to source the metric list), then adds
+ * criterion rows with metric + operator + threshold value. Criteria are
+ * optional; an empty list means the test will not be evaluated.
  */
 const props = defineProps({
   modelValue: { type: Array, default: () => [] },
@@ -31,7 +31,7 @@ watch(
 );
 
 function emitChange() {
-  // Yalnizca tam doldurulmus satirlari yukari gonder.
+  // Only emit fully filled-in rows upward.
   const clean = rows.value
     .filter((r) => r.metricKey && r.operator)
     .map((r) => {
@@ -55,7 +55,7 @@ async function loadMetrics() {
   } catch (e) { err.value = e.message; }
 }
 
-// Dil degisince yuklu metrik etiketlerini tazele (paradigma seciliyse).
+// On language change, refresh loaded metric labels (if a paradigm is selected).
 watch(locale, () => { if (paradigmKey.value) loadMetrics(); });
 
 const metricLabel = (key) => {
@@ -75,8 +75,8 @@ function removeRow(i) {
   emitChange();
 }
 function adoptSuggested(s) {
-  // Sembolik degerli oneriler (or. "max_trial_duration_s") sayisal degildir;
-  // kullanici degeri elle girer. Sayisal olanlar dogrudan benimsenir.
+  // Suggestions with symbolic values (e.g. "max_trial_duration_s") are not
+  // numeric; the user enters the value manually. Numeric ones are adopted directly.
   const numeric = typeof s.value === "number";
   rows.value.push({
     metricKey: s.metricKey,
@@ -90,8 +90,8 @@ function adoptSuggested(s) {
 const hasParadigm = computed(() => Boolean(paradigmKey.value));
 
 onMounted(() => {
-  // Kayitli kriter varsa paradigma secimi kullaniciya birakilir; metrik
-  // etiketleri paradigma secilince zenginlesir.
+  // If criteria are already saved, the paradigm choice is left to the user;
+  // metric labels become richer once a paradigm is selected.
 });
 </script>
 

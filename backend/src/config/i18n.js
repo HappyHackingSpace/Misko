@@ -1,29 +1,29 @@
 /**
- * Bilimsel sozluk lokalizasyonu (Step 2).
+ * Scientific dictionary localization (Step 2).
  *
- * Paradigma/metrik spec'leri Turkce etiket ve tanimlari satir-ici tasir
- * (varsayilan dil). Bu modul, salt-okunur inceleme API'sinin `?lang=` ile
- * lokalize etiket dondurmesini saglar: `tr` icin kaynak metin oldugu gibi,
- * `en` icin asagidaki katalogdan cevirisi (eksikse Turkce'ye geri duser).
+ * Paradigm/metric specs carry Turkish labels and definitions inline
+ * (the default language). This module lets the read-only review API return
+ * localized labels via `?lang=`: for `tr` the source text as-is, for `en`
+ * the translation from the catalog below (falls back to Turkish if missing).
  *
- * Tek kaynak ilkesi: yapinin sahibi backend kalir; frontend yalnizca kucuk
- * sabit enum'lari (zone type/role, species) ceviren UI sozlugunu tutar.
+ * Single-source principle: the backend owns the structure; the frontend only
+ * keeps a UI dictionary translating small fixed enums (zone type/role, species).
  */
 export const SUPPORTED_LANGS = Object.freeze(["tr", "en"]);
 export const DEFAULT_LANG = "tr";
 
-/** Gecersiz/eksik dili varsayilana indirger. */
+/** Reduces an invalid/missing language to the default. */
 export function normalizeLang(lang) {
   return SUPPORTED_LANGS.includes(lang) ? lang : DEFAULT_LANG;
 }
 
 /**
- * Kisa etiketler (paradigma adlari, trial/parametre/bolge/metrik etiketleri)
- * icin Turkce -> Ingilizce. Ayni Turkce etiket her zaman ayni kavrami ifade
- * ettigi icin tek bir duz harita guvenli ve cakismasizdir.
+ * Turkish -> English for short labels (paradigm names, trial/parameter/zone/metric
+ * labels). Because the same Turkish label always means the same concept, a single
+ * flat map is safe and collision-free.
  */
 const LABELS_EN = Object.freeze({
-  // Paradigma adlari
+  // Paradigm names
   "Morris Su Tanki": "Morris Water Maze",
   "Acik Alan": "Open Field",
   "Yukseltilmis Arti Labirent": "Elevated Plus Maze",
@@ -36,7 +36,7 @@ const LABELS_EN = Object.freeze({
   "Cubuk (Pole) Testi": "Pole Test",
   "Kosu Bandi (Treadmill)": "Treadmill",
 
-  // Trial etiketleri
+  // Trial labels
   "Ogrenme (platform var)": "Acquisition (platform present)",
   "Prob (platform yok)": "Probe (no platform)",
   Standart: "Standard",
@@ -52,7 +52,7 @@ const LABELS_EN = Object.freeze({
   "Sosyal yenilik": "Social novelty",
   "Dayaniklilik (hizlanan)": "Endurance (accelerating)",
 
-  // Apparatus / oturum parametre etiketleri
+  // Apparatus / session parameter labels
   "Tank capi": "Tank diameter",
   "Platform capi": "Platform diameter",
   "Platform merkezi X": "Platform center X",
@@ -98,7 +98,7 @@ const LABELS_EN = Object.freeze({
   Egim: "Incline",
   "Hiz modu": "Speed mode",
 
-  // Bolge (zone) etiketleri
+  // Zone labels
   Platform: "Platform",
   "Hedef ceyrek": "Target quadrant",
   "Duvar halkasi": "Wall annulus",
@@ -123,7 +123,7 @@ const LABELS_EN = Object.freeze({
   Taban: "Base",
   "Geri (uyari) bolgesi": "Rear (warning) zone",
 
-  // Metrik etiketleri
+  // Metric labels
   "Analiz suresi": "Analyzed duration",
   "Toplam yol": "Total path",
   "Ortalama hiz": "Mean speed",
@@ -183,7 +183,7 @@ const LABELS_EN = Object.freeze({
   "Uyari/sok sayisi": "Warning/shock count",
 });
 
-/** Metrik tanimlari (uzun aciklamalar) icin Turkce -> Ingilizce. */
+/** Turkish -> English for metric definitions (long descriptions). */
 const DEFINITIONS_EN = Object.freeze({
   "Gecersiz kareler kirpildiktan sonra analiz edilen zaman penceresi.":
     "Analyzed time window after invalid frames are trimmed.",
@@ -295,30 +295,30 @@ const DEFINITIONS_EN = Object.freeze({
     "Count of rear-zone contacts/warnings counted as the exhaustion criterion.",
 });
 
-/** Kisa etiketi lokalize eder (eksikse kaynak metne geri duser). */
+/** Localizes a short label (falls back to the source text if missing). */
 export function tLabel(label, lang) {
   if (lang === DEFAULT_LANG || label == null) return label;
   return LABELS_EN[label] ?? label;
 }
 
-/** Metrik tanimini lokalize eder (eksikse kaynak metne geri duser). */
+/** Localizes a metric definition (falls back to the source text if missing). */
 export function tDefinition(definition, lang) {
   if (lang === DEFAULT_LANG || definition == null) return definition;
   return DEFINITIONS_EN[definition] ?? definition;
 }
 
-/** Tek bir metrik tanimini lokalize eder (label + definition). */
+/** Localizes a single metric definition (label + definition). */
 export function localizeMetricDef(m, lang) {
   if (lang === DEFAULT_LANG) return m;
   return { ...m, label: tLabel(m.label, lang), definition: tDefinition(m.definition, lang) };
 }
 
-/** Metrik listesini lokalize eder. */
+/** Localizes a metric list. */
 export function localizeMetricList(list, lang) {
   return lang === DEFAULT_LANG ? list : list.map((m) => localizeMetricDef(m, lang));
 }
 
-/** Paradigma ozetini lokalize eder (name + trialTypes). */
+/** Localizes a paradigm summary (name + trialTypes). */
 export function localizeSummary(s, lang) {
   if (lang === DEFAULT_LANG) return s;
   return {
@@ -329,8 +329,8 @@ export function localizeSummary(s, lang) {
 }
 
 /**
- * Paradigma detayini lokalize eder. `spec` zaten zones'u dizi olarak cozulmus
- * duz nesne olmali (route katmaninda hazirlanir).
+ * Localizes a paradigm detail. `spec` must already be a plain object with zones
+ * resolved as an array (prepared in the route layer).
  */
 export function localizeDetail(spec, lang) {
   if (lang === DEFAULT_LANG) return spec;

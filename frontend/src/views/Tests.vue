@@ -15,7 +15,7 @@ const operators = ref([]);
 const form = ref({ scenarioId: "", subjectId: "", deviceId: "", notes: "" });
 const err = ref("");
 
-// Kabul kriteri duzenleyici durumu (test bazli)
+// Acceptance criteria editor state (per test)
 const editingId = ref(null);
 const editBuffer = ref([]);
 const editErr = ref("");

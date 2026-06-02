@@ -4,7 +4,7 @@ import { config } from "../config/index.js";
 import { ApiError } from "../utils/ApiError.js";
 
 /**
- * Merkezi hata middleware'i. Tüm hatalar tek bir yerde JSON yanıta dönüşür:
+ * Central error middleware. All errors are converted to a JSON response in one place:
  *   { error: string, details?: any }
  */
 export function errorHandler(err, _req, res, _next) {
@@ -14,23 +14,23 @@ export function errorHandler(err, _req, res, _next) {
 
   if (err instanceof ZodError) {
     return res.status(400).json({
-      error: "Doğrulama hatası",
+      error: "Validation error",
       details: err.issues.map((i) => ({ path: i.path.join("."), message: i.message })),
     });
   }
 
   if (err instanceof Prisma.PrismaClientKnownRequestError) {
     if (err.code === "P2002") {
-      return res.status(409).json({ error: "Benzersiz alan çakışması", details: err.meta?.target });
+      return res.status(409).json({ error: "Unique field conflict", details: err.meta?.target });
     }
     if (err.code === "P2025") {
-      return res.status(404).json({ error: "Kayıt bulunamadı" });
+      return res.status(404).json({ error: "Record not found" });
     }
-    return res.status(400).json({ error: "Veritabanı hatası", details: err.code });
+    return res.status(400).json({ error: "Database error", details: err.code });
   }
 
   if (!config.isProd) {
     console.error(err);
   }
-  return res.status(500).json({ error: "Sunucu hatası" });
+  return res.status(500).json({ error: "Server error" });
 }

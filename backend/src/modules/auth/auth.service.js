@@ -4,8 +4,8 @@ import { config } from "../../config/index.js";
 import { prisma } from "../../lib/prisma.js";
 import { ApiError } from "../../utils/ApiError.js";
 
-// Not: Bu internal bir SaaS uygulamasıdır — public kayıt (signup) yoktur.
-// Kullanıcılar yalnızca ADMIN tarafından içeriden açılır (bkz. modules/users).
+// Note: this is an internal SaaS app, there is no public signup.
+// Users are created only internally by an ADMIN (see modules/users).
 
 export const toPublicUser = (u) => ({
   id: u.id,
@@ -24,7 +24,7 @@ export function signToken(user) {
 export async function login({ email, password }) {
   const user = await prisma.user.findUnique({ where: { email } });
   if (!user || !(await bcrypt.compare(password, user.password))) {
-    throw ApiError.unauthorized("E-posta veya şifre hatalı");
+    throw ApiError.unauthorized("Invalid email or password");
   }
   return { token: signToken(user), user: toPublicUser(user) };
 }

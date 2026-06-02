@@ -1,32 +1,32 @@
 /**
- * Kanonik ölçüm birimleri (Step 2 - bilimsel kontrat).
+ * Canonical measurement units (Step 2 - scientific contract).
  *
- * Mişko sonuç metriklerine yalnızca bu birimler girebilir. Piksel değerleri
- * asla sonuç metriklerinde saklanmaz; CV servisi her şeyi apparatus
- * koordinatlarına (cm) çevirdikten sonra gönderir.
+ * Only these units may enter Misko result metrics. Pixel values are never
+ * stored in result metrics; the CV service converts everything to apparatus
+ * coordinates (cm) before sending.
  *
- * Kaynak: docs/MEASUREMENTS.md, bolum 3.2 (Unit policy).
+ * Source: docs/MEASUREMENTS.md, section 3.2 (Unit policy).
  */
 export const UNITS = Object.freeze({
-  CM: "cm", // konum ve mesafe
-  MM: "mm", // kucuk apparatus capi (cubuk/pole); sonuc metrigi degil
-  CM_S: "cm_s", // hiz
-  S: "s", // sure
-  C: "c", // sicaklik (apparatus parametresi); sonuc metrigi degil
-  COUNT: "count", // giris, gecis, dusme gibi sayimlar
-  RATIO: "ratio", // 0..1 araligi, UI'da yuzde gosterilebilir
-  PERCENT: "percent", // dogrudan yuzde tasiyan alanlar
-  DEG: "deg", // aci (heading/pose ileride)
-  RPM: "rpm", // rotarod devri
-  G: "g", // denek agirligi (fizyoloji, CV sonucu degil)
-  BOOLEAN: "boolean", // olay var/yok
+  CM: "cm", // position and distance
+  MM: "mm", // small apparatus diameter (pole/rod); not a result metric
+  CM_S: "cm_s", // speed
+  S: "s", // duration
+  C: "c", // temperature (apparatus parameter); not a result metric
+  COUNT: "count", // counts such as entries, crossings, falls
+  RATIO: "ratio", // 0..1 range, may be shown as a percentage in the UI
+  PERCENT: "percent", // fields carrying a percentage directly
+  DEG: "deg", // angle (heading/pose later)
+  RPM: "rpm", // rotarod revolutions
+  G: "g", // subject weight (physiology, not a CV result)
+  BOOLEAN: "boolean", // event present/absent
 });
 
 export const UNIT_LIST = Object.freeze(Object.values(UNITS));
 
 const UNIT_SET = new Set(UNIT_LIST);
 
-/** Verilen birim kanonik birim listesinde mi? */
+/** Is the given unit in the canonical unit list? */
 export function isCanonicalUnit(unit) {
   return UNIT_SET.has(unit);
 }

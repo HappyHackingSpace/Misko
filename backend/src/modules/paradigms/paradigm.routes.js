@@ -19,15 +19,16 @@ import {
 } from "../../config/i18n.js";
 
 /**
- * Paradigma ve olcum sozlugu salt-okunur uclari (Step 2).
+ * Read-only endpoints for the paradigm and measurement dictionary (Step 2).
  *
- * Arastirmacilar bir test calistirmadan once paradigma detay sayfalarini ve
- * metrik tanimlarini inceleyebilir. Tum roller `*:read` iznine sahip oldugu
- * icin ek izin gardi gerekmez; ust katmanda `authenticate` uygulanir.
+ * Paradigms are code-owned templates. Researchers review paradigm detail pages
+ * and metric definitions before creating an environment or running a test. Since
+ * all roles have the `*:read` permission, no extra permission guard is needed;
+ * `authenticate` is applied at the top layer.
  */
 export const paradigmRouter = Router();
 
-// Kanonik birim listesi
+// Canonical unit list
 paradigmRouter.get(
   "/units",
   asyncHandler(async (_req, res) => {
@@ -35,15 +36,15 @@ paradigmRouter.get(
   }),
 );
 
-// Tum olcum sozlugu (opsiyonel ?paradigm=MWM filtresi)
+// Full measurement dictionary (optional ?paradigm=MWM filter)
 paradigmRouter.get(
   "/metrics",
   asyncHandler(async (req, res) => {
     const { paradigm } = req.query;
-    // Tekrarli/dizi query (?paradigm=a&paradigm=b) string degildir; includes(...)
-    // sessizce bos kume dondurmesin diye reddet.
+    // A repeated/array query (?paradigm=a&paradigm=b) is not a string; reject it
+    // so includes(...) does not silently return an empty set.
     if (paradigm !== undefined && typeof paradigm !== "string") {
-      throw ApiError.badRequest("paradigm tek bir metin degeri olmali");
+      throw ApiError.badRequest("paradigm must be a single string value");
     }
     const lang = normalizeLang(req.query.lang);
     const list = paradigm ? metricsForParadigm(paradigm) : METRIC_DEFINITIONS;
@@ -51,7 +52,7 @@ paradigmRouter.get(
   }),
 );
 
-// Kabul kriteri operatorleri (kriter olusturucu icin)
+// Acceptance criteria operators (for the criteria builder)
 paradigmRouter.get(
   "/acceptance-operators",
   asyncHandler(async (_req, res) => {
@@ -59,7 +60,7 @@ paradigmRouter.get(
   }),
 );
 
-// Paradigma ozet listesi
+// Paradigm summary list (read-only template catalog)
 paradigmRouter.get(
   "/",
   asyncHandler(async (req, res) => {
@@ -68,12 +69,12 @@ paradigmRouter.get(
   }),
 );
 
-// Tek paradigma detay (operasyonel kontrat)
+// Single paradigm detail (operational contract)
 paradigmRouter.get(
   "/:key",
   asyncHandler(async (req, res) => {
     const spec = getParadigmSpec(req.params.key);
-    if (!spec) throw ApiError.notFound("Paradigma bulunamadi");
+    if (!spec) throw ApiError.notFound("Paradigm not found");
     const lang = normalizeLang(req.query.lang);
     const { zones, ...rest } = spec;
     const resolved = {

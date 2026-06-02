@@ -7,7 +7,7 @@ const deviceService = createCrudService({
   allowed: ["name", "platform", "lastSeenAt"],
 });
 
-// Cihaz (telefon/kamera) donanımı lab geneli bir kaynaktır; yönetimi lab yapılandırmasıdır.
+// Device (phone/camera) hardware is a lab-wide resource; managing it is lab configuration.
 export const deviceRouter = createCrudRouter(deviceService, {
   writePermission: PERMISSIONS.LAB_CONFIGURE,
 });

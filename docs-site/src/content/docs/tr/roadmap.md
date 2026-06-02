@@ -24,15 +24,16 @@ Kamera karesi
 - Public kayıt kaldırıldı.
 - İçeriden kullanıcı yönetimi.
 
-## Adım 1 - Lab temeli
+## Adım 1 - Lab temeli ✅
 
-- `Laboratory` singleton: kurulum başına bir lab.
-- Kurulum sihirbazı lab ve `SUPERADMIN`'i birlikte oluşturur.
+- `Laboratory` singleton: kurulum başına bir lab. ✅
+- Kurulum sihirbazı lab ve `SUPERADMIN`'i birlikte oluşturur (CLI, Docker açılışı). ✅
+- İkinci laboratuvar oluşturulması reddedilir (singleton garantisi). ✅
 - Beş rol: `SUPERADMIN`, `LAB_MANAGER`, `RESEARCHER`, `TECHNICIAN`, `VIEWER`. ✅
 - `requirePermission(...)` ile kodda tanımlı izin matrisi. ✅
-- `LabParadigm` yöneticilerin paradigmaları açıp kapatmasını sağlar.
+- `Environment` instance'ları: bir paradigma template'inden oluşturulan isimli, kalıcı test düzenekleri (paradigma başına birden çok). ✅
 
-Tamamlandı: beş rollü izin matrisi (`backend/src/config/permissions.js`) ve subject, scenario, device, test, user route'larında `requirePermission(...)` denetimi, ayrıca ADMIN/OPERATOR'dan SUPERADMIN/RESEARCHER'a geçiş migration'ı. Bekleyen: `Laboratory` singleton ve kurulum sihirbazı.
+Tamamlandı: `Laboratory` singleton ve `Environment` modelleri + migration'lar; kurulum sihirbazı (`backend/prisma/bootstrap-admin.js`) lab + superadmin'i birlikte oluşturur. Lab API'si: `GET/PATCH /api/lab` (`lab:configure`). Paradigmalar salt-okunur, kod sahipli template'lerdir; `GET /api/paradigms` ve `GET /api/paradigms/:key` ile sunulur. Bir ortam (environment), bir paradigmanın isimli instance'ıdır; fiziksel değerleri kendine yeten bir snapshot'a (`{ paradigmKey, schemaVersion, apparatus, zones }`) çözülür, değerler kod tarafından sabit parametre aralıklarına göre doğrulanır ve testte kilitli kalır. Environment API'si: `GET /api/environments`, `GET /api/environments/:id`, `POST /api/environments`, `PATCH /api/environments/:id`, `DELETE /api/environments/:id` (yazma işlemleri `apparatus:write` ister). Bir lab, aynı paradigmadan birden çok ortam tutabilir (ör. iki ayrı Morris su tankı). Frontend bir Ortamlar menüsü sunar; Paradigmalar sayfası salt-okunur bir katalogdur ve her paradigma detay sayfası yeni bir ortam oluşturabilir.
 
 ## Adım 2 - Bilimsel kontrat
 

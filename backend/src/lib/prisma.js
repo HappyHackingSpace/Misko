@@ -3,11 +3,11 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { config } from "../config/index.js";
 
 /**
- * Tekil (singleton) Prisma istemcisi. Geliştirme sırasında hot-reload'da
- * birden fazla bağlantı açılmasını önlemek için global'de saklanır.
+ * Singleton Prisma client. Stored on global to avoid opening multiple
+ * connections during hot-reload in development.
  *
- * Prisma 7: bağlantı artık bir driver adapter (pg) üzerinden kurulur; URL
- * schema.prisma yerine çalışma zamanında adapter'a verilir.
+ * Prisma 7: the connection is now established through a driver adapter (pg);
+ * the URL is passed to the adapter at runtime instead of in schema.prisma.
  */
 const globalForPrisma = globalThis;
 

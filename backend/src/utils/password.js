@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 
-// Karışıklık yaratan karakterler (0/O, 1/l/I) çıkarıldı.
+// Confusable characters (0/O, 1/l/I) are removed.
 const LOWER = "abcdefghijkmnpqrstuvwxyz";
 const UPPER = "ABCDEFGHJKLMNPQRSTUVWXYZ";
 const DIGIT = "23456789";
@@ -10,15 +10,15 @@ const ALL = LOWER + UPPER + DIGIT + SYMBOL;
 const pick = (set) => set[crypto.randomInt(set.length)];
 
 /**
- * Kriptografik olarak güçlü, okunabilir bir parola üretir.
- * En az bir küçük/büyük harf, rakam ve sembol içerir.
+ * Generates a cryptographically strong, readable password.
+ * Contains at least one lowercase/uppercase letter, digit, and symbol.
  */
 export function generateStrongPassword(length = 20) {
   const required = [pick(LOWER), pick(UPPER), pick(DIGIT), pick(SYMBOL)];
   const rest = Array.from({ length: Math.max(length, 12) - required.length }, () => pick(ALL));
   const chars = [...required, ...rest];
 
-  // Fisher–Yates karıştırma (zorunlu karakterlerin başta kümelenmemesi için)
+  // Fisher-Yates shuffle (so the required characters do not cluster at the start)
   for (let i = chars.length - 1; i > 0; i--) {
     const j = crypto.randomInt(i + 1);
     [chars[i], chars[j]] = [chars[j], chars[i]];

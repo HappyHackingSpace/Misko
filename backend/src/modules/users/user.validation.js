@@ -4,11 +4,11 @@ import { ROLE_LIST } from "../../config/permissions.js";
 const ROLES = ROLE_LIST;
 
 export const createUserSchema = z.object({
-  name: z.string().min(1, "Ad zorunlu"),
-  email: z.string().email("Geçerli bir e-posta girin"),
+  name: z.string().min(1, "Name is required"),
+  email: z.string().email("Enter a valid email"),
   role: z.enum(ROLES).default("RESEARCHER"),
-  // Şifre opsiyonel: verilmezse sistem güçlü bir şifre üretip bir kez döner.
-  password: z.string().min(8, "Şifre en az 8 karakter olmalı").optional(),
+  // Password optional: if not given, the system generates a strong one and returns it once.
+  password: z.string().min(8, "Password must be at least 8 characters").optional(),
 });
 
 export const updateUserSchema = z
@@ -16,9 +16,9 @@ export const updateUserSchema = z
     name: z.string().min(1).optional(),
     role: z.enum(ROLES).optional(),
   })
-  .refine((d) => Object.keys(d).length > 0, "Güncellenecek alan yok");
+  .refine((d) => Object.keys(d).length > 0, "No field to update");
 
 export const resetPasswordSchema = z.object({
-  // Verilmezse sistem üretir.
-  password: z.string().min(8, "Şifre en az 8 karakter olmalı").optional(),
+  // If not given, the system generates one.
+  password: z.string().min(8, "Password must be at least 8 characters").optional(),
 });

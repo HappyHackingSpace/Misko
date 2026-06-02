@@ -8,8 +8,8 @@ import { errorHandler } from "./middleware/errorHandler.js";
 import { notFound } from "./middleware/notFound.js";
 
 /**
- * Express uygulamasını kurar ve döner (listen burada çağrılmaz —
- * test edilebilirlik için server.js ayrı tutulur).
+ * Builds and returns the Express app (listen is not called here;
+ * server.js is kept separate for testability).
  */
 export function createApp() {
   const app = express();

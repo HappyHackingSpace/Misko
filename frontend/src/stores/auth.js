@@ -6,9 +6,9 @@ export const useAuth = defineStore("auth", {
   state: () => ({ user: null, ready: false }),
   getters: {
     isLoggedIn: (s) => !!s.user,
-    // user:manage iznine sahip roller (SUPERADMIN / LAB_MANAGER).
+    // Roles with the user:manage permission (SUPERADMIN / LAB_MANAGER).
     canManageUsers: (s) => PRIVILEGED_ROLES.includes(s.user?.role),
-    // Geriye dönük uyumluluk: yönetici sayfaları/menüleri bu getter'ı kullanır.
+    // Backward compatibility: admin pages/menus use this getter.
     isAdmin: (s) => PRIVILEGED_ROLES.includes(s.user?.role),
   },
   actions: {

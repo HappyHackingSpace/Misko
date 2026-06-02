@@ -1,36 +1,36 @@
 /**
- * Kabul kriteri motoru (Step 2 - bilimsel kontrat).
+ * Acceptance criteria engine (Step 2 - scientific contract).
  *
- * Kabul kriterleri bir testin davranissal "gecti/kaldi" cizgisini tanimlar.
- * Tasarim ilkeleri:
- *   - Opsiyonel: kriteri olmayan test degerlendirilmez (passed = null).
- *   - Test bazli: her test kendi kriter listesini JSON olarak tasir.
- *   - Kullanici tanimli: kullanici paradigmanin metrikleri arasindan secer,
- *     operator ve esik degeri belirler.
+ * Acceptance criteria define a test's behavioral "pass/fail" line.
+ * Design principles:
+ *   - Optional: a test without criteria is not evaluated (passed = null).
+ *   - Per-test: each test carries its own criteria list as JSON.
+ *   - User-defined: the user picks among the paradigm's metrics and sets
+ *     the operator and threshold value.
  *
- * Paradigma spec'leri `suggestedAcceptance` ile opsiyonel sablon onerir;
- * kullanici bunlari benimseyip duzenleyebilir veya sifirdan yazabilir.
+ * Paradigm specs suggest an optional template via `suggestedAcceptance`;
+ * the user can adopt and edit it or write one from scratch.
  *
- * Kullanici kriteri (somut) sekli:
+ * Concrete user criterion shape:
  *   { metricKey, operator, value, label? }
- * `between` operatoru icin value [min, max] dizisidir.
+ * For the `between` operator, value is a [min, max] array.
  */
 import { isKnownMetricKey, getMetricDefinition, metricsForParadigm } from "./metrics.js";
 
-/** Desteklenen karsilastirma operatorleri. */
+/** Supported comparison operators. */
 export const ACCEPTANCE_OPERATORS = Object.freeze([
   "<", "<=", ">", ">=", "==", "!=", "between",
 ]);
 
-/** Bir operatorun aralik (iki degerli) operatoru olup olmadigi. */
+/** Whether an operator is a range (two-valued) operator. */
 function isRangeOperator(operator) {
   return operator === "between";
 }
 
 /**
- * Tek bir karsilastirmayi uygular.
- * @param {number} actual    Olculen deger.
- * @param {string} operator  ACCEPTANCE_OPERATORS icinden.
+ * Applies a single comparison.
+ * @param {number} actual    Measured value.
+ * @param {string} operator  One of ACCEPTANCE_OPERATORS.
  * @param {number|[number, number]} value
  * @returns {boolean}
  */
@@ -51,8 +51,8 @@ export function compare(actual, operator, value) {
 }
 
 /**
- * Sonuc metrik nesnesinden bir anahtari cozer. Hem duz noktali anahtarlari
- * (`zone_time_s.center`) hem de ic ice nesneleri destekler.
+ * Resolves a key from the result metric object. Supports both flat dotted keys
+ * (`zone_time_s.center`) and nested objects.
  * @returns {number|undefined}
  */
 export function resolveMetricValue(metrics, metricKey) {
@@ -60,7 +60,7 @@ export function resolveMetricValue(metrics, metricKey) {
   if (Object.prototype.hasOwnProperty.call(metrics, metricKey)) {
     return metrics[metricKey];
   }
-  // Noktali yol: ic ice nesnede gez.
+  // Dotted path: walk the nested object.
   const parts = metricKey.split(".");
   let cur = metrics;
   for (const part of parts) {
@@ -71,64 +71,64 @@ export function resolveMetricValue(metrics, metricKey) {
 }
 
 /**
- * Kullanici tanimli kabul kriter listesini dogrular.
+ * Validates a user-defined acceptance criteria list.
  * @param {Array} criteria
- * @param {{ paradigmKey?: string }} [opts] paradigmKey verilirse metrik
- *   anahtari yalnizca o paradigmanin metrikleriyle sinirlanir; aksi halde
- *   global metrik sozlugune gore dogrulanir.
+ * @param {{ paradigmKey?: string }} [opts] If paradigmKey is given, the metric
+ *   key is restricted to that paradigm's metrics only; otherwise it is
+ *   validated against the global metric dictionary.
  * @returns {{ valid: boolean, errors: string[] }}
  */
 export function validateAcceptanceCriteria(criteria, opts = {}) {
   const errors = [];
   if (criteria == null) return { valid: true, errors };
   if (!Array.isArray(criteria)) {
-    return { valid: false, errors: ["acceptanceCriteria bir dizi olmali"] };
+    return { valid: false, errors: ["acceptanceCriteria must be an array"] };
   }
 
   let allowedKeys = null;
   if (opts.paradigmKey) {
     const defs = metricsForParadigm(opts.paradigmKey);
     if (defs.length === 0) {
-      return { valid: false, errors: [`bilinmeyen paradigma: ${opts.paradigmKey}`] };
+      return { valid: false, errors: [`unknown paradigm: ${opts.paradigmKey}`] };
     }
     allowedKeys = new Set(defs.map((m) => m.key));
   }
 
   criteria.forEach((c, i) => {
-    const at = `kriter[${i}]`;
+    const at = `criterion[${i}]`;
     if (c == null || typeof c !== "object") {
-      errors.push(`${at}: nesne olmali`);
+      errors.push(`${at}: must be an object`);
       return;
     }
     const { metricKey, operator, value } = c;
 
     // metricKey
     if (typeof metricKey !== "string" || !metricKey) {
-      errors.push(`${at}: metricKey zorunlu`);
+      errors.push(`${at}: metricKey is required`);
     } else if (allowedKeys) {
       const root = metricKey.includes(".") ? metricKey.slice(0, metricKey.indexOf(".")) : metricKey;
       if (!allowedKeys.has(metricKey) && !allowedKeys.has(root)) {
-        errors.push(`${at}: ${metricKey} bu paradigmanin metrigi degil`);
+        errors.push(`${at}: ${metricKey} is not a metric of this paradigm`);
       }
     } else if (!isKnownMetricKey(metricKey)) {
-      errors.push(`${at}: bilinmeyen metrik anahtari ${metricKey}`);
+      errors.push(`${at}: unknown metric key ${metricKey}`);
     }
 
     // operator
     if (!ACCEPTANCE_OPERATORS.includes(operator)) {
-      errors.push(`${at}: gecersiz operator ${operator}`);
+      errors.push(`${at}: invalid operator ${operator}`);
     }
 
     // value
     if (isRangeOperator(operator)) {
       if (!Array.isArray(value) || value.length !== 2 ||
           typeof value[0] !== "number" || typeof value[1] !== "number") {
-        errors.push(`${at}: between icin value [min, max] olmali`);
+        errors.push(`${at}: value for between must be [min, max]`);
       } else if (value[0] > value[1]) {
-        errors.push(`${at}: between icin min <= max olmali`);
+        errors.push(`${at}: for between min <= max is required`);
       }
     } else if (operator !== undefined && typeof value !== "number") {
-      errors.push(`${at}: value sayisal olmali`);
+      errors.push(`${at}: value must be numeric`);
     }
   });
 
@@ -136,12 +136,12 @@ export function validateAcceptanceCriteria(criteria, opts = {}) {
 }
 
 /**
- * Olculen metriklere gore kabul kriterlerini degerlendirir.
- * @param {Object} metrics    Sonuc metrik nesnesi.
- * @param {Array} criteria    Kullanici tanimli kriterler.
+ * Evaluates acceptance criteria against the measured metrics.
+ * @param {Object} metrics    Result metric object.
+ * @param {Array} criteria    User-defined criteria.
  * @returns {{ passed: boolean|null, results: Array }}
- *   Kriteri yoksa passed = null (degerlendirilmedi). Aksi halde tum
- *   kriterler saglaniyorsa true.
+ *   If there are no criteria, passed = null (not evaluated). Otherwise true
+ *   when all criteria are satisfied.
  */
 export function evaluateAcceptance(metrics, criteria) {
   if (!Array.isArray(criteria) || criteria.length === 0) {

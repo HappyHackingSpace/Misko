@@ -1,6 +1,6 @@
 /**
- * Async route handler sarmalayıcısı: reddedilen promise'leri Express'in
- * hata zincirine (next) yönlendirir, böylece her handler'da try/catch gerekmez.
+ * Async route handler wrapper: forwards rejected promises to Express's
+ * error chain (next), so no try/catch is needed in each handler.
  */
 export const asyncHandler = (fn) => (req, res, next) =>
   Promise.resolve(fn(req, res, next)).catch(next);

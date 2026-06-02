@@ -6,6 +6,6 @@ import { loginSchema } from "./auth.validation.js";
 
 export const authRouter = Router();
 
-// Internal SaaS: public kayıt (signup) yok. Sadece giriş + oturum.
+// Internal SaaS: no public signup. Login + session only.
 authRouter.post("/login", validateBody(loginSchema), authController.login);
 authRouter.get("/me", authenticate, authController.me);

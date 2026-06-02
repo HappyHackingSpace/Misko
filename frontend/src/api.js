@@ -1,4 +1,4 @@
-// Basit fetch sarmalayıcı — token'ı localStorage'dan ekler
+// Simple fetch wrapper, adds the token from localStorage
 const TOKEN_KEY = "fl_token";
 
 export const getToken = () => localStorage.getItem(TOKEN_KEY);

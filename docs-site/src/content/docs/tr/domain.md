@@ -19,8 +19,10 @@ değil.
 - **Kurulum sihirbazı (CLI, açılışta):** lab adı + superadmin e-postasını alır ve
   `Laboratory` ile `SUPERADMIN`'i birlikte oluşturur. Singleton guard ikinci bir
   lab oluşturmayı reddeder; adım idempotenttir.
-- **`LabParadigm`:** paradigma kataloğu globaldir ama her lab bir **alt kümeyi**
-  etkinleştirir (ör. "bu labda sadece havuz var"). Yöneticiler açıp kapatır.
+- **`Environment` (Ortam):** paradigmalar salt-okunur şablonlardır. Bir lab
+  bunlardan adlandırılmış `Environment` örnekleri oluşturur, paradigma başına
+  birden çok (ör. iki ayrı Morris su tankı). Fiziksel değerler ortam bazında
+  belirlenir ve test anında kilitlenir.
 
 ## Paradigma ≠ Cihaz ≠ Kalibrasyon
 
@@ -107,7 +109,6 @@ yok):
 |---|:--:|:--:|:--:|:--:|:--:|
 | `user:manage`     | ✅ | ✅ | — | — | — |
 | `lab:configure`   | ✅ | ✅ | — | — | — |
-| `paradigm:toggle` | ✅ | ✅ | — | — | — |
 | `study:write`     | ✅ | ✅ | ✅ | — | — |
 | `subject:write`   | ✅ | ✅ | ✅ | — | — |
 | `apparatus:write` | ✅ | ✅ | ✅ | — | — |

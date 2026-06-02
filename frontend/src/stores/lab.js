@@ -1,10 +1,14 @@
 import { defineStore } from "pinia";
 import { api } from "../api.js";
 
-// Genel (public) markalama bilgisi. Backend /api/meta uçtan gelir; Phase 1'de
-// Laboratory singleton'ı gelene kadar tek kiracı adını burada tutarız.
+// Public branding info. The backend /api/meta endpoint returns the
+// Laboratory singleton's name (falls back to LAB_NAME if not set up).
 export const useLab = defineStore("lab", {
   state: () => ({ appName: "Mişko", labName: "" }),
+  getters: {
+    // Browser tab / window title: product name + lab name.
+    title: (s) => (s.labName ? `${s.appName} · ${s.labName}` : s.appName),
+  },
   actions: {
     async load() {
       try {
@@ -12,8 +16,9 @@ export const useLab = defineStore("lab", {
         this.appName = meta.appName || this.appName;
         this.labName = meta.labName || "";
       } catch {
-        // Sessizce geç: markalama kritik değil, varsayılan ad kullanılır.
+        // Fail silently: branding is not critical, the default name is used.
       }
+      document.title = this.title;
     },
   },
 });
