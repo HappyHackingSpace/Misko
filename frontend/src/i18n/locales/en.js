@@ -1,4 +1,4 @@
-// English — all UI strings live here. To add a language, copy this file and
+// English: all UI strings live here. To add a language, copy this file and
 // translate it (e.g. `de.js`); i18n/index.js picks it up automatically.
 export default {
   name: "English",
@@ -11,6 +11,7 @@ export default {
       dashboard: "Dashboard",
       tests: "Tests",
       scenarios: "Scenarios",
+      paradigms: "Paradigms",
       subjects: "Subjects",
       devices: "Devices",
       users: "Users",
@@ -34,6 +35,8 @@ export default {
       add: "Add",
       create: "Create",
       delete: "Delete",
+      save: "Save",
+      cancel: "Cancel",
       select: "Select…",
       none: "(none)",
       actions: "Actions",
@@ -49,7 +52,7 @@ export default {
       password: "Password",
       signIn: "Sign in",
       noAccount:
-        "No account? Ask your administrator — accounts are created internally.",
+        "No account? Ask your administrator; accounts are created internally.",
     },
     dashboard: {
       title: "Dashboard",
@@ -78,6 +81,25 @@ export default {
       cancel: "Cancel",
       confirmDelete: "Delete this test?",
       empty: "No tests.",
+      result: "Result",
+      passYes: "PASS",
+      passNo: "FAIL",
+      passNa: "not evaluated",
+    },
+    acceptance: {
+      title: "Acceptance criteria (per test)",
+      edit: "Criteria",
+      criteriaShort: "criteria",
+      sourceParadigm: "Source paradigm (for metric list)",
+      suggestions: "Suggestions",
+      metric: "Metric",
+      operator: "Operator",
+      value: "Value",
+      min: "min",
+      max: "max",
+      addRow: "Add criterion",
+      pickParadigmFirst: "Pick a paradigm to load its metrics.",
+      optionalHint: "Criteria are optional. With none, the test stays unevaluated.",
     },
     scenarios: {
       title: "Scenarios",
@@ -86,6 +108,57 @@ export default {
       confirmDelete: "Delete this scenario?",
       empty: "No scenarios.",
       types: { POOL: "Pool", MAZE: "Maze", STICK: "Stick", PATH: "Path" },
+    },
+    paradigms: {
+      title: "Paradigms",
+      intro:
+        "Code-backed scientific contract: the metrics, units, zones and quality rules each paradigm guarantees before a test runs.",
+      category: "Category",
+      categories: {
+        learning_memory: "Learning and memory",
+        anxiety: "Anxiety",
+        motor: "Motor",
+        social: "Social",
+      },
+      schemaVersion: "Schema v",
+      metricsShort: "metrics",
+      apparatusParams: "Apparatus parameters",
+      field: "Field",
+      unit: "Unit",
+      range: "Range",
+      default: "Default",
+      zones: "Zones",
+      zoneType: "Type",
+      zoneRole: "Role",
+      // Sabit zone tipi enum'lari (anahtarlar backend zone.type ile birebir).
+      zoneTypes: {
+        circle: "Circle",
+        quadrant: "Quadrant",
+        annulus: "Annulus",
+        polygon: "Polygon",
+        line: "Line",
+      },
+      // Sabit zone rolu enum'lari (anahtarlar backend zone.role ile birebir).
+      zoneRoles: {
+        target: "Target",
+        periphery: "Periphery",
+        center: "Center",
+        open: "Open",
+        closed: "Closed",
+        control: "Control",
+        risk: "Risk",
+      },
+      // Tur enum'lari (anahtarlar backend species ile birebir).
+      species: {
+        mouse: "Mouse",
+        rat: "Rat",
+      },
+      required: "Required",
+      metrics: "Metrics",
+      metric: "Metric",
+      acceptance: "Acceptance criteria",
+      suggested: "suggested",
+      qc: "Quality control",
     },
     subjects: {
       title: "Subjects (Mice)",
@@ -109,7 +182,7 @@ export default {
     users: {
       title: "User Management",
       intro:
-        "This is an internal app — no sign-up. Create users here. Leave the password empty and the system generates a strong one, shown once.",
+        "This is an internal app, no sign-up. Create users here. Leave the password empty and the system generates a strong one, shown once.",
       email: "Email",
       role: "Role",
       passwordOptional: "Password (optional)",
@@ -118,7 +191,7 @@ export default {
       emailPlaceholder: "jane{'@'}mouse.lab",
       resetPassword: "Reset password",
       createdWithPassword:
-        "User created — generated password for {email} (shown once): {password}",
+        "User created. Generated password for {email} (shown once): {password}",
       newPassword: "New password for {email} (shown once): {password}",
       confirmReset: "Reset password for {email}?",
       confirmDelete: "Delete {email}?",

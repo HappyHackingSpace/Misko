@@ -7,6 +7,7 @@ import { deviceRouter } from "../modules/devices/device.routes.js";
 import { subjectRouter } from "../modules/subjects/subject.routes.js";
 import { scenarioRouter } from "../modules/scenarios/scenario.routes.js";
 import { testRouter } from "../modules/tests/test.routes.js";
+import { paradigmRouter } from "../modules/paradigms/paradigm.routes.js";
 
 export const apiRouter = Router();
 
@@ -25,3 +26,4 @@ apiRouter.use("/devices", authenticate, deviceRouter);
 apiRouter.use("/subjects", authenticate, subjectRouter);
 apiRouter.use("/scenarios", authenticate, scenarioRouter);
 apiRouter.use("/tests", authenticate, testRouter);
+apiRouter.use("/paradigms", authenticate, paradigmRouter);

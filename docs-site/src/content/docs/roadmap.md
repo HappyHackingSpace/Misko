@@ -36,11 +36,15 @@ Done: the five-role permission matrix (`backend/src/config/permissions.js`) and 
 
 ## Step 2 - Scientific contract
 
-- Code-backed `ParadigmSpec` registry: `MWM`, `OPEN_FIELD`, `EPM`, `ROTAROD`.
-- Code-backed metric dictionary from [Measurement architecture](../measurements/).
-- Canonical units: `cm`, `cm_s`, `s`, `ratio`, `count`.
-- Per-paradigm parameters, zones, metrics, acceptance criteria, QC requirements and artifact expectations.
-- Result schema versioning with `schemaVersion` and `protocolVersion`.
+- Code-backed `ParadigmSpec` registry (11 paradigms): `MWM`, `OPEN_FIELD`, `EPM`, `ROTAROD`, `Y_MAZE`, `NOVEL_OBJECT`, `BARNES_MAZE`, `THREE_CHAMBER`, `LIGHT_DARK`, `POLE`, `TREADMILL`. ✅
+- Code-backed metric dictionary from [Measurement architecture](../measurements/). ✅
+- Canonical units: results use `cm`, `cm_s`, `s`, `count`, `ratio`, `percent`, `deg`, `rpm`, `g`, `boolean`; apparatus parameters add `mm` and `c`. ✅
+- Per-paradigm parameters, zones, metrics, suggested acceptance templates, QC requirements and artifact expectations. ✅
+- Optional, per-test, user-defined acceptance criteria (engine `backend/src/config/acceptance.js`, builder `frontend/src/components/AcceptanceEditor.vue`). ✅
+- Result schema versioning with `schemaVersion`. ✅
+- Read-only inspection API: `GET /api/paradigms`, `GET /api/paradigms/:key`, `GET /api/paradigms/metrics`, `GET /api/paradigms/units`. ✅
+
+Done: the registries live in `backend/src/config/{units,metrics,paradigms}.js` with `isKnownMetricKey(...)` ready to reject unknown result keys at Step 4. Pending: surfacing paradigm detail pages in the frontend and wiring rejection into result submission.
 
 Exit criteria: every metric has a unit, definition, input list and aggregation behavior.
 

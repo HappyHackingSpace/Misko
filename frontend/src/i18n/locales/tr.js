@@ -1,4 +1,4 @@
-// Türkçe — tüm metinler burada. Yeni dil eklemek için bu dosyayı kopyalayıp
+// Türkçe: tüm metinler burada. Yeni dil eklemek için bu dosyayı kopyalayıp
 // çevirin (ör. `en.js`); i18n/index.js otomatik olarak algılar.
 export default {
   name: "Türkçe",
@@ -11,6 +11,7 @@ export default {
       dashboard: "Panel",
       tests: "Testler",
       scenarios: "Senaryolar",
+      paradigms: "Paradigmalar",
       subjects: "Denekler",
       devices: "Cihazlar",
       users: "Kullanıcılar",
@@ -34,6 +35,8 @@ export default {
       add: "Ekle",
       create: "Oluştur",
       delete: "Sil",
+      save: "Kaydet",
+      cancel: "İptal",
       select: "Seç…",
       none: "(yok)",
       actions: "İşlem",
@@ -49,7 +52,7 @@ export default {
       password: "Şifre",
       signIn: "Giriş",
       noAccount:
-        "Hesabınız yoksa yöneticinizden talep edin — bu sistemde kayıt içeriden yapılır.",
+        "Hesabınız yoksa yöneticinizden talep edin; bu sistemde kayıt içeriden yapılır.",
     },
     dashboard: {
       title: "Panel",
@@ -78,6 +81,25 @@ export default {
       cancel: "İptal",
       confirmDelete: "Test silinsin mi?",
       empty: "Test yok.",
+      result: "Sonuç",
+      passYes: "GEÇTİ",
+      passNo: "KALDI",
+      passNa: "değerlendirilmedi",
+    },
+    acceptance: {
+      title: "Kabul kriterleri (test bazlı)",
+      edit: "Kriterler",
+      criteriaShort: "kriter",
+      sourceParadigm: "Kaynak paradigma (metrik listesi için)",
+      suggestions: "Öneriler",
+      metric: "Metrik",
+      operator: "Operatör",
+      value: "Değer",
+      min: "alt",
+      max: "üst",
+      addRow: "Kriter ekle",
+      pickParadigmFirst: "Metrikleri yüklemek için bir paradigma seç.",
+      optionalHint: "Kriterler opsiyoneldir. Hiç yoksa test değerlendirilmez.",
     },
     scenarios: {
       title: "Senaryolar",
@@ -86,6 +108,57 @@ export default {
       confirmDelete: "Senaryo silinsin mi?",
       empty: "Senaryo yok.",
       types: { POOL: "Havuz", MAZE: "Labirent", STICK: "Sopa", PATH: "Yol" },
+    },
+    paradigms: {
+      title: "Paradigmalar",
+      intro:
+        "Kod sahipli bilimsel kontrat: her paradigmanın test çalışmadan önce garanti ettiği metrikler, birimler, bölgeler ve kalite kuralları.",
+      category: "Kategori",
+      categories: {
+        learning_memory: "Öğrenme ve bellek",
+        anxiety: "Anksiyete",
+        motor: "Motor",
+        social: "Sosyal",
+      },
+      schemaVersion: "Şema v",
+      metricsShort: "metrik",
+      apparatusParams: "Apparatus parametreleri",
+      field: "Alan",
+      unit: "Birim",
+      range: "Aralık",
+      default: "Varsayılan",
+      zones: "Bölgeler",
+      zoneType: "Tür",
+      zoneRole: "Rol",
+      // Sabit zone tipi enum'ları (anahtarlar backend zone.type ile birebir).
+      zoneTypes: {
+        circle: "Daire",
+        quadrant: "Çeyrek",
+        annulus: "Halka",
+        polygon: "Çokgen",
+        line: "Çizgi",
+      },
+      // Sabit zone rolü enum'ları (anahtarlar backend zone.role ile birebir).
+      zoneRoles: {
+        target: "Hedef",
+        periphery: "Çevre",
+        center: "Merkez",
+        open: "Açık",
+        closed: "Kapalı",
+        control: "Kontrol",
+        risk: "Risk",
+      },
+      // Tür enum'ları (anahtarlar backend species ile birebir).
+      species: {
+        mouse: "Fare",
+        rat: "Sıçan",
+      },
+      required: "Zorunlu",
+      metrics: "Metrikler",
+      metric: "Metrik",
+      acceptance: "Kabul kriterleri",
+      suggested: "önerilen",
+      qc: "Kalite kontrol",
     },
     subjects: {
       title: "Denekler (Fareler)",
@@ -109,7 +182,7 @@ export default {
     users: {
       title: "Kullanıcı Yönetimi",
       intro:
-        "Bu internal bir uygulamadır — kayıt yok. Kullanıcıları buradan açın. Şifreyi boş bırakırsanız sistem güçlü bir şifre üretir ve bir kez gösterir.",
+        "Bu internal bir uygulamadır, kayıt yok. Kullanıcıları buradan açın. Şifreyi boş bırakırsanız sistem güçlü bir şifre üretir ve bir kez gösterir.",
       email: "E-posta",
       role: "Rol",
       passwordOptional: "Şifre (opsiyonel)",
@@ -118,7 +191,7 @@ export default {
       emailPlaceholder: "ahmet{'@'}fare.lab",
       resetPassword: "Şifre sıfırla",
       createdWithPassword:
-        "Kullanıcı oluşturuldu — {email} için üretilen şifre (bir kez gösterilir): {password}",
+        "Kullanıcı oluşturuldu. {email} için üretilen şifre (bir kez gösterilir): {password}",
       newPassword: "{email} için yeni şifre (bir kez gösterilir): {password}",
       confirmReset: "{email} için şifre sıfırlansın mı?",
       confirmDelete: "{email} silinsin mi?",

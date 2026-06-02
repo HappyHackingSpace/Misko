@@ -4,6 +4,7 @@ import { useAuth } from "./stores/auth.js";
 import Login from "./views/Login.vue";
 import Dashboard from "./views/Dashboard.vue";
 import Scenarios from "./views/Scenarios.vue";
+import Paradigms from "./views/Paradigms.vue";
 import Subjects from "./views/Subjects.vue";
 import Devices from "./views/Devices.vue";
 import Tests from "./views/Tests.vue";
@@ -13,6 +14,7 @@ const routes = [
   { path: "/login", component: Login, meta: { public: true } },
   { path: "/", component: Dashboard },
   { path: "/scenarios", component: Scenarios },
+  { path: "/paradigms", component: Paradigms },
   { path: "/subjects", component: Subjects },
   { path: "/devices", component: Devices },
   { path: "/tests", component: Tests },

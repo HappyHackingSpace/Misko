@@ -23,6 +23,7 @@ onMounted(() => lab.load());
         <RouterLink to="/">{{ $t("nav.dashboard") }}</RouterLink>
         <RouterLink to="/tests">{{ $t("nav.tests") }}</RouterLink>
         <RouterLink to="/scenarios">{{ $t("nav.scenarios") }}</RouterLink>
+        <RouterLink to="/paradigms">{{ $t("nav.paradigms") }}</RouterLink>
         <RouterLink to="/subjects">{{ $t("nav.subjects") }}</RouterLink>
         <RouterLink to="/devices">{{ $t("nav.devices") }}</RouterLink>
         <RouterLink v-if="auth.isAdmin" to="/users">{{ $t("nav.users") }}</RouterLink>

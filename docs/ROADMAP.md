@@ -63,33 +63,48 @@ Exit criteria:
 Goal: define what the system means by each paradigm and each measurement before
 real AI starts producing data.
 
-- Add code-backed `ParadigmSpec` registry:
-  - `MWM`
-  - `OPEN_FIELD`
-  - `EPM`
-  - `ROTAROD`
-- Add code-backed `MetricDefinition` registry from `docs/MEASUREMENTS.md`.
-- Lock canonical units:
+- Add code-backed `ParadigmSpec` registry: (done, 11 paradigms in `backend/src/config/paradigms.js`)
+  - `MWM`, `OPEN_FIELD`, `EPM`, `ROTAROD`
+  - `Y_MAZE`, `NOVEL_OBJECT`, `BARNES_MAZE` (learning and memory)
+  - `THREE_CHAMBER` (social)
+  - `LIGHT_DARK` (anxiety)
+  - `POLE`, `TREADMILL` (motor)
+- Add code-backed `MetricDefinition` registry from `docs/MEASUREMENTS.md`. (done, `backend/src/config/metrics.js`)
+- Lock canonical units: (done, `backend/src/config/units.js`)
   - position and distance: `cm`
   - speed: `cm_s`
   - duration: `s`
-  - ratios: `0..1`
+  - ratios: `ratio` (0..1) and `percent`
   - counts: `count`
-- Define per-paradigm:
+  - angle: `deg`
+  - rotarod speed: `rpm`
+  - subject weight: `g`
+  - event flags: `boolean`
+  - apparatus parameters only: `mm`, `c`
+- Define per-paradigm: (done)
   - apparatus parameters
   - session parameters
   - zones
   - metrics
-  - acceptance criteria
+  - suggested acceptance criteria (optional, code-owned templates)
   - QC requirements
   - artifact expectations
-- Define result schema versioning with `schemaVersion` and `protocolVersion`.
+- Acceptance criteria are optional, per-test and user-defined. (done)
+  - Paradigm specs ship `suggestedAcceptance` templates only.
+  - Per-test criteria stored in `Test.acceptanceCriteria`; engine in
+    `backend/src/config/acceptance.js` sets `Test.passed` (null when none).
+  - Operators exposed at `GET /api/paradigms/acceptance-operators`.
+- Define result schema versioning with `schemaVersion`. (done, `RESULT_SCHEMA_VERSION`)
+- Expose a read-only inspection API for researchers and the CV service. (done)
+  - `GET /api/paradigms`, `GET /api/paradigms/:key`
+  - `GET /api/paradigms/metrics`, `GET /api/paradigms/units`
 
 Exit criteria:
 
-- Unknown metric keys are not accepted.
-- Every metric has a unit, definition, input list and aggregation behavior.
-- Researchers can inspect paradigm detail pages before running a test.
+- Unknown metric keys are not accepted. (`isKnownMetricKey(...)` ready; wired into result submission at Step 4)
+- Every metric has a unit, definition, input list and aggregation behavior. (done)
+- Researchers can inspect paradigm detail pages before running a test. (done; `frontend/src/views/Paradigms.vue`)
+- Users can attach their own optional, metric-based acceptance criteria per test. (done; `frontend/src/components/AcceptanceEditor.vue`)
 
 ## Step 3 - Research-grade domain model
 

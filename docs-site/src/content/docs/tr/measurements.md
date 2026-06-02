@@ -30,7 +30,7 @@ Her paradigma için şu bölümleri içeren bir detay sayfası gerekir:
 - Oturum parametreleri: trial süresi, başlangıç pozisyonu, trial indeksi, protokol varyantı.
 - Bölgeler: zone key'leri, geometri tipi, koordinat sistemi ve türetme kuralı.
 - Metrikler: zorunlu ve opsiyonel metrik key'leri, birimler, tanımlar ve normalizasyon.
-- Kabul kriterleri: çalışma seviyesinde override edilebilen varsayılan pass/fail kuralları.
+- Önerilen kabul kriterleri: kullanıcının benimseyebileceği opsiyonel, kod sahipli şablonlar. Gerçek kabul kriterleri opsiyoneldir ve test bazlı tanımlanır (aşağıdaki "Kabul kriterleri" bölümüne bakın).
 - QC gereksinimleri: takip güveni, düşen kareler, kalibrasyon hatası, occlusion, ışık ve kontrast.
 - Artefaktlar: video, trajectory, heatmap, kalibrasyon görseli ve debug overlay URL'leri.
 
@@ -44,10 +44,46 @@ interface ParadigmSpec {
   sessionParameters: FieldDef[];
   zones(config: ApparatusConfig): ZoneDef[];
   metrics: MetricDefinition[];
-  acceptance: AcceptanceRule[];
+  suggestedAcceptance: AcceptanceRule[];
   qc: QualityRequirement[];
 }
 ```
+
+## Kabul kriterleri
+
+Kabul kriterleri bir testin davranışsal pass/fail çizgisini belirler. Özellikleri:
+
+- **Opsiyonel**: kriteri olmayan test değerlendirilmez (`Test.passed = null`).
+- **Test bazlı**: her test kendi kriterlerini `Test.acceptanceCriteria` içinde JSON olarak tutar.
+- **Kullanıcı tanımlı**: kullanıcı paradigmanın geçerli bir metriğini, bir operatörü ve
+  eşik değerini seçer. Paradigma spec'leri yalnızca `suggestedAcceptance` şablonları
+  sunar; kullanıcı bunları benimseyip düzenleyebilir.
+
+```ts
+interface AcceptanceCriterion {
+  metricKey: string;                 // paradigmanın bilinen bir metrik anahtarı
+  operator: "<" | "<=" | ">" | ">=" | "==" | "!=" | "between";
+  value: number | [number, number]; // "between" için [min, max]
+}
+```
+
+Bir sonuç gönderildiğinde motor her kriteri metriklere göre değerlendirir ve
+`Test.passed` değerini ayarlar: tümü geçerse `true`, herhangi biri kalırsa veya
+metriği eksikse `false`, kriter yoksa `null`. İstekte açık bir `passed` değeri
+verilirse otomatik değerlendirme yerine bu kullanılır (manuel inceleme).
+
+## Lokalizasyon
+
+Paradigma ve metrik sözlüğü bilimsel kontrattır ve spec kaynağında yalnızca
+Türkçe tutulur (varsayılan dil). Salt-okunur inceleme API'si serbest-metin
+etiketleri ve tanımları, `GET /api/paradigms`, `GET /api/paradigms/:key` ve
+`GET /api/paradigms/metrics` uçlarındaki opsiyonel `?lang=` parametresiyle
+lokalize eder. Desteklenen değerler `tr` (varsayılan) ve `en`'dir; bilinmeyen
+veya eksik bir değer `tr`'ye, çevirisi olmayan bir etiket veya tanım ise Türkçe
+kaynağına geri düşer. Backend tek kaynak olarak kalır (katalog
+`backend/src/config/i18n.js` içinde), böylece CV servisi ve frontend aynı
+sözlüğü kaymadan paylaşır. Küçük sabit enum'lar (zone tipi/rolü, tür) ise
+frontend UI sözlüğü tarafından çevrilir.
 
 ## Ölçüm sözlüğü
 
@@ -69,9 +105,12 @@ interface MetricDefinition {
 }
 ```
 
-Kanonik birimler: pozisyon ve mesafe `cm`, hız `cm_s`, süre `s`, ağırlık `g`,
-oranlar `0..1`, sayımlar `count`. Piksel değerleri Mişko sonuç metriklerine
-girmez.
+Kanonik sonuç birimleri: pozisyon ve mesafe `cm`, hız `cm_s`, süre `s`, ağırlık
+`g`, açı `deg`, dönüş hızı `rpm`, oranlar `ratio` (`0..1`) veya `percent`, olay
+bayrakları `boolean`, sayımlar `count`. Apparatus parametreleri bu enum'ı
+yeniden kullanır ve sonuç metriklerinde hiç görünmeyen `mm` (küçük düzenek
+çapları) ile `c` (Celsius cinsinden su sıcaklığı) birimlerini ekler. Piksel
+değerleri Mişko sonuç metriklerine girmez.
 
 ## Temel metrikler
 

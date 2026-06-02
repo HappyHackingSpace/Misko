@@ -30,7 +30,7 @@ Each paradigm needs a detail page with:
 - Session parameters: trial duration, start position, trial index, protocol variant.
 - Zones: zone keys, geometry type, coordinate system, and derivation rule.
 - Metrics: required and optional metric keys, units, definitions, and normalization.
-- Acceptance criteria: default pass/fail rules with study-level overrides.
+- Suggested acceptance criteria: optional, code-owned templates a user can adopt. Real acceptance criteria are optional and defined per test (see "Acceptance criteria" below).
 - QC requirements: tracking confidence, dropped frames, calibration error, occlusion, lighting, and contrast.
 - Artifacts: video, trajectory, heatmap, calibration image, and debug overlay URLs.
 
@@ -44,10 +44,46 @@ interface ParadigmSpec {
   sessionParameters: FieldDef[];
   zones(config: ApparatusConfig): ZoneDef[];
   metrics: MetricDefinition[];
-  acceptance: AcceptanceRule[];
+  suggestedAcceptance: AcceptanceRule[];
   qc: QualityRequirement[];
 }
 ```
+
+## Acceptance criteria
+
+Acceptance criteria decide a test's behavioral pass/fail line. They are:
+
+- **Optional**: a test with no criteria stays unevaluated (`Test.passed = null`).
+- **Per test**: each test stores its own criteria as JSON in `Test.acceptanceCriteria`.
+- **User-defined**: the user picks any metric valid for the paradigm, an operator,
+  and a threshold. Paradigm specs only ship `suggestedAcceptance` templates that the
+  user can adopt and edit.
+
+```ts
+interface AcceptanceCriterion {
+  metricKey: string;                 // a known metric key for the paradigm
+  operator: "<" | "<=" | ">" | ">=" | "==" | "!=" | "between";
+  value: number | [number, number]; // [min, max] for "between"
+}
+```
+
+When a result is submitted, the engine evaluates every criterion against the
+metrics and sets `Test.passed`: `true` if all pass, `false` if any fails or its
+metric is missing, and `null` when there are no criteria. An explicit `passed`
+value in the request overrides automatic evaluation (manual review).
+
+## Localization
+
+The paradigm and metric vocabulary is the scientific contract and stays
+Turkish-only in the spec source (the default language). The read-only inspection
+API localizes free-text labels and definitions through an optional `?lang=`
+query parameter on `GET /api/paradigms`, `GET /api/paradigms/:key` and
+`GET /api/paradigms/metrics`. Supported values are `tr` (default) and `en`; an
+unknown or missing value falls back to `tr`, and any untranslated label or
+definition falls back to its Turkish source. The backend stays the single source
+of truth (catalog in `backend/src/config/i18n.js`), so the CV service and the
+frontend share the same vocabulary with no drift. Small fixed enums (zone
+type/role, species) are translated by the frontend UI dictionary instead.
 
 ## Measurement dictionary
 
@@ -70,9 +106,12 @@ interface MetricDefinition {
 }
 ```
 
-Canonical units: positions and distances in `cm`, speed in `cm_s`, duration in
-`s`, weight in `g`, ratios as `0..1`, and counts as `count`. Pixel values stay
-out of Mişko result metrics.
+Canonical result units: positions and distances in `cm`, speed in `cm_s`,
+duration in `s`, weight in `g`, angles in `deg`, rotation speed in `rpm`, ratios
+as `ratio` (`0..1`) or `percent`, event flags as `boolean`, and counts as
+`count`. Apparatus parameters reuse this enum and add `mm` (small rig diameters)
+and `c` (water temperature in Celsius), which never appear in result metrics.
+Pixel values stay out of Mişko result metrics.
 
 ## Baseline metrics
 
