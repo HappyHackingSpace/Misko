@@ -11,9 +11,13 @@ export default defineConfig({
       title: "Mişko",
       tagline: "Behavioral test management for laboratory mice",
       logo: { src: "./src/assets/logo.svg", alt: "Mişko" },
-      social: {
-        github: "https://github.com/HappyHackingSpace/Misko",
-      },
+      social: [
+        {
+          icon: "github",
+          label: "GitHub",
+          href: "https://github.com/HappyHackingSpace/Misko",
+        },
+      ],
       defaultLocale: "root",
       locales: {
         root: { label: "English", lang: "en" },
