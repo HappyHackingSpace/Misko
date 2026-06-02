@@ -24,7 +24,7 @@ export function signToken(user) {
 export async function login({ email, password }) {
   const user = await prisma.user.findUnique({ where: { email } });
   if (!user || !(await bcrypt.compare(password, user.password))) {
-    throw ApiError.unauthorized("Invalid email or password");
+    throw ApiError.unauthorized("Invalid email or password", "auth.invalidCredentials");
   }
   return { token: signToken(user), user: toPublicUser(user) };
 }

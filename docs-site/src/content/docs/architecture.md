@@ -31,6 +31,26 @@ Each module (`auth`, `users`, `scenarios`, `subjects`, `devices`, `tests`)
 follows the same shape: `routes + controller + service (+ validation)`. A common
 CRUD factory keeps the simple resources consistent.
 
+## List queries
+
+Every list endpoint returns a paginated envelope rather than a bare array:
+
+```json
+{ "data": [ ... ], "total": 42, "page": 1, "pageSize": 10 }
+```
+
+A shared helper (`common/listQuery.js`) turns the request query into Prisma
+`where` / `orderBy` / `skip` / `take`, so search, per-column filters, sorting and
+pagination are all applied by the database. Each module declares its own
+`searchFields`, `filterFields` and `sortFields`; the static paradigm registry
+uses the same shape over an in-memory array. Filters use bracket notation
+(`filter[status]=DONE`), and `?all=true` bypasses pagination for the form
+dropdowns that need a full list. On the frontend a single `DataTable` component
+plus the `useDataTable` composable consume this envelope across all screens. The
+component also renders a continuous row index and exports the current page
+client-side: CSV via a generated blob and PDF via the browser print dialog, so
+no PDF library is bundled.
+
 ## The two-system boundary
 
 Mişko is the **system of record** for the lab workflow. The camera + vision side

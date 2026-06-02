@@ -5,6 +5,9 @@ import { PERMISSIONS } from "../../config/permissions.js";
 const subjectService = createCrudService({
   model: "subject",
   allowed: ["code", "sex", "groupName", "birthDate", "notes"],
+  searchFields: ["code", "groupName", "notes"],
+  filterFields: { code: "text", sex: "enum", groupName: "text" },
+  sortFields: ["code", "sex", "groupName", "createdAt"],
 });
 
 export const subjectRouter = createCrudRouter(subjectService, {

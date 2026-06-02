@@ -14,7 +14,7 @@ const EDITABLE_FIELDS = ["name", "code", "timezone", "settings"];
 /** Returns the Laboratory singleton; 404 if missing (setup has not run yet). */
 export async function getLaboratory() {
   const lab = await prisma.laboratory.findFirst({ orderBy: { createdAt: "asc" } });
-  if (!lab) throw ApiError.notFound("Laboratuvar henuz olusturulmadi");
+  if (!lab) throw ApiError.notFound("Laboratory has not been created yet", "lab.notCreated");
   return lab;
 }
 

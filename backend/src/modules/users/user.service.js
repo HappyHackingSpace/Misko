@@ -3,14 +3,29 @@ import { config } from "../../config/index.js";
 import { PRIVILEGED_ROLES, isPrivilegedRole } from "../../config/permissions.js";
 import { prisma } from "../../lib/prisma.js";
 import { ApiError } from "../../utils/ApiError.js";
+import { buildListQuery, listResult } from "../../common/listQuery.js";
 import { generateStrongPassword } from "../../utils/password.js";
 import { toPublicUser } from "../auth/auth.service.js";
 
 const hash = (pw) => bcrypt.hash(pw, config.bcryptRounds);
 
-export async function list() {
-  const users = await prisma.user.findMany({ orderBy: { createdAt: "desc" } });
-  return users.map(toPublicUser);
+export async function list(query = {}) {
+  const q = buildListQuery(query, {
+    searchFields: ["name", "email"],
+    filterFields: { name: "text", email: "text", role: "enum" },
+    sortFields: ["name", "email", "role", "createdAt"],
+  });
+  const [users, total] = await Promise.all([
+    prisma.user.findMany({ where: q.where, orderBy: q.orderBy, skip: q.skip, take: q.take }),
+    prisma.user.count({ where: q.where }),
+  ]);
+  return listResult(users.map(toPublicUser), total, q);
+}
+
+export async function getById(id) {
+  const user = await prisma.user.findUnique({ where: { id } });
+  if (!user) throw ApiError.notFound("User not found", "user.notFound");
+  return toPublicUser(user);
 }
 
 /**
@@ -18,33 +33,43 @@ export async function list() {
  * the generated/assigned plaintext password is returned to the caller **once** via `generatedPassword`.
  */
 export async function create({ name, email, role, password }) {
-  const exists = await prisma.user.findUnique({ where: { email } });
-  if (exists) throw ApiError.conflict("This email is already registered");
-
   const plain = password || generateStrongPassword();
-  const user = await prisma.user.create({
-    data: { name, email, role, password: await hash(plain) },
-  });
-
-  return { user: toPublicUser(user), generatedPassword: password ? undefined : plain };
+  try {
+    const user = await prisma.user.create({
+      data: { name, email, role, password: await hash(plain) },
+    });
+    return { user: toPublicUser(user), generatedPassword: password ? undefined : plain };
+  } catch (error) {
+    if (error?.code === "P2002") {
+      throw ApiError.conflict("This email is already registered", "user.emailExists");
+    }
+    throw error;
+  }
 }
 
 export async function update(id, data) {
-  const user = await prisma.user.findUnique({ where: { id } });
-  if (!user) throw ApiError.notFound("User not found");
+  // Run the privileged-user guard and the write in one Serializable transaction.
+  // Postgres interactive transactions inherit the database isolation level
+  // (READ COMMITTED by default), under which two concurrent demotions could both
+  // observe privileged > 1 and commit, leaving zero privileged users. Serializable
+  // makes such interleavings fail instead of silently breaking the invariant.
+  return prisma.$transaction(async (tx) => {
+    const user = await tx.user.findUnique({ where: { id } });
+    if (!user) throw ApiError.notFound("User not found", "user.notFound");
 
-  // Prevent demoting the last privileged user (with user:manage) to an unprivileged role.
-  if (isPrivilegedRole(user.role) && data.role && !isPrivilegedRole(data.role)) {
-    await assertNotLastPrivileged(id);
-  }
+    // Prevent demoting the last privileged user (with user:manage) to an unprivileged role.
+    if (isPrivilegedRole(user.role) && data.role && !isPrivilegedRole(data.role)) {
+      await assertNotLastPrivileged(tx);
+    }
 
-  const updated = await prisma.user.update({ where: { id }, data });
-  return toPublicUser(updated);
+    const updated = await tx.user.update({ where: { id }, data });
+    return toPublicUser(updated);
+  }, { isolationLevel: "Serializable" });
 }
 
 export async function resetPassword(id, password) {
   const user = await prisma.user.findUnique({ where: { id } });
-  if (!user) throw ApiError.notFound("User not found");
+  if (!user) throw ApiError.notFound("User not found", "user.notFound");
 
   const plain = password || generateStrongPassword();
   await prisma.user.update({ where: { id }, data: { password: await hash(plain) } });
@@ -52,18 +77,19 @@ export async function resetPassword(id, password) {
 }
 
 export async function remove(id, currentUserId) {
-  const user = await prisma.user.findUnique({ where: { id } });
-  if (!user) throw ApiError.notFound("User not found");
-  if (id === currentUserId) throw ApiError.badRequest("You cannot delete your own account");
-  if (isPrivilegedRole(user.role)) await assertNotLastPrivileged(id);
+  return prisma.$transaction(async (tx) => {
+    const user = await tx.user.findUnique({ where: { id } });
+    if (!user) throw ApiError.notFound("User not found", "user.notFound");
+    if (id === currentUserId) throw ApiError.badRequest("You cannot delete your own account", "user.cannotDeleteSelf");
+    if (isPrivilegedRole(user.role)) await assertNotLastPrivileged(tx);
 
-  await prisma.user.delete({ where: { id } });
+    await tx.user.delete({ where: { id } });
+  }, { isolationLevel: "Serializable" });
 }
 
-async function assertNotLastPrivileged(id) {
-  const privileged = await prisma.user.count({ where: { role: { in: PRIVILEGED_ROLES } } });
+async function assertNotLastPrivileged(tx) {
+  const privileged = await tx.user.count({ where: { role: { in: PRIVILEGED_ROLES } } });
   if (privileged <= 1) {
-    throw ApiError.badRequest("The last privileged user cannot be removed or changed");
+    throw ApiError.badRequest("The last privileged user cannot be removed or changed", "user.lastPrivileged");
   }
-  return id;
 }

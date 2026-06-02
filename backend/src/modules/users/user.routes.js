@@ -12,6 +12,7 @@ export const userRouter = Router();
 userRouter.use(requirePermission(PERMISSIONS.USER_MANAGE));
 
 userRouter.get("/", userController.list);
+userRouter.get("/:id", userController.getById);
 userRouter.post("/", validateBody(createUserSchema), userController.create);
 userRouter.patch("/:id", validateBody(updateUserSchema), userController.update);
 userRouter.post("/:id/reset-password", validateBody(resetPasswordSchema), userController.resetPassword);

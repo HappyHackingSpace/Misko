@@ -11,6 +11,7 @@ import {
 } from "../../config/metrics.js";
 import { UNIT_LIST } from "../../config/units.js";
 import { ACCEPTANCE_OPERATORS } from "../../config/acceptance.js";
+import { paginateArray } from "../../common/listQuery.js";
 import {
   normalizeLang,
   localizeSummary,
@@ -44,7 +45,7 @@ paradigmRouter.get(
     // A repeated/array query (?paradigm=a&paradigm=b) is not a string; reject it
     // so includes(...) does not silently return an empty set.
     if (paradigm !== undefined && typeof paradigm !== "string") {
-      throw ApiError.badRequest("paradigm must be a single string value");
+      throw ApiError.badRequest("paradigm must be a single string value", "paradigm.singleValue");
     }
     const lang = normalizeLang(req.query.lang);
     const list = paradigm ? metricsForParadigm(paradigm) : METRIC_DEFINITIONS;
@@ -60,12 +61,21 @@ paradigmRouter.get(
   }),
 );
 
-// Paradigm summary list (read-only template catalog)
+// Paradigm summary list (read-only template catalog). The registry is static, so
+// search/filter/sort/pagination are applied in memory. Dropdowns pass ?all=true.
 paradigmRouter.get(
   "/",
   asyncHandler(async (req, res) => {
     const lang = normalizeLang(req.query.lang);
-    res.json(listParadigmSummaries().map((s) => localizeSummary(s, lang)));
+    const rows = listParadigmSummaries().map((s) => localizeSummary(s, lang));
+    res.json(
+      paginateArray(rows, req.query, {
+        searchText: (r) => [r.name, r.key, r.category].filter(Boolean).join(" "),
+        sortFields: ["name", "category", "metricCount"],
+        defaultSort: { field: "name", order: "asc" },
+        filter: (f) => (r) => !f.category || r.category === f.category,
+      }),
+    );
   }),
 );
 
@@ -74,7 +84,7 @@ paradigmRouter.get(
   "/:key",
   asyncHandler(async (req, res) => {
     const spec = getParadigmSpec(req.params.key);
-    if (!spec) throw ApiError.notFound("Paradigm not found");
+    if (!spec) throw ApiError.notFound("Paradigm not found", "paradigm.notFound");
     const lang = normalizeLang(req.query.lang);
     const { zones, ...rest } = spec;
     const resolved = {

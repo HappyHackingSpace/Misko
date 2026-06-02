@@ -31,6 +31,26 @@ Her modül (`auth`, `users`, `scenarios`, `subjects`, `devices`, `tests`) aynı
 yapıyı izler: `routes + controller + service (+ validation)`. Ortak bir CRUD
 fabrikası basit kaynakları tutarlı tutar.
 
+## Liste sorguları
+
+Her liste endpoint'i çıplak bir dizi yerine sayfalanmış bir zarf döndürür:
+
+```json
+{ "data": [ ... ], "total": 42, "page": 1, "pageSize": 10 }
+```
+
+Ortak bir yardımcı (`common/listQuery.js`), istek sorgusunu Prisma `where` /
+`orderBy` / `skip` / `take` ifadesine çevirir; böylece arama, sütun bazlı
+filtreler, sıralama ve sayfalama veritabanı tarafından uygulanır. Her modül kendi
+`searchFields`, `filterFields` ve `sortFields` tanımını bildirir; statik paradigma
+kayıt defteri aynı yapıyı bellek içi bir dizi üzerinde kullanır. Filtreler köşeli
+parantez gösterimini kullanır (`filter[status]=DONE`) ve `?all=true`, tam liste
+gereken form açılır listeleri için sayfalamayı atlar. Frontend'de tek bir
+`DataTable` bileşeni ve `useDataTable` composable'ı bu zarfı tüm ekranlarda
+tüketir. Bileşen ayrıca sürekli bir satır indeksi gösterir ve geçerli sayfayı
+istemci tarafında dışa aktarır: CSV için üretilen bir blob, PDF için tarayıcının
+yazdırma penceresi kullanılır; böylece pakete bir PDF kütüphanesi eklenmez.
+
 ## İki sistemli sınır
 
 Mişko, lab iş akışının **system of record**'udur. Kamera + görü tarafı, kendi

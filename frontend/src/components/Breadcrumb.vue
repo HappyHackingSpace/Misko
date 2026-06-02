@@ -4,17 +4,17 @@ import { useRoute } from "vue-router";
 import { useI18n } from "vue-i18n";
 import { useBreadcrumb } from "../stores/breadcrumb.js";
 
-// Aktif sayfanin baslik anahtarini route meta'sindan okur (router.js'de
-// her route'a `meta.titleKey` verilir). Pano disindaki sayfalarda
-// "Pano / <sayfa>" gosterir; pano kendisi tek kirinti olur.
-// Detay sayfalari breadcrumb store'a kendi zincirini yazarak (or.
-// "Pano / Paradigmalar / <ad>") bu otomatik davranisi gecersiz kilabilir.
+// Reads the active page's title key from the route meta (router.js assigns
+// `meta.titleKey` to every route). Off the dashboard it shows "Dashboard /
+// <page>"; the dashboard itself is a single crumb. Detail pages can override
+// this automatic behavior by writing their own trail to the breadcrumb store
+// (e.g. "Dashboard / Paradigms / <name>").
 const route = useRoute();
 const { t } = useI18n();
 const crumb = useBreadcrumb();
 
-// Her gezinmede override'i temizle: yeni sayfa kendi zincirini onMounted'da
-// yeniden yazar; aksi halde eski detay zinciri ekranda asili kalir.
+// Clear the override on every navigation: the new page rewrites its own trail
+// in onMounted; otherwise a stale detail trail would linger on screen.
 watch(
   () => route.fullPath,
   () => crumb.clear(),
@@ -28,7 +28,7 @@ const currentLabel = computed(() =>
 
 <template>
   <nav class="crumbs" aria-label="breadcrumb">
-    <!-- Sayfanin yazdigi dinamik zincir varsa onu goster -->
+    <!-- If the page wrote a dynamic trail, render it -->
     <template v-if="crumb.trail">
       <template v-for="(c, i) in crumb.trail" :key="i">
         <RouterLink v-if="c.to" :to="c.to">{{ c.label }}</RouterLink>
