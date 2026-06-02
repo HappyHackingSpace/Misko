@@ -40,23 +40,33 @@ Mişko is an internal, org-only, on-prem product. No public sign-up.
 - Sign-up removed from frontend and backend.
 - Internal user management through `/api/users`.
 
-## Step 1 - Lab foundation and permissions
+## Step 1 - Lab foundation and permissions ✅
 
 Goal: establish the operational shell before science data grows.
 
-- `Laboratory` singleton: one lab per installation.
-- Installation wizard creates the laboratory and `SUPERADMIN` together.
-- Singleton guard refuses a second laboratory.
+- `Laboratory` singleton: one lab per installation. (done, `Laboratory` model)
+- Installation wizard creates the laboratory and `SUPERADMIN` together. (done, CLI in `backend/prisma/bootstrap-admin.js` at Docker startup)
+- Singleton guard refuses a second laboratory. (done, bootstrap and `lab.service.js` never create a second lab)
 - Five roles: `SUPERADMIN`, `LAB_MANAGER`, `RESEARCHER`, `TECHNICIAN`, `VIEWER`. (done)
 - Code-defined permission matrix with `requirePermission(...)`. (done)
 - Migrate existing `ADMIN` and `OPERATOR` users to the new roles. (done)
-- `LabParadigm` lets admins enable or disable paradigms for the lab.
+- `Environment` instances: named, persisted test setups created from a paradigm template. (done)
+  - `GET/PATCH /api/lab` (lab:configure) reads/updates the singleton.
+  - Paradigms are read-only, code-owned templates: `GET /api/paradigms` and
+    `GET /api/paradigms/:key` carry no per-lab state.
+  - An environment stores a self-contained snapshot (`{ paradigmKey, schemaVersion,
+    apparatus, zones }`); apparatus values are validated against the code-fixed
+    parameter ranges and stay locked at test time.
+  - Environment CRUD: `GET /api/environments`, `GET /api/environments/:id`,
+    `POST /api/environments`, `PATCH /api/environments/:id`, `DELETE /api/environments/:id`
+    (writes need `apparatus:write`).
+  - A lab can hold several environments per paradigm (e.g. two distinct Morris water tanks).
 
 Exit criteria:
 
-- A fresh install creates one lab and one superadmin.
-- Every route is gated by permissions, not ad-hoc role checks.
-- UI only shows enabled paradigms.
+- A fresh install creates one lab and one superadmin. (done)
+- Every route is gated by permissions, not ad-hoc role checks. (done)
+- Paradigms are a read-only catalog; physical setups live as named environments. (done; the frontend has an Environments menu and each paradigm detail page can spawn one)
 
 ## Step 2 - Scientific contract before CV
 

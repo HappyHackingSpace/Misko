@@ -24,15 +24,16 @@ Camera frame
 - Public sign-up removed.
 - Internal user management.
 
-## Step 1 - Lab foundation
+## Step 1 - Lab foundation ✅
 
-- `Laboratory` singleton: one lab per installation.
-- Installation wizard creates the lab and `SUPERADMIN` together.
+- `Laboratory` singleton: one lab per installation. ✅
+- Installation wizard creates the lab and `SUPERADMIN` together (CLI, Docker startup). ✅
+- A second laboratory is refused (singleton guard). ✅
 - Five roles: `SUPERADMIN`, `LAB_MANAGER`, `RESEARCHER`, `TECHNICIAN`, `VIEWER`. ✅
 - Code-defined permission matrix with `requirePermission(...)`. ✅
-- `LabParadigm` lets admins enable or disable paradigms.
+- `Environment` instances: named, persisted test setups created from a paradigm template (many per paradigm). ✅
 
-Done: the five-role permission matrix (`backend/src/config/permissions.js`) and `requirePermission(...)` gating on subject, scenario, device, test and user routes, plus the ADMIN/OPERATOR to SUPERADMIN/RESEARCHER migration. Pending: the `Laboratory` singleton and installation wizard.
+Done: `Laboratory` singleton and `Environment` models + migrations; the installation wizard (`backend/prisma/bootstrap-admin.js`) creates the lab and superadmin together. Lab API: `GET/PATCH /api/lab` (`lab:configure`). Paradigms are read-only, code-owned templates served by `GET /api/paradigms` and `GET /api/paradigms/:key`. An environment is a named instance of a paradigm whose physical values are resolved into a self-contained snapshot (`{ paradigmKey, schemaVersion, apparatus, zones }`); the values are validated against the code-fixed parameter ranges and stay locked at test time. Environment API: `GET /api/environments`, `GET /api/environments/:id`, `POST /api/environments`, `PATCH /api/environments/:id`, `DELETE /api/environments/:id` (writes need `apparatus:write`). A lab can hold several environments per paradigm (e.g. two distinct Morris water tanks). The frontend exposes an Environments menu; the Paradigms page is a read-only catalog, and each paradigm detail page can spawn a new environment.
 
 ## Step 2 - Scientific contract
 

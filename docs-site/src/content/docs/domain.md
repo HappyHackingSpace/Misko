@@ -18,8 +18,10 @@ Mişko runs **one laboratory per installation** — a singleton, not multi-tenan
 - **Installation wizard (CLI, at startup):** takes the lab name + superadmin
   email and creates the `Laboratory` **and** the `SUPERADMIN` together. A
   singleton guard refuses a second lab; the step is idempotent.
-- **`LabParadigm`:** the paradigm catalog is global, but each lab enables a
-  **subset** (e.g. "this lab only has the pool"). Toggled by admins.
+- **`Environment` (Ortam):** paradigms are read-only templates. A lab creates
+  named `Environment` instances from them, many per paradigm (e.g. two distinct
+  Morris water tanks). Physical values are set per environment and locked at
+  test time.
 
 ## Paradigm ≠ Apparatus ≠ Calibration
 
@@ -108,7 +110,6 @@ DB-editable permissions):
 |---|:--:|:--:|:--:|:--:|:--:|
 | `user:manage`     | ✅ | ✅ | — | — | — |
 | `lab:configure`   | ✅ | ✅ | — | — | — |
-| `paradigm:toggle` | ✅ | ✅ | — | — | — |
 | `study:write`     | ✅ | ✅ | ✅ | — | — |
 | `subject:write`   | ✅ | ✅ | ✅ | — | — |
 | `apparatus:write` | ✅ | ✅ | ✅ | — | — |

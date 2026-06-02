@@ -16,7 +16,7 @@ Mişko is deployed **on-prem, one installation per laboratory**. There is exactl
 **one `Laboratory`** per app — a singleton, not a multi-tenant system.
 
 - **`Laboratory`** (singleton): `name`, `code`, `timezone`, `settings` (JSON),
-  `createdAt`. Holds lab-wide configuration (enabled paradigms, defaults).
+  `createdAt`. Holds lab-wide configuration (settings, defaults).
 - **Single-tenant simplification:** we do **not** sprinkle a `labId` foreign key
   across every table — everything implicitly belongs to the one lab. Multi-tenant
   is explicitly out of scope.
@@ -26,15 +26,24 @@ Mişko is deployed **on-prem, one installation per laboratory**. There is exactl
   A **singleton guard** refuses to create a second laboratory. Idempotent: if the
   lab already exists, it is a no-op. (Extends the existing `bootstrap-admin.js`.)
 
-### 0.1 Paradigm enablement per lab
+### 0.1 Environments (named instances of a paradigm)
 
-The paradigm catalog is global (defined in code, see §1.1), but each lab runs a
-**subset**. Example: "I installed lab X but it only has the pool (MWM)."
+The paradigm catalog is global and read-only (defined in code, see §1.1). A lab
+turns a paradigm into one or more concrete, named, persisted **`Environment`**
+instances (Turkish UI name: "Ortam"). A lab can hold **many** environments per
+paradigm, e.g. two distinct Morris water tanks.
 
-- **`LabParadigm`**: `paradigmKey`, `enabled` (Boolean), `labDefaults` (JSON,
-  optional lab-level parameter defaults).
-- Toggled by `SUPERADMIN` / `LAB_MANAGER`. The UI only offers **enabled**
-  paradigms when creating apparatuses/tests.
+- **`Environment`**: `id`, `laboratoryId` (relation to `Laboratory`, onDelete
+  Cascade), `name`, `paradigmKey`, `config` (JSON: a full self-contained snapshot
+  `{ paradigmKey, schemaVersion, apparatus, zones }`), `notes?`, `createdAt`,
+  `updatedAt`. Indexed on `laboratoryId` and `paradigmKey`.
+- The environment's physical apparatus values are validated against the
+  code-fixed parameter ranges at write time and are **locked at test time** (a
+  test cannot override them).
+- CRUD: `GET /api/environments`, `GET /api/environments/:id`,
+  `POST /api/environments`, `PATCH /api/environments/:id` (`paradigmKey` is
+  immutable on edit), `DELETE /api/environments/:id`. Writes require
+  `apparatus:write` (RESEARCHER and above); reads only need auth.
 
 ## 1. Core idea: Paradigm ≠ Apparatus ≠ Calibration
 
@@ -94,8 +103,8 @@ const PARADIGMS: Record<string, ParadigmSpec> = {
 Initial registry (Phase target): `MWM`, `OPEN_FIELD`, `EPM`, `ROTAROD` (covers
 the old POOL/MAZE/STICK/PATH intent); extensible by adding new specs.
 
-> The paradigm catalog is **fixed in code**. Which paradigms are **active in a
-> given lab** is data, controlled via `LabParadigm` (§0.1).
+> The paradigm catalog is **fixed in code** and read-only. A lab's concrete,
+> named instances of a paradigm are data, modeled as `Environment` (§0.1).
 
 The metric definitions are also fixed in code. `Test.result` is accepted only if
 it matches the active paradigm's metric dictionary, result schema, QC
@@ -261,14 +270,14 @@ testable; changes ship with deploys).
 | Role | Meaning |
 |---|---|
 | `SUPERADMIN` | The bootstrap user. Full control incl. user & lab configuration. |
-| `LAB_MANAGER` | Runs the lab: manages users, toggles paradigms, full data access. |
+| `LAB_MANAGER` | Runs the lab: manages users, configures the lab, full data access. |
 | `RESEARCHER` | Designs studies, manages subjects/apparatuses, creates & runs tests. |
 | `TECHNICIAN` | Executes tests, logs weights/measurements; limited subject edits. |
 | `VIEWER` | Read-only across everything. |
 
 ### Permissions (resource:action)
 
-`user:manage`, `lab:configure`, `paradigm:toggle`, `study:write`,
+`user:manage`, `lab:configure`, `study:write`,
 `subject:write`, `weight:write`, `apparatus:write`, `test:write`, `test:run`,
 and read access (`*:read`).
 
@@ -278,7 +287,6 @@ and read access (`*:read`).
 |---|:--:|:--:|:--:|:--:|:--:|
 | `user:manage`     | ✅ | ✅ | — | — | — |
 | `lab:configure`   | ✅ | ✅ | — | — | — |
-| `paradigm:toggle` | ✅ | ✅ | — | — | — |
 | `study:write`     | ✅ | ✅ | ✅ | — | — |
 | `subject:write`   | ✅ | ✅ | ✅ | — | — |
 | `apparatus:write` | ✅ | ✅ | ✅ | — | — |
@@ -305,7 +313,7 @@ and read access (`*:read`).
 ## 7. Entity map
 
 ```
-Laboratory (singleton) ─< LabParadigm (which paradigms are enabled)
+Laboratory (singleton) ─< Environment (named instances of a paradigm)
         └─ User (role ∈ SUPERADMIN/LAB_MANAGER/RESEARCHER/TECHNICIAN/VIEWER)
 
 Paradigm (code registry) ─┬─< Apparatus ──< Calibration (default, camera fixed)
@@ -335,8 +343,9 @@ Test = Paradigm + Apparatus + Subject + Operator + Device
      create lab + `SUPERADMIN` together; singleton guard).
    - 5-role enum + code permission matrix + `requirePermission` middleware;
      migrate existing ADMIN/OPERATOR users to the new roles.
-1. **Paradigm registry + LabParadigm** — code-defined `ParadigmSpec` registry
-   (`MWM`, `OPEN_FIELD`, `EPM`, `ROTAROD`) + per-lab enable/disable.
+1. **Paradigm registry + Environment** - code-defined, read-only `ParadigmSpec`
+   registry (`MWM`, `OPEN_FIELD`, `EPM`, `ROTAROD`) + per-lab `Environment`
+   instances created from a paradigm template.
 2. **Subject domain** — rich Subject + `WeightLog` + `DiseaseModel`/`Treatment`
    catalogs + N–N joins. (User's top priority.)
 3. **Apparatus** — geometry/zones/surfaceColor instantiating a paradigm's params

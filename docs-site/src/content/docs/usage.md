@@ -42,10 +42,38 @@ Users are managed internally by an administrator from the **Users** screen.
 There is no self-registration, which keeps the system closed and suitable for a
 single lab.
 
-- An **ADMIN** can manage users and all lab data.
+There are five roles: `SUPERADMIN`, `LAB_MANAGER`, `RESEARCHER`, `TECHNICIAN`,
+and `VIEWER`.
+
+- A **SUPERADMIN** or **LAB_MANAGER** can manage users and configure the lab.
+- Anyone with the `apparatus:write` permission (RESEARCHER and above) can create
+  named environments from the read-only paradigm catalog.
 - Other users work with the lab data according to their role.
 - When you create a user, you may leave the password blank and let the system
   generate a strong one; it is shown only once, so copy it before closing.
+
+## Configuring the lab
+
+Mişko runs as a single laboratory per installation. The lab record (its name and
+settings) is created by the installation wizard at first startup and is used for
+branding across the panel.
+
+The **Paradigms** screen is a read-only catalog of the scientific test types
+defined in code. Each paradigm has its own detail page (open it by clicking a
+card), where the operational contract is shown read-only: apparatus parameters,
+zones, metrics, suggested acceptance criteria and quality control requirements.
+The parameter set and their valid ranges are fixed in code and cannot be edited
+here.
+
+To put a paradigm to use, anyone with the `apparatus:write` permission
+(RESEARCHER and above) creates an **environment** from it. An environment is a
+named, persisted test setup based on a paradigm template, and a lab can hold many
+environments for the same paradigm (for example two Morris water tanks, "Tank A"
+and "Tank B"). From a paradigm detail page, use **Create environment from this
+paradigm**, give it a name, and fill in the apparatus values within the
+code-fixed allowed ranges. Manage environments from the **Environments** menu,
+which supports create, edit and delete; on edit, the paradigm cannot be changed.
+The apparatus values are locked at test time.
 
 ## Setting up the lab data
 
