@@ -1,113 +1,61 @@
 <script setup>
-import { ref, onMounted } from "vue";
+import { computed } from "vue";
 import { useI18n } from "vue-i18n";
-import { api } from "../api.js";
-import { ROLES, DEFAULT_ROLE } from "../constants/roles.js";
+import DataTable from "../components/DataTable.vue";
+import { useDataTable } from "../composables/useDataTable.js";
 
 const { t, locale } = useI18n();
-const items = ref([]);
-const form = ref({ name: "", email: "", role: DEFAULT_ROLE, password: "" });
-const err = ref("");
-const notice = ref(""); // show the generated password once
 
-async function load() {
-  items.value = await api("/users");
-}
-onMounted(load);
+const table = useDataTable("/users", { defaultSort: { field: "createdAt", order: "desc" } });
 
-async function create() {
-  err.value = "";
-  notice.value = "";
-  try {
-    const body = { name: form.value.name, email: form.value.email, role: form.value.role };
-    if (form.value.password) body.password = form.value.password;
-    const { user, generatedPassword } = await api("/users", { method: "POST", body });
-    if (generatedPassword) {
-      notice.value = t("users.createdWithPassword", { email: user.email, password: generatedPassword });
-    }
-    form.value = { name: "", email: "", role: DEFAULT_ROLE, password: "" };
-    await load();
-  } catch (e) {
-    err.value = e.message;
-  }
-}
-
-async function resetPassword(u) {
-  err.value = "";
-  notice.value = "";
-  if (!confirm(t("users.confirmReset", { email: u.email }))) return;
-  try {
-    const { generatedPassword } = await api(`/users/${u.id}/reset-password`, { method: "POST", body: {} });
-    notice.value = t("users.newPassword", { email: u.email, password: generatedPassword });
-  } catch (e) {
-    err.value = e.message;
-  }
-}
-
-async function changeRole(u, role) {
-  err.value = "";
-  try {
-    await api(`/users/${u.id}`, { method: "PATCH", body: { role } });
-    await load();
-  } catch (e) {
-    err.value = e.message;
-    await load();
-  }
-}
-
-async function remove(u) {
-  err.value = "";
-  if (!confirm(t("users.confirmDelete", { email: u.email }))) return;
-  try {
-    await api(`/users/${u.id}`, { method: "DELETE" });
-    await load();
-  } catch (e) {
-    err.value = e.message;
-  }
-}
+const columns = computed(() => [
+  { key: "name", label: t("common.name"), sortable: true },
+  { key: "email", label: t("users.email"), sortable: true, cellClass: "muted" },
+  {
+    key: "role", label: t("users.role"), sortable: true,
+    exportValue: (row) => t(`roles.${row.role}`),
+  },
+  {
+    key: "createdAt", label: t("common.addedAt"), sortable: true, cellClass: "muted",
+    exportValue: (row) => new Date(row.createdAt).toLocaleDateString(locale.value),
+  },
+]);
 </script>
 
 <template>
-  <h1>{{ $t("users.title") }}</h1>
-
-  <div class="card">
-    <p class="muted" style="margin-top:0">{{ $t("users.intro") }}</p>
-    <div class="row">
-      <div class="field"><label>{{ $t("common.name") }}</label><input v-model="form.name" :placeholder="$t('users.namePlaceholder')" /></div>
-      <div class="field"><label>{{ $t("users.email") }}</label><input v-model="form.email" type="email" :placeholder="$t('users.emailPlaceholder')" /></div>
-      <div class="field">
-        <label>{{ $t("users.role") }}</label>
-        <select v-model="form.role">
-          <option v-for="r in ROLES" :key="r" :value="r">{{ $t(`roles.${r}`) }}</option>
-        </select>
-      </div>
-      <div class="field"><label>{{ $t("users.passwordOptional") }}</label><input v-model="form.password" :placeholder="$t('users.passwordPlaceholder')" /></div>
-      <div><label>&nbsp;</label><button class="primary" @click="create" :disabled="!form.name || !form.email">{{ $t("common.add") }}</button></div>
-    </div>
-    <p class="err" v-if="err">{{ err }}</p>
-    <p v-if="notice" class="notice">{{ notice }}</p>
+  <div class="head">
+    <h1>{{ $t("users.title") }}</h1>
+    <button class="primary" @click="$router.push('/users/new')">{{ $t("common.create") }}</button>
   </div>
+  <p class="muted" style="margin-top:0">{{ $t("users.intro") }}</p>
 
   <div class="card">
-    <table>
-      <thead><tr><th>{{ $t("common.name") }}</th><th>{{ $t("users.email") }}</th><th>{{ $t("users.role") }}</th><th>{{ $t("common.addedAt") }}</th><th></th></tr></thead>
-      <tbody>
-        <tr v-for="u in items" :key="u.id">
-          <td>{{ u.name }}</td>
-          <td class="muted">{{ u.email }}</td>
-          <td>
-            <select :value="u.role" @change="changeRole(u, $event.target.value)">
-              <option v-for="r in ROLES" :key="r" :value="r">{{ $t(`roles.${r}`) }}</option>
-            </select>
-          </td>
-          <td class="muted">{{ new Date(u.createdAt).toLocaleDateString(locale) }}</td>
-          <td>
-            <button @click="resetPassword(u)">{{ $t("users.resetPassword") }}</button>
-            <button class="danger" @click="remove(u)">{{ $t("common.delete") }}</button>
-          </td>
-        </tr>
-      </tbody>
-    </table>
-    <p v-if="!items.length" class="muted">{{ $t("users.empty") }}</p>
+    <DataTable
+      :columns="columns"
+      :rows="table.state.rows"
+      :total="table.state.total"
+      :page="table.state.page"
+      :page-size="table.state.pageSize"
+      :sort="table.state.sort"
+      :search="table.state.search"
+      :loading="table.state.loading"
+      export-name="users"
+      :entity-label="$t('users.title')"
+      :empty-hint="$t('datatable.emptyHint')"
+      @page="table.setPage"
+      @page-size="table.setPageSize"
+      @sort="table.setSort"
+      @search="table.setSearch"
+    >
+      <template #cell-name="{ row }"><RouterLink class="link" :to="`/users/${row.id}`">{{ row.name }}</RouterLink></template>
+      <template #cell-role="{ row }">{{ $t(`roles.${row.role}`) }}</template>
+      <template #cell-createdAt="{ row }">{{ new Date(row.createdAt).toLocaleDateString(locale) }}</template>
+    </DataTable>
   </div>
 </template>
+
+<style scoped>
+.head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.link { color: var(--accent); cursor: pointer; font-weight: 600; text-decoration: none; }
+.link:hover { text-decoration: underline; }
+</style>

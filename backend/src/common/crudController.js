@@ -17,8 +17,8 @@ export function createCrudRouter(service, options = {}) {
   const { writePermission } = options;
   const guard = writePermission ? [requirePermission(writePermission)] : [];
 
-  router.get("/", asyncHandler(async (_req, res) => {
-    res.json(await service.list());
+  router.get("/", asyncHandler(async (req, res) => {
+    res.json(await service.list(req.query));
   }));
 
   router.get("/:id", asyncHandler(async (req, res) => {

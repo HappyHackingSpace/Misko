@@ -66,7 +66,7 @@ async function load() {
 
 // A paradigm is a template; users create named environment instances from it.
 function createEnvironment() {
-  router.push(`/environments?paradigm=${route.params.key}`);
+  router.push(`/environments/new?paradigm=${route.params.key}`);
 }
 
 // Re-fetch backend-localized labels when the language changes (breadcrumb too).

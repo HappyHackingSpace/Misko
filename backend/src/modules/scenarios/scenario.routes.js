@@ -5,6 +5,9 @@ import { PERMISSIONS } from "../../config/permissions.js";
 const scenarioService = createCrudService({
   model: "scenario",
   allowed: ["name", "type", "description", "config"],
+  searchFields: ["name", "description"],
+  filterFields: { name: "text", type: "enum" },
+  sortFields: ["name", "type", "createdAt"],
 });
 
 // A scenario is a physical setup definition that will later evolve into Apparatus.

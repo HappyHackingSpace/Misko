@@ -22,6 +22,12 @@ export async function list(query = {}) {
   return listResult(users.map(toPublicUser), total, q);
 }
 
+export async function getById(id) {
+  const user = await prisma.user.findUnique({ where: { id } });
+  if (!user) throw ApiError.notFound("User not found", "user.notFound");
+  return toPublicUser(user);
+}
+
 /**
  * Creates a user internally by an ADMIN. If no password is given the system generates one;
  * the generated/assigned plaintext password is returned to the caller **once** via `generatedPassword`.

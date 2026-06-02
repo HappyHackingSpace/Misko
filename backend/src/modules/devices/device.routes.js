@@ -5,6 +5,9 @@ import { PERMISSIONS } from "../../config/permissions.js";
 const deviceService = createCrudService({
   model: "device",
   allowed: ["name", "platform", "lastSeenAt"],
+  searchFields: ["name", "platform"],
+  filterFields: { name: "text", platform: "enum" },
+  sortFields: ["name", "platform", "createdAt"],
 });
 
 // Device (phone/camera) hardware is a lab-wide resource; managing it is lab configuration.

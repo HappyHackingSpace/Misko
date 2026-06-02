@@ -8,11 +8,14 @@ const counts = ref({ tests: 0, scenarios: 0, subjects: 0, devices: 0 });
 const recent = ref([]);
 
 onMounted(async () => {
+  // List endpoints return a paginated envelope; `total` gives the count and the
+  // tests query doubles as the "recent" feed (newest first, first 6 rows).
   const [tests, scenarios, subjects, devices] = await Promise.all([
-    api("/tests"), api("/scenarios"), api("/subjects"), api("/devices"),
+    api("/tests?pageSize=6&sort=createdAt&order=desc"),
+    api("/scenarios?pageSize=1"), api("/subjects?pageSize=1"), api("/devices?pageSize=1"),
   ]);
-  counts.value = { tests: tests.length, scenarios: scenarios.length, subjects: subjects.length, devices: devices.length };
-  recent.value = tests.slice(0, 6);
+  counts.value = { tests: tests.total, scenarios: scenarios.total, subjects: subjects.total, devices: devices.total };
+  recent.value = tests.data;
 });
 </script>
 

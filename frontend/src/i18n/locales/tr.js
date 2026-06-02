@@ -35,6 +35,7 @@ export default {
     common: {
       add: "Ekle",
       create: "Oluştur",
+      new: "Yeni",
       edit: "Düzenle",
       delete: "Sil",
       save: "Kaydet",

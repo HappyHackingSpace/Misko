@@ -21,8 +21,8 @@ export const environmentRouter = Router();
 
 environmentRouter.get(
   "/",
-  asyncHandler(async (_req, res) => {
-    res.json(await listEnvironments());
+  asyncHandler(async (req, res) => {
+    res.json(await listEnvironments(req.query));
   }),
 );
 

@@ -96,16 +96,47 @@ consistent coding scheme (for example `F-001`) so subjects are easy to find.
 Devices are the phones the tests run on (Android or iOS). Register each device
 once so it can be picked when creating a test.
 
+## Browsing and finding data
+
+Every listing screen (Users, Subjects, Devices, Scenarios, Paradigms, Tests and
+Environments) uses the same table, so the controls work the same way everywhere:
+
+- **Search box** at the top filters the list by free text across the main
+  columns (for example a subject code, a user email or a scenario name).
+- **Sortable headers** show an arrow when active. Click a header to sort, click
+  again to flip the direction.
+- **Pagination** lives in the footer: choose how many rows per page (10, 20 or
+  50), see the "from-to of total" summary, and move with Prev / Next.
+- A leading **# column** numbers the rows and keeps counting across pages, so the
+  first row on page 2 continues where page 1 left off.
+- An **Export** dropdown at the top right saves the current page. CSV opens in
+  Excel or Google Sheets; PDF opens the browser print dialog, where you can pick
+  "Save as PDF" or print on paper. The export uses the values you see, including
+  the current search and sort order.
+
+All of this runs on the server, so the table stays fast no matter how many
+records the lab accumulates: only the current page is fetched, and the search
+and sort are applied by the database. When a screen has no records yet, the table
+shows a short message naming what is missing instead of an empty grid.
+
+Each listing is read-only. A **Create** button in the page header opens a
+dedicated form page for a new record, and clicking a row's first column opens
+that record's **detail page**, where you edit it, delete it, or run
+record-specific actions (for example starting or finishing a test, or resetting
+a user's password). Saving or deleting returns you to the list.
+
 ## Running a test
 
 The test is the central record in Mişko. To run one:
 
-1. Go to the **Tests** screen and create a new test.
-2. Choose a **scenario**, a **subject**, an **operator**, and a **device**.
-3. The test is created with status **pending**.
-4. When the experiment starts, the status moves to **running**.
-5. When it finishes, the status becomes **done** (or **failed** if something
-   went wrong).
+1. Go to the **Tests** screen and click **Create** to open the new-test page.
+2. Choose a **scenario**, a **subject** and (optionally) a **device**, then
+   create. The operator is the signed-in user.
+3. The test is created with status **pending**. Open its **detail page** (click
+   the row) to manage it.
+4. On the detail page, **Start** moves the status to **running**.
+5. **Finish** sets it to **done** (or **Cancel** sets **failed**). The detail
+   page also holds the per-test acceptance criteria editor.
 
 Once a test is done, its summary metrics and any artifact links are kept by
 Mişko. The raw video and frame-by-frame data stay in the separate camera

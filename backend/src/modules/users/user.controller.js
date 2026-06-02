@@ -1,8 +1,12 @@
 import { asyncHandler } from "../../utils/asyncHandler.js";
 import * as userService from "./user.service.js";
 
-export const list = asyncHandler(async (_req, res) => {
-  res.json(await userService.list());
+export const list = asyncHandler(async (req, res) => {
+  res.json(await userService.list(req.query));
+});
+
+export const getById = asyncHandler(async (req, res) => {
+  res.json(await userService.getById(req.params.id));
 });
 
 export const create = asyncHandler(async (req, res) => {

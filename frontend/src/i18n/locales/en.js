@@ -35,6 +35,7 @@ export default {
     common: {
       add: "Add",
       create: "Create",
+      new: "New",
       edit: "Edit",
       delete: "Delete",
       save: "Save",
