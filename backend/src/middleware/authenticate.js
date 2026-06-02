@@ -11,17 +11,17 @@ import { asyncHandler } from "../utils/asyncHandler.js";
 export const authenticate = asyncHandler(async (req, _res, next) => {
   const header = req.headers.authorization || "";
   const token = header.startsWith("Bearer ") ? header.slice(7) : null;
-  if (!token) throw ApiError.unauthorized("Token required");
+  if (!token) throw ApiError.unauthorized("Token required", "auth.tokenRequired");
 
   let payload;
   try {
     payload = jwt.verify(token, config.jwt.secret);
   } catch {
-    throw ApiError.unauthorized("Invalid token");
+    throw ApiError.unauthorized("Invalid token", "auth.invalidToken");
   }
 
   const user = await prisma.user.findUnique({ where: { id: payload.sub } });
-  if (!user) throw ApiError.unauthorized("User not found");
+  if (!user) throw ApiError.unauthorized("User not found", "auth.userNotFound");
 
   req.user = { id: user.id, email: user.email, name: user.name, role: user.role };
   next();
@@ -34,7 +34,7 @@ export const authenticate = asyncHandler(async (req, _res, next) => {
 export const requireRole = (...roles) =>
   (req, _res, next) => {
     if (!req.user || !roles.includes(req.user.role)) {
-      throw ApiError.forbidden("You do not have permission for this action");
+      throw ApiError.forbidden("You do not have permission for this action", "auth.forbidden");
     }
     next();
   };
@@ -46,7 +46,7 @@ export const requireRole = (...roles) =>
 export const requirePermission = (permission) =>
   (req, _res, next) => {
     if (!req.user || !hasPermission(req.user.role, permission)) {
-      throw ApiError.forbidden("You do not have permission for this action");
+      throw ApiError.forbidden("You do not have permission for this action", "auth.forbidden");
     }
     next();
   };

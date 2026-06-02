@@ -122,12 +122,12 @@ export function validateAcceptanceCriteria(criteria, opts = {}) {
     // value
     if (isRangeOperator(operator)) {
       if (!Array.isArray(value) || value.length !== 2 ||
-          typeof value[0] !== "number" || typeof value[1] !== "number") {
+          !Number.isFinite(value[0]) || !Number.isFinite(value[1])) {
         errors.push(`${at}: value for between must be [min, max]`);
       } else if (value[0] > value[1]) {
         errors.push(`${at}: for between min <= max is required`);
       }
-    } else if (operator !== undefined && typeof value !== "number") {
+    } else if (operator !== undefined && !Number.isFinite(value)) {
       errors.push(`${at}: value must be numeric`);
     }
   });

@@ -28,16 +28,16 @@ labRouter.patch(
   asyncHandler(async (req, res) => {
     const body = req.body ?? {};
     if (body.name !== undefined && (typeof body.name !== "string" || body.name.trim() === "")) {
-      throw ApiError.badRequest("name must be a non-empty string");
+      throw ApiError.badRequest("name must be a non-empty string", "common.nameRequired");
     }
     if (body.code !== undefined && body.code !== null && typeof body.code !== "string") {
-      throw ApiError.badRequest("code must be a string or null");
+      throw ApiError.badRequest("code must be a string or null", "lab.codeString");
     }
     if (body.timezone !== undefined && typeof body.timezone !== "string") {
-      throw ApiError.badRequest("timezone must be a string");
+      throw ApiError.badRequest("timezone must be a string", "lab.timezoneString");
     }
     if (body.settings !== undefined && (typeof body.settings !== "object" || body.settings === null || Array.isArray(body.settings))) {
-      throw ApiError.badRequest("settings must be an object");
+      throw ApiError.badRequest("settings must be an object", "lab.settingsObject");
     }
     res.json(await updateLaboratory(body));
   }),

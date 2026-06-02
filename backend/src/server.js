@@ -9,7 +9,7 @@ const server = app.listen(config.port, () => {
 });
 
 async function shutdown(signal) {
-  console.log(`\n${signal} alındı, kapanılıyor...`);
+  console.log(`\n${signal} received, shutting down...`);
   server.close(async () => {
     await disconnectPrisma();
     process.exit(0);

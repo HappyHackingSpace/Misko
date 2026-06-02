@@ -1,5 +1,6 @@
 import { prisma } from "../../lib/prisma.js";
 import { ApiError } from "../../utils/ApiError.js";
+import { buildListQuery, listResult } from "../../common/listQuery.js";
 import { validateAcceptanceCriteria, evaluateAcceptance } from "../../config/acceptance.js";
 
 /** Converts a result/criteria field into a JSON object (accepts a string or object). */
@@ -22,12 +23,22 @@ const include = {
   device: { select: { id: true, name: true } },
 };
 
-export const list = () =>
-  prisma.test.findMany({ orderBy: { createdAt: "desc" }, include });
+export async function list(query = {}) {
+  const q = buildListQuery(query, {
+    searchFields: ["notes"],
+    filterFields: { status: "enum", passed: "boolean" },
+    sortFields: ["status", "createdAt"],
+  });
+  const [data, total] = await Promise.all([
+    prisma.test.findMany({ where: q.where, orderBy: q.orderBy, skip: q.skip, take: q.take, include }),
+    prisma.test.count({ where: q.where }),
+  ]);
+  return listResult(data, total, q);
+}
 
 export async function getById(id) {
   const row = await prisma.test.findUnique({ where: { id }, include });
-  if (!row) throw ApiError.notFound();
+  if (!row) throw ApiError.notFound("Not found", "common.notFound");
   return row;
 }
 
@@ -36,7 +47,7 @@ export async function getById(id) {
  */
 export function create({ scenarioId, subjectId, deviceId, notes }, operatorId) {
   if (!scenarioId || !subjectId) {
-    throw ApiError.badRequest("scenarioId and subjectId are required");
+    throw ApiError.badRequest("scenarioId and subjectId are required", "test.idsRequired");
   }
   return prisma.test.create({
     data: {
@@ -72,7 +83,7 @@ export async function update(id, payload) {
   if (acceptanceCriteria !== undefined) {
     criteria = acceptanceCriteria == null ? null : asObject(acceptanceCriteria) ?? acceptanceCriteria;
     const { valid, errors } = validateAcceptanceCriteria(criteria);
-    if (!valid) throw ApiError.badRequest(`Invalid acceptance criteria: ${errors.join("; ")}`);
+    if (!valid) throw ApiError.badRequest(`Invalid acceptance criteria: ${errors.join("; ")}`, "test.invalidAcceptance", { errors: errors.join("; ") });
     data.acceptanceCriteria = criteria == null ? null : JSON.stringify(criteria);
   }
 

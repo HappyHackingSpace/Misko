@@ -1,5 +1,6 @@
 import { prisma } from "../../lib/prisma.js";
 import { ApiError } from "../../utils/ApiError.js";
+import { buildListQuery, listResult } from "../../common/listQuery.js";
 import { getParadigmSpec } from "../../config/paradigms.js";
 import { getLaboratory } from "../lab/lab.service.js";
 
@@ -18,17 +19,17 @@ import { getLaboratory } from "../lab/lab.service.js";
 function validateApparatusValue(param, value) {
   if (param.type === "number") {
     if (typeof value !== "number" || Number.isNaN(value)) {
-      throw ApiError.badRequest(`${param.key} must be numeric`);
+      throw ApiError.badRequest(`${param.key} must be numeric`, "environment.paramNumeric", { key: param.key });
     }
     if (param.min != null && value < param.min) {
-      throw ApiError.badRequest(`${param.key} must be at least ${param.min}`);
+      throw ApiError.badRequest(`${param.key} must be at least ${param.min}`, "environment.paramMin", { key: param.key, min: param.min });
     }
     if (param.max != null && value > param.max) {
-      throw ApiError.badRequest(`${param.key} must be at most ${param.max}`);
+      throw ApiError.badRequest(`${param.key} must be at most ${param.max}`, "environment.paramMax", { key: param.key, max: param.max });
     }
   } else if (param.type === "enum") {
     if (!param.options.includes(value)) {
-      throw ApiError.badRequest(`${param.key} invalid option`);
+      throw ApiError.badRequest(`${param.key} invalid option`, "environment.paramOption", { key: param.key });
     }
   }
   return value;
@@ -42,12 +43,12 @@ function validateApparatusValue(param, value) {
  */
 function buildConfig(spec, apparatusInput = {}) {
   if (typeof apparatusInput !== "object" || apparatusInput === null || Array.isArray(apparatusInput)) {
-    throw ApiError.badRequest("apparatus must be an object");
+    throw ApiError.badRequest("apparatus must be an object", "environment.apparatusObject");
   }
   const knownKeys = new Set(spec.apparatusParameters.map((p) => p.key));
   for (const key of Object.keys(apparatusInput)) {
     if (!knownKeys.has(key)) {
-      throw ApiError.badRequest(`Unknown apparatus parameter: ${key}`);
+      throw ApiError.badRequest(`Unknown apparatus parameter: ${key}`, "environment.unknownParam", { key });
     }
   }
 
@@ -62,7 +63,7 @@ function buildConfig(spec, apparatusInput = {}) {
     }
     if (value === undefined) {
       if (param.required) {
-        throw ApiError.badRequest(`${param.key} is required`);
+        throw ApiError.badRequest(`${param.key} is required`, "environment.paramRequired", { key: param.key });
       }
       continue; // optional with no default: leave unset
     }
@@ -79,28 +80,37 @@ function buildConfig(spec, apparatusInput = {}) {
   };
 }
 
-/** Lists all environments for the lab (newest first). */
-export function listEnvironments() {
-  return prisma.environment.findMany({ orderBy: { createdAt: "desc" } });
+/** Lists environments for the lab with pagination, search, filter and sort. */
+export async function listEnvironments(query = {}) {
+  const q = buildListQuery(query, {
+    searchFields: ["name", "notes"],
+    filterFields: { name: "text", paradigmKey: "enum" },
+    sortFields: ["name", "paradigmKey", "createdAt"],
+  });
+  const [data, total] = await Promise.all([
+    prisma.environment.findMany({ where: q.where, orderBy: q.orderBy, skip: q.skip, take: q.take }),
+    prisma.environment.count({ where: q.where }),
+  ]);
+  return listResult(data, total, q);
 }
 
 /** Fetches a single environment by id (404 if missing). */
 export async function getEnvironment(id) {
   const row = await prisma.environment.findUnique({ where: { id } });
-  if (!row) throw ApiError.notFound("Environment not found");
+  if (!row) throw ApiError.notFound("Environment not found", "environment.notFound");
   return row;
 }
 
 /** Creates a named environment instance from a paradigm template. */
 export async function createEnvironment(input = {}) {
   const name = typeof input.name === "string" ? input.name.trim() : "";
-  if (!name) throw ApiError.badRequest("name must be a non-empty string");
+  if (!name) throw ApiError.badRequest("name must be a non-empty string", "common.nameRequired");
 
   const spec = getParadigmSpec(input.paradigmKey);
-  if (!spec) throw ApiError.badRequest("Unknown paradigm");
+  if (!spec) throw ApiError.badRequest("Unknown paradigm", "environment.unknownParadigm");
 
   if (input.notes !== undefined && input.notes !== null && typeof input.notes !== "string") {
-    throw ApiError.badRequest("notes must be a string");
+    throw ApiError.badRequest("notes must be a string", "environment.notesString");
   }
 
   const config = buildConfig(spec, input.apparatus ?? {});
@@ -128,24 +138,24 @@ export async function updateEnvironment(id, input = {}) {
 
   if (input.name !== undefined) {
     const name = typeof input.name === "string" ? input.name.trim() : "";
-    if (!name) throw ApiError.badRequest("name must be a non-empty string");
+    if (!name) throw ApiError.badRequest("name must be a non-empty string", "common.nameRequired");
     data.name = name;
   }
 
   if (input.notes !== undefined) {
     if (input.notes !== null && typeof input.notes !== "string") {
-      throw ApiError.badRequest("notes must be a string");
+      throw ApiError.badRequest("notes must be a string", "environment.notesString");
     }
     data.notes = input.notes;
   }
 
   if (input.paradigmKey !== undefined && input.paradigmKey !== existing.paradigmKey) {
-    throw ApiError.badRequest("paradigmKey cannot be changed");
+    throw ApiError.badRequest("paradigmKey cannot be changed", "environment.paradigmImmutable");
   }
 
   if (input.apparatus !== undefined) {
     const spec = getParadigmSpec(existing.paradigmKey);
-    if (!spec) throw ApiError.badRequest("Unknown paradigm");
+    if (!spec) throw ApiError.badRequest("Unknown paradigm", "environment.unknownParadigm");
     data.config = buildConfig(spec, input.apparatus ?? {});
   }
 
