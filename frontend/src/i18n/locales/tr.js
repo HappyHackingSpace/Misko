@@ -107,7 +107,7 @@ export default {
       passwordOptional: "Şifre (opsiyonel)",
       passwordPlaceholder: "boşsa üretilir",
       namePlaceholder: "Ahmet Yılmaz",
-      emailPlaceholder: "ahmet@fare.lab",
+      emailPlaceholder: "ahmet{'@'}fare.lab",
       resetPassword: "Şifre sıfırla",
       createdWithPassword:
         "Kullanıcı oluşturuldu — {email} için üretilen şifre (bir kez gösterilir): {password}",
