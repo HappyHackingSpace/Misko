@@ -1,19 +1,19 @@
 /**
- * Paradigma kayit defteri (Step 2 - bilimsel kontrat).
+ * Paradigm registry (Step 2 - scientific contract).
  *
- * Kod sahipli ParadigmSpec'ler. Her paradigma; kimlik, apparatus/oturum
- * parametreleri, bolge (zone) modeli, metrik kumeleri, kabul kriterleri ve
- * QC gereksinimlerini deklaratif olarak tasir. Bu, gercek AI veri uretmeye
- * baslamadan once "sistem her olcumle neyi kastediyor" sorusunu sabitler.
+ * Code-owned ParadigmSpecs. Each paradigm declaratively carries its identity,
+ * apparatus/session parameters, zone model, metric sets, acceptance criteria,
+ * and QC requirements. This pins down "what the system means by each measurement"
+ * before the real AI starts producing data.
  *
- * Kaynak: docs/MEASUREMENTS.md, bolum 2.
+ * Source: docs/MEASUREMENTS.md, section 2.
  */
 import { UNITS } from "./units.js";
 import { metricsForParadigm } from "./metrics.js";
 
 /**
- * Sonuc sema surumlemesi. Sonuc gonderiminde (Step 4) bu degerler sonuca
- * gomulur; geriye donuk uyumsuz degisikliklerde major surum artirilir.
+ * Result schema versioning. On result submission (Step 4) these values are
+ * embedded in the result; the major version is bumped on backward-incompatible changes.
  */
 export const RESULT_SCHEMA_VERSION = 1;
 
@@ -24,12 +24,12 @@ export const PARADIGM_CATEGORIES = Object.freeze({
   SOCIAL: "social",
 });
 
-/** Sayisal apparatus/oturum alani ureten yardimci. */
+/** Helper that produces a numeric apparatus/session field. */
 function num(key, label, unit, { min, max, def, required = true } = {}) {
   return { key, label, type: "number", unit, min, max, default: def, required };
 }
 
-/** Secimli alan ureten yardimci. */
+/** Helper that produces an enum field. */
 function choice(key, label, options, { def, required = true } = {}) {
   return { key, label, type: "enum", options, default: def, required };
 }
@@ -243,8 +243,8 @@ const BARNES_MAZE = {
     num("platform_diameter_cm", "Platform capi", UNITS.CM, { min: 60, max: 150, def: 92 }),
     num("hole_count", "Delik sayisi", UNITS.COUNT, { min: 12, max: 40, def: 20 }),
     num("hole_diameter_cm", "Delik capi", UNITS.CM, { min: 3, max: 10, def: 5 }),
-    // 1..hole_count araliginda; ust sinir hole_count'un maksimumudur (40).
-    // Apparatus yapilandirmasinda secilen hole_count'a gore ayrica dogrulanir.
+    // In the 1..hole_count range; the upper bound is the maximum of hole_count (40).
+    // Also validated against the hole_count chosen in the apparatus configuration.
     num("target_hole_index", "Hedef delik indeksi", UNITS.COUNT, { min: 1, max: 40, def: 10, required: false }),
   ],
   sessionParameters: [
@@ -377,7 +377,7 @@ const TREADMILL = {
   qc: [{ key: "min_tracking_confidence", operator: ">=", value: 0.6, overridable: true }],
 };
 
-/** Metrik kumelerini paradigmaya bagla (tek kaynak: metrics.js). */
+/** Attach metric sets to the paradigm (single source: metrics.js). */
 function withMetrics(spec) {
   return Object.freeze({
     ...spec,
@@ -403,12 +403,12 @@ export const PARADIGM_SPECS = Object.freeze({
 
 export const PARADIGM_KEYS = Object.freeze(Object.keys(PARADIGM_SPECS));
 
-/** Tek bir paradigma spec'ini anahtariyla getirir. */
+/** Fetches a single paradigm spec by key. */
 export function getParadigmSpec(key) {
   return PARADIGM_SPECS[key] ?? null;
 }
 
-/** Liste gorunumu icin ozet (detay sayfasina girmeden once). */
+/** Summary for the list view (before entering the detail page). */
 export function listParadigmSummaries() {
   return PARADIGM_KEYS.map((key) => {
     const s = PARADIGM_SPECS[key];

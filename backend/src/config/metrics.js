@@ -1,47 +1,47 @@
 /**
- * Olcum sozlugu (Step 2 - bilimsel kontrat).
+ * Measurement dictionary (Step 2 - scientific contract).
  *
- * Kod sahipli MetricDefinition kayit defteri. Amac: iki servisin ayni ismi
- * farkli hesaplamalar icin kullanmasini engellemek. Sonuc gonderiminde
- * (Step 4) tanimsiz metrik anahtarlari reddedilir.
+ * Code-owned MetricDefinition registry. Goal: prevent two services from using
+ * the same name for different computations. On result submission (Step 4),
+ * undefined metric keys are rejected.
  *
- * Kaynak: docs/MEASUREMENTS.md, bolum 3.
+ * Source: docs/MEASUREMENTS.md, section 3.
  *
- * Sablonlu anahtarlar (or. `zone_time_s.{zoneKey}`) `templated: true` ile
- * isaretlenir; gercek anahtar paradigmanin zone tanimindan turetilir.
+ * Templated keys (e.g. `zone_time_s.{zoneKey}`) are marked with
+ * `templated: true`; the real key is derived from the paradigm's zone definition.
  */
 import { UNITS } from "./units.js";
 
 /**
  * @typedef {Object} MetricDefinition
- * @property {string} key                Kanonik metrik anahtari (veya sablon).
- * @property {string} label              Insan tarafindan okunabilir etiket.
- * @property {string[]} paradigmKeys     Bu metrigin gecerli oldugu paradigmalar.
- * @property {string} unit               UNITS icinden kanonik birim.
+ * @property {string} key                Canonical metric key (or template).
+ * @property {string} label              Human-readable label.
+ * @property {string[]} paradigmKeys     Paradigms this metric is valid for.
+ * @property {string} unit               Canonical unit from UNITS.
  * @property {"number"|"integer"|"boolean"|"object"} valueType
- * @property {boolean} required          Sonucta zorunlu mu?
- * @property {boolean} [templated]       Anahtar bir zone/quadrant ile mi tamamlanir?
- * @property {string} definition         Metrigin ne oldugu.
- * @property {string} formula            Hesaplama ozeti.
- * @property {string[]} inputs           Hesaplama girdileri.
+ * @property {boolean} required          Required in the result?
+ * @property {boolean} [templated]       Is the key completed with a zone/quadrant?
+ * @property {string} definition         What the metric is.
+ * @property {string} formula            Computation summary.
+ * @property {string[]} inputs           Computation inputs.
  * @property {("per_trial"|"per_session"|"per_subject_timepoint"|"study_summary")} aggregation
  * @property {[number, number]|null} validRange
- * @property {string[]} qcDependencies   Bagimli oldugu QC kurallari.
+ * @property {string[]} qcDependencies   QC rules it depends on.
  */
 
-// Paradigma gruplari - baseline metriklerin hangi paradigmalarda gecerli
-// oldugunu tek yerden yonetmek icin. Yeni paradigma eklenince ilgili gruba
-// eklemek yeterli.
+// Paradigm groups - to manage in one place which paradigms baseline metrics
+// are valid for. When a new paradigm is added, just add it to the relevant
+// group.
 const ALL_PARADIGMS = [
   "MWM", "OPEN_FIELD", "EPM", "ROTAROD", "Y_MAZE", "NOVEL_OBJECT",
   "BARNES_MAZE", "THREE_CHAMBER", "LIGHT_DARK", "POLE", "TREADMILL",
 ];
-// Serbest hareketli, yolu izlenen (lokomosyon) paradigmalar.
+// Free-moving, path-tracked (locomotion) paradigms.
 const LOCOMOTION = [
   "MWM", "OPEN_FIELD", "EPM", "Y_MAZE", "NOVEL_OBJECT",
   "BARNES_MAZE", "THREE_CHAMBER", "LIGHT_DARK", "TREADMILL",
 ];
-// Bolge (zone) tabanli arena paradigmalari.
+// Zone-based arena paradigms.
 const ARENA_ZONED = [
   "MWM", "OPEN_FIELD", "EPM", "Y_MAZE", "NOVEL_OBJECT",
   "BARNES_MAZE", "THREE_CHAMBER", "LIGHT_DARK",
@@ -519,7 +519,7 @@ const ROTAROD = [
   },
 ];
 
-/** @type {MetricDefinition[]} - Y Labirenti (uzamsal calisma bellegi) */
+/** @type {MetricDefinition[]} - Y Maze (spatial working memory) */
 const Y_MAZE = [
   {
     key: "spontaneous_alternation_ratio",
@@ -565,7 +565,7 @@ const Y_MAZE = [
   },
 ];
 
-/** @type {MetricDefinition[]} - Yeni Nesne Tanima (NOR) */
+/** @type {MetricDefinition[]} - Novel Object Recognition (NOR) */
 const NOVEL_OBJECT = [
   {
     key: "novel_object_time_s",
@@ -625,7 +625,7 @@ const NOVEL_OBJECT = [
   },
 ];
 
-/** @type {MetricDefinition[]} - Barnes Labirenti (uzamsal bellek, kuru) */
+/** @type {MetricDefinition[]} - Barnes Maze (spatial memory, dry) */
 const BARNES_MAZE = [
   {
     key: "primary_latency_s",
@@ -671,7 +671,7 @@ const BARNES_MAZE = [
   },
 ];
 
-/** @type {MetricDefinition[]} - Uc Bolmeli Sosyallik */
+/** @type {MetricDefinition[]} - Three-Chamber Sociability */
 const THREE_CHAMBER = [
   {
     key: "social_chamber_time_s",
@@ -731,7 +731,7 @@ const THREE_CHAMBER = [
   },
 ];
 
-/** @type {MetricDefinition[]} - Aydinlik/Karanlik Kutu (anksiyete) */
+/** @type {MetricDefinition[]} - Light/Dark Box (anxiety) */
 const LIGHT_DARK = [
   {
     key: "light_time_ratio",
@@ -791,7 +791,7 @@ const LIGHT_DARK = [
   },
 ];
 
-/** @type {MetricDefinition[]} - Cubuk (Pole) Testi (motor/bradikinesi) */
+/** @type {MetricDefinition[]} - Pole Test (motor/bradykinesia) */
 const POLE = [
   {
     key: "t_turn_s",
@@ -837,7 +837,7 @@ const POLE = [
   },
 ];
 
-/** @type {MetricDefinition[]} - Kosu Bandi (Treadmill, dayaniklilik/yuruyus) */
+/** @type {MetricDefinition[]} - Treadmill (endurance/gait) */
 const TREADMILL = [
   {
     key: "run_time_s",
@@ -917,20 +917,20 @@ export const METRIC_DEFINITIONS = Object.freeze(
 
 const BY_KEY = new Map(METRIC_DEFINITIONS.map((m) => [m.key, m]));
 
-/** Tek bir metrik tanimini anahtariyla getirir (sablon kok anahtari dahil). */
+/** Fetches a single metric definition by key (including the template root key). */
 export function getMetricDefinition(key) {
   return BY_KEY.get(key) ?? null;
 }
 
-/** Bir paradigmaya ait metrik tanimlarini dondurur. */
+/** Returns the metric definitions belonging to a paradigm. */
 export function metricsForParadigm(paradigmKey) {
   return METRIC_DEFINITIONS.filter((m) => m.paradigmKeys.includes(paradigmKey));
 }
 
 /**
- * Bir sonuc anahtarinin sozlukte tanimli olup olmadigini soyler.
- * Sablonlu anahtarlar (`zone_time_s.center`) kok anahtara (`zone_time_s`)
- * gore eslenir.
+ * Tells whether a result key is defined in the dictionary.
+ * Templated keys (`zone_time_s.center`) are matched against the root key
+ * (`zone_time_s`).
  */
 export function isKnownMetricKey(key) {
   if (BY_KEY.has(key)) return true;

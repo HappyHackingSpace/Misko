@@ -14,12 +14,12 @@ export async function list() {
 }
 
 /**
- * ADMIN tarafından içeriden kullanıcı oluşturur. Şifre verilmezse sistem üretir;
- * üretilen/atanan düz şifre çağrıya **bir kez** `generatedPassword` ile döner.
+ * Creates a user internally by an ADMIN. If no password is given the system generates one;
+ * the generated/assigned plaintext password is returned to the caller **once** via `generatedPassword`.
  */
 export async function create({ name, email, role, password }) {
   const exists = await prisma.user.findUnique({ where: { email } });
-  if (exists) throw ApiError.conflict("Bu e-posta zaten kayıtlı");
+  if (exists) throw ApiError.conflict("This email is already registered");
 
   const plain = password || generateStrongPassword();
   const user = await prisma.user.create({
@@ -31,9 +31,9 @@ export async function create({ name, email, role, password }) {
 
 export async function update(id, data) {
   const user = await prisma.user.findUnique({ where: { id } });
-  if (!user) throw ApiError.notFound("Kullanıcı bulunamadı");
+  if (!user) throw ApiError.notFound("User not found");
 
-  // Son yetkili (user:manage olan) kullanıcıyı yetkisiz role düşürmeyi engelle.
+  // Prevent demoting the last privileged user (with user:manage) to an unprivileged role.
   if (isPrivilegedRole(user.role) && data.role && !isPrivilegedRole(data.role)) {
     await assertNotLastPrivileged(id);
   }
@@ -44,7 +44,7 @@ export async function update(id, data) {
 
 export async function resetPassword(id, password) {
   const user = await prisma.user.findUnique({ where: { id } });
-  if (!user) throw ApiError.notFound("Kullanıcı bulunamadı");
+  if (!user) throw ApiError.notFound("User not found");
 
   const plain = password || generateStrongPassword();
   await prisma.user.update({ where: { id }, data: { password: await hash(plain) } });
@@ -53,8 +53,8 @@ export async function resetPassword(id, password) {
 
 export async function remove(id, currentUserId) {
   const user = await prisma.user.findUnique({ where: { id } });
-  if (!user) throw ApiError.notFound("Kullanıcı bulunamadı");
-  if (id === currentUserId) throw ApiError.badRequest("Kendi hesabınızı silemezsiniz");
+  if (!user) throw ApiError.notFound("User not found");
+  if (id === currentUserId) throw ApiError.badRequest("You cannot delete your own account");
   if (isPrivilegedRole(user.role)) await assertNotLastPrivileged(id);
 
   await prisma.user.delete({ where: { id } });
@@ -63,7 +63,7 @@ export async function remove(id, currentUserId) {
 async function assertNotLastPrivileged(id) {
   const privileged = await prisma.user.count({ where: { role: { in: PRIVILEGED_ROLES } } });
   if (privileged <= 1) {
-    throw ApiError.badRequest("Son yetkili kullanıcı kaldırılamaz/değiştirilemez");
+    throw ApiError.badRequest("The last privileged user cannot be removed or changed");
   }
   return id;
 }

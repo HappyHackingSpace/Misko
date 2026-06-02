@@ -1,6 +1,6 @@
 /**
- * HTTP durum kodu taşıyan uygulama hatası. Servis/controller katmanı bunu
- * fırlatır, merkezi hata middleware'i yakalayıp yanıta çevirir.
+ * Application error that carries an HTTP status code. The service/controller
+ * layer throws it, and the central error middleware catches it and converts it to a response.
  */
 export class ApiError extends Error {
   constructor(statusCode, message, details) {
@@ -10,23 +10,23 @@ export class ApiError extends Error {
     this.details = details;
   }
 
-  static badRequest(message = "Geçersiz istek", details) {
+  static badRequest(message = "Bad request", details) {
     return new ApiError(400, message, details);
   }
 
-  static unauthorized(message = "Yetkisiz") {
+  static unauthorized(message = "Unauthorized") {
     return new ApiError(401, message);
   }
 
-  static forbidden(message = "Erişim reddedildi") {
+  static forbidden(message = "Access denied") {
     return new ApiError(403, message);
   }
 
-  static notFound(message = "Bulunamadı") {
+  static notFound(message = "Not found") {
     return new ApiError(404, message);
   }
 
-  static conflict(message = "Çakışma") {
+  static conflict(message = "Conflict") {
     return new ApiError(409, message);
   }
 }

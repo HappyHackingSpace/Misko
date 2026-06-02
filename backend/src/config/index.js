@@ -1,13 +1,13 @@
 import "dotenv/config";
 
 /**
- * Merkezi yapılandırma. Ortam değişkenleri burada okunur, doğrulanır ve
- * uygulamanın geri kalanına tek bir nesne olarak sunulur.
+ * Central configuration. Environment variables are read, validated, and
+ * exposed to the rest of the application as a single object here.
  */
 function required(name, fallback) {
   const value = process.env[name] ?? fallback;
   if (value === undefined || value === "") {
-    throw new Error(`Eksik ortam değişkeni: ${name}`);
+    throw new Error(`Missing environment variable: ${name}`);
   }
   return value;
 }
@@ -29,9 +29,10 @@ export const config = {
     origin: process.env.CORS_ORIGIN || "*",
   },
   bcryptRounds: Number(process.env.BCRYPT_ROUNDS || 10),
-  // Docker açılışında superadmin bootstrap'i için e-posta (şifreyi sistem üretir)
+  // Email for the superadmin bootstrap at Docker startup (the system generates the password)
   adminEmail: process.env.ADMIN_EMAIL || "admin@fare.lab",
-  // Tek kiracı (on-prem) kurulumun laboratuvar adı. Phase 1'de Laboratory
-  // singleton'ı gelene kadar markalama bunu kullanır.
+  // Laboratory name for the single-tenant (on-prem) install. The setup wizard
+  // (bootstrap-admin.js) creates the Laboratory singleton with this; it is also
+  // the fallback name for /api/meta branding when the singleton does not exist yet.
   labName: process.env.LAB_NAME || "Mişko Laboratuvarı",
 };

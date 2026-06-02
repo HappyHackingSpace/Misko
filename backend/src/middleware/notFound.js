@@ -1,8 +1,8 @@
 import { ApiError } from "../utils/ApiError.js";
 
 /**
- * Eşleşmeyen rotalar için 404 üretir.
+ * Produces a 404 for unmatched routes.
  */
 export function notFound(req, _res, next) {
-  next(ApiError.notFound(`Rota bulunamadı: ${req.method} ${req.originalUrl}`));
+  next(ApiError.notFound(`Route not found: ${req.method} ${req.originalUrl}`));
 }

@@ -1,10 +1,10 @@
 import "dotenv/config";
 import { prisma } from "../src/lib/prisma.js";
 
-// Örnek domain verisi: 4 senaryo + örnek denek.
-// Not: Admin kullanıcısı burada OLUŞTURULMAZ — superadmin Docker açılışında
-// `prisma/bootstrap-admin.js` ile (güçlü, üretilen şifreyle) oluşturulur.
-// Yerelde admin için: `npm run db:bootstrap`.
+// Sample domain data: 4 scenarios + sample subject.
+// Note: the admin user is NOT created here; the superadmin is created at Docker
+// startup via `prisma/bootstrap-admin.js` (with a strong, generated password).
+// For a local admin: `npm run db:bootstrap`.
 async function main() {
   const scenarios = [
     { name: "Havuz", type: "POOL", description: "Su labirenti — platform bulma" },

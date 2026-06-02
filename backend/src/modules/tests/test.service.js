@@ -2,7 +2,7 @@ import { prisma } from "../../lib/prisma.js";
 import { ApiError } from "../../utils/ApiError.js";
 import { validateAcceptanceCriteria, evaluateAcceptance } from "../../config/acceptance.js";
 
-/** Bir result/criteria alanini JSON nesnesine cevirir (string veya nesne kabul). */
+/** Converts a result/criteria field into a JSON object (accepts a string or object). */
 function asObject(value) {
   if (value == null) return null;
   if (typeof value === "string") {
@@ -32,11 +32,11 @@ export async function getById(id) {
 }
 
 /**
- * Yeni test oluşturur. Operatör, oturum açan kullanıcıdır.
+ * Creates a new test. The operator is the logged-in user.
  */
 export function create({ scenarioId, subjectId, deviceId, notes }, operatorId) {
   if (!scenarioId || !subjectId) {
-    throw ApiError.badRequest("scenarioId ve subjectId zorunlu");
+    throw ApiError.badRequest("scenarioId and subjectId are required");
   }
   return prisma.test.create({
     data: {
@@ -51,12 +51,12 @@ export function create({ scenarioId, subjectId, deviceId, notes }, operatorId) {
 }
 
 /**
- * Durum/sonuç günceller (başlat, bitir, sonuç yaz).
+ * Updates status/result (start, finish, write result).
  *
- * Kabul kriterleri (acceptanceCriteria) opsiyoneldir ve test bazlidir.
- * - Kriter verilirse dogrulanir ve JSON olarak saklanir.
- * - Sonuc (result) yazilirken, `passed` acikca verilmediyse kayitli/yeni
- *   kriterlere gore otomatik degerlendirilir. Kriter yoksa passed = null.
+ * Acceptance criteria (acceptanceCriteria) are optional and per-test.
+ * - If criteria are given, they are validated and stored as JSON.
+ * - When a result is written and `passed` is not given explicitly, it is
+ *   evaluated automatically against the stored/new criteria. With no criteria, passed = null.
  */
 export async function update(id, payload) {
   const { status, startedAt, endedAt, result, passed, notes, acceptanceCriteria } = payload;
@@ -67,18 +67,18 @@ export async function update(id, payload) {
   if (result !== undefined) data.result = typeof result === "string" ? result : JSON.stringify(result);
   if (notes !== undefined) data.notes = notes;
 
-  // Kabul kriterleri: dogrula ve sakla.
+  // Acceptance criteria: validate and store.
   let criteria;
   if (acceptanceCriteria !== undefined) {
     criteria = acceptanceCriteria == null ? null : asObject(acceptanceCriteria) ?? acceptanceCriteria;
     const { valid, errors } = validateAcceptanceCriteria(criteria);
-    if (!valid) throw ApiError.badRequest(`Gecersiz kabul kriteri: ${errors.join("; ")}`);
+    if (!valid) throw ApiError.badRequest(`Invalid acceptance criteria: ${errors.join("; ")}`);
     data.acceptanceCriteria = criteria == null ? null : JSON.stringify(criteria);
   }
 
-  // passed otomatik degerlendirme: result yazildi ve passed acikca verilmediyse.
+  // Auto-evaluate passed: when a result was written and passed was not given explicitly.
   if (passed !== undefined) {
-    data.passed = passed; // manuel gecersiz kilma
+    data.passed = passed; // manual override
   } else if (result !== undefined) {
     let activeCriteria = criteria;
     if (activeCriteria === undefined) {

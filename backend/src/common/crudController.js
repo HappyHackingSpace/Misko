@@ -3,14 +3,14 @@ import { requirePermission } from "../middleware/authenticate.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 
 /**
- * Bir CRUD servisini standart REST rotalarına bağlar.
+ * Binds a CRUD service to standard REST routes.
  *
- * Okuma (GET) rotaları yalnızca kimlik doğrulaması ister (router üst seviyede
- * `authenticate` ile sarılır). Yazma rotaları (POST/PATCH/DELETE) opsiyonel bir
- * izinle korunabilir.
+ * Read (GET) routes only require authentication (the router is wrapped with
+ * `authenticate` at the top level). Write routes (POST/PATCH/DELETE) can be
+ * protected with an optional permission.
  *
  * @param {ReturnType<import("./crudService.js").createCrudService>} service
- * @param {{ writePermission?: string }} [options] - yazma rotaları için gerekli izin
+ * @param {{ writePermission?: string }} [options] - permission required for write routes
  */
 export function createCrudRouter(service, options = {}) {
   const router = Router();
