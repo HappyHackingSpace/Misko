@@ -78,7 +78,7 @@ async function remove(u) {
       <div class="field">
         <label>{{ $t("users.role") }}</label>
         <select v-model="form.role">
-          <option v-for="r in ROLES" :key="r" :value="r">{{ r }}</option>
+          <option v-for="r in ROLES" :key="r" :value="r">{{ $t(`roles.${r}`) }}</option>
         </select>
       </div>
       <div class="field"><label>{{ $t("users.passwordOptional") }}</label><input v-model="form.password" :placeholder="$t('users.passwordPlaceholder')" /></div>
@@ -97,7 +97,7 @@ async function remove(u) {
           <td class="muted">{{ u.email }}</td>
           <td>
             <select :value="u.role" @change="changeRole(u, $event.target.value)">
-              <option v-for="r in ROLES" :key="r" :value="r">{{ r }}</option>
+              <option v-for="r in ROLES" :key="r" :value="r">{{ $t(`roles.${r}`) }}</option>
             </select>
           </td>
           <td class="muted">{{ new Date(u.createdAt).toLocaleDateString(locale) }}</td>

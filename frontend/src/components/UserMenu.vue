@@ -56,7 +56,7 @@ onBeforeUnmount(() => {
       <div class="head">
         <div class="who-name">{{ auth.user.name }}</div>
         <div class="who-meta">{{ auth.user.email }}</div>
-        <span class="pill">{{ auth.user.role }}</span>
+        <span class="pill">{{ $t(`roles.${auth.user.role}`) }}</span>
       </div>
       <div class="sep"></div>
       <button class="item danger" @click="logout">{{ $t("nav.logout") }}</button>

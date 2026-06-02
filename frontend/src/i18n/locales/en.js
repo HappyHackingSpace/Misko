@@ -22,6 +22,14 @@ export default {
       light: "Light",
       dark: "Dark",
     },
+    // RBAC role labels (keys match the backend roles exactly).
+    roles: {
+      SUPERADMIN: "Superadmin",
+      LAB_MANAGER: "Lab Manager",
+      RESEARCHER: "Researcher",
+      TECHNICIAN: "Technician",
+      VIEWER: "Viewer",
+    },
     common: {
       add: "Add",
       create: "Create",

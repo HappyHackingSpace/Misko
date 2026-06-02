@@ -22,6 +22,14 @@ export default {
       light: "Açık",
       dark: "Koyu",
     },
+    // RBAC rol etiketleri (anahtarlar backend rolleriyle birebir).
+    roles: {
+      SUPERADMIN: "Süper Yönetici",
+      LAB_MANAGER: "Laboratuvar Yöneticisi",
+      RESEARCHER: "Araştırmacı",
+      TECHNICIAN: "Teknisyen",
+      VIEWER: "İzleyici",
+    },
     common: {
       add: "Ekle",
       create: "Oluştur",
