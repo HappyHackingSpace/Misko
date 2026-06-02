@@ -63,11 +63,12 @@ Exit criteria:
 Goal: define what the system means by each paradigm and each measurement before
 real AI starts producing data.
 
-- Add code-backed `ParadigmSpec` registry: (done, `backend/src/config/paradigms.js`)
-  - `MWM`
-  - `OPEN_FIELD`
-  - `EPM`
-  - `ROTAROD`
+- Add code-backed `ParadigmSpec` registry: (done, 11 paradigms in `backend/src/config/paradigms.js`)
+  - `MWM`, `OPEN_FIELD`, `EPM`, `ROTAROD`
+  - `Y_MAZE`, `NOVEL_OBJECT`, `BARNES_MAZE` (learning and memory)
+  - `THREE_CHAMBER` (social)
+  - `LIGHT_DARK` (anxiety)
+  - `POLE`, `TREADMILL` (motor)
 - Add code-backed `MetricDefinition` registry from `docs/MEASUREMENTS.md`. (done, `backend/src/config/metrics.js`)
 - Lock canonical units: (done, `backend/src/config/units.js`)
   - position and distance: `cm`

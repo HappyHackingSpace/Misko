@@ -36,7 +36,7 @@ Tamamlandı: beş rollü izin matrisi (`backend/src/config/permissions.js`) ve s
 
 ## Adım 2 - Bilimsel kontrat
 
-- Kod sahipli `ParadigmSpec` kayıt defteri: `MWM`, `OPEN_FIELD`, `EPM`, `ROTAROD`. ✅
+- Kod sahipli `ParadigmSpec` kayıt defteri (11 paradigma): `MWM`, `OPEN_FIELD`, `EPM`, `ROTAROD`, `Y_MAZE`, `NOVEL_OBJECT`, `BARNES_MAZE`, `THREE_CHAMBER`, `LIGHT_DARK`, `POLE`, `TREADMILL`. ✅
 - [Ölçüm mimarisi](../measurements/) içindeki kod sahipli metrik sözlüğü. ✅
 - Kanonik birimler: `cm`, `cm_s`, `s`, `ratio`, `count`. ✅
 - Paradigma başına parametreler, bölgeler, metrikler, kabul kriterleri, QC gereksinimleri ve artefakt beklentileri. ✅

@@ -36,7 +36,7 @@ Done: the five-role permission matrix (`backend/src/config/permissions.js`) and 
 
 ## Step 2 - Scientific contract
 
-- Code-backed `ParadigmSpec` registry: `MWM`, `OPEN_FIELD`, `EPM`, `ROTAROD`. ✅
+- Code-backed `ParadigmSpec` registry (11 paradigms): `MWM`, `OPEN_FIELD`, `EPM`, `ROTAROD`, `Y_MAZE`, `NOVEL_OBJECT`, `BARNES_MAZE`, `THREE_CHAMBER`, `LIGHT_DARK`, `POLE`, `TREADMILL`. ✅
 - Code-backed metric dictionary from [Measurement architecture](../measurements/). ✅
 - Canonical units: `cm`, `cm_s`, `s`, `ratio`, `count`. ✅
 - Per-paradigm parameters, zones, metrics, acceptance criteria, QC requirements and artifact expectations. ✅
