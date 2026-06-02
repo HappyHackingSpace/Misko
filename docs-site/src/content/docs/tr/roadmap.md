@@ -39,7 +39,8 @@ Tamamlandı: beş rollü izin matrisi (`backend/src/config/permissions.js`) ve s
 - Kod sahipli `ParadigmSpec` kayıt defteri (11 paradigma): `MWM`, `OPEN_FIELD`, `EPM`, `ROTAROD`, `Y_MAZE`, `NOVEL_OBJECT`, `BARNES_MAZE`, `THREE_CHAMBER`, `LIGHT_DARK`, `POLE`, `TREADMILL`. ✅
 - [Ölçüm mimarisi](../measurements/) içindeki kod sahipli metrik sözlüğü. ✅
 - Kanonik birimler: `cm`, `cm_s`, `s`, `ratio`, `count`. ✅
-- Paradigma başına parametreler, bölgeler, metrikler, kabul kriterleri, QC gereksinimleri ve artefakt beklentileri. ✅
+- Paradigma başına parametreler, bölgeler, metrikler, önerilen kabul şablonları, QC gereksinimleri ve artefakt beklentileri. ✅
+- Opsiyonel, test bazlı, kullanıcı tanımlı kabul kriterleri (motor `backend/src/config/acceptance.js`, düzenleyici `frontend/src/components/AcceptanceEditor.vue`). ✅
 - `schemaVersion` ile sonuç şema versiyonlama. ✅
 - Salt-okunur inceleme API'si: `GET /api/paradigms`, `GET /api/paradigms/:key`, `GET /api/paradigms/metrics`, `GET /api/paradigms/units`. ✅
 

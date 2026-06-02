@@ -67,7 +67,7 @@ const MWM = {
       { key: "wall_annulus", label: "Duvar halkasi", type: "annulus", role: "periphery", required: false, geometryCm: { outerRadius: r, innerRadius: r - annulus } },
     ];
   },
-  acceptance: [
+  suggestedAcceptance: [
     { key: "escape_within_trial", metricKey: "escape_latency_s", operator: "<=", value: "max_trial_duration_s", appliesToTrialTypes: ["acquisition"], overridable: true },
   ],
   qc: [
@@ -101,7 +101,7 @@ const OPEN_FIELD = {
       { key: "periphery", label: "Cevre", type: "polygon", role: "periphery", required: true, derivedFrom: "center" },
     ];
   },
-  acceptance: [],
+  suggestedAcceptance: [],
   qc: [
     { key: "min_tracking_confidence", operator: ">=", value: 0.7, overridable: true },
     { key: "max_dropped_frames_ratio", operator: "<=", value: 0.1, overridable: true },
@@ -131,7 +131,7 @@ const EPM = {
       { key: "center", label: "Merkez", type: "polygon", role: "center", required: true },
     ];
   },
-  acceptance: [],
+  suggestedAcceptance: [],
   qc: [
     { key: "min_tracking_confidence", operator: ">=", value: 0.7, overridable: true },
     { key: "max_dropped_frames_ratio", operator: "<=", value: 0.15, overridable: true },
@@ -161,7 +161,7 @@ const ROTAROD = {
   zones() {
     return [];
   },
-  acceptance: [
+  suggestedAcceptance: [
     { key: "minimum_latency", metricKey: "latency_to_fall_s", operator: ">=", value: "study.minimum_latency_s", overridable: true },
   ],
   qc: [{ key: "min_tracking_confidence", operator: ">=", value: 0.6, overridable: true }],
@@ -192,7 +192,7 @@ const Y_MAZE = {
       { key: "novel", label: "Yeni kol", type: "polygon", role: "target", required: false },
     ];
   },
-  acceptance: [],
+  suggestedAcceptance: [],
   qc: [
     { key: "min_tracking_confidence", operator: ">=", value: 0.7, overridable: true },
     { key: "max_calibration_error_cm", operator: "<=", value: 2, overridable: true },
@@ -223,7 +223,7 @@ const NOVEL_OBJECT = {
       { key: "familiar_object", label: "Tanidik nesne", type: "circle", role: "control", required: true },
     ];
   },
-  acceptance: [],
+  suggestedAcceptance: [],
   qc: [
     { key: "min_tracking_confidence", operator: ">=", value: 0.75, overridable: true },
     { key: "max_calibration_error_cm", operator: "<=", value: 1.5, overridable: true },
@@ -254,7 +254,7 @@ const BARNES_MAZE = {
       { key: "platform", label: "Platform", type: "circle", role: "open", required: true },
     ];
   },
-  acceptance: [
+  suggestedAcceptance: [
     { key: "reach_within_trial", metricKey: "primary_latency_s", operator: "<=", value: "max_trial_duration_s", appliesToTrialTypes: ["acquisition"], overridable: true },
   ],
   qc: [
@@ -289,7 +289,7 @@ const THREE_CHAMBER = {
       { key: "interaction", label: "Etkilesim bolgesi", type: "circle", role: "target", required: false },
     ];
   },
-  acceptance: [],
+  suggestedAcceptance: [],
   qc: [
     { key: "min_tracking_confidence", operator: ">=", value: 0.7, overridable: true },
     { key: "max_calibration_error_cm", operator: "<=", value: 2, overridable: true },
@@ -317,7 +317,7 @@ const LIGHT_DARK = {
       { key: "dark", label: "Karanlik bolme", type: "polygon", role: "closed", required: true },
     ];
   },
-  acceptance: [],
+  suggestedAcceptance: [],
   qc: [
     { key: "min_tracking_confidence", operator: ">=", value: 0.6, overridable: true },
     { key: "max_calibration_error_cm", operator: "<=", value: 2, overridable: true },
@@ -343,7 +343,7 @@ const POLE = {
       { key: "base", label: "Taban", type: "line", role: "target", required: false },
     ];
   },
-  acceptance: [],
+  suggestedAcceptance: [],
   qc: [{ key: "min_tracking_confidence", operator: ">=", value: 0.6, overridable: true }],
 };
 
@@ -371,7 +371,7 @@ const TREADMILL = {
       { key: "rear_zone", label: "Geri (uyari) bolgesi", type: "polygon", role: "risk", required: false },
     ];
   },
-  acceptance: [],
+  suggestedAcceptance: [],
   qc: [{ key: "min_tracking_confidence", operator: ">=", value: 0.6, overridable: true }],
 };
 

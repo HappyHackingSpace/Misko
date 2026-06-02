@@ -1,15 +1,28 @@
 <script setup>
-import { ref, onMounted } from "vue";
+import { ref, onMounted, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import { api } from "../api.js";
 
+const { locale, te, t } = useI18n();
 const items = ref([]);
 const selected = ref(null);
 const err = ref("");
 
+// Backend, serbest-metin bilimsel etiketleri ?lang ile lokalize eder; frontend
+// yalnizca sabit enum'lari (zone type/role, species) ceviren UI sozlugunu tutar.
+// Bir enum cevirisi eksikse ham anahtara geri duser.
+function tEnum(ns, value) {
+  const key = `paradigms.${ns}.${value}`;
+  return te(key) ? t(key) : value;
+}
+function speciesLabel(list) {
+  return (list || []).map((s) => tEnum("species", s)).join(", ");
+}
+
 async function load() {
   err.value = "";
   try {
-    items.value = await api("/paradigms");
+    items.value = await api(`/paradigms?lang=${locale.value}`);
     if (items.value.length) await select(items.value[0].key);
   } catch (e) {
     err.value = e.message;
@@ -19,11 +32,18 @@ async function load() {
 async function select(key) {
   err.value = "";
   try {
-    selected.value = await api(`/paradigms/${key}`);
+    selected.value = await api(`/paradigms/${key}?lang=${locale.value}`);
   } catch (e) {
     err.value = e.message;
   }
 }
+
+// Dil degisince backend tarafli etiketleri yeniden cek; secili paradigmayi koru.
+watch(locale, async () => {
+  const current = selected.value?.key;
+  await load();
+  if (current && items.value.some((p) => p.key === current)) await select(current);
+});
 
 onMounted(load);
 </script>
@@ -56,7 +76,7 @@ onMounted(load);
         <p class="muted">
           {{ $t("paradigms.category") }}: {{ $t("paradigms.categories." + selected.category) }}
           · {{ $t("paradigms.schemaVersion") }} {{ selected.schemaVersion }}
-          · {{ selected.species.join(", ") }}
+          · {{ speciesLabel(selected.species) }}
         </p>
         <div class="chips">
           <span class="pill" v-for="tt in selected.trialTypes" :key="tt.key">{{ tt.label }}</span>
@@ -87,8 +107,8 @@ onMounted(load);
           <tbody>
             <tr v-for="z in selected.zones" :key="z.key">
               <td>{{ z.label }} <span class="muted">{{ z.key }}</span></td>
-              <td class="muted">{{ z.type }}</td>
-              <td><span class="pill">{{ z.role }}</span></td>
+              <td class="muted">{{ tEnum("zoneTypes", z.type) }}</td>
+              <td><span class="pill">{{ tEnum("zoneRoles", z.role) }}</span></td>
               <td>{{ z.required ? "✓" : "" }}</td>
             </tr>
           </tbody>
@@ -112,10 +132,10 @@ onMounted(load);
       </div>
 
       <!-- Kabul kriterleri -->
-      <div class="card" v-if="selected.acceptance.length">
-        <h3>{{ $t("paradigms.acceptance") }}</h3>
+      <div class="card" v-if="selected.suggestedAcceptance && selected.suggestedAcceptance.length">
+        <h3>{{ $t("paradigms.acceptance") }} <span class="muted">({{ $t("paradigms.suggested") }})</span></h3>
         <ul class="rules">
-          <li v-for="a in selected.acceptance" :key="a.key">
+          <li v-for="a in selected.suggestedAcceptance" :key="a.key">
             <code>{{ a.metricKey }} {{ a.operator }} {{ a.value }}</code>
             <span class="muted" v-if="a.appliesToTrialTypes"> · {{ a.appliesToTrialTypes.join(", ") }}</span>
           </li>

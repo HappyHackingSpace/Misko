@@ -67,7 +67,7 @@ interface ParadigmSpec {
   sessionParameters: FieldDef[];
   zones(config: ApparatusConfig): ZoneDef[];
   metrics: MetricDefinition[];
-  acceptance: AcceptanceRule[];
+  suggestedAcceptance: AcceptanceRule[];
   qc: QualityRequirement[];
   validateApparatus(config: ApparatusConfig): ValidationError[];
   validateSession(config: SessionConfig): ValidationError[];
@@ -95,28 +95,73 @@ interface ZoneDef {
 
 ### 2.4 Acceptance criteria
 
-Acceptance criteria should not be hardcoded as a single `passed` formula. They
-should be rule objects attached to a paradigm, with study-level overrides.
+Acceptance criteria are not hardcoded as a single `passed` formula. They are:
+
+- **Optional**: a test with no criteria stays unevaluated (`Test.passed = null`).
+- **Per test**: each test stores its own criteria as JSON in `Test.acceptanceCriteria`.
+- **User-defined**: the user picks any metric valid for the paradigm, an operator,
+  and a threshold.
+
+The paradigm spec only carries `suggestedAcceptance`: optional, code-owned
+templates the user can adopt and edit. The user-facing criterion is concrete:
+
+```ts
+interface AcceptanceCriterion {
+  metricKey: string;                  // a known metric key for the paradigm
+  operator: "<" | "<=" | ">" | ">=" | "==" | "!=" | "between";
+  value: number | [number, number];  // [min, max] for "between"
+}
+```
+
+The suggested template shape (display/seed only) keeps richer metadata:
 
 ```ts
 interface AcceptanceRule {
   key: string;
   metricKey: string;
   operator: "<" | "<=" | ">" | ">=" | "==" | "between";
-  value: number | [number, number];
+  value: number | [number, number] | string; // string = symbolic, e.g. "max_trial_duration_s"
   appliesToTrialTypes?: string[];
   overridable: boolean;
 }
 ```
 
-Examples:
+Evaluation: when a result is submitted, every criterion is compared against the
+metrics. `Test.passed` becomes `true` if all pass, `false` if any fails or its
+metric is missing, and `null` when there are no criteria. An explicit `passed`
+in the request overrides automatic evaluation (manual review).
 
-| Paradigm | Example rule |
+Suggested templates:
+
+| Paradigm | Suggested rule |
 |---|---|
 | MWM | `escape_latency_s <= max_trial_duration_s` for acquisition trials. |
+| Barnes Maze | `primary_latency_s <= max_trial_duration_s` for acquisition trials. |
 | Rotarod | `latency_to_fall_s >= study.minimum_latency_s`. |
 | Open Field | Usually no pass/fail, only QC pass/fail. |
 | EPM | Usually no pass/fail, only QC pass/fail. |
+
+The engine lives in `backend/src/config/acceptance.js`
+(`validateAcceptanceCriteria`, `evaluateAcceptance`). Operators are exposed at
+`GET /api/paradigms/acceptance-operators`.
+
+### 2.5 Localization
+
+The paradigm and metric vocabulary is the scientific contract and stays
+Turkish-only in the spec source (the default language). The read-only inspection
+API localizes the free-text labels and definitions on the way out through an
+optional `?lang=` query parameter:
+
+- `GET /api/paradigms?lang=en`
+- `GET /api/paradigms/:key?lang=en`
+- `GET /api/paradigms/metrics?lang=en` (with optional `&paradigm=MWM`)
+
+Supported values are `tr` (default) and `en`. An unknown or missing value falls
+back to `tr`, and any label or definition without a translation falls back to its
+Turkish source string. This keeps the backend the single source of truth so the
+CV service and the frontend share the same localized vocabulary with no drift.
+The catalog and helpers live in `backend/src/config/i18n.js`. Small fixed enums
+(zone type/role, species) are translated by the frontend UI dictionary instead.
 
 ## 3. Measurement dictionary
 

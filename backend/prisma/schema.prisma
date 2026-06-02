@@ -69,7 +69,8 @@ model Test {
   startedAt  DateTime?
   endedAt    DateTime?
   result     String? // JSON: metrikler
-  passed     Boolean?
+  passed     Boolean? // kabul kriterleri varsa degerlendirme sonucu; kriter yoksa null
+  acceptanceCriteria String? // JSON: kullanici tanimli kabul kriterleri [{ metricKey, operator, value }]
   notes      String?
   createdAt  DateTime  @default(now())
 

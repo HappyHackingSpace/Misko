@@ -10,6 +10,13 @@ import {
   metricsForParadigm,
 } from "../../config/metrics.js";
 import { UNIT_LIST } from "../../config/units.js";
+import { ACCEPTANCE_OPERATORS } from "../../config/acceptance.js";
+import {
+  normalizeLang,
+  localizeSummary,
+  localizeDetail,
+  localizeMetricList,
+} from "../../config/i18n.js";
 
 /**
  * Paradigma ve olcum sozlugu salt-okunur uclari (Step 2).
@@ -33,15 +40,26 @@ paradigmRouter.get(
   "/metrics",
   asyncHandler(async (req, res) => {
     const { paradigm } = req.query;
-    res.json(paradigm ? metricsForParadigm(paradigm) : METRIC_DEFINITIONS);
+    const lang = normalizeLang(req.query.lang);
+    const list = paradigm ? metricsForParadigm(paradigm) : METRIC_DEFINITIONS;
+    res.json(localizeMetricList(list, lang));
+  }),
+);
+
+// Kabul kriteri operatorleri (kriter olusturucu icin)
+paradigmRouter.get(
+  "/acceptance-operators",
+  asyncHandler(async (_req, res) => {
+    res.json(ACCEPTANCE_OPERATORS);
   }),
 );
 
 // Paradigma ozet listesi
 paradigmRouter.get(
   "/",
-  asyncHandler(async (_req, res) => {
-    res.json(listParadigmSummaries());
+  asyncHandler(async (req, res) => {
+    const lang = normalizeLang(req.query.lang);
+    res.json(listParadigmSummaries().map((s) => localizeSummary(s, lang)));
   }),
 );
 
@@ -51,7 +69,12 @@ paradigmRouter.get(
   asyncHandler(async (req, res) => {
     const spec = getParadigmSpec(req.params.key);
     if (!spec) throw ApiError.notFound("Paradigma bulunamadi");
+    const lang = normalizeLang(req.query.lang);
     const { zones, ...rest } = spec;
-    res.json({ ...rest, zones: typeof zones === "function" ? zones({}) : zones });
+    const resolved = {
+      ...rest,
+      zones: typeof zones === "function" ? zones({}) : zones,
+    };
+    res.json(localizeDetail(resolved, lang));
   }),
 );

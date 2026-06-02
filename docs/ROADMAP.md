@@ -81,9 +81,14 @@ real AI starts producing data.
   - session parameters
   - zones
   - metrics
-  - acceptance criteria
+  - suggested acceptance criteria (optional, code-owned templates)
   - QC requirements
   - artifact expectations
+- Acceptance criteria are optional, per-test and user-defined. (done)
+  - Paradigm specs ship `suggestedAcceptance` templates only.
+  - Per-test criteria stored in `Test.acceptanceCriteria`; engine in
+    `backend/src/config/acceptance.js` sets `Test.passed` (null when none).
+  - Operators exposed at `GET /api/paradigms/acceptance-operators`.
 - Define result schema versioning with `schemaVersion`. (done, `RESULT_SCHEMA_VERSION`)
 - Expose a read-only inspection API for researchers and the CV service. (done)
   - `GET /api/paradigms`, `GET /api/paradigms/:key`
@@ -93,7 +98,8 @@ Exit criteria:
 
 - Unknown metric keys are not accepted. (`isKnownMetricKey(...)` ready; wired into result submission at Step 4)
 - Every metric has a unit, definition, input list and aggregation behavior. (done)
-- Researchers can inspect paradigm detail pages before running a test. (API done; frontend detail pages pending)
+- Researchers can inspect paradigm detail pages before running a test. (done; `frontend/src/views/Paradigms.vue`)
+- Users can attach their own optional, metric-based acceptance criteria per test. (done; `frontend/src/components/AcceptanceEditor.vue`)
 
 ## Step 3 - Research-grade domain model
 
