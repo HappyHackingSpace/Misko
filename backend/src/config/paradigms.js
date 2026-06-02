@@ -51,7 +51,7 @@ const MWM = {
     choice("platform_quadrant", "Platform ceyregi", ["NE", "NW", "SE", "SW"], { def: "SE" }),
     num("wall_annulus_width_cm", "Duvar halkasi genisligi", UNITS.CM, { min: 4, max: 30, def: 12 }),
     choice("water_opacity", "Su opakligi", ["opaque", "clear"], { def: "opaque" }),
-    num("water_temp_c", "Su sicakligi", UNITS.S, { min: 15, max: 30, def: 22, required: false }),
+    num("water_temp_c", "Su sicakligi", UNITS.C, { min: 15, max: 30, def: 22, required: false }),
   ],
   sessionParameters: [
     num("max_trial_duration_s", "Maks deneme suresi", UNITS.S, { min: 10, max: 300, def: 60 }),
@@ -149,7 +149,7 @@ const ROTAROD = {
     { key: "accelerating", label: "Hizlanan", hasTarget: false },
   ],
   apparatusParameters: [
-    num("rod_diameter_mm", "Cubuk capi", UNITS.CM, { min: 10, max: 80, def: 30, required: false }),
+    num("rod_diameter_mm", "Cubuk capi", UNITS.MM, { min: 10, max: 80, def: 30, required: false }),
     num("min_rpm", "Min devir", UNITS.RPM, { min: 0, max: 80, def: 4 }),
     num("max_rpm", "Maks devir", UNITS.RPM, { min: 1, max: 100, def: 40 }),
     num("acceleration_duration_s", "Hizlanma suresi", UNITS.S, { min: 30, max: 600, def: 300, required: false }),
@@ -243,7 +243,9 @@ const BARNES_MAZE = {
     num("platform_diameter_cm", "Platform capi", UNITS.CM, { min: 60, max: 150, def: 92 }),
     num("hole_count", "Delik sayisi", UNITS.COUNT, { min: 12, max: 40, def: 20 }),
     num("hole_diameter_cm", "Delik capi", UNITS.CM, { min: 3, max: 10, def: 5 }),
-    choice("target_hole_index", "Hedef delik indeksi", ["1", "5", "10", "15"], { def: "10", required: false }),
+    // 1..hole_count araliginda; ust sinir hole_count'un maksimumudur (40).
+    // Apparatus yapilandirmasinda secilen hole_count'a gore ayrica dogrulanir.
+    num("target_hole_index", "Hedef delik indeksi", UNITS.COUNT, { min: 1, max: 40, def: 10, required: false }),
   ],
   sessionParameters: [
     num("max_trial_duration_s", "Maks deneme suresi", UNITS.S, { min: 60, max: 600, def: 180 }),
@@ -332,7 +334,7 @@ const POLE = {
   trialTypes: [{ key: "standard", label: "Standart", hasTarget: false }],
   apparatusParameters: [
     num("pole_length_cm", "Cubuk uzunlugu", UNITS.CM, { min: 30, max: 100, def: 50 }),
-    num("pole_diameter_mm", "Cubuk capi", UNITS.CM, { min: 5, max: 20, def: 10, required: false }),
+    num("pole_diameter_mm", "Cubuk capi", UNITS.MM, { min: 5, max: 20, def: 10, required: false }),
   ],
   sessionParameters: [
     num("max_trial_duration_s", "Maks deneme suresi", UNITS.S, { min: 30, max: 120, def: 60 }),

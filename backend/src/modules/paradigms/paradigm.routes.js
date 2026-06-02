@@ -40,6 +40,11 @@ paradigmRouter.get(
   "/metrics",
   asyncHandler(async (req, res) => {
     const { paradigm } = req.query;
+    // Tekrarli/dizi query (?paradigm=a&paradigm=b) string degildir; includes(...)
+    // sessizce bos kume dondurmesin diye reddet.
+    if (paradigm !== undefined && typeof paradigm !== "string") {
+      throw ApiError.badRequest("paradigm tek bir metin degeri olmali");
+    }
     const lang = normalizeLang(req.query.lang);
     const list = paradigm ? metricsForParadigm(paradigm) : METRIC_DEFINITIONS;
     res.json(localizeMetricList(list, lang));

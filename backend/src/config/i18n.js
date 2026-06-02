@@ -284,8 +284,6 @@ const DEFINITIONS_EN = Object.freeze({
     "Time to complete the downward turn at the top.",
   "Tabana ulasana kadar gecen toplam sure.":
     "Total time until reaching the base.",
-  "Denegin cubuktan kontrolsuz dusup dusmedigi.":
-    "Whether the subject fell off the pole uncontrolled.",
   "Ortalama dikey inis hizi.": "Mean vertical descent speed.",
   "Bitkinlik veya deneme sonuna kadar aktif kosu suresi.":
     "Active running time until exhaustion or trial end.",

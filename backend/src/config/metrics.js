@@ -61,7 +61,7 @@ const BASELINE = [
     inputs: ["timestamps", "valid_frame_mask"],
     aggregation: "per_trial",
     validRange: [0, 86400],
-    qcDependencies: ["min_tracking_confidence", "max_dropped_frames"],
+    qcDependencies: ["min_tracking_confidence", "max_dropped_frames_ratio"],
   },
   {
     key: "distance_cm",
@@ -75,7 +75,7 @@ const BASELINE = [
     inputs: ["trajectory_cm", "valid_frame_mask"],
     aggregation: "per_trial",
     validRange: [0, 1000000],
-    qcDependencies: ["calibration_error", "min_tracking_confidence"],
+    qcDependencies: ["max_calibration_error_cm", "min_tracking_confidence"],
   },
   {
     key: "mean_speed_cm_s",
@@ -89,7 +89,7 @@ const BASELINE = [
     inputs: ["distance_cm", "duration_s"],
     aggregation: "per_trial",
     validRange: [0, 10000],
-    qcDependencies: ["calibration_error"],
+    qcDependencies: ["max_calibration_error_cm"],
   },
   {
     key: "max_speed_cm_s",
@@ -103,7 +103,7 @@ const BASELINE = [
     inputs: ["trajectory_cm", "timestamps"],
     aggregation: "per_trial",
     validRange: [0, 10000],
-    qcDependencies: ["calibration_error", "min_tracking_confidence"],
+    qcDependencies: ["max_calibration_error_cm", "min_tracking_confidence"],
   },
   {
     key: "immobility_s",
@@ -132,7 +132,7 @@ const BASELINE = [
     inputs: ["trajectory_cm", "zone_geometry_cm", "timestamps"],
     aggregation: "per_trial",
     validRange: [0, 86400],
-    qcDependencies: ["calibration_error"],
+    qcDependencies: ["max_calibration_error_cm"],
   },
   {
     key: "zone_entries",
@@ -147,7 +147,7 @@ const BASELINE = [
     inputs: ["trajectory_cm", "zone_geometry_cm", "entry_debounce_s"],
     aggregation: "per_trial",
     validRange: [0, 100000],
-    qcDependencies: ["calibration_error"],
+    qcDependencies: ["max_calibration_error_cm"],
   },
   {
     key: "latency_to_zone_s",
@@ -162,7 +162,7 @@ const BASELINE = [
     inputs: ["trajectory_cm", "zone_geometry_cm", "trial_start_t"],
     aggregation: "per_trial",
     validRange: [0, 86400],
-    qcDependencies: ["calibration_error"],
+    qcDependencies: ["max_calibration_error_cm"],
   },
   {
     key: "path_efficiency_ratio",
@@ -176,7 +176,7 @@ const BASELINE = [
     inputs: ["trajectory_cm", "target_center_cm"],
     aggregation: "per_trial",
     validRange: [0, 1],
-    qcDependencies: ["calibration_error"],
+    qcDependencies: ["max_calibration_error_cm"],
   },
 ];
 
@@ -194,7 +194,7 @@ const MWM = [
     inputs: ["trajectory_cm", "platform_zone_cm", "trial_start_t"],
     aggregation: "per_trial",
     validRange: [0, 300],
-    qcDependencies: ["calibration_error", "min_tracking_confidence"],
+    qcDependencies: ["max_calibration_error_cm", "min_tracking_confidence"],
   },
   {
     key: "path_length_cm",
@@ -208,7 +208,7 @@ const MWM = [
     inputs: ["trajectory_cm", "platform_zone_cm"],
     aggregation: "per_trial",
     validRange: [0, 1000000],
-    qcDependencies: ["calibration_error"],
+    qcDependencies: ["max_calibration_error_cm"],
   },
   {
     key: "mean_swim_speed_cm_s",
@@ -222,7 +222,7 @@ const MWM = [
     inputs: ["path_length_cm", "duration_s"],
     aggregation: "per_trial",
     validRange: [0, 200],
-    qcDependencies: ["calibration_error"],
+    qcDependencies: ["max_calibration_error_cm"],
   },
   {
     key: "platform_crossings_count",
@@ -236,7 +236,7 @@ const MWM = [
     inputs: ["trajectory_cm", "platform_zone_cm"],
     aggregation: "per_trial",
     validRange: [0, 1000],
-    qcDependencies: ["calibration_error"],
+    qcDependencies: ["max_calibration_error_cm"],
   },
   {
     key: "target_quadrant_time_ratio",
@@ -250,7 +250,7 @@ const MWM = [
     inputs: ["trajectory_cm", "quadrant_geometry_cm", "duration_s"],
     aggregation: "per_trial",
     validRange: [0, 1],
-    qcDependencies: ["calibration_error"],
+    qcDependencies: ["max_calibration_error_cm"],
   },
   {
     key: "quadrant_time_s",
@@ -265,7 +265,7 @@ const MWM = [
     inputs: ["trajectory_cm", "quadrant_geometry_cm"],
     aggregation: "per_trial",
     validRange: [0, 86400],
-    qcDependencies: ["calibration_error"],
+    qcDependencies: ["max_calibration_error_cm"],
   },
   {
     key: "thigmotaxis_time_ratio",
@@ -279,7 +279,7 @@ const MWM = [
     inputs: ["trajectory_cm", "wall_annulus_cm", "duration_s"],
     aggregation: "per_trial",
     validRange: [0, 1],
-    qcDependencies: ["calibration_error"],
+    qcDependencies: ["max_calibration_error_cm"],
   },
   {
     key: "mean_distance_to_platform_cm",
@@ -293,7 +293,7 @@ const MWM = [
     inputs: ["trajectory_cm", "platform_center_cm"],
     aggregation: "per_trial",
     validRange: [0, 100000],
-    qcDependencies: ["calibration_error"],
+    qcDependencies: ["max_calibration_error_cm"],
   },
   {
     key: "heading_error_deg",
@@ -325,7 +325,7 @@ const OPEN_FIELD = [
     inputs: ["trajectory_cm", "center_zone_cm", "duration_s"],
     aggregation: "per_trial",
     validRange: [0, 1],
-    qcDependencies: ["calibration_error"],
+    qcDependencies: ["max_calibration_error_cm"],
   },
   {
     key: "periphery_time_ratio",
@@ -339,7 +339,7 @@ const OPEN_FIELD = [
     inputs: ["trajectory_cm", "periphery_zone_cm", "duration_s"],
     aggregation: "per_trial",
     validRange: [0, 1],
-    qcDependencies: ["calibration_error"],
+    qcDependencies: ["max_calibration_error_cm"],
   },
   {
     key: "center_entries_count",
@@ -353,7 +353,7 @@ const OPEN_FIELD = [
     inputs: ["trajectory_cm", "center_zone_cm", "entry_debounce_s"],
     aggregation: "per_trial",
     validRange: [0, 100000],
-    qcDependencies: ["calibration_error"],
+    qcDependencies: ["max_calibration_error_cm"],
   },
 ];
 
@@ -371,7 +371,7 @@ const EPM = [
     inputs: ["trajectory_cm", "open_arm_zone_cm", "duration_s"],
     aggregation: "per_trial",
     validRange: [0, 1],
-    qcDependencies: ["calibration_error"],
+    qcDependencies: ["max_calibration_error_cm"],
   },
   {
     key: "closed_arm_time_ratio",
@@ -385,7 +385,7 @@ const EPM = [
     inputs: ["trajectory_cm", "closed_arm_zone_cm", "duration_s"],
     aggregation: "per_trial",
     validRange: [0, 1],
-    qcDependencies: ["calibration_error"],
+    qcDependencies: ["max_calibration_error_cm"],
   },
   {
     key: "open_arm_entries_count",
@@ -399,7 +399,7 @@ const EPM = [
     inputs: ["trajectory_cm", "open_arm_zone_cm", "entry_debounce_s"],
     aggregation: "per_trial",
     validRange: [0, 100000],
-    qcDependencies: ["calibration_error"],
+    qcDependencies: ["max_calibration_error_cm"],
   },
   {
     key: "closed_arm_entries_count",
@@ -413,7 +413,7 @@ const EPM = [
     inputs: ["trajectory_cm", "closed_arm_zone_cm", "entry_debounce_s"],
     aggregation: "per_trial",
     validRange: [0, 100000],
-    qcDependencies: ["calibration_error"],
+    qcDependencies: ["max_calibration_error_cm"],
   },
   {
     key: "latency_to_open_arm_s",
@@ -427,7 +427,7 @@ const EPM = [
     inputs: ["trajectory_cm", "open_arm_zone_cm", "trial_start_t"],
     aggregation: "per_trial",
     validRange: [0, 86400],
-    qcDependencies: ["calibration_error"],
+    qcDependencies: ["max_calibration_error_cm"],
   },
   {
     key: "risk_assessment_count",
@@ -492,7 +492,7 @@ const ROTAROD = [
   {
     key: "fall_detected",
     label: "Dusme algilandi",
-    paradigmKeys: ["ROTAROD"],
+    paradigmKeys: ["ROTAROD", "POLE"],
     unit: UNITS.BOOLEAN,
     valueType: "boolean",
     required: false,
@@ -547,7 +547,7 @@ const Y_MAZE = [
     inputs: ["arm_entry_sequence"],
     aggregation: "per_trial",
     validRange: [0, 100000],
-    qcDependencies: ["calibration_error"],
+    qcDependencies: ["max_calibration_error_cm"],
   },
   {
     key: "novel_arm_time_ratio",
@@ -561,7 +561,7 @@ const Y_MAZE = [
     inputs: ["trajectory_cm", "novel_arm_zone_cm", "duration_s"],
     aggregation: "per_trial",
     validRange: [0, 1],
-    qcDependencies: ["calibration_error"],
+    qcDependencies: ["max_calibration_error_cm"],
   },
 ];
 
@@ -639,7 +639,7 @@ const BARNES_MAZE = [
     inputs: ["trajectory_cm", "target_hole_cm", "trial_start_t"],
     aggregation: "per_trial",
     validRange: [0, 3600],
-    qcDependencies: ["calibration_error"],
+    qcDependencies: ["max_calibration_error_cm"],
   },
   {
     key: "primary_errors_count",
@@ -653,7 +653,7 @@ const BARNES_MAZE = [
     inputs: ["trajectory_cm", "hole_zones_cm"],
     aggregation: "per_trial",
     validRange: [0, 100000],
-    qcDependencies: ["calibration_error"],
+    qcDependencies: ["max_calibration_error_cm"],
   },
   {
     key: "total_errors_count",
@@ -667,7 +667,7 @@ const BARNES_MAZE = [
     inputs: ["trajectory_cm", "hole_zones_cm"],
     aggregation: "per_trial",
     validRange: [0, 100000],
-    qcDependencies: ["calibration_error"],
+    qcDependencies: ["max_calibration_error_cm"],
   },
 ];
 
@@ -685,7 +685,7 @@ const THREE_CHAMBER = [
     inputs: ["trajectory_cm", "chamber_zones_cm"],
     aggregation: "per_trial",
     validRange: [0, 86400],
-    qcDependencies: ["calibration_error"],
+    qcDependencies: ["max_calibration_error_cm"],
   },
   {
     key: "object_chamber_time_s",
@@ -699,7 +699,7 @@ const THREE_CHAMBER = [
     inputs: ["trajectory_cm", "chamber_zones_cm"],
     aggregation: "per_trial",
     validRange: [0, 86400],
-    qcDependencies: ["calibration_error"],
+    qcDependencies: ["max_calibration_error_cm"],
   },
   {
     key: "sociability_index",
@@ -727,7 +727,7 @@ const THREE_CHAMBER = [
     inputs: ["trajectory_cm", "interaction_zone_cm"],
     aggregation: "per_trial",
     validRange: [0, 86400],
-    qcDependencies: ["calibration_error"],
+    qcDependencies: ["max_calibration_error_cm"],
   },
 ];
 
@@ -745,7 +745,7 @@ const LIGHT_DARK = [
     inputs: ["trajectory_cm", "light_zone_cm", "duration_s"],
     aggregation: "per_trial",
     validRange: [0, 1],
-    qcDependencies: ["calibration_error"],
+    qcDependencies: ["max_calibration_error_cm"],
   },
   {
     key: "light_entries_count",
@@ -759,7 +759,7 @@ const LIGHT_DARK = [
     inputs: ["trajectory_cm", "light_zone_cm", "entry_debounce_s"],
     aggregation: "per_trial",
     validRange: [0, 100000],
-    qcDependencies: ["calibration_error"],
+    qcDependencies: ["max_calibration_error_cm"],
   },
   {
     key: "latency_to_dark_s",
@@ -773,7 +773,7 @@ const LIGHT_DARK = [
     inputs: ["trajectory_cm", "dark_zone_cm", "trial_start_t"],
     aggregation: "per_trial",
     validRange: [0, 86400],
-    qcDependencies: ["calibration_error"],
+    qcDependencies: ["max_calibration_error_cm"],
   },
   {
     key: "transitions_count",
@@ -787,7 +787,7 @@ const LIGHT_DARK = [
     inputs: ["trajectory_cm", "light_zone_cm", "dark_zone_cm"],
     aggregation: "per_trial",
     validRange: [0, 100000],
-    qcDependencies: ["calibration_error"],
+    qcDependencies: ["max_calibration_error_cm"],
   },
 ];
 
@@ -822,20 +822,6 @@ const POLE = [
     qcDependencies: ["min_tracking_confidence"],
   },
   {
-    key: "fall_detected",
-    label: "Dusme algilandi",
-    paradigmKeys: ["POLE"],
-    unit: UNITS.BOOLEAN,
-    valueType: "boolean",
-    required: false,
-    definition: "Denegin cubuktan kontrolsuz dusup dusmedigi.",
-    formula: "fall_event_t != null",
-    inputs: ["fall_event_t"],
-    aggregation: "per_trial",
-    validRange: null,
-    qcDependencies: ["min_tracking_confidence"],
-  },
-  {
     key: "descent_speed_cm_s",
     label: "Inis hizi",
     paradigmKeys: ["POLE"],
@@ -847,7 +833,7 @@ const POLE = [
     inputs: ["pole_length_cm", "t_total_s"],
     aggregation: "per_trial",
     validRange: [0, 1000],
-    qcDependencies: ["calibration_error"],
+    qcDependencies: ["max_calibration_error_cm"],
   },
 ];
 

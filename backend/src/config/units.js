@@ -9,8 +9,10 @@
  */
 export const UNITS = Object.freeze({
   CM: "cm", // konum ve mesafe
+  MM: "mm", // kucuk apparatus capi (cubuk/pole); sonuc metrigi degil
   CM_S: "cm_s", // hiz
   S: "s", // sure
+  C: "c", // sicaklik (apparatus parametresi); sonuc metrigi degil
   COUNT: "count", // giris, gecis, dusme gibi sayimlar
   RATIO: "ratio", // 0..1 araligi, UI'da yuzde gosterilebilir
   PERCENT: "percent", // dogrudan yuzde tasiyan alanlar

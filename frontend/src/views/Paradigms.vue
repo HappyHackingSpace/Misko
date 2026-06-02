@@ -7,6 +7,9 @@ const { locale, te, t } = useI18n();
 const items = ref([]);
 const selected = ref(null);
 const err = ref("");
+// Hizli ardisik tiklamalarda yavas yaniti gormezden gel: yalnizca en son
+// istegin sonucu `selected`'i gunceller.
+let selectSeq = 0;
 
 // Backend, serbest-metin bilimsel etiketleri ?lang ile lokalize eder; frontend
 // yalnizca sabit enum'lari (zone type/role, species) ceviren UI sozlugunu tutar.
@@ -29,18 +32,23 @@ async function load() {
   }
 }
 
+const activeKey = ref(null);
+
 async function select(key) {
   err.value = "";
+  activeKey.value = key; // aktif durum, yaniti beklemeden son tiklamayi yansitir
+  const seq = ++selectSeq;
   try {
-    selected.value = await api(`/paradigms/${key}?lang=${locale.value}`);
+    const detail = await api(`/paradigms/${key}?lang=${locale.value}`);
+    if (seq === selectSeq) selected.value = detail; // yalnizca en son istek yazar
   } catch (e) {
-    err.value = e.message;
+    if (seq === selectSeq) err.value = e.message;
   }
 }
 
 // Dil degisince backend tarafli etiketleri yeniden cek; secili paradigmayi koru.
 watch(locale, async () => {
-  const current = selected.value?.key;
+  const current = activeKey.value;
   await load();
   if (current && items.value.some((p) => p.key === current)) await select(current);
 });
@@ -60,7 +68,7 @@ onMounted(load);
         v-for="p in items"
         :key="p.key"
         class="listitem"
-        :class="{ active: selected && selected.key === p.key }"
+        :class="{ active: activeKey === p.key }"
         @click="select(p.key)"
       >
         <span class="who-name">{{ p.name }}</span>

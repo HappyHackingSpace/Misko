@@ -74,8 +74,13 @@ real AI starts producing data.
   - position and distance: `cm`
   - speed: `cm_s`
   - duration: `s`
-  - ratios: `0..1`
+  - ratios: `ratio` (0..1) and `percent`
   - counts: `count`
+  - angle: `deg`
+  - rotarod speed: `rpm`
+  - subject weight: `g`
+  - event flags: `boolean`
+  - apparatus parameters only: `mm`, `c`
 - Define per-paradigm: (done)
   - apparatus parameters
   - session parameters
