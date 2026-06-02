@@ -105,9 +105,12 @@ interface MetricDefinition {
 }
 ```
 
-Kanonik birimler: pozisyon ve mesafe `cm`, hız `cm_s`, süre `s`, ağırlık `g`,
-oranlar `0..1`, sayımlar `count`. Piksel değerleri Mişko sonuç metriklerine
-girmez.
+Kanonik sonuç birimleri: pozisyon ve mesafe `cm`, hız `cm_s`, süre `s`, ağırlık
+`g`, açı `deg`, dönüş hızı `rpm`, oranlar `ratio` (`0..1`) veya `percent`, olay
+bayrakları `boolean`, sayımlar `count`. Apparatus parametreleri bu enum'ı
+yeniden kullanır ve sonuç metriklerinde hiç görünmeyen `mm` (küçük düzenek
+çapları) ile `c` (Celsius cinsinden su sıcaklığı) birimlerini ekler. Piksel
+değerleri Mişko sonuç metriklerine girmez.
 
 ## Temel metrikler
 

@@ -49,17 +49,22 @@ for users, developers, and the CV service.
 ```ts
 type Unit =
   | "cm"
+  | "mm" // apparatus parameter only (rod/pole diameter)
   | "cm_s"
   | "s"
+  | "c" // apparatus parameter only (water temperature)
   | "count"
   | "ratio"
   | "percent"
   | "deg"
   | "rpm"
+  | "g"
   | "boolean";
 
 interface ParadigmSpec {
-  key: "MWM" | "OPEN_FIELD" | "EPM" | "ROTAROD";
+  key:
+    | "MWM" | "OPEN_FIELD" | "EPM" | "ROTAROD" | "Y_MAZE" | "NOVEL_OBJECT"
+    | "BARNES_MAZE" | "THREE_CHAMBER" | "LIGHT_DARK" | "POLE" | "TREADMILL";
   name: string;
   category: "learning_memory" | "anxiety" | "motor" | "social";
   trialTypes: TrialTypeDef[];
@@ -201,7 +206,14 @@ Canonical storage units:
 | Weight | `g` | Subject physiology, not CV result. |
 | Angles | `deg` | If pose or heading is supported later. |
 | Ratios | `ratio` | Store `0..1`, render as percent in UI if needed. |
+| Percentages | `percent` | For fields that carry a percent value directly. |
+| Rotation speed | `rpm` | Rotarod rod speed. |
+| Event flags | `boolean` | Presence/absence of an event (e.g. `fall_detected`). |
 | Counts | `count` | Entries, crossings, falls, events. |
+
+Apparatus parameters reuse this enum and add two units that never appear in
+result metrics: `mm` (small rig diameters such as the rotarod rod and pole) and
+`c` (water temperature in Celsius).
 
 ### 3.3 Baseline metric keys
 

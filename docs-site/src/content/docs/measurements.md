@@ -106,9 +106,12 @@ interface MetricDefinition {
 }
 ```
 
-Canonical units: positions and distances in `cm`, speed in `cm_s`, duration in
-`s`, weight in `g`, ratios as `0..1`, and counts as `count`. Pixel values stay
-out of Mişko result metrics.
+Canonical result units: positions and distances in `cm`, speed in `cm_s`,
+duration in `s`, weight in `g`, angles in `deg`, rotation speed in `rpm`, ratios
+as `ratio` (`0..1`) or `percent`, event flags as `boolean`, and counts as
+`count`. Apparatus parameters reuse this enum and add `mm` (small rig diameters)
+and `c` (water temperature in Celsius), which never appear in result metrics.
+Pixel values stay out of Mişko result metrics.
 
 ## Baseline metrics
 
