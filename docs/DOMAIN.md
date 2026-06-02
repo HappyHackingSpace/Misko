@@ -3,6 +3,8 @@
 > Status: design. Date: 2026-06-01.
 > Scope: the data model Mişko owns as the **system of record**. The CV service
 > (vision, raw telemetry, video) stays independent — see `docs/INTEGRATION.md`.
+> Measurement architecture, metric definitions, MWM normalization and QC rules
+> are specified in `docs/MEASUREMENTS.md`.
 
 This document is the agreed target model before we touch `schema.prisma`. It
 expands the current thin model (User, Device, Subject, Scenario, Test) into a
@@ -77,6 +79,7 @@ interface ParadigmSpec {
   zones(config): Zone[];  // derive concrete zones from the configured geometry
   metrics: MetricDef[];   // what the CV service must compute
   acceptance(config): Rule | null; // default pass/fail skeleton
+  qc: QualityRequirement[]; // tracking, calibration, frame and lighting thresholds
   validate(config): void; // reject invalid parameter combinations
 }
 
@@ -93,6 +96,11 @@ the old POOL/MAZE/STICK/PATH intent); extensible by adding new specs.
 
 > The paradigm catalog is **fixed in code**. Which paradigms are **active in a
 > given lab** is data, controlled via `LabParadigm` (§0.1).
+
+The metric definitions are also fixed in code. `Test.result` is accepted only if
+it matches the active paradigm's metric dictionary, result schema, QC
+requirements and protocol version. Detailed rules live in
+`docs/MEASUREMENTS.md`.
 
 ### 1.2 Apparatus (physical rig — the "environment")
 
@@ -236,6 +244,9 @@ Extends the existing `Test` to reference the new structure:
 - `cameraId` / `cageId` — boundary key for CV mapping
 - `captureSessionId` (optional, unique) — set by CV on result push (idempotency)
 - `result` (JSON) — CV summary metrics, shaped by the paradigm's `metricsSchema`
+- `result.qc` (JSON object) — quality status and QC metrics such as tracking
+  confidence, dropped frame ratio, calibration error, occlusion and lighting
+  warnings. QC is separate from behavioral `passed`.
 - `passed` (Boolean)
 - `notes`
 

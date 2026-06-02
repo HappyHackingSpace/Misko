@@ -7,6 +7,9 @@ This is the target model that turns the thin starter schema into one that
 supports real behavioral-neuroscience workflows. Mişko owns this model as the
 **system of record**; the CV service stays independent.
 
+Metric definitions, MWM normalization and quality-control semantics are detailed
+in [Measurement architecture](../measurements/).
+
 ## Tenancy (single-tenant, on-prem)
 
 Mişko runs **one laboratory per installation** — a singleton, not multi-tenant.
@@ -48,11 +51,15 @@ interface ParadigmSpec {
   zones(config): Zone[];  // concrete zones from the configured geometry
   metrics: MetricDef[];   // what the CV service must compute
   acceptance(config): Rule | null;
+  qc: QualityRequirement[];
   validate(config): void;
 }
 ```
 
 Initial registry: `MWM`, `OPEN_FIELD`, `EPM`, `ROTAROD`.
+
+The result JSON must validate against the active paradigm's metric dictionary,
+result schema, QC requirements and protocol version.
 
 ### Apparatus (the physical "environment")
 
