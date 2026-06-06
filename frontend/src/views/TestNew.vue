@@ -63,7 +63,7 @@ onUnmounted(() => crumb.clear());
       <div class="field"><label>{{ $t("tests.scenario") }}</label>
         <select v-model="form.scenarioId">
           <option value="" disabled>{{ $t("common.select") }}</option>
-          <option v-for="s in scenarios" :key="s.id" :value="s.id">{{ s.name }} ({{ s.type }})</option>
+          <option v-for="s in scenarios" :key="s.id" :value="s.id">{{ s.name }}</option>
         </select>
       </div>
       <div class="field"><label>{{ $t("tests.subject") }}</label>

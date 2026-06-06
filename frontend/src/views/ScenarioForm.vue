@@ -3,6 +3,7 @@ import { ref, computed, onMounted, onUnmounted } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
 import { api } from "../api.js";
+import AcceptanceEditor from "../components/AcceptanceEditor.vue";
 import { useBreadcrumb } from "../stores/breadcrumb.js";
 
 const { t } = useI18n();
@@ -10,11 +11,23 @@ const route = useRoute();
 const router = useRouter();
 const crumb = useBreadcrumb();
 
-const TYPES = ["POOL", "MAZE", "STICK", "PATH"];
 const isNew = computed(() => !route.params.id);
-const form = ref({ name: "", type: "POOL", description: "" });
+const form = ref({ name: "", description: "" });
+const environments = ref([]); // catalog of all environments
+const selectedEnvIds = ref([]); // chosen environment ids
+const acceptance = ref([]); // expected results
+const operators = ref([]);
 const err = ref("");
 const saving = ref(false);
+
+// The paradigms in play = those of the selected environments (drives the metric source).
+const selectedParadigmKeys = computed(() => {
+  const keys = new Set();
+  for (const e of environments.value) {
+    if (selectedEnvIds.value.includes(e.id)) keys.add(e.paradigmKey);
+  }
+  return [...keys];
+});
 
 function syncCrumb() {
   crumb.set([
@@ -24,15 +37,27 @@ function syncCrumb() {
   ]);
 }
 
+function toggleEnv(id) {
+  const i = selectedEnvIds.value.indexOf(id);
+  if (i === -1) selectedEnvIds.value.push(id);
+  else selectedEnvIds.value.splice(i, 1);
+}
+
 async function load() {
   err.value = "";
-  if (isNew.value) {
-    syncCrumb();
-    return;
-  }
   try {
-    const s = await api(`/scenarios/${route.params.id}`);
-    form.value = { name: s.name, type: s.type, description: s.description || "" };
+    const [envs, ops] = await Promise.all([
+      api("/environments?all=true"),
+      api("/paradigms/acceptance-operators"),
+    ]);
+    environments.value = envs.data;
+    operators.value = ops;
+    if (!isNew.value) {
+      const s = await api(`/scenarios/${route.params.id}`);
+      form.value = { name: s.name, description: s.description || "" };
+      selectedEnvIds.value = (s.environments || []).map((e) => e.id);
+      acceptance.value = Array.isArray(s.acceptance) ? s.acceptance : [];
+    }
   } catch (e) {
     err.value = e.message;
   }
@@ -43,10 +68,16 @@ async function save() {
   err.value = "";
   saving.value = true;
   try {
+    const body = {
+      name: form.value.name,
+      description: form.value.description,
+      environmentIds: selectedEnvIds.value,
+      acceptance: acceptance.value,
+    };
     if (isNew.value) {
-      await api("/scenarios", { method: "POST", body: { ...form.value } });
+      await api("/scenarios", { method: "POST", body });
     } else {
-      await api(`/scenarios/${route.params.id}`, { method: "PATCH", body: { ...form.value } });
+      await api(`/scenarios/${route.params.id}`, { method: "PATCH", body });
     }
     router.push("/scenarios");
   } catch (e) {
@@ -76,11 +107,21 @@ onUnmounted(() => crumb.clear());
     <h2 style="margin-top:0">{{ isNew ? $t("common.new") : form.name }}</h2>
     <div class="row">
       <div class="field"><label>{{ $t("common.name") }}</label><input v-model="form.name" :placeholder="$t('scenarios.namePlaceholder')" /></div>
-      <div class="field"><label>{{ $t("scenarios.type") }}</label>
-        <select v-model="form.type"><option v-for="ty in TYPES" :key="ty" :value="ty">{{ $t("scenarios.types." + ty) }}</option></select>
-      </div>
       <div class="field" style="flex:2"><label>{{ $t("common.description") }}</label><input v-model="form.description" /></div>
     </div>
+
+    <h3 class="section">{{ $t("scenarios.environments") }}</h3>
+    <p class="muted" v-if="!environments.length">{{ $t("scenarios.noEnvironments") }}</p>
+    <div class="env-list" v-else>
+      <label v-for="e in environments" :key="e.id" class="env-item">
+        <input type="checkbox" :checked="selectedEnvIds.includes(e.id)" @change="toggleEnv(e.id)" />
+        <span>{{ e.name }} <span class="muted">({{ e.paradigmKey }})</span></span>
+      </label>
+    </div>
+
+    <h3 class="section">{{ $t("scenarios.expectedResults") }}</h3>
+    <AcceptanceEditor v-model="acceptance" :paradigm-keys="selectedParadigmKeys" :operators="operators" />
+
     <p class="err" v-if="err">{{ err }}</p>
     <div class="actions">
       <button @click="router.push('/scenarios')">{{ $t("common.back") }}</button>
@@ -92,4 +133,8 @@ onUnmounted(() => crumb.clear());
 
 <style scoped>
 .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+.section { font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin: 18px 0 8px; }
+.env-list { display: flex; flex-direction: column; gap: 6px; }
+.env-item { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.env-item input { width: auto; }
 </style>
