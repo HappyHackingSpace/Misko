@@ -377,12 +377,34 @@ const TREADMILL = {
   qc: [{ key: "min_tracking_confidence", operator: ">=", value: 0.6, overridable: true }],
 };
 
-/** Attach metric sets to the paradigm (single source: metrics.js). */
+/**
+ * Default expected-results (acceptance) templates per paradigm, used to pre-fill
+ * a scenario's expected results when an environment of that paradigm is added.
+ * These are conservative, numeric STARTING POINTS meant to be reviewed and tuned
+ * per study - not validated scientific thresholds. Every value is numeric so it
+ * passes acceptance validation as-is.
+ */
+const DEFAULT_SUGGESTED_ACCEPTANCE = Object.freeze({
+  MWM: [{ metricKey: "escape_latency_s", operator: "<=", value: 60 }],
+  OPEN_FIELD: [{ metricKey: "distance_cm", operator: ">=", value: 1000 }],
+  EPM: [{ metricKey: "open_arm_entries_count", operator: ">=", value: 1 }],
+  ROTAROD: [{ metricKey: "latency_to_fall_s", operator: ">=", value: 60 }],
+  Y_MAZE: [{ metricKey: "spontaneous_alternation_ratio", operator: ">=", value: 0.5 }],
+  NOVEL_OBJECT: [{ metricKey: "discrimination_index", operator: ">=", value: 0 }],
+  BARNES_MAZE: [{ metricKey: "primary_latency_s", operator: "<=", value: 120 }],
+  THREE_CHAMBER: [{ metricKey: "sociability_index", operator: ">=", value: 0 }],
+  LIGHT_DARK: [{ metricKey: "transitions_count", operator: ">=", value: 1 }],
+  POLE: [{ metricKey: "t_total_s", operator: "<=", value: 30 }],
+  TREADMILL: [{ metricKey: "run_distance_cm", operator: ">=", value: 1000 }],
+});
+
+/** Attach metric sets + default acceptance to the paradigm (single source). */
 function withMetrics(spec) {
   return Object.freeze({
     ...spec,
     schemaVersion: RESULT_SCHEMA_VERSION,
     metrics: metricsForParadigm(spec.key),
+    suggestedAcceptance: DEFAULT_SUGGESTED_ACCEPTANCE[spec.key] ?? [],
   });
 }
 

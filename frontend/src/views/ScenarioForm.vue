@@ -33,10 +33,27 @@ function syncCrumb() {
   ]);
 }
 
-function toggleEnv(id) {
+// Cache of each paradigm's default (suggested) acceptance, to pre-fill on select.
+const suggestedCache = {};
+async function suggestedFor(paradigmKey) {
+  if (suggestedCache[paradigmKey] === undefined) {
+    const spec = await api(`/paradigms/${paradigmKey}`);
+    suggestedCache[paradigmKey] = Array.isArray(spec.suggestedAcceptance) ? spec.suggestedAcceptance : [];
+  }
+  return suggestedCache[paradigmKey];
+}
+
+async function toggleEnv(id) {
   const i = selectedEnvIds.value.indexOf(id);
   if (i === -1) {
     selectedEnvIds.value.push(id);
+    // Pre-fill expected results from the paradigm's defaults (only if empty).
+    if (!acceptance.value[id]?.length) {
+      const env = environments.value.find((e) => e.id === id);
+      const suggested = env ? await suggestedFor(env.paradigmKey) : [];
+      const defaults = suggested.map((s) => ({ metricKey: s.metricKey, operator: s.operator, value: s.value }));
+      if (defaults.length) setAcceptance(id, defaults);
+    }
   } else {
     selectedEnvIds.value.splice(i, 1);
     delete acceptance.value[id]; // drop its expected results when removed

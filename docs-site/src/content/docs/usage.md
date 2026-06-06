@@ -86,8 +86,9 @@ A scenario is the complete, reusable definition of an experiment. You build it
 once: give it a name, select one or more **environments** (so a scenario can span
 one or more paradigms), and define the **expected results for each environment** -
 each environment gets its own acceptance criteria, picked from that environment's
-paradigm metrics. After that, running a test only means choosing a subject; the
-scenario carries everything else.
+paradigm metrics. Adding an environment pre-fills its expected results with the
+paradigm's default criteria, which you then tune. After that, running a test only
+means choosing a subject; the scenario carries everything else.
 
 ### Subjects
 
