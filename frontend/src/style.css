@@ -31,6 +31,8 @@ a{color:var(--accent);text-decoration:none}
   width:212px;flex-shrink:0;overflow-y:auto;
   background:var(--panel2);border-right:1px solid var(--line);padding:14px 10px}
 .sidebar .nav{display:flex;flex-direction:column;gap:3px}
+.sidebar .nav-section{margin:16px 8px 4px;padding-top:12px;border-top:1px solid var(--line);
+  font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:700}
 .sidebar .nav a{padding:9px 12px;border-radius:9px;color:var(--muted);font-weight:600}
 .sidebar .nav a:hover{background:var(--active-bg)}
 .sidebar .nav a.router-link-active{background:var(--active-bg);color:var(--txt)}

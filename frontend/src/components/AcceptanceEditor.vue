@@ -3,7 +3,11 @@ import { ref, watch, computed } from "vue";
 import { useI18n } from "vue-i18n";
 import { api } from "../api.js";
 
-const { locale } = useI18n();
+const { locale, t } = useI18n();
+
+// Map raw operator symbols to i18n keys for human-readable labels.
+const OP_KEY = { "<": "lt", "<=": "lte", ">": "gt", ">=": "gte", "==": "eq", "!=": "ne", between: "between" };
+const operatorLabel = (op) => t(`acceptance.op.${OP_KEY[op] || "eq"}`);
 
 /**
  * Expected-results (acceptance criteria) builder for a Scenario.
@@ -105,7 +109,7 @@ function removeRow(i) {
           </td>
           <td>
             <select v-model="r.operator" @change="emitChange">
-              <option v-for="op in operators" :key="op" :value="op">{{ op }}</option>
+              <option v-for="op in operators" :key="op" :value="op">{{ operatorLabel(op) }}</option>
             </select>
           </td>
           <td>

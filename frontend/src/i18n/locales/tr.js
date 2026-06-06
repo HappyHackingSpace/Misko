@@ -14,6 +14,7 @@ export default {
       paradigms: "Paradigmalar",
       environments: "Ortamlar",
       subjects: "Denekler",
+      settings: "Ayarlar",
       users: "Kullanıcılar",
       logout: "Çıkış",
     },
@@ -171,6 +172,15 @@ export default {
     acceptance: {
       metric: "Metrik",
       operator: "Operatör",
+      op: {
+        lt: "< (küçüktür)",
+        lte: "≤ (en fazla)",
+        gt: "> (büyüktür)",
+        gte: "≥ (en az)",
+        eq: "= (eşittir)",
+        ne: "≠ (eşit değil)",
+        between: "arasında (aralık)",
+      },
       value: "Değer",
       min: "alt",
       max: "üst",

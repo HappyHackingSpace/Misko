@@ -14,6 +14,7 @@ export default {
       paradigms: "Paradigms",
       environments: "Environments",
       subjects: "Subjects",
+      settings: "Settings",
       users: "Users",
       logout: "Log out",
     },
@@ -171,6 +172,15 @@ export default {
     acceptance: {
       metric: "Metric",
       operator: "Operator",
+      op: {
+        lt: "< (less than)",
+        lte: "≤ (at most)",
+        gt: "> (greater than)",
+        gte: "≥ (at least)",
+        eq: "= (equal)",
+        ne: "≠ (not equal)",
+        between: "between (range)",
+      },
       value: "Value",
       min: "min",
       max: "max",
