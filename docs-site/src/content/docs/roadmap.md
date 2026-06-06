@@ -49,15 +49,34 @@ Done: the registries live in `backend/src/config/{units,metrics,paradigms}.js` w
 
 Exit criteria: every metric has a unit, definition, input list and aggregation behavior.
 
-## Step 3 - Research domain model
+## Step 3 - Scenario: the central experiment definition
 
-- Rich `Subject` plus `WeightLog`.
-- `DiseaseModel` and `Treatment` catalogs with subject joins.
-- `Study -> Group` for longitudinal work.
-- `Apparatus` for physical rigs.
-- `Calibration` for fixed setup or per-session override.
-- `Test` references paradigm, apparatus, subject, operator, device, study, timepoint and calibration.
-- `Test.result` becomes structured JSON.
+A `Scenario` is the complete, reusable definition of one experiment, so running a
+test is just "pick a subject and go". The domain stays small: **Subject** (the
+mouse, kept simple), **Paradigm** (read-only catalog), **Environment** (a named
+paradigm instance - the physical setup), **Scenario** (the central object), and
+**Test** (one run).
+
+A scenario carries every detail:
+
+- references an `Environment` (and therefore a paradigm).
+- selects which metrics are collected, from that paradigm's metric dictionary.
+- defines the expected results / acceptance criteria per metric (reusing the
+  Step 2 acceptance engine).
+- session parameters from the paradigm.
+
+A `Test` is then just `Subject + Scenario`; running it collects the scenario's
+metrics and evaluates them against its expected results.
+
+- Redesign the starter `Scenario` (`POOL | MAZE | STICK | PATH`) into this
+  experiment definition (environment + metrics + expected results + session params).
+- Move acceptance/expected results from `Test` onto `Scenario`.
+- Keep `Test = Subject + Scenario`; `Test.result` becomes structured JSON.
+- `Subject` stays the simple starter model.
+
+Dropped from the earlier plan: rich `Subject`, `WeightLog`,
+`DiseaseModel`/`Treatment`, `Study -> Group`, a separate `Apparatus` model. The
+physical rig is the `Environment`; calibration stays in Step 5.
 
 ## Step 4 - Video-only boundary with fake CV
 
@@ -102,8 +121,8 @@ Exit criteria: every metric has a unit, definition, input list and aggregation b
 
 ## Step 8 - Analysis and reporting
 
-- Study dashboards by group and timepoint.
-- Longitudinal subject view.
+- Scenario dashboards aggregating their tests; compare subject groups (via `Subject.groupName`).
+- Per-subject history across tests.
 - MWM acquisition curves and probe summaries.
 - Open Field and EPM summaries.
 - Rotarod repeated-trial curves.

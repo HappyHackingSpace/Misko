@@ -1,9 +1,9 @@
 ---
 title: Mişko
-description: Laboratuvar fareleri için davranış testi yönetim sistemi — çalışmaların, deneklerin, cihazların ve sonuçların system of record'u.
+description: Laboratuvar fareleri için davranış testi yönetim sistemi — deneklerin, ortamların, senaryoların ve sonuçların system of record'u.
 template: splash
 hero:
-  tagline: Laboratuvar fareleri için davranış testi yönetimi. Çalışmaları planlayın, denekleri izleyin, paradigmaları çalıştırın ve özet sonuçları saklayın — görü işi ise bağımsız bir serviste kalır.
+  tagline: Laboratuvar fareleri için davranış testi yönetimi. Senaryolar tanımlayın, denekleri izleyin, paradigmaları çalıştırın ve özet sonuçları saklayın — görü işi ise bağımsız bir serviste kalır.
   image:
     file: ../../../assets/logo.svg
   actions:
@@ -23,7 +23,7 @@ import { Card, CardGrid } from '@astrojs/starlight/components';
 
 Mişko, fareler üzerinde davranış testleri yürüten biyoloji laboratuvarları için
 **içeriden, on-prem bir SaaS**'tır. Lab iş akışının **system of record**'udur —
-çalışmalar, denekler, cihazlar, testler ve özet sonuçlar — ağır görü işi (kare
+denekler, ortamlar, senaryolar, testler ve özet sonuçlar — ağır görü işi (kare
 telemetrisi, takip, video) ise **ayrı, bağımsız bir serviste** durur.
 
 <CardGrid stagger>
@@ -32,9 +32,10 @@ telemetrisi, takip, video) ise **ayrı, bağımsız bir serviste** durur.
     olarak salt okunur bir katalogda tanımlıdır. Lablar onlardan adlandırılmış
     ortamlar oluşturur ve her ortam için apparatus değerlerini doldurur.
   </Card>
-  <Card title="Araştırma seviyesi alan modeli" icon="approve-check">
-    Zengin denekler (suş, genotip, ağırlık kayıtları), hastalık modelleri,
-    tedaviler ve karşılaştırma gruplu boylamsal çalışmalar.
+  <Card title="Senaryo-merkezli alan modeli" icon="approve-check">
+    Bir senaryo, bir ortamı toplanacak metrikler ve beklenen sonuçlarıyla
+    paketler; böylece deney bir kez tanımlanır ve test "denek seç ve başlat"a
+    iner.
   </Card>
   <Card title="İki bağımsız sistem" icon="puzzle">
     Mişko özet metrikleri + artefakt URL'lerini tutar. CV servisi ham telemetri
@@ -52,7 +53,7 @@ telemetrisi, takip, video) ise **ayrı, bağımsız bir serviste** durur.
 - **[Kurulum](./installation/)**: Mişko'yu Docker ile veya yerel olarak çalıştırın.
 - **[Kullanım](./usage/)**: girişten test çalıştırmaya günlük iş akışı.
 - **[Mimari](./architecture/)**: katmanlar, yığın ve sistem sınırı.
-- **[Alan modeli](./domain/)**: araştırma seviyesi veri modeli.
+- **[Alan modeli](./domain/)**: yalın, senaryo-merkezli veri modeli.
 - **[Ölçüm mimarisi](./measurements/)**: paradigma spec'leri, metrik
   tanımları, MWM normalizasyonu ve kalite kontrol.
 - **[Entegrasyon](./integration/)**: Mişko / CV servisi kontratı.

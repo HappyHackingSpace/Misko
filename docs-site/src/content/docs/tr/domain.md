@@ -1,104 +1,87 @@
 ---
 title: Alan modeli
-description: Mişko'nun system of record olarak sahip olduğu araştırma seviyesi veri modeli.
+description: Mişko'nun system of record olarak sahip olduğu yalın, senaryo-merkezli veri modeli.
 ---
 
-Bu, ince başlangıç şemasını gerçek davranışsal-sinirbilim iş akışlarını
-destekleyen bir modele dönüştüren hedef modeldir. Mişko bu modeli **system of
-record** olarak sahiplenir; CV servisi bağımsız kalır.
+Mişko, kasıtlı olarak küçük tutulmuş bir alana sahip **video-only davranış testi
+platformudur**. Mişko bu modeli **system of record** olarak sahiplenir; CV servisi
+bağımsız kalır. Metrik tanımları, MWM normalizasyonu ve kalite kontrol semantiği
+[Ölçüm mimarisi](../measurements/) sayfasındadır.
 
-Metrik tanımları, MWM normalizasyonu ve kalite kontrol semantiği
-[Ölçüm mimarisi](../measurements/) sayfasında detaylandırılır.
+Beş kavram, kurulumdan sonuca tek bir düz çizgi:
+
+```txt
+Denek (fare)
+Paradigma (salt-okunur kod katalog) -> Ortam (isimli fiziksel instance)
+                                          |
+                                          v
+                                       Senaryo  (ortam + metrikler +
+                                                  beklenen sonuçlar)
+                                          |
+                                          v
+Test = Denek + Senaryo -> sonuç (metrikler) + passed
+```
 
 ## Kiracılık (tek kiracı, on-prem)
 
-Mişko **kurulum başına bir laboratuvar** çalıştırır — singleton, çok kiracılı
+Mişko **kurulum başına bir laboratuvar** çalıştırır - singleton, çok kiracılı
 değil.
 
 - **`Laboratory`** (singleton): ad, kod, zaman dilimi, ayarlar.
 - **Kurulum sihirbazı (CLI, açılışta):** lab adı + superadmin e-postasını alır ve
   `Laboratory` ile `SUPERADMIN`'i birlikte oluşturur. Singleton guard ikinci bir
   lab oluşturmayı reddeder; adım idempotenttir.
-- **`Environment` (Ortam):** paradigmalar salt-okunur şablonlardır. Bir lab
-  bunlardan adlandırılmış `Environment` örnekleri oluşturur, paradigma başına
-  birden çok (ör. iki ayrı Morris su tankı). Fiziksel değerler ortam bazında
-  belirlenir ve test anında kilitlenir.
 
-## Paradigma ≠ Cihaz ≠ Kalibrasyon
+## Denek (fare)
 
-En büyük tasarım kararı — eski `Scenario`'nun birleştirdiği üç kavramı ayırmak:
+Sade tutulur: `code` (benzersiz), `sex`, `groupName` (serbest-metin deney grubu),
+`birthDate`, `notes`.
 
-| Kavram | Yanıtladığı | Değişen | Sahip |
-|---|---|---|---|
-| **Paradigma** | *ne* test edilir & hangi metrikler önemli | sabit katalog | Mişko (kod) |
-| **Cihaz** | *hangi fiziksel düzenek* (geometri, renk, boyut) | lab/kuruluma göre | Mişko |
-| **Kalibrasyon** | *piksel → cm + bölgeler* nasıl eşlenir | sabit rig veya oturum başına | Mişko / CV |
+## Paradigma ve Ortam
 
-Kamera paradigmayı veya bölgeleri **çıkarsamaz**. CV hayvanı takip eder;
-geometri (cm cinsinden bölgeler) ve piksel↔cm eşlemesi ona *verilir*.
+- **Paradigma:** kullanıcının düzenlediği bir DB satırı değil, **kodda tanımlı**
+  bilimsel bir test türüdür. Spec (parametreler, bölgeler, metrik sözlüğü,
+  önerilen kabul) mühendislik sahipliğindedir ve kararlıdır; yalnızca değerler
+  kullanıcı verisidir. Salt-okunur katalog (`GET /api/paradigms`). Kayıt defteri:
+  `MWM`, `OPEN_FIELD`, `EPM`, `ROTAROD`, `Y_MAZE`, `NOVEL_OBJECT`, `BARNES_MAZE`,
+  `THREE_CHAMBER`, `LIGHT_DARK`, `POLE`, `TREADMILL`.
+- **Ortam (Environment):** bir lab'ın paradigmadan oluşturduğu isimli, kalıcı
+  instance. Kendine yeten bir snapshot tutar (`{ paradigmKey, schemaVersion,
+  apparatus, zones }`); apparatus değerleri kod tarafından sabit parametre
+  aralıklarına göre doğrulanır ve test anında kilitlenir. Paradigma başına birden
+  çok ortam (ör. iki ayrı Morris su tankı).
 
-### Paradigma — hardcoded, SOLID bir kayıt defteri
+Fiziksel düzenek **Ortam'ın kendisidir** - ayrı bir `Apparatus` modeli yoktur.
+Kamera-cm kalibrasyonu sonraki bir konudur (yol haritası Adım 5).
 
-Paradigma, kullanıcının düzenlediği bir DB satırı değil, **kodda tanımlı**
-bilimsel bir test türüdür. Spec (hangi parametreler, bölgeler, metrikler vardır)
-mühendislik sahipliğindedir ve kararlıdır; yalnızca **değerler** kullanıcı
-verisidir. Her paradigma ortak bir arayüzü uygular; bir tane eklemek bir sınıf
-eklemek ve başka hiçbir yere dokunmamak demektir.
+## Senaryo (merkezî deney tanımı)
 
-```ts
-interface ParadigmSpec {
-  key: string;            // 'MWM' | 'OPEN_FIELD' | 'EPM' | 'ROTAROD'
-  name: string;
-  category: string;       // learning_memory | anxiety | motor | social
-  parameters: Field[];    // → otomatik UI formu + doğrulama
-  zones(config): Zone[];  // yapılandırılmış geometriden somut bölgeler
-  metrics: MetricDef[];   // CV servisinin hesaplaması gerekenler
-  acceptance(config): Rule | null;
-  qc: QualityRequirement[];
-  validate(config): void;
-}
-```
+`Scenario`, bir araştırmacının bir kez kurduğu, bir deneyin eksiksiz ve yeniden
+kullanılabilir tanımıdır. Her detayı taşır:
 
-Başlangıç kayıt defteri: `MWM`, `OPEN_FIELD`, `EPM`, `ROTAROD`.
+- `name`.
+- `environmentId` - üzerinde koşulacak ortam (ve dolayısıyla paradigma).
+- **seçili metrikler** - paradigmanın sözlüğünden hangi metrikleri topladığı.
+- **beklenen sonuçlar / kabul kriterleri** - metrik başına geç/kal kontratı.
+- **oturum parametreleri** - paradigmadan trial sayısı, süre vb.
 
-Sonuç JSON'u aktif paradigmanın metrik sözlüğüne, sonuç şemasına, QC
-gereksinimlerine ve protokol versiyonuna göre doğrulanmalıdır.
+Ortam paradigmayı, senaryo da metrikleri ve beklenen sonuçları taşıdığından, bir
+senaryo kendini tümüyle tanımlar.
 
-### Cihaz (fiziksel "ortam")
+## Test (tek koşu)
 
-Aynı paradigma farklı düzeneklerde çalışır — beyaz tank vs siyah tank, farklı çap,
-farklı platform konumu. CV doğruluğu **hayvan-arkaplan kontrastına** bağlı
-olduğundan görünüm birinci sınıftır: `surfaceColor`, `material`, `shape`,
-`dimensions` (cm), paradigmaya özel config ve cm cinsinden somut `zones`.
+`Test`, bir `Scenario`'nun bir `Subject` üzerinde tek bir koşusudur:
 
-### Kalibrasyon (kamera ↔ dünya)
+- `scenarioId` (ortamı, paradigmayı, metrikleri ve beklenen sonuçları getirir),
+  `subjectId`, `operatorId`, `deviceId?`.
+- `status` (`PENDING | RUNNING | DONE | FAILED`), `startedAt`, `endedAt`.
+- `result` (JSON) - CV'nin hesapladığı metrikler + QC + artefakt URL'leri,
+  senaryonun metriklerine göre doğrulanır.
+- `passed` - `result`'ın senaryonun beklenen sonuçlarına göre değerlendirmesi
+  (yoksa null).
 
-Hem kalıcı monte kamerayı (bir kez kalibre et, cihazda sakla) hem hareketli
-kamerayı (oturum başına kalibre et, Test'te override) destekler. Çözümleme
-sırası: **Test override → Cihaz varsayılanı**.
-
-## Denek (fare) — zengin alan
-
-- **Kimlik:** kod, mikroçip ID, kulak etiketi.
-- **Biyolojik:** tür, suş, hat/genotip, zigotluk, cinsiyet, doğum tarihi,
-  **tüy rengi** (görü kontrastı).
-- **Fizyoloji:** `WeightLog` zaman serisi (çoğu protokol günlük tartar), sağlık
-  durumu.
-- **Barınma & yaşam döngüsü:** kafes, batın/kohort, durum (`ALIVE | SACRIFICED |
-  DEAD`).
-- **Deneysel:** N–N hastalık modelleri ve N–N tedaviler (doz, yol, çizelge ile).
-
-## Hastalık modelleri & tedaviler
-
-Bir fare aynı anda **birden çok** hastalık modeli ve tedavi taşıyabilir. İkisi de
-deneğe N–N bağlanan kataloglardır; indükleme yöntemi, doz, yol ve çizelgeyi tutar.
-
-## Çalışma → Grup (boylamsal)
-
-Gerçek lablar bir Çalışma ve karşılaştırma grupları (kontrol, model, tedavi)
-etrafında örgütlenir. Bir `Test`, çalışmayı referans alır ve bir `timepoint`
-etiketi taşır; böylece aynı deneğin tekrarlı testleri karşılaştırılabilir —
-sonraki istatistiklerin temeli.
+Test başına paradigma, ortam, metrik veya kabul seçimi **yoktur** - hepsi
+senaryoda durur. Test başlatmak yalnızca bir denek (ve çalışılan cihaz) ister.
 
 ## Roller & izinler (RBAC)
 
@@ -109,10 +92,8 @@ yok):
 |---|:--:|:--:|:--:|:--:|:--:|
 | `user:manage`     | ✅ | ✅ | — | — | — |
 | `lab:configure`   | ✅ | ✅ | — | — | — |
-| `study:write`     | ✅ | ✅ | ✅ | — | — |
 | `subject:write`   | ✅ | ✅ | ✅ | — | — |
-| `apparatus:write` | ✅ | ✅ | ✅ | — | — |
-| `weight:write`    | ✅ | ✅ | ✅ | ✅ | — |
+| `apparatus:write` (ortamlar & senaryolar) | ✅ | ✅ | ✅ | — | — |
 | `test:write`      | ✅ | ✅ | ✅ | — | — |
 | `test:run`        | ✅ | ✅ | ✅ | ✅ | — |
 | `*:read`          | ✅ | ✅ | ✅ | ✅ | ✅ |
@@ -122,5 +103,5 @@ yok):
 ## Mişko'da durmayanlar
 
 Kare kare telemetri ve event satırları CV servisinin PostgreSQL'inde durur. Video
-ve trajektori dosyaları object storage'da durur — Mişko yalnızca URL'leri tutar.
+ve trajektori dosyaları object storage'da durur - Mişko yalnızca URL'leri tutar.
 Mişko'da timeseries tablosu yoktur. Bkz. [Entegrasyon](../integration/).

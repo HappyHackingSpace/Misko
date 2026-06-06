@@ -41,6 +41,10 @@ is established by two fields:
 
 ## 4. Test lifecycle (with CV)
 
+A Test is created from a **Scenario + Subject** only. The scenario already carries
+the environment (geometry/zones), the paradigm, the metrics to collect and the
+expected results - so neither the operator nor the CV chooses those at run time.
+
 ```mermaid
 sequenceDiagram
     participant Op as Operator (Vue)
@@ -54,11 +58,39 @@ sequenceDiagram
     Note over CV: CV is already processing that camera;<br/>events are written to its DB with camera_id
     Op->>M: PATCH /api/tests/:id (status=DONE, endedAt)
     M-->>CV: (optional) test-finished notification / CV polling
-    CV->>CV: compute metrics for [startedAt, endedAt] + cameraId
+    CV->>CV: compute the scenario's metrics for [startedAt, endedAt] + cameraId
     CV->>S: upload video + trajectory
-    CV->>M: POST /api/tests/:id/result (service auth) + metrics + artifact URL
+    CV->>M: POST /api/tests/:id/result (service auth) + metrics + artifact URLs
+    M->>M: validate, store, evaluate vs scenario (see §4.1)
     M-->>CV: 200 OK (idempotent)
 ```
+
+### 4.1 CV result flow (inside Mişko)
+
+What happens when the CV pushes a result, step by step:
+
+1. **Service auth** - the `X-Service-Key` header is validated against
+   `SERVICE_API_KEY` (no operator JWT). Reject with 401 otherwise.
+2. **Idempotency** - if this `captureSessionId` was already recorded, return the
+   stored result as a no-op (200). Safe to retry.
+3. **Resolve the contract** - load the Test, then its Scenario, then the
+   scenario's Environment (and therefore the paradigm), the scenario's **selected
+   metric keys**, its **expected results** and its `schemaVersion`. The scenario
+   is the single source of truth for what is allowed.
+4. **Validate the payload** against that contract:
+   - every key in `metrics` must be a **known metric** of the paradigm
+     (`isKnownMetricKey`) and **selected by the scenario**; unknown keys are
+     rejected.
+   - units/types match the metric dictionary; `schemaVersion` is compatible.
+5. **Store** - `metrics → Test.result` (structured JSON, incl. `result.qc` and
+   `result.artifacts` URLs). Raw video/telemetry never enters Mişko.
+6. **Evaluate** - run the scenario's expected results through the acceptance
+   engine (`backend/src/config/acceptance.js`) to set `Test.passed`
+   (null when the scenario defines no expected results). The CV may *suggest* a
+   `passed`, but Mişko's evaluation against the scenario is authoritative.
+7. **Finalize** - set `status = DONE` (and `endedAt` if unset); return 200.
+
+QC status is computed/stored separately from the behavioral `passed`.
 
 ## 5. Boundary API (contract)
 
@@ -82,13 +114,13 @@ Request body:
   "cameraId": "cam-1",
   "startedAt": "2026-06-01T15:00:00Z",
   "endedAt":   "2026-06-01T15:05:00Z",
-  "metrics": {                            // free schema, per scenario
+  "metrics": {                            // keys must be metrics the scenario selected
     "distance_cm": 1234.5,
     "time_in_zone_s": 45.2,
     "latency_to_platform_s": 12.0,
     "events": { "ate": 3, "rest": 7 }
   },
-  "passed": true,
+  "passed": true,                         // advisory; Mişko re-evaluates vs the scenario
   "artifacts": {
     "videoUrl": "s3://misko/cam-1/2026-06-01/sess-9f3a.mp4",
     "trajectoryUrl": "s3://misko/cam-1/2026-06-01/sess-9f3a.parquet"
@@ -96,8 +128,10 @@ Request body:
 }
 ```
 
-What Mişko does: `metrics` → `Test.result` (JSON), `passed` → `Test.passed`,
-status `DONE`. If `captureSessionId` was already processed, it returns a no-op
+What Mişko does: validates `metrics` against the scenario's selected metrics and
+the paradigm dictionary, stores `metrics → Test.result` (JSON), evaluates them
+against the scenario's expected results to set `Test.passed`, and sets status
+`DONE` (see §4.1). If `captureSessionId` was already processed, it returns a no-op
 (idempotent).
 
 ### 5.2 Authentication (service-to-service)

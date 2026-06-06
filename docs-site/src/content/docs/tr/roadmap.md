@@ -49,15 +49,34 @@ Tamamlandı: kayıt defterleri `backend/src/config/{units,metrics,paradigms}.js`
 
 Çıkış kriteri: her metriğin birimi, tanımı, input listesi ve aggregation davranışı vardır.
 
-## Adım 3 - Araştırma domain modeli
+## Adım 3 - Senaryo: merkezî deney tanımı
 
-- Zengin `Subject` ve `WeightLog`.
-- Denek join'leriyle `DiseaseModel` ve `Treatment` katalogları.
-- Boylamsal çalışma için `Study -> Group`.
-- Fiziksel düzenekler için `Apparatus`.
-- Sabit kurulum veya oturum override için `Calibration`.
-- `Test` paradigma, apparatus, denek, operatör, cihaz, çalışma, timepoint ve kalibrasyonu referans alır.
-- `Test.result` yapılandırılmış JSON olur.
+`Scenario`, bir deneyin eksiksiz ve yeniden kullanılabilir tanımıdır; böylece test
+başlatmak "denek seç ve başlat" kadar basit olur. Domain küçük kalır: **Denek**
+(fare, sade tutulur), **Paradigma** (salt-okunur katalog), **Ortam** (paradigmanın
+isimli instance'ı - fiziksel kurulum), **Senaryo** (merkezî nesne) ve **Test**
+(tek koşu).
+
+Bir senaryo her detayı taşır:
+
+- bir `Environment`'a (ve dolayısıyla bir paradigmaya) referans verir.
+- o paradigmanın metrik sözlüğünden hangi metriklerin toplanacağını seçer.
+- her metrik için beklenen sonuçları / kabul kriterlerini tanımlar (Step 2 kabul
+  motorunu kullanarak).
+- paradigmadan oturum parametrelerini taşır.
+
+`Test` ise sadece `Denek + Senaryo`'dur; koşturulduğunda senaryonun metriklerini
+toplar ve beklenen sonuçlara göre değerlendirir.
+
+- Başlangıç `Scenario`'sunu (`POOL | MAZE | STICK | PATH`) bu deney tanımına
+  dönüştür (ortam + metrikler + beklenen sonuçlar + oturum parametreleri).
+- Kabul/beklenen sonuçları `Test`'ten `Scenario`'ya taşı.
+- `Test = Denek + Senaryo` kalır; `Test.result` yapılandırılmış JSON olur.
+- `Subject` sade başlangıç modeli olarak kalır.
+
+Önceki plandan çıkarılanlar: zengin `Subject`, `WeightLog`,
+`DiseaseModel`/`Treatment`, `Study -> Group`, ayrı `Apparatus` modeli. Fiziksel
+düzenek `Environment`'tır; kalibrasyon Adım 5'te kalır.
 
 ## Adım 4 - Fake CV ile video-only sınır
 
@@ -102,8 +121,8 @@ Tamamlandı: kayıt defterleri `backend/src/config/{units,metrics,paradigms}.js`
 
 ## Adım 8 - Analiz ve raporlama
 
-- Grup ve timepoint bazlı study dashboard'ları.
-- Boylamsal denek görünümü.
+- Testlerini toplayan senaryo dashboard'ları; denek gruplarını (`Subject.groupName`) karşılaştırma.
+- Test'ler arası denek geçmişi.
 - MWM acquisition curve ve probe summary.
 - Open Field ve EPM özetleri.
 - Rotarod tekrarlı trial curve'leri.
