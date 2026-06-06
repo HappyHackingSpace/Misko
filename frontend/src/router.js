@@ -11,6 +11,10 @@ import Environments from "./views/Environments.vue";
 import EnvironmentForm from "./views/EnvironmentForm.vue";
 import Subjects from "./views/Subjects.vue";
 import SubjectForm from "./views/SubjectForm.vue";
+import DiseaseModels from "./views/DiseaseModels.vue";
+import DiseaseModelForm from "./views/DiseaseModelForm.vue";
+import Treatments from "./views/Treatments.vue";
+import TreatmentForm from "./views/TreatmentForm.vue";
 import Devices from "./views/Devices.vue";
 import DeviceForm from "./views/DeviceForm.vue";
 import Tests from "./views/Tests.vue";
@@ -37,6 +41,14 @@ const routes = [
   { path: "/subjects", component: Subjects, meta: { titleKey: "nav.subjects" } },
   { path: "/subjects/new", component: SubjectForm, meta: { titleKey: "nav.subjects" } },
   { path: "/subjects/:id", component: SubjectForm, meta: { titleKey: "nav.subjects" } },
+
+  { path: "/disease-models", component: DiseaseModels, meta: { titleKey: "nav.diseaseModels" } },
+  { path: "/disease-models/new", component: DiseaseModelForm, meta: { titleKey: "nav.diseaseModels" } },
+  { path: "/disease-models/:id", component: DiseaseModelForm, meta: { titleKey: "nav.diseaseModels" } },
+
+  { path: "/treatments", component: Treatments, meta: { titleKey: "nav.treatments" } },
+  { path: "/treatments/new", component: TreatmentForm, meta: { titleKey: "nav.treatments" } },
+  { path: "/treatments/:id", component: TreatmentForm, meta: { titleKey: "nav.treatments" } },
 
   { path: "/devices", component: Devices, meta: { titleKey: "nav.devices" } },
   { path: "/devices/new", component: DeviceForm, meta: { titleKey: "nav.devices" } },

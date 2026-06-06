@@ -100,8 +100,10 @@ model Subject {
   groupName    String?
   createdAt    DateTime  @default(now())
 
-  tests      Test[]
-  weightLogs WeightLog[]
+  tests         Test[]
+  weightLogs    WeightLog[]
+  diseaseModels SubjectDiseaseModel[]
+  treatments    SubjectTreatment[]
 
   @@index([status])
   @@index([strain])
@@ -119,6 +121,72 @@ model WeightLog {
   createdAt  DateTime @default(now())
 
   @@index([subjectId])
+}
+
+// DiseaseModel catalog (see docs/DOMAIN.md §3). Reference data, e.g. Alzheimer
+// (5xFAD, APP/PS1), Parkinson (MPTP, 6-OHDA), Huntington (R6/2). A subject can
+// carry MANY disease models at once.
+model DiseaseModel {
+  id          String   @id @default(cuid())
+  key         String   @unique // stable identifier, e.g. "5xFAD"
+  name        String
+  category    String? // e.g. alzheimer | parkinson | huntington | stroke
+  description String?
+  createdAt   DateTime @default(now())
+
+  subjects SubjectDiseaseModel[]
+}
+
+// Join: a disease model induced in a subject, with induction metadata.
+model SubjectDiseaseModel {
+  id             String       @id @default(cuid())
+  subject        Subject      @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  subjectId      String
+  diseaseModel   DiseaseModel @relation(fields: [diseaseModelId], references: [id], onDelete: Cascade)
+  diseaseModelId String
+  inducedAt      DateTime?
+  method         String?
+  notes          String?
+  createdAt      DateTime     @default(now())
+
+  @@unique([subjectId, diseaseModelId])
+  @@index([subjectId])
+  @@index([diseaseModelId])
+}
+
+// Treatment catalog (see docs/DOMAIN.md §3). A drug/compound or vehicle/control.
+// A subject can receive MANY treatments at once. Route: IP | ORAL | SC | IV | IN.
+model Treatment {
+  id          String   @id @default(cuid())
+  key         String   @unique // stable identifier, e.g. "donepezil"
+  name        String
+  defaultDose Float?
+  unit        String? // e.g. mg_kg
+  route       String? // IP | ORAL | SC | IV | IN
+  notes       String?
+  createdAt   DateTime @default(now())
+
+  subjects SubjectTreatment[]
+}
+
+// Join: a treatment given to a subject, with dose/route/schedule per subject.
+model SubjectTreatment {
+  id          String    @id @default(cuid())
+  subject     Subject   @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  subjectId   String
+  treatment   Treatment @relation(fields: [treatmentId], references: [id], onDelete: Cascade)
+  treatmentId String
+  dose        Float?
+  unit        String?
+  route       String? // IP | ORAL | SC | IV | IN
+  schedule    Json? // free-form dosing schedule
+  startedAt   DateTime?
+  endedAt     DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@unique([subjectId, treatmentId])
+  @@index([subjectId])
+  @@index([treatmentId])
 }
 
 // Test scenario (pool / maze / stick / path)

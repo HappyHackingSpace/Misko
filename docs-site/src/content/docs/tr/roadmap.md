@@ -52,7 +52,7 @@ Tamamlandı: kayıt defterleri `backend/src/config/{units,metrics,paradigms}.js`
 ## Adım 3 - Araştırma domain modeli
 
 - Zengin `Subject` ve `WeightLog`. ✅
-- Denek join'leriyle `DiseaseModel` ve `Treatment` katalogları.
+- Denek join'leriyle `DiseaseModel` ve `Treatment` katalogları. ✅
 - Boylamsal çalışma için `Study -> Group`.
 - Fiziksel düzenekler Adım 1'deki isimli `Environment` örnekleridir (ayrı bir `Apparatus` modeli yok); `Test` bir ortamı ve paradigmasını referans alır.
 - `Calibration` (kamera-cm eşlemesi) Adım 5'e ertelendi.

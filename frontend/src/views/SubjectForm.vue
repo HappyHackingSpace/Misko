@@ -56,7 +56,7 @@ async function load() {
       sacrificedAt: toDateInput(s.sacrificedAt), healthStatus: s.healthStatus ?? "",
       groupName: s.groupName ?? "", notes: s.notes ?? "",
     };
-    await loadWeights();
+    await Promise.all([loadWeights(), loadDiseases(), loadTreatments()]);
   } catch (e) {
     err.value = e.message;
   }
@@ -124,6 +124,81 @@ async function removeWeight(id) {
 }
 
 const fmtDate = (v) => (v ? String(v).slice(0, 10) : "");
+
+// --- Disease model assignments (docs/DOMAIN.md §3) ---
+const diseaseCatalog = ref([]);
+const diseaseLinks = ref([]);
+const newDisease = ref({ diseaseModelId: "", inducedAt: "", method: "", notes: "" });
+const diseaseErr = ref("");
+
+async function loadDiseases() {
+  const [cat, links] = await Promise.all([
+    api("/disease-models?all=true"),
+    api(`/subjects/${route.params.id}/disease-models`),
+  ]);
+  diseaseCatalog.value = cat.data;
+  diseaseLinks.value = links;
+}
+
+async function attachDisease() {
+  diseaseErr.value = "";
+  try {
+    await api(`/subjects/${route.params.id}/disease-models`, { method: "POST", body: { ...newDisease.value } });
+    newDisease.value = { diseaseModelId: "", inducedAt: "", method: "", notes: "" };
+    await loadDiseases();
+  } catch (e) {
+    diseaseErr.value = e.message;
+  }
+}
+
+async function detachDisease(id) {
+  if (!confirm(t("subjectLinks.confirmRemove"))) return;
+  diseaseErr.value = "";
+  try {
+    await api(`/subjects/${route.params.id}/disease-models/${id}`, { method: "DELETE" });
+    await loadDiseases();
+  } catch (e) {
+    diseaseErr.value = e.message;
+  }
+}
+
+// --- Treatment assignments (docs/DOMAIN.md §3) ---
+const TREATMENT_ROUTES = ["IP", "ORAL", "SC", "IV", "IN"];
+const treatmentCatalog = ref([]);
+const treatmentLinks = ref([]);
+const newTreatment = ref({ treatmentId: "", dose: "", unit: "", route: "", startedAt: "", endedAt: "" });
+const treatmentErr = ref("");
+
+async function loadTreatments() {
+  const [cat, links] = await Promise.all([
+    api("/treatments?all=true"),
+    api(`/subjects/${route.params.id}/treatments`),
+  ]);
+  treatmentCatalog.value = cat.data;
+  treatmentLinks.value = links;
+}
+
+async function attachTreatment() {
+  treatmentErr.value = "";
+  try {
+    await api(`/subjects/${route.params.id}/treatments`, { method: "POST", body: { ...newTreatment.value } });
+    newTreatment.value = { treatmentId: "", dose: "", unit: "", route: "", startedAt: "", endedAt: "" };
+    await loadTreatments();
+  } catch (e) {
+    treatmentErr.value = e.message;
+  }
+}
+
+async function detachTreatment(id) {
+  if (!confirm(t("subjectLinks.confirmRemove"))) return;
+  treatmentErr.value = "";
+  try {
+    await api(`/subjects/${route.params.id}/treatments/${id}`, { method: "DELETE" });
+    await loadTreatments();
+  } catch (e) {
+    treatmentErr.value = e.message;
+  }
+}
 
 onMounted(load);
 onUnmounted(() => crumb.clear());
@@ -223,13 +298,90 @@ onUnmounted(() => crumb.clear());
     </table>
     <p class="err" v-if="weightErr">{{ weightErr }}</p>
   </div>
+
+  <!-- Disease model assignments -->
+  <div class="card" v-if="!isNew">
+    <h3 class="section" style="margin-top:0">{{ $t("subjectLinks.diseaseModels") }}</h3>
+    <table class="links">
+      <thead>
+        <tr><th>{{ $t("diseaseModels.title") }}</th><th>{{ $t("subjectLinks.inducedAt") }}</th><th>{{ $t("subjectLinks.method") }}</th><th>{{ $t("common.notes") }}</th><th></th></tr>
+      </thead>
+      <tbody>
+        <tr v-for="l in diseaseLinks" :key="l.id">
+          <td>{{ l.diseaseModel.name }} <span class="muted">({{ l.diseaseModel.key }})</span></td>
+          <td>{{ fmtDate(l.inducedAt) }}</td>
+          <td class="muted">{{ l.method }}</td>
+          <td class="muted">{{ l.notes }}</td>
+          <td><button class="danger small" @click="detachDisease(l.id)">{{ $t("common.delete") }}</button></td>
+        </tr>
+        <tr v-if="!diseaseLinks.length"><td colspan="5" class="muted">{{ $t("subjectLinks.emptyDisease") }}</td></tr>
+      </tbody>
+      <tfoot>
+        <tr>
+          <td>
+            <select v-model="newDisease.diseaseModelId">
+              <option value="">{{ $t("subjectLinks.selectDisease") }}</option>
+              <option v-for="d in diseaseCatalog" :key="d.id" :value="d.id">{{ d.name }} ({{ d.key }})</option>
+            </select>
+          </td>
+          <td><input type="date" v-model="newDisease.inducedAt" /></td>
+          <td><input v-model="newDisease.method" /></td>
+          <td><input v-model="newDisease.notes" /></td>
+          <td><button class="primary small" :disabled="!newDisease.diseaseModelId" @click="attachDisease">{{ $t("subjectLinks.add") }}</button></td>
+        </tr>
+      </tfoot>
+    </table>
+    <p class="err" v-if="diseaseErr">{{ diseaseErr }}</p>
+  </div>
+
+  <!-- Treatment assignments -->
+  <div class="card" v-if="!isNew">
+    <h3 class="section" style="margin-top:0">{{ $t("subjectLinks.treatments") }}</h3>
+    <table class="links">
+      <thead>
+        <tr><th>{{ $t("treatments.title") }}</th><th>{{ $t("treatments.defaultDose") }}</th><th>{{ $t("treatments.route") }}</th><th>{{ $t("subjectLinks.startedAt") }}</th><th>{{ $t("subjectLinks.endedAt") }}</th><th></th></tr>
+      </thead>
+      <tbody>
+        <tr v-for="l in treatmentLinks" :key="l.id">
+          <td>{{ l.treatment.name }} <span class="muted">({{ l.treatment.key }})</span></td>
+          <td>{{ l.dose != null ? l.dose : "" }} <span class="muted">{{ l.unit }}</span></td>
+          <td class="muted">{{ l.route }}</td>
+          <td>{{ fmtDate(l.startedAt) }}</td>
+          <td>{{ fmtDate(l.endedAt) }}</td>
+          <td><button class="danger small" @click="detachTreatment(l.id)">{{ $t("common.delete") }}</button></td>
+        </tr>
+        <tr v-if="!treatmentLinks.length"><td colspan="6" class="muted">{{ $t("subjectLinks.emptyTreatment") }}</td></tr>
+      </tbody>
+      <tfoot>
+        <tr>
+          <td>
+            <select v-model="newTreatment.treatmentId">
+              <option value="">{{ $t("subjectLinks.selectTreatment") }}</option>
+              <option v-for="tx in treatmentCatalog" :key="tx.id" :value="tx.id">{{ tx.name }} ({{ tx.key }})</option>
+            </select>
+          </td>
+          <td><input type="number" step="0.01" min="0" v-model="newTreatment.dose" /></td>
+          <td>
+            <select v-model="newTreatment.route">
+              <option value="">{{ $t("treatments.none") }}</option>
+              <option v-for="r in TREATMENT_ROUTES" :key="r" :value="r">{{ r }}</option>
+            </select>
+          </td>
+          <td><input type="date" v-model="newTreatment.startedAt" /></td>
+          <td><input type="date" v-model="newTreatment.endedAt" /></td>
+          <td><button class="primary small" :disabled="!newTreatment.treatmentId" @click="attachTreatment">{{ $t("subjectLinks.add") }}</button></td>
+        </tr>
+      </tfoot>
+    </table>
+    <p class="err" v-if="treatmentErr">{{ treatmentErr }}</p>
+  </div>
 </template>
 
 <style scoped>
 .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
 .section { font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin: 18px 0 8px; }
-.weights { width: 100%; border-collapse: collapse; }
-.weights th, .weights td { padding: 6px 8px; text-align: left; border-bottom: 1px solid var(--line); }
-.weights input { width: 100%; }
+.weights, .links { width: 100%; border-collapse: collapse; }
+.weights th, .weights td, .links th, .links td { padding: 6px 8px; text-align: left; border-bottom: 1px solid var(--line); }
+.weights input, .links input, .links select { width: 100%; }
 .small { padding: 4px 10px; font-size: 0.85rem; }
 </style>

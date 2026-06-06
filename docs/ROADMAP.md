@@ -123,8 +123,8 @@ Goal: replace the starter schema with the model needed for real studies.
 - Rich `Subject`: strain, line, genotype, zygosity, sex, birth date, coat color,
   cage, health status and lifecycle. (done, `Subject` model)
 - `WeightLog` time series. (done, `WeightLog` model + nested `/api/subjects/:id/weights`)
-- `DiseaseModel` catalog with subject joins.
-- `Treatment` catalog with subject joins, dose, route and schedule.
+- `DiseaseModel` catalog with subject joins. (done, catalog at `/api/disease-models` + nested `/api/subjects/:id/disease-models`)
+- `Treatment` catalog with subject joins, dose, route and schedule. (done, catalog at `/api/treatments` + nested `/api/subjects/:id/treatments`)
 - `Study -> Group` for longitudinal experiments.
 - The physical rig is the named `Environment` instance from Step 1 (no separate
   `Apparatus` model). `Calibration` is deferred to Step 5.
