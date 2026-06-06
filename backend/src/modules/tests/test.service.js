@@ -1,27 +1,26 @@
 import { prisma } from "../../lib/prisma.js";
 import { ApiError } from "../../utils/ApiError.js";
 import { buildListQuery, listResult } from "../../common/listQuery.js";
-import { evaluateAcceptance } from "../../config/acceptance.js";
-import { validateMetrics } from "../../config/metrics.js";
+import { getParadigmSpec } from "../../config/paradigms.js";
+import { computeMetrics, validateEvent } from "../../config/metricEngine.js";
 
 /**
- * Test service. A Test = Subject + Scenario (docs/DOMAIN.md §4). The scenario has
- * one or more environments; a run goes environment by environment (start -> enter
- * metrics -> finish). Results are stored per environment in `Test.result`:
- *   { schemaVersion, environments: { [envId]: { status, startedAt, endedAt, metrics } } }
- * Both manual entry and the CV service fill the same metric keys, validated
- * against the paradigm dictionary. `passed` is evaluated per environment against
- * the scenario's expected results once the whole test is done.
+ * Test service. A Test = Subject + Scenario (docs/METRIC_ENGINE.md). The scenario
+ * has one or more environments; a run goes environment by environment. The
+ * operator logs EVENTS; the paradigm's engine derives the METRIC RESULTS from
+ * them (live on each event, finalized on Finish). The CV service feeds the same
+ * engine. Results are data - there is no pass/fail verdict.
+ *   result = { schemaVersion, environments: { [envId]:
+ *     { status, startedAt, endedAt, events: [...], cvInputs?: {...}, metrics: {...} } } }
  */
 
-const RESULT_SCHEMA_VERSION = 1;
+const RESULT_SCHEMA_VERSION = 2;
 
 const include = {
   scenario: {
     select: {
       id: true,
       name: true,
-      acceptance: true,
       environments: { select: { id: true, name: true, paradigmKey: true } },
     },
   },
@@ -71,85 +70,88 @@ export async function update(id, payload) {
   return prisma.test.update({ where: { id }, data, include });
 }
 
-/** Reads the scenario's per-environment acceptance map as a plain object. */
-function acceptanceMap(scenario) {
-  const a = scenario?.acceptance;
-  return a && typeof a === "object" && !Array.isArray(a) ? a : {};
+/**
+ * Derives the test-level status from the per-environment result. DONE only when
+ * every scenario environment is DONE; RUNNING once any has started.
+ */
+function deriveStatus(scenario, resultEnvironments) {
+  const statuses = scenario.environments.map((e) => resultEnvironments[e.id]?.status ?? "PENDING");
+  if (statuses.every((s) => s === "DONE")) return "DONE";
+  if (statuses.some((s) => s === "RUNNING" || s === "DONE")) return "RUNNING";
+  return "PENDING";
 }
 
 /**
- * Derives the test-level status and passed verdict from the per-environment
- * result. Status is DONE only when every scenario environment is DONE; passed is
- * evaluated (per environment, against the scenario's expected results) only then.
+ * Loads a test, mutates one environment's result entry via `mutate(entry, env)`,
+ * re-derives that environment's metrics from its events (the paradigm engine),
+ * recomputes test-level status, and persists. Shared by all run operations.
  */
-function deriveStatusAndPassed(scenario, resultEnvironments) {
-  const envs = scenario.environments;
-  const statuses = envs.map((e) => resultEnvironments[e.id]?.status ?? "PENDING");
-  let status;
-  if (statuses.every((s) => s === "DONE")) status = "DONE";
-  else if (statuses.some((s) => s === "RUNNING" || s === "DONE")) status = "RUNNING";
-  else status = "PENDING";
-
-  let passed = null;
-  if (status === "DONE") {
-    const acc = acceptanceMap(scenario);
-    let anyCriteria = false;
-    let allPass = true;
-    for (const e of envs) {
-      const criteria = Array.isArray(acc[e.id]) ? acc[e.id] : null;
-      if (!criteria || !criteria.length) continue;
-      anyCriteria = true;
-      const metrics = resultEnvironments[e.id]?.metrics ?? null;
-      if (evaluateAcceptance(metrics, criteria).passed !== true) allPass = false;
-    }
-    passed = anyCriteria ? allPass : null;
-  }
-  return { status, passed };
-}
-
-/**
- * Records a run for one environment of the test's scenario: start it, write its
- * metrics, and/or finish it. `metrics` is validated against that environment's
- * paradigm dictionary. Test-level status and passed are recomputed.
- */
-export async function submitEnvironmentResult(id, envId, { status: envStatus, metrics } = {}) {
+async function mutateEnvironment(id, envId, mutate) {
   const test = await prisma.test.findUnique({ where: { id }, include });
   if (!test) throw ApiError.notFound("Not found", "common.notFound");
-
   const env = test.scenario.environments.find((e) => e.id === envId);
   if (!env) throw ApiError.badRequest("Environment is not part of this test's scenario", "test.envNotInScenario", { envId });
 
-  const result = test.result && typeof test.result === "object" && !Array.isArray(test.result)
-    ? { ...test.result }
-    : { schemaVersion: RESULT_SCHEMA_VERSION };
-  result.schemaVersion = RESULT_SCHEMA_VERSION;
+  const base = test.result && typeof test.result === "object" && !Array.isArray(test.result) ? test.result : {};
+  const result = { ...base, schemaVersion: RESULT_SCHEMA_VERSION };
   const environments = { ...(result.environments ?? {}) };
-  const entry = { status: "PENDING", ...(environments[envId] ?? {}) };
+  const entry = { status: "PENDING", events: [], ...(environments[envId] ?? {}) };
 
-  if (metrics !== undefined) {
-    const { valid, errors } = validateMetrics(env.paradigmKey, metrics ?? {});
-    if (!valid) {
-      throw ApiError.badRequest(`Invalid metrics: ${errors.join("; ")}`, "test.invalidMetrics", { errors: errors.join("; ") });
-    }
-    entry.metrics = metrics ?? {};
-  }
-  if (envStatus === "RUNNING") {
-    entry.status = "RUNNING";
-    entry.startedAt = entry.startedAt ?? new Date().toISOString();
-  } else if (envStatus === "DONE") {
-    entry.status = "DONE";
-    entry.endedAt = new Date().toISOString();
-  }
+  mutate(entry, env);
+
+  // Re-derive this environment's metrics from its events (live).
+  entry.metrics = computeMetrics(env.paradigmKey, entry.events ?? [], entry.cvInputs ?? {});
   environments[envId] = entry;
   result.environments = environments;
 
-  const { status, passed } = deriveStatusAndPassed(test.scenario, environments);
-  const data = { result, status, passed };
+  const status = deriveStatus(test.scenario, environments);
+  const data = { result, status };
   if (status !== "PENDING" && !test.startedAt) data.startedAt = new Date();
   if (status === "DONE") data.endedAt = new Date();
   else if (test.endedAt) data.endedAt = null;
 
   return prisma.test.update({ where: { id }, data, include });
+}
+
+/** Start or finish one environment's run. */
+export function submitEnvironmentResult(id, envId, { status: envStatus } = {}) {
+  return mutateEnvironment(id, envId, (entry) => {
+    if (envStatus === "RUNNING") {
+      entry.status = "RUNNING";
+      entry.startedAt = entry.startedAt ?? new Date().toISOString();
+    } else if (envStatus === "DONE") {
+      entry.status = "DONE";
+      entry.endedAt = new Date().toISOString();
+    }
+  });
+}
+
+/** Appends an event to one environment's run; metrics are re-derived live. */
+export function addEnvironmentEvent(id, envId, event) {
+  return mutateEnvironment(id, envId, (entry, env) => {
+    const spec = getParadigmSpec(env.paradigmKey);
+    const error = validateEvent(spec?.eventTypes ?? [], event);
+    if (error) throw ApiError.badRequest(`Invalid event: ${error}`, "test.invalidEvent", { error });
+    entry.events = [...(entry.events ?? []), {
+      type: event.type,
+      t: typeof event.t === "number" ? event.t : 0,
+      payload: event.payload ?? {},
+    }];
+    if (entry.status === "PENDING") {
+      entry.status = "RUNNING";
+      entry.startedAt = entry.startedAt ?? new Date().toISOString();
+    }
+  });
+}
+
+/** Removes the event at `index` from one environment's run; metrics re-derived. */
+export function removeEnvironmentEvent(id, envId, index) {
+  return mutateEnvironment(id, envId, (entry) => {
+    const events = [...(entry.events ?? [])];
+    if (index < 0 || index >= events.length) throw ApiError.badRequest("Event index out of range", "test.eventIndex");
+    events.splice(index, 1);
+    entry.events = events;
+  });
 }
 
 export async function remove(id) {

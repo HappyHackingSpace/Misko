@@ -82,13 +82,11 @@ ekranlarında bulunur.
 
 ### Senaryolar
 
-Senaryo, bir deneyin eksiksiz ve yeniden kullanılabilir tanımıdır. Bir kez
-kurarsınız: ad verin, bir veya birden çok **ortam** seçin (böylece bir senaryo
-bir veya birden çok paradigmayı kapsayabilir) ve **her ortam için beklenen
-sonuçları** tanımlayın - her ortam, kendi paradigma metriklerinden seçilen kendi
-kabul kriterlerini alır. Bir ortam eklediğinizde beklenen sonuçlar, paradigmanın
-varsayılan kriterleriyle ön-doldurulur; siz de ayarlarsınız. Sonrasında test
-başlatmak yalnızca bir denek seçmek demektir; gerisini senaryo taşır.
+Senaryo, bir deneyin yeniden kullanılabilir tanımıdır. Bir kez kurarsınız: ad
+verin ve bir veya birden çok **ortam** seçin (böylece bir senaryo bir veya birden
+çok paradigmayı kapsayabilir; her ortamın paradigması topladığı metrikleri
+sabitler). Sonrasında test başlatmak, bir denek ve senaryo seçmek demektir.
+Senaryoda geç/kal kriteri yoktur - sonuçlar veridir, sonra analizde yorumlanır.
 
 ### Denekler
 
@@ -143,8 +141,9 @@ Test, Mişko'daki merkezî kayıttır. Bir test çalıştırmak için:
    ile), zone-bazlı metrikler için zone başına bir input.
 5. O ortamın metriklerini kaydetmek için **Bitir**'e basın. Her ortam için
    tekrarlayın.
-6. Tüm ortamlar bitince test **tamamlandı** olur ve **geç/kal verdikti**
-   senaryonun beklenen sonuçlarına göre hesaplanır.
+6. Tüm ortamlar bitince test **tamamlandı** olur. Sonuç ortam başına veri olarak
+   saklanır - geç/kal verdikti yoktur; yorum ve karşılaştırma sonradan analiz
+   ekranlarında yapılır.
 
 Bugün metrikleri elle girmek ile yarın kamera sisteminden almak **aynı alanları
 ve aynı validation'ı** kullanır - form, CV servisinin göndereceği şeyi birebir

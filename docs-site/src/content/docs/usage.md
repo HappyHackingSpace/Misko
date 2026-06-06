@@ -82,13 +82,11 @@ screens in the panel.
 
 ### Scenarios
 
-A scenario is the complete, reusable definition of an experiment. You build it
-once: give it a name, select one or more **environments** (so a scenario can span
-one or more paradigms), and define the **expected results for each environment** -
-each environment gets its own acceptance criteria, picked from that environment's
-paradigm metrics. Adding an environment pre-fills its expected results with the
-paradigm's default criteria, which you then tune. After that, running a test only
-means choosing a subject; the scenario carries everything else.
+A scenario is the reusable definition of an experiment. You build it once: give
+it a name and select one or more **environments** (so a scenario can span one or
+more paradigms; each environment's paradigm fixes which metrics it collects).
+After that, running a test means choosing a subject and the scenario. A scenario
+has no pass/fail criteria - results are data, interpreted later in analysis.
 
 ### Subjects
 
@@ -139,8 +137,9 @@ The test is the central record in Mişko. To run one:
    unit and valid range), and one input per zone for zone-based metrics.
 5. Click **Finish** to record that environment's metrics. Repeat for each
    environment.
-6. When every environment is done the test becomes **done** and the **pass/fail
-   verdict** is computed against the scenario's expected results.
+6. When every environment is done the test becomes **done**. The result is stored
+   as data per environment - there is no pass/fail verdict; interpretation and
+   comparison happen later in the analysis views.
 
 Entering metrics by hand today and receiving them from the camera system later
 use the **same fields and the same validation** - the form just mirrors what the

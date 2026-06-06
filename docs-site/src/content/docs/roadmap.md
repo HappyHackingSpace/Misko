@@ -40,8 +40,8 @@ Done: `Laboratory` singleton and `Environment` models + migrations; the installa
 - Code-backed `ParadigmSpec` registry (11 paradigms): `MWM`, `OPEN_FIELD`, `EPM`, `ROTAROD`, `Y_MAZE`, `NOVEL_OBJECT`, `BARNES_MAZE`, `THREE_CHAMBER`, `LIGHT_DARK`, `POLE`, `TREADMILL`. ✅
 - Code-backed metric dictionary from [Measurement architecture](../measurements/). ✅
 - Canonical units: results use `cm`, `cm_s`, `s`, `count`, `ratio`, `percent`, `deg`, `rpm`, `g`, `boolean`; apparatus parameters add `mm` and `c`. ✅
-- Per-paradigm parameters, zones, metrics, suggested acceptance templates, QC requirements and artifact expectations. ✅
-- Optional, per-test, user-defined acceptance criteria (engine `backend/src/config/acceptance.js`, builder `frontend/src/components/AcceptanceEditor.vue`). ✅
+- Per-paradigm parameters, zones, metrics, QC requirements and artifact expectations. ✅
+- Per-metric `valueType` / `validRange` / `templated` (zone-keyed) - the contract both manual entry and CV validate against. ✅
 - Result schema versioning with `schemaVersion`. ✅
 - Read-only inspection API: `GET /api/paradigms`, `GET /api/paradigms/:key`, `GET /api/paradigms/metrics`, `GET /api/paradigms/units`. ✅
 
@@ -57,22 +57,21 @@ mouse, kept simple), **Paradigm** (read-only catalog), **Environment** (a named
 paradigm instance - the physical setup), **Scenario** (the central object), and
 **Test** (one run).
 
-A scenario carries every detail:
+A scenario references one or more `Environment`s (N-N), so it can span one or more
+paradigms; each environment's paradigm fixes its metrics. It carries no pass/fail
+criteria - a behavioral result is **data, not a verdict**.
 
-- references an `Environment` (and therefore a paradigm).
-- selects which metrics are collected, from that paradigm's metric dictionary.
-- defines the expected results / acceptance criteria per metric (reusing the
-  Step 2 acceptance engine).
-- session parameters from the paradigm.
+A `Test` is `Subject + Scenario`, run **environment by environment** (Start →
+record metric results → Finish). The result is stored per environment
+(`result.environments[envId].metrics`), validated against the environment's
+paradigm dictionary - the same shape the CV service will push.
 
-A `Test` is then just `Subject + Scenario`; running it collects the scenario's
-metrics and evaluates them against its expected results.
-
-- Redesign the starter `Scenario` (`POOL | MAZE | STICK | PATH`) into this
-  experiment definition (environment + metrics + expected results + session params).
-- Move acceptance/expected results from `Test` onto `Scenario`.
-- Keep `Test = Subject + Scenario`; `Test.result` becomes structured JSON.
-- `Subject` stays the simple starter model.
+- Redesigned the starter `Scenario` (`POOL | MAZE | STICK | PATH`) into a named
+  bundle of environments (+ optional session params). ✅
+- `Test.result` is structured per-environment JSON; **no `passed`/verdict**. ✅
+- Separated **signals** (raw, CV-side) / **metrics** (definitions) / **metric
+  results** (values). ✅
+- `Subject` stays the simple starter model. ✅
 
 Dropped from the earlier plan: rich `Subject`, `WeightLog`,
 `DiseaseModel`/`Treatment`, `Study -> Group`, a separate `Apparatus` model. The
@@ -115,7 +114,7 @@ physical rig is the `Environment`; calibration stays in Step 5.
 
 - Tracking confidence, dropped frame ratio, calibration error, occlusion ratio, out-of-bounds ratio, lighting warning and contrast warning.
 - QC statuses: `PASS`, `WARN`, `REVIEW_REQUIRED`, `FAIL`.
-- QC is separate from behavioral `passed`.
+- QC is stored alongside the metric results (it qualifies the data, it is not a verdict).
 - Manual review screen with video, overlay, trajectory and metric summary.
 - Study exports filter low-quality runs by default.
 

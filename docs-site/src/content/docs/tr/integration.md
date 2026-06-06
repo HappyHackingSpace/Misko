@@ -19,8 +19,8 @@ sahiptir; yalnızca aşağıdaki sınır üzerinden haberleşirler.
 
 ## Veri sahipliği
 
-- **Mişko** → testin kimliği ve bağlamı, ayrıca **özet metrikleri** (`result`
-  JSON) + `passed`.
+- **Mişko** → testin kimliği ve bağlamı, ayrıca **ortam-bazlı metrik sonuçları**
+  (`result` JSON).
 - **CV servisi** → ham çıktı: kare kare konum/poz telemetrisi, event satırları,
   video dosyaları. Bunların hiçbiri Mişko'nun veritabanına girmez.
 - **Object storage** (MinIO/S3) → video ve büyük artefaktlar. İki taraf da
@@ -39,9 +39,9 @@ sahiplenir, böylece CV'nin Mişko'yu beklemesi gerekmez.
 
 ## Test yaşam döngüsü
 
-Bir Test yalnızca **Senaryo + Denek**'ten oluşturulur. Senaryo ortamı
-(geometri/zones), paradigmayı, toplanacak metrikleri ve beklenen sonuçları zaten
-taşır - dolayısıyla bunları ne operatör ne de CV koşu anında seçer.
+Bir Test yalnızca **Senaryo + Denek**'ten oluşturulur. Senaryo ortamları
+(geometri/zones) ve paradigmalarını (metrikleri sabitler) zaten taşır -
+dolayısıyla bunları ne operatör ne de CV koşu anında seçer.
 
 ```mermaid
 sequenceDiagram
@@ -55,10 +55,10 @@ sequenceDiagram
     Op->>M: PATCH /api/tests/:id (status=RUNNING, startedAt)
     Note over CV: CV zaten o kamerayı işliyor;<br/>event'ler camera_id ile DB'sine yazılıyor
     Op->>M: PATCH /api/tests/:id (status=DONE, endedAt)
-    CV->>CV: [startedAt, endedAt] + cameraId için senaryonun metriklerini hesapla
+    CV->>CV: [startedAt, endedAt] + cameraId için ortamın metriklerini hesapla
     CV->>S: video + trajektori yükle
     CV->>M: POST /api/tests/:id/result (servis auth) + metrics + artefakt URL'leri
-    M->>M: senaryoya göre doğrula, sakla, değerlendir
+    M->>M: ortam başına doğrula + sakla
     M-->>CV: 200 OK (idempotent)
 ```
 
@@ -70,19 +70,16 @@ CV bir sonuç push ettiğinde Mişko sabit bir hat işletir:
    JWT yok); aksi halde 401.
 2. **Idempotency** - bu `captureSessionId` daha önce kaydedildiyse, saklanan sonuç
    no-op olarak döner. Yeniden denemek güvenli.
-3. **Kontratı çöz** - Test → Senaryo → senaryonun Ortam/paradigma'sı, seçili metrik
-   anahtarları, beklenen sonuçlar ve `schemaVersion` yüklenir. İzin verilenin tek
-   doğruluk kaynağı senaryodur.
-4. **Doğrula** - `metrics` içindeki her anahtar, paradigmanın bilinen bir metriği
-   ve senaryo tarafından seçilmiş olmalı (bilinmeyen anahtarlar reddedilir);
-   birim/tipler ve `schemaVersion` uyumlu olmalı.
-5. **Sakla** - `metrics → Test.result` (JSON; `result.qc` ve `result.artifacts`
-   URL'leri dahil). Ham video/telemetri Mişko'ya hiç girmez.
-6. **Değerlendir** - senaryonun beklenen sonuçları acceptance motorundan geçirilip
-   `Test.passed` belirlenir (yoksa null). CV'nin gönderdiği `passed` tavsiyedir;
-   Mişko'nun senaryoya göre değerlendirmesi esastır.
-7. **Sonlandır** - `status = DONE` (ve `endedAt`); 200 döner. QC durumu, davranışsal
-   `passed`'tan ayrı saklanır.
+3. **Kontratı çöz** - push, testin senaryosunun bir **ortamını** hedefler; o
+   ortamın **paradigması** + metrik sözlüğü yüklenir.
+4. **Doğrula** - `metrics` içindeki her anahtar o paradigmanın bilinen bir metriği
+   olmalı (bilinmeyen anahtarlar reddedilir); değerler `valueType`/`validRange`'e
+   uymalı (templated metrikler zone map'idir).
+5. **Sakla** - metrikler `Test.result.environments[envId].metrics`'e yazılır (JSON;
+   QC + artefakt URL'leri yanında). Ham video/telemetri Mişko'ya hiç girmez.
+6. **Sonlandır** - ortam DONE işaretlenir; hepsi bitince test DONE. **Geç/kal
+   verdikti yoktur** - sonuç veridir, analiz katmanında yorumlanır. QC metriklerin
+   yanında saklanır.
 
 ## Sınır API'si (kontrat)
 
@@ -107,7 +104,6 @@ Content-Type: application/json
     "latency_to_platform_s": 12.0,
     "events": { "ate": 3, "rest": 7 }
   },
-  "passed": true,
   "artifacts": {
     "videoUrl": "s3://misko/cam-1/2026-06-01/sess-9f3a.mp4",
     "trajectoryUrl": "s3://misko/cam-1/2026-06-01/sess-9f3a.parquet"
@@ -115,10 +111,10 @@ Content-Type: application/json
 }
 ```
 
-Mişko `metrics`'i senaryonun seçili metriklerine ve paradigma sözlüğüne göre
-doğrular, `metrics → Test.result` saklar, senaryonun beklenen sonuçlarına göre
-değerlendirip `Test.passed` belirler ve durumu `DONE` yapar.
-`captureSessionId` daha önce işlendiyse çağrı no-op döner (idempotent).
+Mişko `metrics`'i ortamın paradigma sözlüğüne göre doğrular,
+`Test.result.environments[envId].metrics`'e saklar ve ortamı (hepsi bitince
+testi) `DONE` yapar. Geç/kal verdikti yoktur. `captureSessionId` daha önce
+işlendiyse çağrı no-op döner (idempotent).
 
 ## Servis-servis kimlik doğrulama
 

@@ -934,19 +934,21 @@ function inRange(def, v) {
 
 /** Checks one value against its metric definition, collecting errors. */
 function checkMetricValue(def, key, value, errors) {
+  // Templated metrics (e.g. zone_time_s) are stored as a { zoneKey: number } map.
+  if (def.templated) {
+    if (typeof value !== "object" || value == null || Array.isArray(value)) {
+      errors.push(`${key} must be an object of zone values`);
+      return;
+    }
+    for (const [zk, zv] of Object.entries(value)) {
+      if (typeof zv !== "number" || !Number.isFinite(zv)) errors.push(`${key}.${zk} must be numeric`);
+      else if (!inRange(def, zv)) errors.push(`${key}.${zk} is out of range`);
+    }
+    return;
+  }
   switch (def.valueType) {
     case "boolean":
       if (typeof value !== "boolean") errors.push(`${key} must be a boolean`);
-      break;
-    case "object": // templated zone/quadrant map: { zoneKey: number }
-      if (typeof value !== "object" || value == null || Array.isArray(value)) {
-        errors.push(`${key} must be an object of zone values`);
-        break;
-      }
-      for (const [zk, zv] of Object.entries(value)) {
-        if (typeof zv !== "number" || !Number.isFinite(zv)) errors.push(`${key}.${zk} must be numeric`);
-        else if (!inRange(def, zv)) errors.push(`${key}.${zk} is out of range`);
-      }
       break;
     case "integer":
       if (typeof value !== "number" || !Number.isInteger(value)) errors.push(`${key} must be an integer`);

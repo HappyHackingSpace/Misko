@@ -19,8 +19,8 @@ deployment, and they communicate only over the boundary below.
 
 ## Data ownership
 
-- **Mişko** → the test's identity and context, plus its **summary metrics**
-  (`result` JSON) and `passed`.
+- **Mişko** → the test's identity and context, plus its **per-environment metric
+  results** (`result` JSON).
 - **CV service** → the raw output: per-frame position/pose telemetry, event
   rows, video files. None of this enters Mişko's database.
 - **Object storage** (MinIO/S3) → video and large artifacts. Both sides keep
@@ -39,8 +39,8 @@ stream, so CV never has to wait on Mişko.
 ## Test lifecycle
 
 A Test is created from a **Scenario + Subject** only. The scenario already carries
-the environment (geometry/zones), the paradigm, the metrics to collect and the
-expected results - so neither the operator nor the CV picks those at run time.
+the environments (geometry/zones) and their paradigms (which fix the metrics) - so
+neither the operator nor the CV picks those at run time.
 
 ```mermaid
 sequenceDiagram
@@ -57,7 +57,7 @@ sequenceDiagram
     CV->>CV: compute the scenario's metrics for [startedAt, endedAt] + cameraId
     CV->>S: upload video + trajectory
     CV->>M: POST /api/tests/:id/result (service auth) + metrics + artifact URLs
-    M->>M: validate, store, evaluate vs scenario
+    M->>M: validate + store per environment
     M-->>CV: 200 OK (idempotent)
 ```
 
@@ -69,18 +69,16 @@ When the CV pushes a result, Mişko runs a fixed pipeline:
    operator JWT); 401 otherwise.
 2. **Idempotency** - if this `captureSessionId` was already recorded, return the
    stored result as a no-op. Safe to retry.
-3. **Resolve the contract** - load the Test → its Scenario → the scenario's
-   Environment/paradigm, selected metric keys, expected results and
-   `schemaVersion`. The scenario is the single source of truth for what is allowed.
-4. **Validate** - every `metrics` key must be a known paradigm metric and selected
-   by the scenario (unknown keys rejected); units/types and `schemaVersion` match.
-5. **Store** - `metrics → Test.result` (JSON, incl. `result.qc` and
-   `result.artifacts` URLs). Raw video/telemetry never enters Mişko.
-6. **Evaluate** - the scenario's expected results run through the acceptance engine
-   to set `Test.passed` (null when none). A CV-supplied `passed` is advisory;
-   Mişko's evaluation against the scenario is authoritative.
-7. **Finalize** - set `status = DONE` (and `endedAt`); return 200. QC status is
-   stored separately from the behavioral `passed`.
+3. **Resolve the contract** - the push targets one **environment** of the test's
+   scenario; load that environment's **paradigm** + metric dictionary.
+4. **Validate** - every `metrics` key must be a known metric of that paradigm
+   (unknown keys rejected); values match `valueType`/`validRange` (templated
+   metrics are zone maps).
+5. **Store** - metrics go to `Test.result.environments[envId].metrics` (JSON, with
+   QC + artifact URLs alongside). Raw video/telemetry never enters Mişko.
+6. **Finalize** - mark the environment DONE; the test is DONE when all are. There
+   is **no pass/fail verdict** - the result is data, interpreted at the analysis
+   layer. QC is stored alongside the metrics.
 
 ## Boundary API (contract)
 
@@ -105,7 +103,6 @@ Content-Type: application/json
     "latency_to_platform_s": 12.0,
     "events": { "ate": 3, "rest": 7 }
   },
-  "passed": true,
   "artifacts": {
     "videoUrl": "s3://misko/cam-1/2026-06-01/sess-9f3a.mp4",
     "trajectoryUrl": "s3://misko/cam-1/2026-06-01/sess-9f3a.parquet"
@@ -113,9 +110,9 @@ Content-Type: application/json
 }
 ```
 
-Mişko validates `metrics` against the scenario's selected metrics and the
-paradigm dictionary, stores `metrics → Test.result`, evaluates them against the
-scenario's expected results to set `Test.passed`, and sets status `DONE`. If
+Mişko validates `metrics` against the environment's paradigm dictionary, stores
+them at `Test.result.environments[envId].metrics`, and marks the environment (and,
+when all are done, the test) `DONE`. There is no pass/fail verdict. If
 `captureSessionId` was already processed, the call is a no-op (idempotent).
 
 ## Service-to-service auth

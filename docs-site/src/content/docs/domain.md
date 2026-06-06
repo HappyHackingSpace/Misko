@@ -15,11 +15,10 @@ Subject (mouse)
 Paradigm (read-only code catalog) -> Environment (named physical instance)
                                           |
                                           v
-                                       Scenario  (environment + metrics +
-                                                   expected results)
+                                       Scenario  (one or more environments)
                                           |
                                           v
-Test = Subject + Scenario -> result (metrics) + passed
+Test = Subject + Scenario -> per-environment metric results (data, no verdict)
 ```
 
 ## Tenancy (single-tenant, on-prem)
@@ -55,34 +54,39 @@ Camera-to-cm calibration is a later concern (roadmap Step 5).
 
 ## Scenario (the central experiment definition)
 
-A `Scenario` is the complete, reusable definition of one experiment, built once
-by a researcher. It carries every detail:
+A `Scenario` is the reusable definition of one experiment, built once. It carries:
 
 - `name`, `description`.
 - **environments** (N-N) - one or more environments to run on, so a scenario can
-  span one or more paradigms.
-- **expected results, per environment** - a map `{ [environmentId]: [criteria] }`.
-  Each environment defines its own pass/fail criteria, validated against that
-  environment's paradigm metrics.
-- **session parameters** - trial count, duration, etc.
+  span one or more paradigms. Each environment's paradigm fixes its metrics.
+- **session parameters** (optional) - trial count, duration, etc.
 
-Because each environment carries its paradigm and its own expected results, a
-scenario is fully self-describing.
+A scenario carries **no** pass/fail criteria. A behavioral result is **data, not
+a verdict** - interpretation happens at the analysis layer.
+
+### Signal vs metric vs metric result
+
+Three separate layers: **signals** (the camera's raw real-time time series -
+trajectory, timestamps; they stay in the CV service, never in Mişko), **metrics**
+(the paradigm's definitions - what is measured, its unit/range/inputs), and
+**metric results** (the values for one run, computed by CV from signals or entered
+by hand). Mişko stores metric results, not signals.
 
 ## Test (one run)
 
-A `Test` is a single run of a `Scenario` against a `Subject`:
+A `Test` is a run of a `Scenario` against a `Subject`. The operator runs it
+**environment by environment** (Start → record metric results → Finish):
 
-- `scenarioId` (brings the environment, paradigm, metrics and expected results),
-  `subjectId`, `operatorId`.
+- `scenarioId`, `subjectId`, `operatorId`.
 - `status` (`PENDING | RUNNING | DONE | FAILED`), `startedAt`, `endedAt`.
-- `result` (JSON) - CV-computed metrics + QC + artifact URLs, validated against
-  the scenario's metrics.
-- `passed` - `result` evaluated against the scenario's expected results (null
-  when none).
+- `result` (JSON) - per environment:
+  `{ schemaVersion, environments: { [envId]: { status, startedAt, endedAt, metrics } } }`.
+  Metric values are validated against the environment's paradigm dictionary. The
+  same shape the CV service will push - manual entry fills the observable metrics
+  by hand.
 
-There are **no** per-test paradigm, environment, metric or acceptance choices -
-they all live on the scenario. Starting a test only asks for a subject.
+There is **no** `passed`/verdict. Starting a test only asks for a subject and a
+scenario.
 
 ## Roles & permissions (RBAC)
 
