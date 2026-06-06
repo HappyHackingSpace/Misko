@@ -90,6 +90,8 @@ export default {
       test: {
         idsRequired: "Scenario and subject are required",
         invalidAcceptance: "Invalid acceptance criteria: {errors}",
+        invalidMetrics: "Invalid metrics: {errors}",
+        envNotInScenario: "Environment is not part of this test's scenario",
       },
       environment: {
         paramNumeric: "{key} must be numeric",

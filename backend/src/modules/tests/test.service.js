@@ -2,19 +2,26 @@ import { prisma } from "../../lib/prisma.js";
 import { ApiError } from "../../utils/ApiError.js";
 import { buildListQuery, listResult } from "../../common/listQuery.js";
 import { evaluateAcceptance } from "../../config/acceptance.js";
+import { validateMetrics } from "../../config/metrics.js";
 
 /**
- * Test service. A Test = Subject + Scenario, run once (docs/DOMAIN.md §4). The
- * scenario carries the environments (and thus paradigms), the metrics and the
- * expected results. When a result is written, metrics are evaluated against the
- * scenario's acceptance to set `passed`.
+ * Test service. A Test = Subject + Scenario (docs/DOMAIN.md §4). The scenario has
+ * one or more environments; a run goes environment by environment (start -> enter
+ * metrics -> finish). Results are stored per environment in `Test.result`:
+ *   { schemaVersion, environments: { [envId]: { status, startedAt, endedAt, metrics } } }
+ * Both manual entry and the CV service fill the same metric keys, validated
+ * against the paradigm dictionary. `passed` is evaluated per environment against
+ * the scenario's expected results once the whole test is done.
  */
+
+const RESULT_SCHEMA_VERSION = 1;
 
 const include = {
   scenario: {
     select: {
       id: true,
       name: true,
+      acceptance: true,
       environments: { select: { id: true, name: true, paradigmKey: true } },
     },
   },
@@ -50,46 +57,97 @@ export async function create({ scenarioId, subjectId, notes }, operatorId) {
   if (!scenario) throw ApiError.badRequest("Unknown scenario", "scenario.notFound");
 
   return prisma.test.create({
-    data: {
-      scenarioId,
-      subjectId,
-      notes: notes || null,
-      operatorId,
-    },
+    data: { scenarioId, subjectId, notes: notes || null, operatorId },
     include,
   });
 }
 
-/**
- * Updates status/result (start, finish, write result). `result` is structured
- * JSON. When a result is written and `passed` is not given explicitly, metrics
- * are evaluated against the test's scenario's acceptance criteria. With no
- * acceptance, passed = null.
- */
+/** Test-level updates: overall status (e.g. cancel -> FAILED) and notes. */
 export async function update(id, payload) {
-  const { status, startedAt, endedAt, result, passed, notes } = payload;
+  const { status, notes } = payload;
   const data = {};
   if (status !== undefined) data.status = status;
-  if (startedAt !== undefined) data.startedAt = startedAt ? new Date(startedAt) : null;
-  if (endedAt !== undefined) data.endedAt = endedAt ? new Date(endedAt) : null;
-  if (result !== undefined) data.result = result ?? null;
   if (notes !== undefined) data.notes = notes;
+  return prisma.test.update({ where: { id }, data, include });
+}
 
-  if (passed !== undefined) {
-    data.passed = passed; // manual override
-  } else if (result !== undefined) {
-    const test = await prisma.test.findUnique({
-      where: { id },
-      select: { scenario: { select: { acceptance: true } } },
-    });
-    // Acceptance is per-environment: { [environmentId]: [criteria] }. Flatten all
-    // of the scenario's environments' expected results to evaluate this result.
-    const acc = test?.scenario?.acceptance;
-    const criteria = acc && typeof acc === "object" && !Array.isArray(acc)
-      ? Object.values(acc).flat()
-      : null;
-    data.passed = evaluateAcceptance(result ?? null, criteria).passed;
+/** Reads the scenario's per-environment acceptance map as a plain object. */
+function acceptanceMap(scenario) {
+  const a = scenario?.acceptance;
+  return a && typeof a === "object" && !Array.isArray(a) ? a : {};
+}
+
+/**
+ * Derives the test-level status and passed verdict from the per-environment
+ * result. Status is DONE only when every scenario environment is DONE; passed is
+ * evaluated (per environment, against the scenario's expected results) only then.
+ */
+function deriveStatusAndPassed(scenario, resultEnvironments) {
+  const envs = scenario.environments;
+  const statuses = envs.map((e) => resultEnvironments[e.id]?.status ?? "PENDING");
+  let status;
+  if (statuses.every((s) => s === "DONE")) status = "DONE";
+  else if (statuses.some((s) => s === "RUNNING" || s === "DONE")) status = "RUNNING";
+  else status = "PENDING";
+
+  let passed = null;
+  if (status === "DONE") {
+    const acc = acceptanceMap(scenario);
+    let anyCriteria = false;
+    let allPass = true;
+    for (const e of envs) {
+      const criteria = Array.isArray(acc[e.id]) ? acc[e.id] : null;
+      if (!criteria || !criteria.length) continue;
+      anyCriteria = true;
+      const metrics = resultEnvironments[e.id]?.metrics ?? null;
+      if (evaluateAcceptance(metrics, criteria).passed !== true) allPass = false;
+    }
+    passed = anyCriteria ? allPass : null;
   }
+  return { status, passed };
+}
+
+/**
+ * Records a run for one environment of the test's scenario: start it, write its
+ * metrics, and/or finish it. `metrics` is validated against that environment's
+ * paradigm dictionary. Test-level status and passed are recomputed.
+ */
+export async function submitEnvironmentResult(id, envId, { status: envStatus, metrics } = {}) {
+  const test = await prisma.test.findUnique({ where: { id }, include });
+  if (!test) throw ApiError.notFound("Not found", "common.notFound");
+
+  const env = test.scenario.environments.find((e) => e.id === envId);
+  if (!env) throw ApiError.badRequest("Environment is not part of this test's scenario", "test.envNotInScenario", { envId });
+
+  const result = test.result && typeof test.result === "object" && !Array.isArray(test.result)
+    ? { ...test.result }
+    : { schemaVersion: RESULT_SCHEMA_VERSION };
+  result.schemaVersion = RESULT_SCHEMA_VERSION;
+  const environments = { ...(result.environments ?? {}) };
+  const entry = { status: "PENDING", ...(environments[envId] ?? {}) };
+
+  if (metrics !== undefined) {
+    const { valid, errors } = validateMetrics(env.paradigmKey, metrics ?? {});
+    if (!valid) {
+      throw ApiError.badRequest(`Invalid metrics: ${errors.join("; ")}`, "test.invalidMetrics", { errors: errors.join("; ") });
+    }
+    entry.metrics = metrics ?? {};
+  }
+  if (envStatus === "RUNNING") {
+    entry.status = "RUNNING";
+    entry.startedAt = entry.startedAt ?? new Date().toISOString();
+  } else if (envStatus === "DONE") {
+    entry.status = "DONE";
+    entry.endedAt = new Date().toISOString();
+  }
+  environments[envId] = entry;
+  result.environments = environments;
+
+  const { status, passed } = deriveStatusAndPassed(test.scenario, environments);
+  const data = { result, status, passed };
+  if (status !== "PENDING" && !test.startedAt) data.startedAt = new Date();
+  if (status === "DONE") data.endedAt = new Date();
+  else if (test.endedAt) data.endedAt = null;
 
   return prisma.test.update({ where: { id }, data, include });
 }

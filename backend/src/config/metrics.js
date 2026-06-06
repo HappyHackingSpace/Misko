@@ -927,6 +927,61 @@ export function metricsForParadigm(paradigmKey) {
   return METRIC_DEFINITIONS.filter((m) => m.paradigmKeys.includes(paradigmKey));
 }
 
+function inRange(def, v) {
+  if (!def.validRange) return true;
+  return v >= def.validRange[0] && v <= def.validRange[1];
+}
+
+/** Checks one value against its metric definition, collecting errors. */
+function checkMetricValue(def, key, value, errors) {
+  switch (def.valueType) {
+    case "boolean":
+      if (typeof value !== "boolean") errors.push(`${key} must be a boolean`);
+      break;
+    case "object": // templated zone/quadrant map: { zoneKey: number }
+      if (typeof value !== "object" || value == null || Array.isArray(value)) {
+        errors.push(`${key} must be an object of zone values`);
+        break;
+      }
+      for (const [zk, zv] of Object.entries(value)) {
+        if (typeof zv !== "number" || !Number.isFinite(zv)) errors.push(`${key}.${zk} must be numeric`);
+        else if (!inRange(def, zv)) errors.push(`${key}.${zk} is out of range`);
+      }
+      break;
+    case "integer":
+      if (typeof value !== "number" || !Number.isInteger(value)) errors.push(`${key} must be an integer`);
+      else if (!inRange(def, value)) errors.push(`${key} is out of range`);
+      break;
+    default: // "number"
+      if (typeof value !== "number" || !Number.isFinite(value)) errors.push(`${key} must be numeric`);
+      else if (!inRange(def, value)) errors.push(`${key} is out of range`);
+  }
+}
+
+/**
+ * Validates a result metrics object against a paradigm's metric dictionary.
+ * Every key must be a metric of the paradigm; values must match `valueType` and
+ * fall within `validRange`. Templated (`object`) metrics hold a `{ zoneKey:
+ * number }` map. Partial entry is allowed - not every metric need be present
+ * (`required` is not enforced here), but unknown keys are rejected. This is the
+ * single contract both manual entry and the CV service validate against.
+ * @returns {{ valid: boolean, errors: string[] }}
+ */
+export function validateMetrics(paradigmKey, metrics) {
+  const errors = [];
+  if (metrics == null) return { valid: true, errors };
+  if (typeof metrics !== "object" || Array.isArray(metrics)) {
+    return { valid: false, errors: ["metrics must be an object"] };
+  }
+  const allowed = new Map(metricsForParadigm(paradigmKey).map((m) => [m.key, m]));
+  for (const [key, value] of Object.entries(metrics)) {
+    const def = allowed.get(key);
+    if (!def) errors.push(`${key} is not a metric of ${paradigmKey}`);
+    else checkMetricValue(def, key, value, errors);
+  }
+  return { valid: errors.length === 0, errors };
+}
+
 /**
  * Tells whether a result key is defined in the dictionary.
  * Templated keys (`zone_time_s.center`) are matched against the root key

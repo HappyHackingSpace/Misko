@@ -90,6 +90,8 @@ export default {
       test: {
         idsRequired: "Senaryo ve denek zorunludur",
         invalidAcceptance: "Geçersiz kabul kriterleri: {errors}",
+        invalidMetrics: "Geçersiz metrikler: {errors}",
+        envNotInScenario: "Ortam bu testin senaryosuna ait değil",
       },
       environment: {
         paramNumeric: "{key} sayısal olmalı",
