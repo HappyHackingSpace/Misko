@@ -13,7 +13,7 @@ sahiptir; yalnızca aşağıdaki sınır üzerinden haberleşirler.
 |---|---|---|
 | Rol | Lab iş akışının system of record'u | Yakalama + inference + telemetri |
 | Stack | Node/Express/Prisma/**PostgreSQL** + Vue | Python/FastAPI/YOLOv8/ByteTrack/OpenCV |
-| Tuttuğu | user, subject, paradigm, device, **test + özet** | ham kare telemetrisi, event'ler, video |
+| Tuttuğu | user, subject, environment, scenario, device, **test + özet** | ham kare telemetrisi, event'ler, video |
 | Hacim | Küçük / ilişkisel | **Büyük** (kendi PostgreSQL'i) |
 | Sahiplik | Testin "ne / kim / ne zaman"ı | Testin "ölçüm / kanıt"ı |
 
@@ -39,6 +39,10 @@ sahiplenir, böylece CV'nin Mişko'yu beklemesi gerekmez.
 
 ## Test yaşam döngüsü
 
+Bir Test yalnızca **Senaryo + Denek**'ten oluşturulur. Senaryo ortamı
+(geometri/zones), paradigmayı, toplanacak metrikleri ve beklenen sonuçları zaten
+taşır - dolayısıyla bunları ne operatör ne de CV koşu anında seçer.
+
 ```mermaid
 sequenceDiagram
     participant Op as Operatör (Vue)
@@ -46,16 +50,39 @@ sequenceDiagram
     participant CV as CV servisi
     participant S as Object storage
 
-    Op->>M: POST /api/tests (paradigm, subject, device, cameraId)
+    Op->>M: POST /api/tests (scenario, subject, device, cameraId)
     M-->>Op: Test (PENDING)
     Op->>M: PATCH /api/tests/:id (status=RUNNING, startedAt)
     Note over CV: CV zaten o kamerayı işliyor;<br/>event'ler camera_id ile DB'sine yazılıyor
     Op->>M: PATCH /api/tests/:id (status=DONE, endedAt)
-    CV->>CV: [startedAt, endedAt] + cameraId için metrik hesapla
+    CV->>CV: [startedAt, endedAt] + cameraId için senaryonun metriklerini hesapla
     CV->>S: video + trajektori yükle
     CV->>M: POST /api/tests/:id/result (servis auth) + metrics + artefakt URL'leri
+    M->>M: senaryoya göre doğrula, sakla, değerlendir
     M-->>CV: 200 OK (idempotent)
 ```
+
+## CV sonuç akışı (Mişko içinde)
+
+CV bir sonuç push ettiğinde Mişko sabit bir hat işletir:
+
+1. **Servis auth** - `X-Service-Key`, `SERVICE_API_KEY` ile doğrulanır (operatör
+   JWT yok); aksi halde 401.
+2. **Idempotency** - bu `captureSessionId` daha önce kaydedildiyse, saklanan sonuç
+   no-op olarak döner. Yeniden denemek güvenli.
+3. **Kontratı çöz** - Test → Senaryo → senaryonun Ortam/paradigma'sı, seçili metrik
+   anahtarları, beklenen sonuçlar ve `schemaVersion` yüklenir. İzin verilenin tek
+   doğruluk kaynağı senaryodur.
+4. **Doğrula** - `metrics` içindeki her anahtar, paradigmanın bilinen bir metriği
+   ve senaryo tarafından seçilmiş olmalı (bilinmeyen anahtarlar reddedilir);
+   birim/tipler ve `schemaVersion` uyumlu olmalı.
+5. **Sakla** - `metrics → Test.result` (JSON; `result.qc` ve `result.artifacts`
+   URL'leri dahil). Ham video/telemetri Mişko'ya hiç girmez.
+6. **Değerlendir** - senaryonun beklenen sonuçları acceptance motorundan geçirilip
+   `Test.passed` belirlenir (yoksa null). CV'nin gönderdiği `passed` tavsiyedir;
+   Mişko'nun senaryoya göre değerlendirmesi esastır.
+7. **Sonlandır** - `status = DONE` (ve `endedAt`); 200 döner. QC durumu, davranışsal
+   `passed`'tan ayrı saklanır.
 
 ## Sınır API'si (kontrat)
 
@@ -88,7 +115,9 @@ Content-Type: application/json
 }
 ```
 
-Mişko `metrics → Test.result`, `passed → Test.passed`, durum `DONE` eşler.
+Mişko `metrics`'i senaryonun seçili metriklerine ve paradigma sözlüğüne göre
+doğrular, `metrics → Test.result` saklar, senaryonun beklenen sonuçlarına göre
+değerlendirip `Test.passed` belirler ve durumu `DONE` yapar.
 `captureSessionId` daha önce işlendiyse çağrı no-op döner (idempotent).
 
 ## Servis-servis kimlik doğrulama
