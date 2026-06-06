@@ -20,25 +20,29 @@ onMounted(() => lab.load());
         {{ $t("app.name") }}
         <span class="lab" v-if="lab.labName">{{ lab.labName }}</span>
       </div>
-      <nav class="nav">
-        <RouterLink to="/">{{ $t("nav.dashboard") }}</RouterLink>
-        <RouterLink to="/tests">{{ $t("nav.tests") }}</RouterLink>
-        <RouterLink to="/scenarios">{{ $t("nav.scenarios") }}</RouterLink>
-        <RouterLink to="/paradigms">{{ $t("nav.paradigms") }}</RouterLink>
-        <RouterLink to="/environments">{{ $t("nav.environments") }}</RouterLink>
-        <RouterLink to="/subjects">{{ $t("nav.subjects") }}</RouterLink>
-        <RouterLink to="/devices">{{ $t("nav.devices") }}</RouterLink>
-        <RouterLink v-if="auth.isAdmin" to="/users">{{ $t("nav.users") }}</RouterLink>
-      </nav>
       <div class="spacer"></div>
       <ThemeToggle />
       <LangSelect />
       <UserMenu />
     </header>
-    <main class="main">
-      <Breadcrumb />
-      <RouterView />
-    </main>
+    <div class="body">
+      <aside class="sidebar">
+        <nav class="nav">
+          <RouterLink to="/">{{ $t("nav.dashboard") }}</RouterLink>
+          <RouterLink to="/tests">{{ $t("nav.tests") }}</RouterLink>
+          <RouterLink to="/scenarios">{{ $t("nav.scenarios") }}</RouterLink>
+          <RouterLink to="/paradigms">{{ $t("nav.paradigms") }}</RouterLink>
+          <RouterLink to="/environments">{{ $t("nav.environments") }}</RouterLink>
+          <RouterLink to="/subjects">{{ $t("nav.subjects") }}</RouterLink>
+          <RouterLink to="/devices">{{ $t("nav.devices") }}</RouterLink>
+          <RouterLink v-if="auth.isAdmin" to="/users">{{ $t("nav.users") }}</RouterLink>
+        </nav>
+      </aside>
+      <main class="main">
+        <Breadcrumb />
+        <RouterView />
+      </main>
+    </div>
   </div>
   <RouterView v-else />
 </template>

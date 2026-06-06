@@ -16,19 +16,25 @@ body{margin:0;background:var(--bg);color:var(--txt);
   transition:background .15s ease,color .15s ease}
 a{color:var(--accent);text-decoration:none}
 .app{display:flex;flex-direction:column;min-height:100vh}
-.topbar{display:flex;align-items:center;gap:18px;flex-wrap:wrap;
+.topbar{display:flex;align-items:center;gap:14px;
   background:var(--panel2);border-bottom:1px solid var(--line);
-  padding:10px 22px;position:sticky;top:0;z-index:10}
+  padding:10px 22px;position:sticky;top:0;z-index:20}
 .topbar .brand{font-weight:800;font-size:18px;white-space:nowrap;display:flex;align-items:baseline;gap:8px}
 .topbar .brand .lab{font-weight:600;font-size:13px;color:var(--muted);padding-left:8px;border-left:1px solid var(--line)}
-.topbar .nav{display:flex;gap:4px;flex-wrap:wrap}
-.topbar .nav a{padding:8px 12px;border-radius:9px;color:var(--muted);font-weight:600}
-.topbar .nav a.router-link-active{background:var(--active-bg);color:var(--txt)}
 .topbar .spacer{flex:1}
 .topbar .who{font-size:12px;color:var(--muted);white-space:nowrap}
 .icon-btn{display:inline-flex;align-items:center;justify-content:center;padding:7px 9px;line-height:1}
 .lang-select{width:auto;min-width:0;padding:7px 8px;font-weight:700}
-.main{flex:1;padding:22px;max-width:1000px;width:100%;margin:0 auto}
+/* Layout: fixed-width left sidebar + fluid content */
+.body{flex:1;display:flex;align-items:flex-start}
+.sidebar{position:sticky;top:53px;align-self:flex-start;height:calc(100vh - 53px);
+  width:212px;flex-shrink:0;overflow-y:auto;
+  background:var(--panel2);border-right:1px solid var(--line);padding:14px 10px}
+.sidebar .nav{display:flex;flex-direction:column;gap:3px}
+.sidebar .nav a{padding:9px 12px;border-radius:9px;color:var(--muted);font-weight:600}
+.sidebar .nav a:hover{background:var(--active-bg)}
+.sidebar .nav a.router-link-active{background:var(--active-bg);color:var(--txt)}
+.main{flex:1;min-width:0;padding:22px 26px;max-width:1500px}
 h1{font-size:20px;margin:0 0 16px}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:16px}
 .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
