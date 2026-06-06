@@ -171,6 +171,11 @@ export default {
       metrics: "Metrics",
       noResult: "No result yet.",
     },
+    results: {
+      notStarted: "Not started. Click Start to begin entering this environment's results.",
+      noZones: "No zones defined for this environment.",
+      edit: "Edit results",
+    },
     acceptance: {
       metric: "Metric",
       operator: "Operator",

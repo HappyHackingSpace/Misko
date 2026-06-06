@@ -171,6 +171,11 @@ export default {
       metrics: "Metrikler",
       noResult: "Henüz sonuç yok.",
     },
+    results: {
+      notStarted: "Başlamadı. Bu ortamın sonuçlarını girmeye başlamak için Başlat'a tıklayın.",
+      noZones: "Bu ortam için tanımlı zone yok.",
+      edit: "Sonuçları düzenle",
+    },
     acceptance: {
       metric: "Metrik",
       operator: "Operatör",
