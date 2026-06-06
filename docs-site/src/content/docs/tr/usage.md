@@ -11,14 +11,14 @@ Mişko'yu henüz kurmadıysanız [Kurulum](../installation/) ile başlayın.
 
 Mişko'yu davranış deneylerinizin kayıt defteri gibi düşünün. Elektronik tablolar
 ve dağınık video dosyaları yerine her test tek bir yerde kayıt altına alınır:
-**hangi hayvan test edildi, hangi düzenekte, kim tarafından, hangi cihazda ve
-sonuç neydi**. Ağır video ve takip işini ayrı bir kamera sistemi yürütür; Mişko
+**hangi hayvan test edildi, hangi senaryoyla, kim tarafından ve sonuç neydi**.
+Ağır video ve takip işini ayrı bir kamera sistemi yürütür; Mişko
 ise düzenli özeti tutar, böylece sonuçları sonradan bulup karşılaştırabilirsiniz.
 
 Normal bir oturum şöyle ilerler:
 
-1. Bir yönetici laboratuvarı kurar: kullanıcılar, denekler (fareler) ve cihazlar.
-2. Bir operatör; senaryo, denek ve cihaz seçerek bir test oluşturur.
+1. Bir yönetici laboratuvarı kurar: kullanıcılar, denekler (fareler), ortamlar ve senaryolar.
+2. Bir operatör; senaryo ve denek seçerek bir test oluşturur.
 3. Test yaşam döngüsünden geçer: **beklemede** başlar, deney sürerken
    **çalışıyor** olur ve **tamamlandı** ya da **başarısız** olarak biter.
 4. Sonuç özeti saklanır ve panoda görünür.
@@ -95,14 +95,9 @@ Denekler farelerdir. Her deneğin bir kodu, cinsiyeti, grubu ve notları vardır
 Deneklerin kolay bulunması için tutarlı bir kodlama şeması kullanın (örneğin
 `F-001`).
 
-### Cihazlar
-
-Cihazlar, testlerin üzerinde çalıştığı telefonlardır (Android veya iOS). Her
-cihazı bir kez kaydedin ki test oluştururken seçilebilsin.
-
 ## Veriyi tarama ve bulma
 
-Her liste ekranı (Kullanıcılar, Denekler, Cihazlar, Senaryolar, Paradigmalar,
+Her liste ekranı (Kullanıcılar, Denekler, Senaryolar, Paradigmalar,
 Testler ve Ortamlar) aynı tabloyu kullanır, dolayısıyla kontroller her yerde
 aynı çalışır:
 
@@ -137,8 +132,8 @@ Test, Mişko'daki merkezî kayıttır. Bir test çalıştırmak için:
 
 1. **Testler** ekranına gidin ve yeni test sayfasını açmak için **Oluştur**'a
    tıklayın.
-2. Bir **senaryo**, bir **denek** ve (isteğe bağlı) bir **cihaz** seçip
-   oluşturun. Operatör, giriş yapan kullanıcıdır.
+2. Bir **senaryo** ve bir **denek** seçip oluşturun. Operatör, giriş yapan
+   kullanıcıdır.
 3. Test **beklemede** durumuyla oluşturulur. Yönetmek için (satıra tıklayarak)
    **detay sayfasını** açın.
 4. Detay sayfasında **Başlat**, durumu **çalışıyor** yapar.
@@ -152,7 +147,7 @@ tutulur. Ham video ve kare kare veri ise ayrı kamera servisinde kalır.
 
 ## Pano
 
-**Pano** ana ekrandır. Özet sayıları (kaç denek, cihaz, test) ve en son testleri
+**Pano** ana ekrandır. Özet sayıları (kaç denek, senaryo, test) ve en son testleri
 gösterir; böylece laboratuvar etkinliğini bir bakışta görürsünüz.
 
 ## Ağır veri nerede durur

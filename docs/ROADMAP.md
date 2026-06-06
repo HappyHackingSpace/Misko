@@ -152,7 +152,7 @@ Work items:
   validated against the union of those paradigms' metric dictionaries)
 - Move acceptance/expected results from `Test` onto `Scenario`, defined once and
   reused by every test of that scenario. (done)
-- Keep `Test = Subject + Scenario` (plus operator/device); change `Test.result`
+- Keep `Test = Subject + Scenario` (plus operator); change `Test.result`
   from stringified JSON to structured Prisma `Json`. (done)
 - Keep `Subject` as the simple starter model. (done)
 - Frontend: scenario form (environment multi-select + expected-results editor

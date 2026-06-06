@@ -74,7 +74,7 @@ scenario is fully self-describing.
 A `Test` is a single run of a `Scenario` against a `Subject`:
 
 - `scenarioId` (brings the environment, paradigm, metrics and expected results),
-  `subjectId`, `operatorId`, `deviceId?`.
+  `subjectId`, `operatorId`.
 - `status` (`PENDING | RUNNING | DONE | FAILED`), `startedAt`, `endedAt`.
 - `result` (JSON) - CV-computed metrics + QC + artifact URLs, validated against
   the scenario's metrics.
@@ -82,8 +82,7 @@ A `Test` is a single run of a `Scenario` against a `Subject`:
   when none).
 
 There are **no** per-test paradigm, environment, metric or acceptance choices -
-they all live on the scenario. Starting a test only asks for a subject (and the
-operating device).
+they all live on the scenario. Starting a test only asks for a subject.
 
 ## Roles & permissions (RBAC)
 

@@ -59,16 +59,6 @@ model User {
   tests     Test[]
 }
 
-// Test device (phone)
-model Device {
-  id         String    @id @default(cuid())
-  name       String
-  platform   String? // ios | android | ...
-  lastSeenAt DateTime?
-  createdAt  DateTime  @default(now())
-  tests      Test[]
-}
-
 // Subject / Mouse
 model Subject {
   id        String    @id @default(cuid())
@@ -102,7 +92,7 @@ model Scenario {
   tests        Test[]
 }
 
-// Test (running a scenario with a subject, on a device, by an operator)
+// Test (running a scenario with a subject, by an operator)
 model Test {
   id                 String    @id @default(cuid())
   scenario           Scenario  @relation(fields: [scenarioId], references: [id])
@@ -111,8 +101,6 @@ model Test {
   subjectId          String
   operator           User      @relation(fields: [operatorId], references: [id])
   operatorId         String
-  device             Device?   @relation(fields: [deviceId], references: [id])
-  deviceId           String?
   status             String    @default("PENDING") // PENDING | RUNNING | DONE | FAILED
   startedAt          DateTime?
   endedAt            DateTime?
@@ -125,7 +113,6 @@ model Test {
   @@index([scenarioId])
   @@index([subjectId])
   @@index([operatorId])
-  @@index([deviceId])
   @@index([status])
   @@index([createdAt])
 }

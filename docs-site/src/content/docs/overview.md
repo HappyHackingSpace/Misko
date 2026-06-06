@@ -4,7 +4,7 @@ description: What Mişko does, who it is for, and the core concepts.
 ---
 
 Mişko manages behavioral tests run on laboratory mice from a single place.
-Subjects, environments, scenarios, devices and tests are all defined and tracked
+Subjects, environments, scenarios and tests are all defined and tracked
 through the application.
 
 ## Who it is for

@@ -11,8 +11,7 @@ const crumb = useBreadcrumb();
 
 const scenarios = ref([]);
 const subjects = ref([]);
-const devices = ref([]);
-const form = ref({ scenarioId: "", subjectId: "", deviceId: "", notes: "" });
+const form = ref({ scenarioId: "", subjectId: "", notes: "" });
 const err = ref("");
 const saving = ref(false);
 
@@ -21,14 +20,12 @@ const canCreate = computed(() => form.value.scenarioId && form.value.subjectId);
 async function load() {
   err.value = "";
   try {
-    const [sc, su, dv] = await Promise.all([
+    const [sc, su] = await Promise.all([
       api("/scenarios?all=true"),
       api("/subjects?all=true"),
-      api("/devices?all=true"),
     ]);
     scenarios.value = sc.data;
     subjects.value = su.data;
-    devices.value = dv.data;
   } catch (e) {
     err.value = e.message;
   }
@@ -70,12 +67,6 @@ onUnmounted(() => crumb.clear());
         <select v-model="form.subjectId">
           <option value="" disabled>{{ $t("common.select") }}</option>
           <option v-for="s in subjects" :key="s.id" :value="s.id">{{ s.code }}</option>
-        </select>
-      </div>
-      <div class="field"><label>{{ $t("tests.device") }}</label>
-        <select v-model="form.deviceId">
-          <option value="">{{ $t("common.none") }}</option>
-          <option v-for="d in devices" :key="d.id" :value="d.id">{{ d.name }}</option>
         </select>
       </div>
       <div class="field" style="flex:2"><label>{{ $t("common.notes") }}</label><input v-model="form.notes" /></div>

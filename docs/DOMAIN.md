@@ -83,7 +83,7 @@ A `Test` is a single run of a `Scenario` against a `Subject`.
 - `scenarioId` - what is being run (brings the environment, paradigm, metrics and
   expected results with it).
 - `subjectId` - which mouse.
-- `operatorId`, `deviceId?` - who ran it, on what device.
+- `operatorId` - who ran it.
 - `status` - `PENDING | RUNNING | DONE | FAILED`, `startedAt`, `endedAt`.
 - `result` (JSON) - the metrics the CV service computed, plus QC and artifact
   URLs. Validated against the scenario's selected metrics / paradigm dictionary.
@@ -91,8 +91,7 @@ A `Test` is a single run of a `Scenario` against a `Subject`.
   (null when the scenario defines none).
 
 There are **no** per-test paradigm, environment, metric or acceptance choices -
-they all live on the scenario. Starting a test only asks for a subject (and the
-operating device).
+they all live on the scenario. Starting a test only asks for a subject.
 
 ## 5. Roles and permissions (RBAC)
 

@@ -13,7 +13,7 @@ sahiptir; yalnızca aşağıdaki sınır üzerinden haberleşirler.
 |---|---|---|
 | Rol | Lab iş akışının system of record'u | Yakalama + inference + telemetri |
 | Stack | Node/Express/Prisma/**PostgreSQL** + Vue | Python/FastAPI/YOLOv8/ByteTrack/OpenCV |
-| Tuttuğu | user, subject, environment, scenario, device, **test + özet** | ham kare telemetrisi, event'ler, video |
+| Tuttuğu | user, subject, environment, scenario, **test + özet** | ham kare telemetrisi, event'ler, video |
 | Hacim | Küçük / ilişkisel | **Büyük** (kendi PostgreSQL'i) |
 | Sahiplik | Testin "ne / kim / ne zaman"ı | Testin "ölçüm / kanıt"ı |
 
@@ -50,7 +50,7 @@ sequenceDiagram
     participant CV as CV servisi
     participant S as Object storage
 
-    Op->>M: POST /api/tests (scenario, subject, device, cameraId)
+    Op->>M: POST /api/tests (scenario, subject, cameraId)
     M-->>Op: Test (PENDING)
     Op->>M: PATCH /api/tests/:id (status=RUNNING, startedAt)
     Note over CV: CV zaten o kamerayı işliyor;<br/>event'ler camera_id ile DB'sine yazılıyor

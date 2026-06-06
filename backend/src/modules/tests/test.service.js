@@ -20,7 +20,6 @@ const include = {
   },
   subject: { select: { id: true, code: true, groupName: true } },
   operator: { select: { id: true, name: true } },
-  device: { select: { id: true, name: true } },
 };
 
 export async function list(query = {}) {
@@ -43,7 +42,7 @@ export async function getById(id) {
 }
 
 /** Creates a new test (Subject + Scenario). The operator is the logged-in user. */
-export async function create({ scenarioId, subjectId, deviceId, notes }, operatorId) {
+export async function create({ scenarioId, subjectId, notes }, operatorId) {
   if (!scenarioId || !subjectId) {
     throw ApiError.badRequest("scenarioId and subjectId are required", "test.idsRequired");
   }
@@ -54,7 +53,6 @@ export async function create({ scenarioId, subjectId, deviceId, notes }, operato
     data: {
       scenarioId,
       subjectId,
-      deviceId: deviceId || null,
       notes: notes || null,
       operatorId,
     },

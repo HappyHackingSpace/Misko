@@ -13,7 +13,7 @@ deployment, and they communicate only over the boundary below.
 |---|---|---|
 | Role | System of record for the lab workflow | Capture + inference + telemetry |
 | Stack | Node/Express/Prisma/**PostgreSQL** + Vue | Python/FastAPI/YOLOv8/ByteTrack/OpenCV |
-| Holds | user, subject, environment, scenario, device, **test + summary** | raw frame telemetry, events, video |
+| Holds | user, subject, environment, scenario, **test + summary** | raw frame telemetry, events, video |
 | Volume | Small / relational | **Large** (its own PostgreSQL) |
 | Owns | the test's "what / who / when" | the test's "measurement / evidence" |
 
@@ -49,7 +49,7 @@ sequenceDiagram
     participant CV as CV service
     participant S as Object storage
 
-    Op->>M: POST /api/tests (scenario, subject, device, cameraId)
+    Op->>M: POST /api/tests (scenario, subject, cameraId)
     M-->>Op: Test (PENDING)
     Op->>M: PATCH /api/tests/:id (status=RUNNING, startedAt)
     Note over CV: CV is already processing that camera;<br/>events are written to its DB by camera_id

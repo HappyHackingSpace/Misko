@@ -101,7 +101,6 @@ onUnmounted(() => crumb.clear());
           </tr>
           <tr><th>{{ $t("tests.subject") }}</th><td>{{ test.subject?.code }}</td></tr>
           <tr><th>{{ $t("tests.operator") }}</th><td>{{ test.operator?.name }}</td></tr>
-          <tr><th>{{ $t("tests.device") }}</th><td>{{ test.device?.name || "-" }}</td></tr>
           <tr><th>{{ $t("tests.status") }}</th><td><span :class="'status-' + test.status">{{ test.status }}</span></td></tr>
           <tr><th>{{ $t("tests.result") }}</th><td><span class="pill" :class="passedClass(test)">{{ passedLabel(test) }}</span></td></tr>
           <tr v-if="test.notes"><th>{{ $t("common.notes") }}</th><td class="muted">{{ test.notes }}</td></tr>

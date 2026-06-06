@@ -75,7 +75,7 @@ senaryo kendini tümüyle tanımlar.
 `Test`, bir `Scenario`'nun bir `Subject` üzerinde tek bir koşusudur:
 
 - `scenarioId` (ortamı, paradigmayı, metrikleri ve beklenen sonuçları getirir),
-  `subjectId`, `operatorId`, `deviceId?`.
+  `subjectId`, `operatorId`.
 - `status` (`PENDING | RUNNING | DONE | FAILED`), `startedAt`, `endedAt`.
 - `result` (JSON) - CV'nin hesapladığı metrikler + QC + artefakt URL'leri,
   senaryonun metriklerine göre doğrulanır.
@@ -83,7 +83,7 @@ senaryo kendini tümüyle tanımlar.
   (yoksa null).
 
 Test başına paradigma, ortam, metrik veya kabul seçimi **yoktur** - hepsi
-senaryoda durur. Test başlatmak yalnızca bir denek (ve çalışılan cihaz) ister.
+senaryoda durur. Test başlatmak yalnızca bir denek ister.
 
 ## Roller & izinler (RBAC)
 
