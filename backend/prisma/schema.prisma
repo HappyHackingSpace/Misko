@@ -40,6 +40,8 @@ model Environment {
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 
+  scenarios Scenario[] // N-N: an environment can be used by many scenarios
+
   @@index([laboratoryId])
   @@index([paradigmKey])
 }
@@ -79,15 +81,25 @@ model Subject {
   tests     Test[]
 }
 
-// Test scenario (pool / maze / stick / path)
+// Scenario - the central experiment definition (see docs/DOMAIN.md §3).
+// A scenario bundles one or more Environments (so it can span one or more
+// paradigms) with the expected results to evaluate. A Test = Subject + Scenario,
+// run once; metrics are evaluated against the scenario's acceptance criteria.
 model Scenario {
-  id          String   @id @default(cuid())
-  name        String
-  type        String // POOL | MAZE | STICK | PATH
-  description String?
-  config      String? // JSON: geometry / acceptance criteria (content later)
-  createdAt   DateTime @default(now())
-  tests       Test[]
+  id            String   @id @default(cuid())
+  name          String
+  description   String?
+  // Expected results / pass-fail contract: JSON array of
+  // { metricKey, operator, value, label? }. Metric keys are validated against
+  // the union of the scenario's environments' paradigm metric dictionaries.
+  acceptance    Json?
+  // Optional free-form session parameters (trial count, duration, ...).
+  sessionParams Json?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  environments Environment[] // N-N: a scenario runs on one or more environments
+  tests        Test[]
 }
 
 // Test (running a scenario with a subject, on a device, by an operator)
@@ -104,9 +116,8 @@ model Test {
   status             String    @default("PENDING") // PENDING | RUNNING | DONE | FAILED
   startedAt          DateTime?
   endedAt            DateTime?
-  result             String? // JSON: metrics
-  passed             Boolean? // evaluation result when acceptance criteria exist; null if no criteria
-  acceptanceCriteria String? // JSON: user-defined acceptance criteria [{ metricKey, operator, value }]
+  result             Json? // CV summary metrics (+ qc, artifacts)
+  passed             Boolean? // evaluation vs the scenario's acceptance; null when none
   notes              String?
   createdAt          DateTime  @default(now())
 

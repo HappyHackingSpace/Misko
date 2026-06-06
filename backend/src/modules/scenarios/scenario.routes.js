@@ -1,16 +1,38 @@
-import { createCrudService } from "../../common/crudService.js";
-import { createCrudRouter } from "../../common/crudController.js";
+import { Router } from "express";
+import { asyncHandler } from "../../utils/asyncHandler.js";
+import { requirePermission } from "../../middleware/authenticate.js";
 import { PERMISSIONS } from "../../config/permissions.js";
+import {
+  listScenarios,
+  getScenario,
+  createScenario,
+  updateScenario,
+  deleteScenario,
+} from "./scenario.service.js";
 
-const scenarioService = createCrudService({
-  model: "scenario",
-  allowed: ["name", "type", "description", "config"],
-  searchFields: ["name", "description"],
-  filterFields: { name: "text", type: "enum" },
-  sortFields: ["name", "type", "createdAt"],
-});
+/**
+ * Scenario CRUD - the central experiment definition (docs/DOMAIN.md §3).
+ * Reads need only auth; writes need `apparatus:write` (RESEARCHER and above).
+ */
+export const scenarioRouter = Router();
 
-// A scenario is a physical setup definition that will later evolve into Apparatus.
-export const scenarioRouter = createCrudRouter(scenarioService, {
-  writePermission: PERMISSIONS.APPARATUS_WRITE,
-});
+scenarioRouter.get("/", asyncHandler(async (req, res) => {
+  res.json(await listScenarios(req.query));
+}));
+
+scenarioRouter.get("/:id", asyncHandler(async (req, res) => {
+  res.json(await getScenario(req.params.id));
+}));
+
+scenarioRouter.post("/", requirePermission(PERMISSIONS.APPARATUS_WRITE), asyncHandler(async (req, res) => {
+  res.status(201).json(await createScenario(req.body ?? {}));
+}));
+
+scenarioRouter.patch("/:id", requirePermission(PERMISSIONS.APPARATUS_WRITE), asyncHandler(async (req, res) => {
+  res.json(await updateScenario(req.params.id, req.body ?? {}));
+}));
+
+scenarioRouter.delete("/:id", requirePermission(PERMISSIONS.APPARATUS_WRITE), asyncHandler(async (req, res) => {
+  await deleteScenario(req.params.id);
+  res.status(204).end();
+}));
