@@ -11,15 +11,15 @@ Mişko yet, start with [Installation](../installation/).
 
 Think of Mişko as the logbook for your behavioral experiments. Instead of
 spreadsheets and scattered video files, every test is recorded in one place:
-**which animal was tested, in which apparatus, by whom, on which device, and
-what the result was**. The heavy video and tracking work is handled by a
+**which animal was tested, under which scenario, by whom, and what the result
+was**. The heavy video and tracking work is handled by a
 separate camera system; Mişko keeps the organized summary so you can find and
 compare results later.
 
 A normal session looks like this:
 
-1. An administrator sets up the lab: users, subjects (mice), and devices.
-2. An operator creates a test by choosing a scenario, a subject, and a device.
+1. An administrator sets up the lab: users, subjects (mice), environments and scenarios.
+2. An operator creates a test by choosing a scenario and a subject.
 3. The test moves through its lifecycle: it starts as **pending**, becomes
    **running** when the experiment is underway, and ends as **done** or
    **failed**.
@@ -82,23 +82,22 @@ screens in the panel.
 
 ### Scenarios
 
-Scenarios are based on four fixed apparatus types: `POOL`, `MAZE`, `STICK`, and
-`PATH`. The catalog of scientific paradigms is defined in the system and stays
-stable, so you select and configure rather than invent from scratch.
+A scenario is the complete, reusable definition of an experiment. You build it
+once: give it a name, select one or more **environments** (so a scenario can span
+one or more paradigms), and define the **expected results for each environment** -
+each environment gets its own acceptance criteria, picked from that environment's
+paradigm metrics. Adding an environment pre-fills its expected results with the
+paradigm's default criteria, which you then tune. After that, running a test only
+means choosing a subject; the scenario carries everything else.
 
 ### Subjects
 
 Subjects are the mice. Each subject has a code, sex, group, and notes. Use a
 consistent coding scheme (for example `F-001`) so subjects are easy to find.
 
-### Devices
-
-Devices are the phones the tests run on (Android or iOS). Register each device
-once so it can be picked when creating a test.
-
 ## Browsing and finding data
 
-Every listing screen (Users, Subjects, Devices, Scenarios, Paradigms, Tests and
+Every listing screen (Users, Subjects, Scenarios, Paradigms, Tests and
 Environments) uses the same table, so the controls work the same way everywhere:
 
 - **Search box** at the top filters the list by free text across the main
@@ -130,13 +129,15 @@ a user's password). Saving or deleting returns you to the list.
 The test is the central record in Mişko. To run one:
 
 1. Go to the **Tests** screen and click **Create** to open the new-test page.
-2. Choose a **scenario**, a **subject** and (optionally) a **device**, then
-   create. The operator is the signed-in user.
+2. Choose a **scenario** and a **subject**, then create. The operator is the
+   signed-in user.
 3. The test is created with status **pending**. Open its **detail page** (click
    the row) to manage it.
 4. On the detail page, **Start** moves the status to **running**.
 5. **Finish** sets it to **done** (or **Cancel** sets **failed**). The detail
-   page also holds the per-test acceptance criteria editor.
+   page shows the scenario's environments and, once a result arrives, the metric
+   JSON and the pass/fail verdict. The verdict is computed against the scenario's
+   expected results (defined on the scenario, not per test).
 
 Once a test is done, its summary metrics and any artifact links are kept by
 Mişko. The raw video and frame-by-frame data stay in the separate camera
@@ -145,7 +146,7 @@ service.
 ## The dashboard
 
 The **Dashboard** is the home screen. It shows summary counts (how many
-subjects, devices, tests) and the most recent tests, so you can see lab activity
+subjects, scenarios, tests) and the most recent tests, so you can see lab activity
 at a glance.
 
 ## Where the heavy data lives

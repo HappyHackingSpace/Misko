@@ -27,7 +27,7 @@ veritabanına sahip ayrı bir Python servisidir.
                                        merkezî errorHandler → JSON
 ```
 
-Her modül (`auth`, `users`, `scenarios`, `subjects`, `devices`, `tests`) aynı
+Her modül (`auth`, `users`, `scenarios`, `subjects`, `environments`, `tests`) aynı
 yapıyı izler: `routes + controller + service (+ validation)`. Ortak bir CRUD
 fabrikası basit kaynakları tutarlı tutar.
 

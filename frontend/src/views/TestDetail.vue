@@ -1,27 +1,21 @@
 <script setup>
-import { ref, onMounted, onUnmounted } from "vue";
+import { ref, computed, onMounted, onUnmounted } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
 import { api } from "../api.js";
-import AcceptanceEditor from "../components/AcceptanceEditor.vue";
 import { useBreadcrumb } from "../stores/breadcrumb.js";
 
-const { t, locale } = useI18n();
+const { t } = useI18n();
 const route = useRoute();
 const router = useRouter();
 const crumb = useBreadcrumb();
 
 const test = ref(null);
-const paradigms = ref([]);
-const operators = ref([]);
-const editBuffer = ref([]);
 const err = ref("");
-const editErr = ref("");
 
-function parseCriteria(row) {
-  if (!row?.acceptanceCriteria) return [];
-  try { return JSON.parse(row.acceptanceCriteria); } catch { return []; }
-}
+const environments = computed(() => test.value?.scenario?.environments || []);
+const resultJson = computed(() =>
+  test.value?.result ? JSON.stringify(test.value.result, null, 2) : "");
 
 function syncCrumb() {
   crumb.set([
@@ -35,24 +29,10 @@ async function load() {
   err.value = "";
   try {
     test.value = await api(`/tests/${route.params.id}`);
-    editBuffer.value = parseCriteria(test.value);
   } catch (e) {
     err.value = e.message;
   }
   syncCrumb();
-}
-
-async function loadDropdowns() {
-  try {
-    const [pa, op] = await Promise.all([
-      api(`/paradigms?all=true&lang=${locale.value}`),
-      api("/paradigms/acceptance-operators"),
-    ]);
-    paradigms.value = pa.data;
-    operators.value = op;
-  } catch (e) {
-    err.value = e.message;
-  }
 }
 
 async function setStatus(status) {
@@ -66,14 +46,6 @@ async function setStatus(status) {
   } catch (e) {
     err.value = e.message;
   }
-}
-
-async function saveCriteria() {
-  editErr.value = "";
-  try {
-    await api(`/tests/${route.params.id}`, { method: "PATCH", body: { acceptanceCriteria: editBuffer.value } });
-    await load();
-  } catch (e) { editErr.value = e.message; }
 }
 
 async function remove() {
@@ -98,9 +70,7 @@ function passedClass(row) {
   return "pass-na";
 }
 
-onMounted(async () => {
-  await Promise.all([load(), loadDropdowns()]);
-});
+onMounted(load);
 onUnmounted(() => crumb.clear());
 </script>
 
@@ -122,9 +92,15 @@ onUnmounted(() => crumb.clear());
       <table class="kv">
         <tbody>
           <tr><th>{{ $t("tests.scenario") }}</th><td>{{ test.scenario?.name }}</td></tr>
+          <tr>
+            <th>{{ $t("scenarios.environments") }}</th>
+            <td>
+              <span v-if="!environments.length" class="muted">-</span>
+              <span v-for="e in environments" :key="e.id" class="env-chip">{{ e.name }} <span class="muted">({{ e.paradigmKey }})</span></span>
+            </td>
+          </tr>
           <tr><th>{{ $t("tests.subject") }}</th><td>{{ test.subject?.code }}</td></tr>
           <tr><th>{{ $t("tests.operator") }}</th><td>{{ test.operator?.name }}</td></tr>
-          <tr><th>{{ $t("tests.device") }}</th><td>{{ test.device?.name || "-" }}</td></tr>
           <tr><th>{{ $t("tests.status") }}</th><td><span :class="'status-' + test.status">{{ test.status }}</span></td></tr>
           <tr><th>{{ $t("tests.result") }}</th><td><span class="pill" :class="passedClass(test)">{{ passedLabel(test) }}</span></td></tr>
           <tr v-if="test.notes"><th>{{ $t("common.notes") }}</th><td class="muted">{{ test.notes }}</td></tr>
@@ -133,12 +109,9 @@ onUnmounted(() => crumb.clear());
     </div>
 
     <div class="card">
-      <h4>{{ $t("acceptance.title") }}</h4>
-      <AcceptanceEditor v-model="editBuffer" :paradigms="paradigms" :operators="operators" />
-      <p class="err" v-if="editErr">{{ editErr }}</p>
-      <div class="actions">
-        <button class="primary" @click="saveCriteria">{{ $t("common.save") }}</button>
-      </div>
+      <h4>{{ $t("tests.metrics") }}</h4>
+      <pre v-if="resultJson" class="result">{{ resultJson }}</pre>
+      <p v-else class="muted">{{ $t("tests.noResult") }}</p>
     </div>
   </div>
 </template>
@@ -149,9 +122,10 @@ onUnmounted(() => crumb.clear());
 .head-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .kv th { text-align: left; padding-right: 16px; white-space: nowrap; vertical-align: top; }
 .kv td { width: 100%; }
-.actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+.env-chip { display: inline-block; margin-right: 10px; }
 .pill.pass-yes { background: #1f7a3d; color: #fff; }
 .pill.pass-no { background: #a3271f; color: #fff; }
 .pill.pass-na { background: var(--active-bg); color: var(--muted); }
+.result { background: var(--active-bg); border: 1px solid var(--line); border-radius: 8px; padding: 12px; overflow: auto; font-size: 12px; }
 h4 { margin: 0 0 10px; }
 </style>

@@ -3,6 +3,7 @@ import { ref, computed, onMounted, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { api } from "../api.js";
 import DataTable from "../components/DataTable.vue";
+import LabTabs from "../components/LabTabs.vue";
 import { useDataTable } from "../composables/useDataTable.js";
 
 const { locale, t } = useI18n();
@@ -42,9 +43,12 @@ onMounted(loadParadigms);
 </script>
 
 <template>
-  <div class="head">
-    <h1>{{ $t("environments.title") }}</h1>
-    <button class="primary" @click="$router.push('/environments/new')">{{ $t("common.create") }}</button>
+  <div class="lab-head">
+    <span class="lab-head-side"></span>
+    <LabTabs />
+    <span class="lab-head-side right">
+      <button class="primary" @click="$router.push('/environments/new')">{{ $t("common.create") }}</button>
+    </span>
   </div>
   <p class="muted" style="margin-top:0">{{ $t("environments.intro") }}</p>
   <p class="err" v-if="err">{{ err }}</p>
@@ -74,7 +78,9 @@ onMounted(loadParadigms);
 </template>
 
 <style scoped>
-.head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.lab-head { display: flex; align-items: center; margin-bottom: 12px; gap: 12px; }
+.lab-head-side { flex: 1; }
+.lab-head-side.right { display: flex; justify-content: flex-end; }
 .link { color: var(--accent); cursor: pointer; font-weight: 600; text-decoration: none; }
 .link:hover { text-decoration: underline; }
 </style>

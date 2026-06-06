@@ -146,13 +146,17 @@ per-test paradigm, environment or metric choices - they all live on the scenario
 Work items:
 
 - Redesign the starter `Scenario` (free `POOL | MAZE | STICK | PATH` type) into
-  the experiment definition above: `name`, `environmentId`, selected metrics and
-  per-metric expected results, session parameters.
-- Move acceptance/expected results from `Test` onto `Scenario` (defined once,
-  reused by every test of that scenario).
-- Keep `Test = Subject + Scenario` (plus operator/device); change `Test.result`
-  from stringified JSON to structured Prisma `Json`.
-- Keep `Subject` as the simple starter model.
+  the experiment definition above: `name`, N-N `environments`, `acceptance`
+  (expected results) and `sessionParams`. (done; a scenario references one or
+  more environments, so it can span one or more paradigms, and its acceptance is
+  validated against the union of those paradigms' metric dictionaries)
+- Move acceptance/expected results from `Test` onto `Scenario`, defined once and
+  reused by every test of that scenario. (done)
+- Keep `Test = Subject + Scenario` (plus operator); change `Test.result`
+  from stringified JSON to structured Prisma `Json`. (done)
+- Keep `Subject` as the simple starter model. (done)
+- Frontend: scenario form (environment multi-select + expected-results editor
+  over the union of paradigms), scenario list, test create/detail. (done)
 
 Exit criteria:
 

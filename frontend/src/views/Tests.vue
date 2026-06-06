@@ -12,7 +12,6 @@ const columns = computed(() => [
   { key: "scenario", label: t("tests.scenario"), exportValue: (row) => row.scenario?.name },
   { key: "subject", label: t("tests.subject"), exportValue: (row) => row.subject?.code },
   { key: "operator", label: t("tests.operator"), cellClass: "muted", exportValue: (row) => row.operator?.name },
-  { key: "device", label: t("tests.device"), cellClass: "muted", exportValue: (row) => row.device?.name || "-" },
   { key: "status", label: t("tests.status"), sortable: true },
   { key: "result", label: t("tests.result"), exportValue: (row) => passedLabel(row) },
 ]);
@@ -60,7 +59,6 @@ function criteriaCount(row) {
       <template #cell-scenario="{ row }"><RouterLink class="link" :to="`/tests/${row.id}`">{{ row.scenario?.name }}</RouterLink></template>
       <template #cell-subject="{ row }">{{ row.subject?.code }}</template>
       <template #cell-operator="{ row }">{{ row.operator?.name }}</template>
-      <template #cell-device="{ row }">{{ row.device?.name || "-" }}</template>
       <template #cell-status="{ row }"><span :class="'status-' + row.status">{{ row.status }}</span></template>
       <template #cell-result="{ row }">
         <span class="pill" :class="passedClass(row)">{{ passedLabel(row) }}</span>

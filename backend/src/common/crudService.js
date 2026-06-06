@@ -6,7 +6,7 @@ import { buildListQuery, listResult } from "./listQuery.js";
  * Reusable CRUD service factory for simple resources.
  *
  * @param {object} opts
- * @param {string} opts.model    Prisma model name (e.g. "device")
+ * @param {string} opts.model    Prisma model name (e.g. "subject")
  * @param {string[]} opts.allowed Whitelist of writable fields
  * @param {object} [opts.include] Prisma include
  * @param {string[]} [opts.searchFields]  text columns for the global search term

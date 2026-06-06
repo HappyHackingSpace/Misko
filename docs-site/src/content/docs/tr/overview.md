@@ -4,7 +4,7 @@ description: Mişko ne yapar, kimler için ve temel kavramlar.
 ---
 
 Mişko, laboratuvar fareleri üzerinde yürütülen davranış testlerini tek bir
-yerden yönetir. Denekler, ortamlar, senaryolar, cihazlar ve testlerin tamamı
+yerden yönetir. Denekler, ortamlar, senaryolar ve testlerin tamamı
 uygulama üzerinden tanımlanır ve takip edilir.
 
 ## Kimler için

@@ -49,7 +49,7 @@ Done: the registries live in `backend/src/config/{units,metrics,paradigms}.js` w
 
 Exit criteria: every metric has a unit, definition, input list and aggregation behavior.
 
-## Step 3 - Scenario: the central experiment definition
+## Step 3 - Scenario: the central experiment definition ✅
 
 A `Scenario` is the complete, reusable definition of one experiment, so running a
 test is just "pick a subject and go". The domain stays small: **Subject** (the

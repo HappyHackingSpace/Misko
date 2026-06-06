@@ -27,7 +27,7 @@ Request → routes → middleware (auth/validate) → controller → service →
                                          central errorHandler → JSON
 ```
 
-Each module (`auth`, `users`, `scenarios`, `subjects`, `devices`, `tests`)
+Each module (`auth`, `users`, `scenarios`, `subjects`, `environments`, `tests`)
 follows the same shape: `routes + controller + service (+ validation)`. A common
 CRUD factory keeps the simple resources consistent.
 

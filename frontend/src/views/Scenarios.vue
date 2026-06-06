@@ -8,12 +8,13 @@ const { t } = useI18n();
 
 const table = useDataTable("/scenarios", { defaultSort: { field: "createdAt", order: "desc" } });
 
+const paradigmsOf = (row) => [...new Set((row.environments || []).map((e) => e.paradigmKey))].join(", ");
+const envCountOf = (row) => (row.environments || []).length;
+
 const columns = computed(() => [
   { key: "name", label: t("common.name"), sortable: true },
-  {
-    key: "type", label: t("scenarios.type"), sortable: true,
-    exportValue: (row) => t("scenarios.types." + row.type),
-  },
+  { key: "paradigms", label: t("scenarios.paradigms"), cellClass: "muted", exportValue: paradigmsOf },
+  { key: "envCount", label: t("scenarios.environments"), cellClass: "muted", exportValue: envCountOf },
   { key: "description", label: t("common.description"), cellClass: "muted" },
 ]);
 </script>
@@ -43,7 +44,8 @@ const columns = computed(() => [
       @search="table.setSearch"
     >
       <template #cell-name="{ row }"><RouterLink class="link" :to="`/scenarios/${row.id}`">{{ row.name }}</RouterLink></template>
-      <template #cell-type="{ row }"><span class="pill" :class="row.type">{{ $t("scenarios.types." + row.type) }}</span></template>
+      <template #cell-paradigms="{ row }">{{ paradigmsOf(row) || "-" }}</template>
+      <template #cell-envCount="{ row }">{{ envCountOf(row) }}</template>
     </DataTable>
   </div>
 </template>

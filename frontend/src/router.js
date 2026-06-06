@@ -11,8 +11,6 @@ import Environments from "./views/Environments.vue";
 import EnvironmentForm from "./views/EnvironmentForm.vue";
 import Subjects from "./views/Subjects.vue";
 import SubjectForm from "./views/SubjectForm.vue";
-import Devices from "./views/Devices.vue";
-import DeviceForm from "./views/DeviceForm.vue";
 import Tests from "./views/Tests.vue";
 import TestNew from "./views/TestNew.vue";
 import TestDetail from "./views/TestDetail.vue";
@@ -37,10 +35,6 @@ const routes = [
   { path: "/subjects", component: Subjects, meta: { titleKey: "nav.subjects" } },
   { path: "/subjects/new", component: SubjectForm, meta: { titleKey: "nav.subjects" } },
   { path: "/subjects/:id", component: SubjectForm, meta: { titleKey: "nav.subjects" } },
-
-  { path: "/devices", component: Devices, meta: { titleKey: "nav.devices" } },
-  { path: "/devices/new", component: DeviceForm, meta: { titleKey: "nav.devices" } },
-  { path: "/devices/:id", component: DeviceForm, meta: { titleKey: "nav.devices" } },
 
   { path: "/tests", component: Tests, meta: { titleKey: "nav.tests" } },
   { path: "/tests/new", component: TestNew, meta: { titleKey: "nav.tests" } },

@@ -2,6 +2,7 @@
 import { computed, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import DataTable from "../components/DataTable.vue";
+import LabTabs from "../components/LabTabs.vue";
 import { useDataTable } from "../composables/useDataTable.js";
 
 const { t, locale } = useI18n();
@@ -25,7 +26,11 @@ watch(locale, () => table.reload());
 </script>
 
 <template>
-  <h1>{{ $t("paradigms.title") }}</h1>
+  <div class="lab-head">
+    <span class="lab-head-side"></span>
+    <LabTabs />
+    <span class="lab-head-side"></span>
+  </div>
   <p class="muted" style="margin-top:0">{{ $t("paradigms.intro") }}</p>
 
   <div class="card">
@@ -58,6 +63,8 @@ watch(locale, () => table.reload());
 </template>
 
 <style scoped>
+.lab-head { display: flex; align-items: center; margin-bottom: 12px; }
+.lab-head-side { flex: 1; }
 .link { color: var(--accent); cursor: pointer; font-weight: 600; text-decoration: none; }
 .link:hover { text-decoration: underline; }
 </style>

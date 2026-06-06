@@ -58,21 +58,23 @@ Camera-to-cm calibration is a later concern (roadmap Step 5).
 A `Scenario` is the complete, reusable definition of one experiment, built once
 by a researcher. It carries every detail:
 
-- `name`.
-- `environmentId` - the environment to run on (and therefore the paradigm).
-- **selected metrics** - which metrics from the paradigm's dictionary it collects.
-- **expected results / acceptance criteria** - the pass/fail contract per metric.
-- **session parameters** - trial count, duration, etc., from the paradigm.
+- `name`, `description`.
+- **environments** (N-N) - one or more environments to run on, so a scenario can
+  span one or more paradigms.
+- **expected results, per environment** - a map `{ [environmentId]: [criteria] }`.
+  Each environment defines its own pass/fail criteria, validated against that
+  environment's paradigm metrics.
+- **session parameters** - trial count, duration, etc.
 
-Because the environment carries the paradigm and the scenario carries the metrics
-and expected results, a scenario is fully self-describing.
+Because each environment carries its paradigm and its own expected results, a
+scenario is fully self-describing.
 
 ## Test (one run)
 
 A `Test` is a single run of a `Scenario` against a `Subject`:
 
 - `scenarioId` (brings the environment, paradigm, metrics and expected results),
-  `subjectId`, `operatorId`, `deviceId?`.
+  `subjectId`, `operatorId`.
 - `status` (`PENDING | RUNNING | DONE | FAILED`), `startedAt`, `endedAt`.
 - `result` (JSON) - CV-computed metrics + QC + artifact URLs, validated against
   the scenario's metrics.
@@ -80,8 +82,7 @@ A `Test` is a single run of a `Scenario` against a `Subject`:
   when none).
 
 There are **no** per-test paradigm, environment, metric or acceptance choices -
-they all live on the scenario. Starting a test only asks for a subject (and the
-operating device).
+they all live on the scenario. Starting a test only asks for a subject.
 
 ## Roles & permissions (RBAC)
 

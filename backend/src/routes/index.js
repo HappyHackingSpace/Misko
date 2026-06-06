@@ -3,7 +3,6 @@ import { config } from "../config/index.js";
 import { authenticate } from "../middleware/authenticate.js";
 import { authRouter } from "../modules/auth/auth.routes.js";
 import { userRouter } from "../modules/users/user.routes.js";
-import { deviceRouter } from "../modules/devices/device.routes.js";
 import { subjectRouter } from "../modules/subjects/subject.routes.js";
 import { scenarioRouter } from "../modules/scenarios/scenario.routes.js";
 import { testRouter } from "../modules/tests/test.routes.js";
@@ -32,7 +31,6 @@ apiRouter.use("/auth", authRouter);
 // Protected resources
 apiRouter.use("/users", authenticate, userRouter);
 apiRouter.use("/lab", authenticate, labRouter);
-apiRouter.use("/devices", authenticate, deviceRouter);
 apiRouter.use("/subjects", authenticate, subjectRouter);
 apiRouter.use("/scenarios", authenticate, scenarioRouter);
 apiRouter.use("/tests", authenticate, testRouter);
