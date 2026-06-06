@@ -64,16 +64,17 @@ once by a researcher; after that, running a test is just "pick a subject and go"
 
 A scenario carries every detail of the experiment:
 
-- `name`
-- `environmentId` - the environment to run on (and therefore the paradigm).
-- **selected metrics** - which metrics from the paradigm's metric dictionary this
-  scenario collects.
-- **expected results / acceptance criteria** - the pass/fail contract per metric,
-  using the Step 2 acceptance engine (`backend/src/config/acceptance.js`).
-- **session parameters** - trial count, duration, etc., from the paradigm.
+- `name`, `description`.
+- **environments** (N-N) - one or more environments to run on, so a scenario can
+  span one or more paradigms.
+- **expected results / acceptance criteria, per environment** - a map
+  `{ [environmentId]: [criteria] }`. Each environment defines its own expected
+  results, validated against that environment's paradigm metrics, using the
+  Step 2 acceptance engine (`backend/src/config/acceptance.js`).
+- **session parameters** - trial count, duration, etc.
 
-Because the environment carries the paradigm, and the scenario carries the
-metrics and expected results, a scenario is fully self-describing.
+Because the environments carry their paradigms, and the scenario carries the
+per-environment expected results, a scenario is fully self-describing.
 
 ## 4. Test (one run)
 

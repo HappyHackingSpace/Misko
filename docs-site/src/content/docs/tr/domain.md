@@ -59,13 +59,15 @@ Kamera-cm kalibrasyonu sonraki bir konudur (yol haritası Adım 5).
 `Scenario`, bir araştırmacının bir kez kurduğu, bir deneyin eksiksiz ve yeniden
 kullanılabilir tanımıdır. Her detayı taşır:
 
-- `name`.
-- `environmentId` - üzerinde koşulacak ortam (ve dolayısıyla paradigma).
-- **seçili metrikler** - paradigmanın sözlüğünden hangi metrikleri topladığı.
-- **beklenen sonuçlar / kabul kriterleri** - metrik başına geç/kal kontratı.
-- **oturum parametreleri** - paradigmadan trial sayısı, süre vb.
+- `name`, `description`.
+- **ortamlar** (N-N) - üzerinde koşulacak bir veya birden çok ortam; böylece
+  senaryo bir veya birden çok paradigmayı kapsayabilir.
+- **ortam başına beklenen sonuçlar** - `{ [environmentId]: [kriterler] }` map'i.
+  Her ortam kendi geç/kal kriterlerini tanımlar; o ortamın paradigma metriklerine
+  göre doğrulanır.
+- **oturum parametreleri** - trial sayısı, süre vb.
 
-Ortam paradigmayı, senaryo da metrikleri ve beklenen sonuçları taşıdığından, bir
+Her ortam kendi paradigmasını ve kendi beklenen sonuçlarını taşıdığından, bir
 senaryo kendini tümüyle tanımlar.
 
 ## Test (tek koşu)

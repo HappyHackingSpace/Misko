@@ -84,10 +84,10 @@ ekranlarında bulunur.
 
 Senaryo, bir deneyin eksiksiz ve yeniden kullanılabilir tanımıdır. Bir kez
 kurarsınız: ad verin, bir veya birden çok **ortam** seçin (böylece bir senaryo
-bir veya birden çok paradigmayı kapsayabilir) ve **beklenen sonuçları** tanımlayın
-- seçili ortamların paradigmalarının metriklerinden seçilen kabul kriterleri.
-Sonrasında test başlatmak yalnızca bir denek seçmek demektir; gerisini senaryo
-taşır.
+bir veya birden çok paradigmayı kapsayabilir) ve **her ortam için beklenen
+sonuçları** tanımlayın - her ortam, kendi paradigma metriklerinden seçilen kendi
+kabul kriterlerini alır. Sonrasında test başlatmak yalnızca bir denek seçmek
+demektir; gerisini senaryo taşır.
 
 ### Denekler
 
