@@ -4,8 +4,8 @@ description: Mişko ne yapar, kimler için ve temel kavramlar.
 ---
 
 Mişko, laboratuvar fareleri üzerinde yürütülen davranış testlerini tek bir
-yerden yönetir. Çalışmalar, denekler, cihazlar ve testlerin tamamı uygulama
-üzerinden tanımlanır ve takip edilir.
+yerden yönetir. Denekler, ortamlar, senaryolar, cihazlar ve testlerin tamamı
+uygulama üzerinden tanımlanır ve takip edilir.
 
 ## Kimler için
 
@@ -18,13 +18,12 @@ laboratuvarları için.
 
 - **Paradigma** — bilimsel bir test türü (Morris Su Tankı, Açık Alan, Yükseltilmiş
   Artı Labirent, Rotarod). Kodda tanımlıdır; katalog sabit ve kararlıdır.
-- **Cihaz (Apparatus)** — bir paradigmayı somutlaştıran fiziksel düzenek
+- **Ortam** — bir paradigmanın isimli, somut instance'ı: fiziksel kurulum
   (cm cinsinden geometri, görü kontrastı için yüzey rengi/malzemesi, bölgeler).
-- **Denek** — fare; araştırma seviyesi biyolojik profil (suş, hat/genotip,
-  zigotluk, cinsiyet, tüy rengi) ve ağırlık zaman serisi ile.
-- **Çalışma → Grup** — karşılaştırma kollu (kontrol, model, tedavi) boylamsal
-  deneyler; aynı hayvanın tekrarlı testleri karşılaştırılabilir olur.
-- **Test** — merkezî işlem: paradigma + cihaz + denek + operatör + cihaz;
+- **Denek** — fare; sade tutulur (kod, cinsiyet, grup, doğum tarihi, not).
+- **Senaryo** — merkezî nesne. Bir ortamı, toplanacak metrikleri ve beklenen
+  sonuçlarını paketler; böylece bir deney bir kez tanımlanır.
+- **Test** — tek koşu: bir deneğin bir senaryoya göre ölçülmesi;
   `PENDING → RUNNING → DONE / FAILED` akışı.
 
 ## İçeriden SaaS modeli

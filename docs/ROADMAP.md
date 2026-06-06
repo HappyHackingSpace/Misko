@@ -27,7 +27,7 @@ The core architecture is intentionally split:
 
 | Layer | Responsibility |
 |---|---|
-| Mişko | Lab workflow, users, studies, subjects, apparatuses, calibrations, paradigm specs, metric dictionary, summary results. |
+| Mişko | Lab workflow, users, subjects, environments, scenarios, paradigm specs, metric dictionary, summary results. |
 | CV service | Video capture, frame processing, detection, tracking, telemetry, artifacts, metric computation. |
 | Object storage | Video, trajectory files, heatmaps, calibration images and debug overlays. |
 
@@ -116,27 +116,55 @@ Exit criteria:
 - Researchers can inspect paradigm detail pages before running a test. (done; `frontend/src/views/Paradigms.vue`)
 - Users can attach their own optional, metric-based acceptance criteria per test. (done; `frontend/src/components/AcceptanceEditor.vue`)
 
-## Step 3 - Research-grade domain model
+## Step 3 - Scenario: the central experiment definition
 
-Goal: replace the starter schema with the model needed for real studies.
+Goal: make a `Scenario` the complete, reusable definition of an experiment, so
+that running a test is just "pick a subject and go".
 
-- Rich `Subject`: strain, line, genotype, zygosity, sex, birth date, coat color,
-  cage, health status and lifecycle.
-- `WeightLog` time series.
-- `DiseaseModel` catalog with subject joins.
-- `Treatment` catalog with subject joins, dose, route and schedule.
-- `Study -> Group` for longitudinal experiments.
-- `Apparatus` as the physical rig for a paradigm.
-- `Calibration` as fixed apparatus default or per-session override.
-- `Test` references paradigm, apparatus, subject, operator, device, study,
-  timepoint and calibration.
-- Change `Test.result` from stringified JSON to structured Prisma `Json`.
+The domain is intentionally small:
+
+- **Subject** - the mouse (kept simple: code, sex, group, birth date, notes).
+- **Paradigm** - read-only code catalog (Step 2).
+- **Environment** - a named instance of a paradigm: the physical setup snapshot
+  (apparatus + zones). (Step 1)
+- **Scenario** - the central object. It bundles everything needed to run and
+  evaluate one experiment.
+- **Test** - a single run: a `Subject` measured against a `Scenario`.
+
+A `Scenario` carries every detail of the experiment:
+
+- references an `Environment` (and therefore a paradigm).
+- selects which metrics are collected, from that paradigm's metric dictionary.
+- defines the expected results / acceptance criteria per metric (the pass/fail
+  contract), reusing the Step 2 acceptance engine.
+- session parameters (trial count, duration, ...) from the paradigm.
+
+A `Test` is then just `Subject + Scenario`: running it collects the scenario's
+metrics and analyzes them against the scenario's expected results. There are no
+per-test paradigm, environment or metric choices - they all live on the scenario.
+
+Work items:
+
+- Redesign the starter `Scenario` (free `POOL | MAZE | STICK | PATH` type) into
+  the experiment definition above: `name`, `environmentId`, selected metrics and
+  per-metric expected results, session parameters.
+- Move acceptance/expected results from `Test` onto `Scenario` (defined once,
+  reused by every test of that scenario).
+- Keep `Test = Subject + Scenario` (plus operator/device); change `Test.result`
+  from stringified JSON to structured Prisma `Json`.
+- Keep `Subject` as the simple starter model.
 
 Exit criteria:
 
-- A study can contain groups and repeated tests across timepoints.
-- A test knows which apparatus and calibration were used.
-- Results can store structured metrics, QC and artifact URLs.
+- A scenario fully defines an experiment (environment + metrics + expected
+  results); a researcher builds it once.
+- Starting a test only requires picking a subject and a scenario.
+- A test result is evaluated against its scenario's expected results.
+
+Explicitly out of scope (dropped from the earlier research-grade plan): rich
+`Subject`, `WeightLog`, `DiseaseModel`/`Treatment`, `Study -> Group`, a separate
+`Apparatus` model. The physical rig is the `Environment`; calibration stays in
+Step 5.
 
 ## Step 4 - Video-only boundary with fake CV
 
@@ -241,21 +269,22 @@ Goal: make results scientifically usable, not just numerically populated.
   - `FAIL`
 - Keep QC separate from behavioral `passed`.
 - Add manual review screen with video, overlay, trajectory and metric summary.
-- Default study exports exclude `REVIEW_REQUIRED` and `FAIL` unless explicitly
+- Default scenario exports exclude `REVIEW_REQUIRED` and `FAIL` unless explicitly
   included.
 
 Exit criteria:
 
-- Bad tracking is visible and does not silently enter study summaries.
+- Bad tracking is visible and does not silently enter scenario summaries.
 - Reviewers can inspect artifacts and decide whether a test is usable.
 - Every exported result carries QC status and protocol version.
 
 ## Step 8 - Analysis and reporting
 
-Goal: turn individual tests into study-level evidence.
+Goal: turn individual tests into scenario-level evidence.
 
-- Study dashboards by group and timepoint.
-- Longitudinal subject view.
+- Scenario dashboards: aggregate the tests run under a scenario.
+- Compare subject groups (via `Subject.groupName`) within a scenario.
+- Per-subject history across tests.
 - MWM acquisition curves.
 - Probe trial summaries.
 - Open Field center/periphery summaries.
@@ -265,7 +294,7 @@ Goal: turn individual tests into study-level evidence.
 
 Exit criteria:
 
-- Researchers can compare groups within a study.
+- Researchers can compare subject groups within a scenario.
 - Reports include units, normalization, protocol version and QC filtering.
 - Raw video stays outside Mişko, but artifacts are linked.
 
@@ -318,7 +347,7 @@ Goal: make the project installable and reproducible by other labs.
 - GHCR image publishing.
 - GitHub Pages docs deploy.
 - Example datasets and demo videos.
-- Reproducible seed data and sample apparatus definitions.
+- Reproducible seed data and sample scenario and environment definitions.
 
 Exit criteria:
 

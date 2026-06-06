@@ -4,7 +4,7 @@ description: What Mişko does, who it is for, and the core concepts.
 ---
 
 Mişko manages behavioral tests run on laboratory mice from a single place.
-Studies, subjects, apparatuses, devices and tests are all defined and tracked
+Subjects, environments, scenarios, devices and tests are all defined and tracked
 through the application.
 
 ## Who it is for
@@ -17,14 +17,13 @@ setup, and what the result was** — without managing raw video by hand.
 
 - **Paradigm** — a scientific test type (Morris Water Maze, Open Field, Elevated
   Plus Maze, Rotarod). Defined in code; the catalog is fixed and stable.
-- **Apparatus** — a concrete physical rig instantiating a paradigm (geometry in
-  cm, surface color/material for vision contrast, zones).
-- **Subject** — the mouse, with a research-grade biological profile (strain,
-  line/genotype, zygosity, sex, coat color) and a weight-log time series.
-- **Study → Group** — longitudinal experiments with comparison arms (control,
-  model, treated) so repeated tests of the same animal are comparable.
-- **Test** — the central transaction: paradigm + apparatus + subject + operator
-  + device, moving through `PENDING → RUNNING → DONE / FAILED`.
+- **Environment** — a named, concrete instance of a paradigm: the physical setup
+  (geometry in cm, surface color/material for vision contrast, zones).
+- **Subject** — the mouse, kept simple (code, sex, group, birth date, notes).
+- **Scenario** — the central object. It bundles an environment with the metrics
+  to collect and their expected results, so an experiment is defined once.
+- **Test** — a single run: a subject measured against a scenario, moving through
+  `PENDING → RUNNING → DONE / FAILED`.
 
 ## Internal SaaS model
 
