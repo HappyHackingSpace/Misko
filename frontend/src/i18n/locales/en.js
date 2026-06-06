@@ -109,6 +109,8 @@ export default {
         environmentsArray: "environmentIds must be an array",
         unknownEnvironment: "One or more environments not found",
         metricNotInParadigm: "{metricKey} is not a metric of this scenario's paradigms",
+        acceptanceObject: "Expected results must be keyed by environment",
+        acceptanceUnknownEnv: "Expected results reference an environment not in this scenario",
       },
     },
     datatable: {
@@ -185,6 +187,7 @@ export default {
       environments: "Environments",
       paradigms: "Paradigms",
       expectedResults: "Expected results",
+      pickEnvForResults: "Select an environment above to define its expected results.",
       noEnvironments: "No environments yet. Create one first.",
       confirmDelete: "Delete this scenario?",
       empty: "No scenarios.",

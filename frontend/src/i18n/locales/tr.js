@@ -109,6 +109,8 @@ export default {
         environmentsArray: "environmentIds bir dizi olmalı",
         unknownEnvironment: "Bir veya daha fazla ortam bulunamadı",
         metricNotInParadigm: "{metricKey} bu senaryonun paradigmalarının bir metriği değil",
+        acceptanceObject: "Beklenen sonuçlar ortam bazında olmalı",
+        acceptanceUnknownEnv: "Beklenen sonuçlar bu senaryoda olmayan bir ortamı referans alıyor",
       },
     },
     datatable: {
@@ -185,6 +187,7 @@ export default {
       environments: "Ortamlar",
       paradigms: "Paradigmalar",
       expectedResults: "Beklenen sonuçlar",
+      pickEnvForResults: "Beklenen sonuçları tanımlamak için yukarıdan bir ortam seçin.",
       noEnvironments: "Henüz ortam yok. Önce bir ortam oluşturun.",
       confirmDelete: "Senaryo silinsin mi?",
       empty: "Senaryo yok.",

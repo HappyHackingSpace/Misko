@@ -2,7 +2,6 @@ import { prisma } from "../../lib/prisma.js";
 import { ApiError } from "../../utils/ApiError.js";
 import { buildListQuery, listResult } from "../../common/listQuery.js";
 import { validateAcceptanceCriteria } from "../../config/acceptance.js";
-import { metricsForParadigm } from "../../config/metrics.js";
 
 /**
  * Scenario service - the central experiment definition (docs/DOMAIN.md §3).
@@ -32,32 +31,39 @@ async function loadEnvironments(environmentIds) {
 }
 
 /** The set of metric keys allowed for a scenario = union over its environments' paradigms. */
-function allowedMetricKeys(environments) {
-  const keys = new Set();
-  for (const env of environments) {
-    for (const m of metricsForParadigm(env.paradigmKey)) keys.add(m.key);
-  }
-  return keys;
-}
-
-/** Validates the acceptance list structurally and against the scenario's paradigms. */
+/**
+ * Acceptance is PER-ENVIRONMENT: a map `{ [environmentId]: [criteria] }`. Each
+ * environment defines its own expected results, validated against that
+ * environment's paradigm metrics. Every key must be one of the scenario's
+ * environments.
+ */
 function validateAcceptance(acceptance, environments) {
   if (acceptance == null) return;
-  const { valid, errors } = validateAcceptanceCriteria(acceptance);
-  if (!valid) {
-    throw ApiError.badRequest(`Invalid acceptance: ${errors.join("; ")}`, "test.invalidAcceptance", { errors: errors.join("; ") });
+  if (typeof acceptance !== "object" || Array.isArray(acceptance)) {
+    throw ApiError.badRequest("acceptance must be an object keyed by environment id", "scenario.acceptanceObject");
   }
-  const allowed = allowedMetricKeys(environments);
-  for (const c of acceptance) {
-    const root = c.metricKey.includes(".") ? c.metricKey.slice(0, c.metricKey.indexOf(".")) : c.metricKey;
-    if (!allowed.has(c.metricKey) && !allowed.has(root)) {
-      throw ApiError.badRequest(
-        `${c.metricKey} is not a metric of this scenario's paradigms`,
-        "scenario.metricNotInParadigm",
-        { metricKey: c.metricKey },
-      );
+  const envById = new Map(environments.map((e) => [e.id, e]));
+  for (const [envId, criteria] of Object.entries(acceptance)) {
+    const env = envById.get(envId);
+    if (!env) {
+      throw ApiError.badRequest("Acceptance references an environment not in this scenario", "scenario.acceptanceUnknownEnv", { envId });
+    }
+    const { valid, errors } = validateAcceptanceCriteria(criteria, { paradigmKey: env.paradigmKey });
+    if (!valid) {
+      throw ApiError.badRequest(`Invalid acceptance for ${env.name}: ${errors.join("; ")}`, "test.invalidAcceptance", { errors: errors.join("; ") });
     }
   }
+}
+
+/** Drops acceptance entries whose environment is no longer part of the scenario. */
+function pruneAcceptance(acceptance, environments) {
+  if (acceptance == null || typeof acceptance !== "object") return acceptance;
+  const ids = new Set(environments.map((e) => e.id));
+  const out = {};
+  for (const [envId, criteria] of Object.entries(acceptance)) {
+    if (ids.has(envId)) out[envId] = criteria;
+  }
+  return out;
 }
 
 export async function listScenarios(query = {}) {
@@ -123,8 +129,8 @@ export async function updateScenario(id, input = {}) {
     validateAcceptance(input.acceptance ?? null, environments);
     data.acceptance = input.acceptance ?? null;
   } else if (input.environmentIds !== undefined) {
-    // Environment set changed: re-validate the existing acceptance against it.
-    validateAcceptance(existing.acceptance ?? null, environments);
+    // Environment set changed: drop acceptance for removed environments.
+    data.acceptance = pruneAcceptance(existing.acceptance ?? null, environments);
   }
 
   return prisma.scenario.update({ where: { id }, data, include });

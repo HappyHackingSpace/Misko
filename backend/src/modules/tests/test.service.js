@@ -84,7 +84,12 @@ export async function update(id, payload) {
       where: { id },
       select: { scenario: { select: { acceptance: true } } },
     });
-    const criteria = Array.isArray(test?.scenario?.acceptance) ? test.scenario.acceptance : null;
+    // Acceptance is per-environment: { [environmentId]: [criteria] }. Flatten all
+    // of the scenario's environments' expected results to evaluate this result.
+    const acc = test?.scenario?.acceptance;
+    const criteria = acc && typeof acc === "object" && !Array.isArray(acc)
+      ? Object.values(acc).flat()
+      : null;
     data.passed = evaluateAcceptance(result ?? null, criteria).passed;
   }
 
