@@ -49,7 +49,7 @@ Tamamlandı: kayıt defterleri `backend/src/config/{units,metrics,paradigms}.js`
 
 Çıkış kriteri: her metriğin birimi, tanımı, input listesi ve aggregation davranışı vardır.
 
-## Adım 3 - Senaryo: merkezî deney tanımı
+## Adım 3 - Senaryo: merkezî deney tanımı ✅
 
 `Scenario`, bir deneyin eksiksiz ve yeniden kullanılabilir tanımıdır; böylece test
 başlatmak "denek seç ve başlat" kadar basit olur. Domain küçük kalır: **Denek**

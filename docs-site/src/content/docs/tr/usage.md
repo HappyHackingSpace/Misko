@@ -82,9 +82,12 @@ ekranlarında bulunur.
 
 ### Senaryolar
 
-Senaryolar dört sabit düzenek türüne dayanır: `POOL`, `MAZE`, `STICK` ve `PATH`.
-Bilimsel paradigma kataloğu sistemde tanımlıdır ve kararlı kalır; yani sıfırdan
-icat etmek yerine seçer ve yapılandırırsınız.
+Senaryo, bir deneyin eksiksiz ve yeniden kullanılabilir tanımıdır. Bir kez
+kurarsınız: ad verin, bir veya birden çok **ortam** seçin (böylece bir senaryo
+bir veya birden çok paradigmayı kapsayabilir) ve **beklenen sonuçları** tanımlayın
+- seçili ortamların paradigmalarının metriklerinden seçilen kabul kriterleri.
+Sonrasında test başlatmak yalnızca bir denek seçmek demektir; gerisini senaryo
+taşır.
 
 ### Denekler
 
@@ -140,7 +143,9 @@ Test, Mişko'daki merkezî kayıttır. Bir test çalıştırmak için:
    **detay sayfasını** açın.
 4. Detay sayfasında **Başlat**, durumu **çalışıyor** yapar.
 5. **Bitir**, durumu **tamamlandı** yapar (**İptal** ise **başarısız**). Detay
-   sayfası ayrıca teste özel kabul kriterleri düzenleyicisini de barındırır.
+   sayfası senaryonun ortamlarını ve sonuç geldiğinde metrik JSON'unu ve geç/kal
+   verdiktini gösterir. Verdikt, senaryonun beklenen sonuçlarına göre hesaplanır
+   (test bazlı değil, senaryoda tanımlı).
 
 Bir test tamamlandığında özet metrikleri ve varsa artefakt bağlantıları Mişko'da
 tutulur. Ham video ve kare kare veri ise ayrı kamera servisinde kalır.

@@ -82,9 +82,12 @@ screens in the panel.
 
 ### Scenarios
 
-Scenarios are based on four fixed apparatus types: `POOL`, `MAZE`, `STICK`, and
-`PATH`. The catalog of scientific paradigms is defined in the system and stays
-stable, so you select and configure rather than invent from scratch.
+A scenario is the complete, reusable definition of an experiment. You build it
+once: give it a name, select one or more **environments** (so a scenario can span
+one or more paradigms), and define the **expected results** - acceptance criteria
+picked from the metrics of the selected environments' paradigms. After that,
+running a test only means choosing a subject; the scenario carries everything
+else.
 
 ### Subjects
 
@@ -136,7 +139,9 @@ The test is the central record in Mişko. To run one:
    the row) to manage it.
 4. On the detail page, **Start** moves the status to **running**.
 5. **Finish** sets it to **done** (or **Cancel** sets **failed**). The detail
-   page also holds the per-test acceptance criteria editor.
+   page shows the scenario's environments and, once a result arrives, the metric
+   JSON and the pass/fail verdict. The verdict is computed against the scenario's
+   expected results (defined on the scenario, not per test).
 
 Once a test is done, its summary metrics and any artifact links are kept by
 Mişko. The raw video and frame-by-frame data stay in the separate camera
