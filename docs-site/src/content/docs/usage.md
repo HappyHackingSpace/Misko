@@ -132,12 +132,19 @@ The test is the central record in Mişko. To run one:
 2. Choose a **scenario** and a **subject**, then create. The operator is the
    signed-in user.
 3. The test is created with status **pending**. Open its **detail page** (click
-   the row) to manage it.
-4. On the detail page, **Start** moves the status to **running**.
-5. **Finish** sets it to **done** (or **Cancel** sets **failed**). The detail
-   page shows the scenario's environments and, once a result arrives, the metric
-   JSON and the pass/fail verdict. The verdict is computed against the scenario's
-   expected results (defined on the scenario, not per test).
+   the row) to run it.
+4. The detail page lists the scenario's environments. Run them one by one: click
+   **Start** on an environment, then fill its **metric form**. The form is
+   generated from that environment's paradigm - one field per metric (with its
+   unit and valid range), and one input per zone for zone-based metrics.
+5. Click **Finish** to record that environment's metrics. Repeat for each
+   environment.
+6. When every environment is done the test becomes **done** and the **pass/fail
+   verdict** is computed against the scenario's expected results.
+
+Entering metrics by hand today and receiving them from the camera system later
+use the **same fields and the same validation** - the form just mirrors what the
+CV service will push.
 
 Once a test is done, its summary metrics and any artifact links are kept by
 Mişko. The raw video and frame-by-frame data stay in the separate camera

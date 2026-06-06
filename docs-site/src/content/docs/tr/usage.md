@@ -135,13 +135,20 @@ Test, Mişko'daki merkezî kayıttır. Bir test çalıştırmak için:
    tıklayın.
 2. Bir **senaryo** ve bir **denek** seçip oluşturun. Operatör, giriş yapan
    kullanıcıdır.
-3. Test **beklemede** durumuyla oluşturulur. Yönetmek için (satıra tıklayarak)
+3. Test **beklemede** durumuyla oluşturulur. Çalıştırmak için (satıra tıklayarak)
    **detay sayfasını** açın.
-4. Detay sayfasında **Başlat**, durumu **çalışıyor** yapar.
-5. **Bitir**, durumu **tamamlandı** yapar (**İptal** ise **başarısız**). Detay
-   sayfası senaryonun ortamlarını ve sonuç geldiğinde metrik JSON'unu ve geç/kal
-   verdiktini gösterir. Verdikt, senaryonun beklenen sonuçlarına göre hesaplanır
-   (test bazlı değil, senaryoda tanımlı).
+4. Detay sayfası senaryonun ortamlarını listeler. Tek tek çalıştırın: bir ortamda
+   **Başlat**'a basın, sonra **metrik formunu** doldurun. Form o ortamın
+   paradigmasından üretilir - her metrik için bir alan (birimi ve geçerli aralığı
+   ile), zone-bazlı metrikler için zone başına bir input.
+5. O ortamın metriklerini kaydetmek için **Bitir**'e basın. Her ortam için
+   tekrarlayın.
+6. Tüm ortamlar bitince test **tamamlandı** olur ve **geç/kal verdikti**
+   senaryonun beklenen sonuçlarına göre hesaplanır.
+
+Bugün metrikleri elle girmek ile yarın kamera sisteminden almak **aynı alanları
+ve aynı validation'ı** kullanır - form, CV servisinin göndereceği şeyi birebir
+yansıtır.
 
 Bir test tamamlandığında özet metrikleri ve varsa artefakt bağlantıları Mişko'da
 tutulur. Ham video ve kare kare veri ise ayrı kamera servisinde kalır.
