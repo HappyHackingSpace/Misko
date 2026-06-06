@@ -67,16 +67,58 @@ model Device {
   tests      Test[]
 }
 
-// Subject / Mouse
+// Subject / Mouse. Research-grade domain model (see docs/DOMAIN.md §2). Fields
+// marked "CV" matter to computer vision (contrast against the apparatus surface).
 model Subject {
-  id        String    @id @default(cuid())
-  code      String    @unique // cage/tag code
-  sex       String? // M | F
-  groupName String? // experiment group
-  birthDate DateTime?
-  notes     String?
-  createdAt DateTime  @default(now())
-  tests     Test[]
+  id           String    @id @default(cuid())
+  // Identity
+  code         String    @unique // lab ID / cage label
+  microchipId  String? // RFID / transponder
+  earTag       String?
+  // Biological
+  species      String    @default("Mus musculus")
+  strain       String? // background strain, e.g. C57BL/6J, BALB/c
+  line         String? // transgenic line, e.g. 5xFAD, APP/PS1, WT
+  genotype     String?
+  zygosity     String? // WT | HET | HOMO
+  sex          String? // M | F
+  birthDate    DateTime? // age is derived, not stored
+  coatColor    String? // black | agouti | albino_white | brown | other (CV: contrast)
+  // Physiology
+  healthStatus String?
+  notes        String?
+  // Housing & social
+  cageId       String?
+  litter       String?
+  cohort       String?
+  // Lifecycle
+  status       String    @default("ALIVE") // ALIVE | SACRIFICED | DEAD
+  acquiredAt   DateTime?
+  sacrificedAt DateTime?
+  // Experiment grouping (interim free-text label; replaced by SubjectGroup in a
+  // later step, see docs/DOMAIN.md §4).
+  groupName    String?
+  createdAt    DateTime  @default(now())
+
+  tests      Test[]
+  weightLogs WeightLog[]
+
+  @@index([status])
+  @@index([strain])
+}
+
+// WeightLog: subject weight time series. Many protocols weigh daily (food/water
+// restriction, drug dosing). Canonical unit is grams (see backend/src/config/units.js).
+model WeightLog {
+  id         String   @id @default(cuid())
+  subject    Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  subjectId  String
+  measuredAt DateTime @default(now())
+  grams      Float
+  notes      String?
+  createdAt  DateTime @default(now())
+
+  @@index([subjectId])
 }
 
 // Test scenario (pool / maze / stick / path)

@@ -8,14 +8,20 @@ const { t } = useI18n();
 
 const table = useDataTable("/subjects", { defaultSort: { field: "createdAt", order: "desc" } });
 
+const statusLabel = (row) => (row.status ? t(`subjects.status${row.status}`) : "");
+
 const columns = computed(() => [
   { key: "code", label: t("subjects.code"), sortable: true },
   {
     key: "sex", label: t("subjects.sex"), sortable: true,
     exportValue: (row) => (row.sex === "F" ? t("subjects.female") : t("subjects.male")),
   },
-  { key: "groupName", label: t("subjects.group"), sortable: true, cellClass: "muted" },
-  { key: "notes", label: t("common.notes"), cellClass: "muted" },
+  { key: "strain", label: t("subjects.strain"), sortable: true, cellClass: "muted" },
+  { key: "genotype", label: t("subjects.genotype"), cellClass: "muted" },
+  {
+    key: "status", label: t("subjects.status"), sortable: true,
+    exportValue: statusLabel,
+  },
 ]);
 </script>
 
@@ -45,6 +51,7 @@ const columns = computed(() => [
     >
       <template #cell-code="{ row }"><RouterLink class="link" :to="`/subjects/${row.id}`">{{ row.code }}</RouterLink></template>
       <template #cell-sex="{ row }">{{ row.sex === "F" ? $t("subjects.female") : $t("subjects.male") }}</template>
+      <template #cell-status="{ row }">{{ statusLabel(row) }}</template>
     </DataTable>
   </div>
 </template>

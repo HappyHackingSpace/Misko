@@ -121,15 +121,15 @@ Exit criteria:
 Goal: replace the starter schema with the model needed for real studies.
 
 - Rich `Subject`: strain, line, genotype, zygosity, sex, birth date, coat color,
-  cage, health status and lifecycle.
-- `WeightLog` time series.
+  cage, health status and lifecycle. (done, `Subject` model)
+- `WeightLog` time series. (done, `WeightLog` model + nested `/api/subjects/:id/weights`)
 - `DiseaseModel` catalog with subject joins.
 - `Treatment` catalog with subject joins, dose, route and schedule.
 - `Study -> Group` for longitudinal experiments.
-- `Apparatus` as the physical rig for a paradigm.
-- `Calibration` as fixed apparatus default or per-session override.
-- `Test` references paradigm, apparatus, subject, operator, device, study,
-  timepoint and calibration.
+- The physical rig is the named `Environment` instance from Step 1 (no separate
+  `Apparatus` model). `Calibration` is deferred to Step 5.
+- `Test` references paradigm, environment, subject, operator, device, study and
+  timepoint.
 - Change `Test.result` from stringified JSON to structured Prisma `Json`.
 
 Exit criteria:

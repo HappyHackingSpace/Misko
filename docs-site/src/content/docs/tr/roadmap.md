@@ -51,12 +51,12 @@ Tamamlandı: kayıt defterleri `backend/src/config/{units,metrics,paradigms}.js`
 
 ## Adım 3 - Araştırma domain modeli
 
-- Zengin `Subject` ve `WeightLog`.
+- Zengin `Subject` ve `WeightLog`. ✅
 - Denek join'leriyle `DiseaseModel` ve `Treatment` katalogları.
 - Boylamsal çalışma için `Study -> Group`.
-- Fiziksel düzenekler için `Apparatus`.
-- Sabit kurulum veya oturum override için `Calibration`.
-- `Test` paradigma, apparatus, denek, operatör, cihaz, çalışma, timepoint ve kalibrasyonu referans alır.
+- Fiziksel düzenekler Adım 1'deki isimli `Environment` örnekleridir (ayrı bir `Apparatus` modeli yok); `Test` bir ortamı ve paradigmasını referans alır.
+- `Calibration` (kamera-cm eşlemesi) Adım 5'e ertelendi.
+- `Test` paradigma, ortam, denek, operatör, cihaz, çalışma ve timepoint'i referans alır.
 - `Test.result` yapılandırılmış JSON olur.
 
 ## Adım 4 - Fake CV ile video-only sınır

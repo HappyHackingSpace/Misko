@@ -104,6 +104,12 @@ export default {
         notesString: "Notlar metin olmalı",
         paradigmImmutable: "Paradigma değiştirilemez",
       },
+      subject: {
+        notFound: "Denek bulunamadı",
+      },
+      weight: {
+        notFound: "Ağırlık kaydı bulunamadı",
+      },
     },
     datatable: {
       searchPlaceholder: "Ara…",
@@ -262,6 +268,49 @@ export default {
       groupPlaceholder: "kontrol",
       confirmDelete: "Denek silinsin mi?",
       empty: "Denek yok.",
+      // Alan grubu başlıkları
+      sectionIdentity: "Kimlik",
+      sectionBiological: "Biyolojik",
+      sectionHousing: "Barınma ve Sosyal",
+      sectionLifecycle: "Yaşam döngüsü",
+      // Kimlik
+      microchipId: "Mikroçip kimliği",
+      earTag: "Kulak küpesi",
+      // Biyolojik
+      species: "Tür",
+      strain: "Soy (strain)",
+      line: "Hat / genotip",
+      genotype: "Genotip",
+      zygosity: "Zigotluk",
+      coatColor: "Tüy rengi",
+      birthDate: "Doğum tarihi",
+      // Barınma
+      cageId: "Kafes",
+      litter: "Batın",
+      cohort: "Kohort",
+      // Yaşam döngüsü
+      status: "Durum",
+      acquiredAt: "Edinme tarihi",
+      sacrificedAt: "Sakrifiye tarihi",
+      healthStatus: "Sağlık durumu",
+      // Seçenek etiketleri
+      zygosityWT: "WT",
+      zygosityHET: "HET",
+      zygosityHOMO: "HOMO",
+      statusALIVE: "Canlı",
+      statusSACRIFICED: "Sakrifiye",
+      statusDEAD: "Ölü",
+      none: "-",
+    },
+    weights: {
+      title: "Ağırlık kaydı",
+      measuredAt: "Ölçüm tarihi",
+      grams: "Ağırlık (g)",
+      add: "Ekle",
+      gramsPlaceholder: "25.4",
+      empty: "Henüz ağırlık kaydı yok.",
+      confirmDelete: "Bu ağırlık kaydı silinsin mi?",
+      saveSubjectFirst: "Ağırlık eklemeden önce deneği kaydedin.",
     },
     devices: {
       title: "Test Cihazları",

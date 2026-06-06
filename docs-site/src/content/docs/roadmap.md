@@ -51,12 +51,12 @@ Exit criteria: every metric has a unit, definition, input list and aggregation b
 
 ## Step 3 - Research domain model
 
-- Rich `Subject` plus `WeightLog`.
+- Rich `Subject` plus `WeightLog`. ✅
 - `DiseaseModel` and `Treatment` catalogs with subject joins.
 - `Study -> Group` for longitudinal work.
-- `Apparatus` for physical rigs.
-- `Calibration` for fixed setup or per-session override.
-- `Test` references paradigm, apparatus, subject, operator, device, study, timepoint and calibration.
+- Physical rigs are the named `Environment` instances from Step 1 (no separate `Apparatus` model); `Test` references an environment plus its paradigm.
+- `Calibration` (camera to cm) is deferred to Step 5.
+- `Test` references paradigm, environment, subject, operator, device, study and timepoint.
 - `Test.result` becomes structured JSON.
 
 ## Step 4 - Video-only boundary with fake CV

@@ -104,6 +104,12 @@ export default {
         notesString: "Notes must be a string",
         paradigmImmutable: "Paradigm cannot be changed",
       },
+      subject: {
+        notFound: "Subject not found",
+      },
+      weight: {
+        notFound: "Weight log not found",
+      },
     },
     datatable: {
       searchPlaceholder: "Search…",
@@ -262,6 +268,49 @@ export default {
       groupPlaceholder: "control",
       confirmDelete: "Delete this subject?",
       empty: "No subjects.",
+      // Field-group headings
+      sectionIdentity: "Identity",
+      sectionBiological: "Biological",
+      sectionHousing: "Housing & Social",
+      sectionLifecycle: "Lifecycle",
+      // Identity
+      microchipId: "Microchip ID",
+      earTag: "Ear tag",
+      // Biological
+      species: "Species",
+      strain: "Strain",
+      line: "Line / genotype",
+      genotype: "Genotype",
+      zygosity: "Zygosity",
+      coatColor: "Coat color",
+      birthDate: "Birth date",
+      // Housing
+      cageId: "Cage",
+      litter: "Litter",
+      cohort: "Cohort",
+      // Lifecycle
+      status: "Status",
+      acquiredAt: "Acquired at",
+      sacrificedAt: "Sacrificed at",
+      healthStatus: "Health status",
+      // Enum option labels
+      zygosityWT: "WT",
+      zygosityHET: "HET",
+      zygosityHOMO: "HOMO",
+      statusALIVE: "Alive",
+      statusSACRIFICED: "Sacrificed",
+      statusDEAD: "Dead",
+      none: "-",
+    },
+    weights: {
+      title: "Weight log",
+      measuredAt: "Measured at",
+      grams: "Weight (g)",
+      add: "Add",
+      gramsPlaceholder: "25.4",
+      empty: "No weight records yet.",
+      confirmDelete: "Delete this weight record?",
+      saveSubjectFirst: "Save the subject before adding weights.",
     },
     devices: {
       title: "Test Devices",
