@@ -15,11 +15,10 @@ Denek (fare)
 Paradigma (salt-okunur kod katalog) -> Ortam (isimli fiziksel instance)
                                           |
                                           v
-                                       Senaryo  (ortam + metrikler +
-                                                  beklenen sonuçlar)
+                                       Senaryo  (bir veya birden çok ortam)
                                           |
                                           v
-Test = Denek + Senaryo -> sonuç (metrikler) + passed
+Test = Denek + Senaryo -> ortam-bazlı metrik sonuçları (veri, verdikt yok)
 ```
 
 ## Kiracılık (tek kiracı, on-prem)
@@ -56,34 +55,38 @@ Kamera-cm kalibrasyonu sonraki bir konudur (yol haritası Adım 5).
 
 ## Senaryo (merkezî deney tanımı)
 
-`Scenario`, bir araştırmacının bir kez kurduğu, bir deneyin eksiksiz ve yeniden
-kullanılabilir tanımıdır. Her detayı taşır:
+`Scenario`, bir kez kurulan, bir deneyin yeniden kullanılabilir tanımıdır. Taşır:
 
 - `name`, `description`.
 - **ortamlar** (N-N) - üzerinde koşulacak bir veya birden çok ortam; böylece
-  senaryo bir veya birden çok paradigmayı kapsayabilir.
-- **ortam başına beklenen sonuçlar** - `{ [environmentId]: [kriterler] }` map'i.
-  Her ortam kendi geç/kal kriterlerini tanımlar; o ortamın paradigma metriklerine
-  göre doğrulanır.
-- **oturum parametreleri** - trial sayısı, süre vb.
+  senaryo bir veya birden çok paradigmayı kapsayabilir. Her ortamın paradigması
+  metriklerini sabitler.
+- **oturum parametreleri** (opsiyonel) - trial sayısı, süre vb.
 
-Her ortam kendi paradigmasını ve kendi beklenen sonuçlarını taşıdığından, bir
-senaryo kendini tümüyle tanımlar.
+Senaryoda **geç/kal kriteri yoktur**. Davranışsal sonuç **veridir, verdikt
+değil** - yorum analiz katmanında yapılır.
+
+### Sinyal vs metrik vs metrik sonucu
+
+Üç ayrı katman: **sinyaller** (kameranın ham gerçek-zamanlı zaman serisi -
+trajectory, timestamp; CV servisinde kalır, Mişko'ya girmez), **metrikler**
+(paradigmanın tanımları - ne ölçülür, birim/aralık/inputs) ve **metrik sonuçları**
+(bir koşunun değerleri; CV sinyalden hesaplar ya da elle girilir). Mişko metrik
+sonuçlarını saklar, sinyalleri değil.
 
 ## Test (tek koşu)
 
-`Test`, bir `Scenario`'nun bir `Subject` üzerinde tek bir koşusudur:
+`Test`, bir `Scenario`'nun bir `Subject` üzerinde koşusudur. Operatör **ortam
+ortam** koşturur (Başlat → metrik sonuçlarını gir → Bitir):
 
-- `scenarioId` (ortamı, paradigmayı, metrikleri ve beklenen sonuçları getirir),
-  `subjectId`, `operatorId`.
+- `scenarioId`, `subjectId`, `operatorId`.
 - `status` (`PENDING | RUNNING | DONE | FAILED`), `startedAt`, `endedAt`.
-- `result` (JSON) - CV'nin hesapladığı metrikler + QC + artefakt URL'leri,
-  senaryonun metriklerine göre doğrulanır.
-- `passed` - `result`'ın senaryonun beklenen sonuçlarına göre değerlendirmesi
-  (yoksa null).
+- `result` (JSON) - ortam başına:
+  `{ schemaVersion, environments: { [envId]: { status, startedAt, endedAt, metrics } } }`.
+  Metrik değerleri ortamın paradigma sözlüğüne göre doğrulanır. CV servisinin
+  göndereceği şekille birebir - manuel girişte gözlemlenebilir metrikler elle dolar.
 
-Test başına paradigma, ortam, metrik veya kabul seçimi **yoktur** - hepsi
-senaryoda durur. Test başlatmak yalnızca bir denek ister.
+`passed`/verdikt **yoktur**. Test başlatmak yalnızca denek ve senaryo ister.
 
 ## Roller & izinler (RBAC)
 

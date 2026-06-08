@@ -82,13 +82,11 @@ ekranlarında bulunur.
 
 ### Senaryolar
 
-Senaryo, bir deneyin eksiksiz ve yeniden kullanılabilir tanımıdır. Bir kez
-kurarsınız: ad verin, bir veya birden çok **ortam** seçin (böylece bir senaryo
-bir veya birden çok paradigmayı kapsayabilir) ve **her ortam için beklenen
-sonuçları** tanımlayın - her ortam, kendi paradigma metriklerinden seçilen kendi
-kabul kriterlerini alır. Bir ortam eklediğinizde beklenen sonuçlar, paradigmanın
-varsayılan kriterleriyle ön-doldurulur; siz de ayarlarsınız. Sonrasında test
-başlatmak yalnızca bir denek seçmek demektir; gerisini senaryo taşır.
+Senaryo, bir deneyin yeniden kullanılabilir tanımıdır. Bir kez kurarsınız: ad
+verin ve bir veya birden çok **ortam** seçin (böylece bir senaryo bir veya birden
+çok paradigmayı kapsayabilir; her ortamın paradigması topladığı metrikleri
+sabitler). Sonrasında test başlatmak, bir denek ve senaryo seçmek demektir.
+Senaryoda geç/kal kriteri yoktur - sonuçlar veridir, sonra analizde yorumlanır.
 
 ### Denekler
 
@@ -135,13 +133,21 @@ Test, Mişko'daki merkezî kayıttır. Bir test çalıştırmak için:
    tıklayın.
 2. Bir **senaryo** ve bir **denek** seçip oluşturun. Operatör, giriş yapan
    kullanıcıdır.
-3. Test **beklemede** durumuyla oluşturulur. Yönetmek için (satıra tıklayarak)
+3. Test **beklemede** durumuyla oluşturulur. Çalıştırmak için (satıra tıklayarak)
    **detay sayfasını** açın.
-4. Detay sayfasında **Başlat**, durumu **çalışıyor** yapar.
-5. **Bitir**, durumu **tamamlandı** yapar (**İptal** ise **başarısız**). Detay
-   sayfası senaryonun ortamlarını ve sonuç geldiğinde metrik JSON'unu ve geç/kal
-   verdiktini gösterir. Verdikt, senaryonun beklenen sonuçlarına göre hesaplanır
-   (test bazlı değil, senaryoda tanımlı).
+4. Detay sayfası senaryonun ortamlarını listeler. Tek tek çalıştırın: bir ortamda
+   **Başlat**'a basın, sonra **metrik formunu** doldurun. Form o ortamın
+   paradigmasından üretilir - her metrik için bir alan (birimi ve geçerli aralığı
+   ile), zone-bazlı metrikler için zone başına bir input.
+5. O ortamın metriklerini kaydetmek için **Bitir**'e basın. Her ortam için
+   tekrarlayın.
+6. Tüm ortamlar bitince test **tamamlandı** olur. Sonuç ortam başına veri olarak
+   saklanır - geç/kal verdikti yoktur; yorum ve karşılaştırma sonradan analiz
+   ekranlarında yapılır.
+
+Bugün metrikleri elle girmek ile yarın kamera sisteminden almak **aynı alanları
+ve aynı validation'ı** kullanır - form, CV servisinin göndereceği şeyi birebir
+yansıtır.
 
 Bir test tamamlandığında özet metrikleri ve varsa artefakt bağlantıları Mişko'da
 tutulur. Ham video ve kare kare veri ise ayrı kamera servisinde kalır.

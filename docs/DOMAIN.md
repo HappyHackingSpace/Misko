@@ -57,43 +57,52 @@ These already exist (Steps 1-2).
 > The physical rig **is** the Environment. There is no separate `Apparatus`
 > model. Camera-to-cm calibration is a later concern (roadmap Step 5).
 
-## 3. Scenario (the central experiment definition)
+## 3. Metric vs metric result (signals stay out)
 
-A `Scenario` is the complete, reusable definition of one experiment. It is built
-once by a researcher; after that, running a test is just "pick a subject and go".
+Three distinct layers, deliberately separated:
 
-A scenario carries every detail of the experiment:
+- **Signal** - the camera's raw, real-time time series (trajectory `(t, x, y)`,
+  timestamps, pose...). Lives in the **CV service**, never in Mişko. The camera
+  does not emit "mean speed"; it emits a trajectory.
+- **Metric (definition)** - what is measured for a paradigm: the code dictionary
+  entry (`key`, `unit`, `valueType`, `validRange`, and the `inputs` it is derived
+  from). Paradigm-level, stable.
+- **Metric result (value)** - the measured/computed value for one test run. The
+  CV service computes it from signals; for manual entry the operator records the
+  observable ones directly. Stored in `Test.result`.
+
+Mişko stores **metric results** (derived values), not signals.
+
+## 4. Scenario (the central experiment definition)
+
+A `Scenario` is the reusable definition of one experiment, built once. It carries:
 
 - `name`, `description`.
 - **environments** (N-N) - one or more environments to run on, so a scenario can
-  span one or more paradigms.
-- **expected results / acceptance criteria, per environment** - a map
-  `{ [environmentId]: [criteria] }`. Each environment defines its own expected
-  results, validated against that environment's paradigm metrics, using the
-  Step 2 acceptance engine (`backend/src/config/acceptance.js`).
-- **session parameters** - trial count, duration, etc.
+  span one or more paradigms. Each environment's paradigm fixes its metrics.
+- **session parameters** (optional) - trial count, duration, etc.
 
-Because the environments carry their paradigms, and the scenario carries the
-per-environment expected results, a scenario is fully self-describing.
+A scenario carries **no** pass/fail criteria. A behavioral result is **data, not
+a verdict** - interpretation and comparison happen at the analysis layer.
 
-## 4. Test (one run)
+## 5. Test (one run)
 
-A `Test` is a single run of a `Scenario` against a `Subject`.
+A `Test` is a run of a `Scenario` against a `Subject`. The operator runs it
+**environment by environment**: Start an environment, record its metric results
+(manual now, camera later), Finish. The test is DONE when every environment is.
 
-- `scenarioId` - what is being run (brings the environment, paradigm, metrics and
-  expected results with it).
-- `subjectId` - which mouse.
-- `operatorId` - who ran it.
+- `scenarioId`, `subjectId`, `operatorId`.
 - `status` - `PENDING | RUNNING | DONE | FAILED`, `startedAt`, `endedAt`.
-- `result` (JSON) - the metrics the CV service computed, plus QC and artifact
-  URLs. Validated against the scenario's selected metrics / paradigm dictionary.
-- `passed` - evaluation of `result` against the scenario's expected results
-  (null when the scenario defines none).
+- `result` (JSON) - per environment:
+  `{ schemaVersion, environments: { [envId]: { status, startedAt, endedAt, metrics } } }`.
+  Metric keys/values are validated against the environment's paradigm dictionary
+  (`valueType`, `validRange`, templated zone maps). The exact same shape the CV
+  service will push later - manual entry just fills the observable metrics by hand.
 
-There are **no** per-test paradigm, environment, metric or acceptance choices -
-they all live on the scenario. Starting a test only asks for a subject.
+There is **no** `passed`/verdict. Starting a test only asks for a subject and a
+scenario; everything else comes from the scenario's environments.
 
-## 5. Roles and permissions (RBAC)
+## 6. Roles and permissions (RBAC)
 
 Five roles with a **code-defined permission matrix** (no DB-editable permissions);
 see `backend/src/config/permissions.js`.
@@ -110,7 +119,7 @@ Writes are gated by permissions (`requirePermission(...)`): `user:manage`,
 `lab:configure`, `subject:write`, `apparatus:write` (environments/scenarios),
 `test:write`, `test:run`, and read access (`*:read`).
 
-## 6. What stays out of Mişko
+## 7. What stays out of Mişko
 
 - Per-frame trajectory/pose telemetry and event rows -> CV service's PostgreSQL.
 - Video / trajectory files -> object storage; Mişko stores only URLs.

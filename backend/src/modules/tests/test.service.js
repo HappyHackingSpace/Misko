@@ -1,14 +1,20 @@
 import { prisma } from "../../lib/prisma.js";
 import { ApiError } from "../../utils/ApiError.js";
 import { buildListQuery, listResult } from "../../common/listQuery.js";
-import { evaluateAcceptance } from "../../config/acceptance.js";
+import { getParadigmSpec } from "../../config/paradigms.js";
+import { computeMetrics, validateEvent } from "../../config/metricEngine.js";
 
 /**
- * Test service. A Test = Subject + Scenario, run once (docs/DOMAIN.md §4). The
- * scenario carries the environments (and thus paradigms), the metrics and the
- * expected results. When a result is written, metrics are evaluated against the
- * scenario's acceptance to set `passed`.
+ * Test service. A Test = Subject + Scenario (docs/METRIC_ENGINE.md). The scenario
+ * has one or more environments; a run goes environment by environment. The
+ * operator logs EVENTS; the paradigm's engine derives the METRIC RESULTS from
+ * them (live on each event, finalized on Finish). The CV service feeds the same
+ * engine. Results are data - there is no pass/fail verdict.
+ *   result = { schemaVersion, environments: { [envId]:
+ *     { status, startedAt, endedAt, events: [...], cvInputs?: {...}, metrics: {...} } } }
  */
+
+const RESULT_SCHEMA_VERSION = 2;
 
 const include = {
   scenario: {
@@ -50,48 +56,102 @@ export async function create({ scenarioId, subjectId, notes }, operatorId) {
   if (!scenario) throw ApiError.badRequest("Unknown scenario", "scenario.notFound");
 
   return prisma.test.create({
-    data: {
-      scenarioId,
-      subjectId,
-      notes: notes || null,
-      operatorId,
-    },
+    data: { scenarioId, subjectId, notes: notes || null, operatorId },
     include,
   });
 }
 
-/**
- * Updates status/result (start, finish, write result). `result` is structured
- * JSON. When a result is written and `passed` is not given explicitly, metrics
- * are evaluated against the test's scenario's acceptance criteria. With no
- * acceptance, passed = null.
- */
+/** Test-level updates: overall status (e.g. cancel -> FAILED) and notes. */
 export async function update(id, payload) {
-  const { status, startedAt, endedAt, result, passed, notes } = payload;
+  const { status, notes } = payload;
   const data = {};
   if (status !== undefined) data.status = status;
-  if (startedAt !== undefined) data.startedAt = startedAt ? new Date(startedAt) : null;
-  if (endedAt !== undefined) data.endedAt = endedAt ? new Date(endedAt) : null;
-  if (result !== undefined) data.result = result ?? null;
   if (notes !== undefined) data.notes = notes;
+  return prisma.test.update({ where: { id }, data, include });
+}
 
-  if (passed !== undefined) {
-    data.passed = passed; // manual override
-  } else if (result !== undefined) {
-    const test = await prisma.test.findUnique({
-      where: { id },
-      select: { scenario: { select: { acceptance: true } } },
-    });
-    // Acceptance is per-environment: { [environmentId]: [criteria] }. Flatten all
-    // of the scenario's environments' expected results to evaluate this result.
-    const acc = test?.scenario?.acceptance;
-    const criteria = acc && typeof acc === "object" && !Array.isArray(acc)
-      ? Object.values(acc).flat()
-      : null;
-    data.passed = evaluateAcceptance(result ?? null, criteria).passed;
-  }
+/**
+ * Derives the test-level status from the per-environment result. DONE only when
+ * every scenario environment is DONE; RUNNING once any has started.
+ */
+function deriveStatus(scenario, resultEnvironments) {
+  const statuses = scenario.environments.map((e) => resultEnvironments[e.id]?.status ?? "PENDING");
+  if (statuses.every((s) => s === "DONE")) return "DONE";
+  if (statuses.some((s) => s === "RUNNING" || s === "DONE")) return "RUNNING";
+  return "PENDING";
+}
+
+/**
+ * Loads a test, mutates one environment's result entry via `mutate(entry, env)`,
+ * re-derives that environment's metrics from its events (the paradigm engine),
+ * recomputes test-level status, and persists. Shared by all run operations.
+ */
+async function mutateEnvironment(id, envId, mutate) {
+  const test = await prisma.test.findUnique({ where: { id }, include });
+  if (!test) throw ApiError.notFound("Not found", "common.notFound");
+  const env = test.scenario.environments.find((e) => e.id === envId);
+  if (!env) throw ApiError.badRequest("Environment is not part of this test's scenario", "test.envNotInScenario", { envId });
+
+  const base = test.result && typeof test.result === "object" && !Array.isArray(test.result) ? test.result : {};
+  const result = { ...base, schemaVersion: RESULT_SCHEMA_VERSION };
+  const environments = { ...(result.environments ?? {}) };
+  const entry = { status: "PENDING", events: [], ...(environments[envId] ?? {}) };
+
+  mutate(entry, env);
+
+  // Re-derive this environment's metrics from its events (live).
+  entry.metrics = computeMetrics(env.paradigmKey, entry.events ?? [], entry.cvInputs ?? {});
+  environments[envId] = entry;
+  result.environments = environments;
+
+  const status = deriveStatus(test.scenario, environments);
+  const data = { result, status };
+  if (status !== "PENDING" && !test.startedAt) data.startedAt = new Date();
+  if (status === "DONE") data.endedAt = new Date();
+  else if (test.endedAt) data.endedAt = null;
 
   return prisma.test.update({ where: { id }, data, include });
+}
+
+/** Start or finish one environment's run. */
+export function submitEnvironmentResult(id, envId, { status: envStatus } = {}) {
+  return mutateEnvironment(id, envId, (entry) => {
+    if (envStatus === "RUNNING") {
+      entry.status = "RUNNING";
+      entry.startedAt = entry.startedAt ?? new Date().toISOString();
+    } else if (envStatus === "DONE") {
+      entry.status = "DONE";
+      entry.endedAt = new Date().toISOString();
+    }
+  });
+}
+
+/** Appends an event to one environment's run; metrics are re-derived live. */
+export function addEnvironmentEvent(id, envId, event) {
+  return mutateEnvironment(id, envId, (entry, env) => {
+    const spec = getParadigmSpec(env.paradigmKey);
+    const error = validateEvent(spec?.eventTypes ?? [], event);
+    if (error) throw ApiError.badRequest(`Invalid event: ${error}`, "test.invalidEvent", { error });
+    entry.events = [...(entry.events ?? []), {
+      type: event.type,
+      t: typeof event.t === "number" ? event.t : 0,
+      payload: event.payload ?? {},
+    }];
+    if (entry.status === "PENDING") {
+      entry.status = "RUNNING";
+      entry.startedAt = entry.startedAt ?? new Date().toISOString();
+    }
+  });
+}
+
+/** Removes the event at `index` from one environment's run; metrics re-derived. */
+export function removeEnvironmentEvent(id, envId, index) {
+  return mutateEnvironment(id, envId, (entry) => {
+    const events = [...(entry.events ?? [])];
+    if (index < 0 || index >= events.length) throw ApiError.badRequest("Event index out of range", "test.eventIndex");
+    events.splice(index, 1);
+    entry.events = events;
+  });
 }
 
 export async function remove(id) {

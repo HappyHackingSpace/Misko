@@ -20,10 +20,10 @@ setup, and what the result was** — without managing raw video by hand.
 - **Environment** — a named, concrete instance of a paradigm: the physical setup
   (geometry in cm, surface color/material for vision contrast, zones).
 - **Subject** — the mouse, kept simple (code, sex, group, birth date, notes).
-- **Scenario** — the central object. It bundles an environment with the metrics
-  to collect and their expected results, so an experiment is defined once.
-- **Test** — a single run: a subject measured against a scenario, moving through
-  `PENDING → RUNNING → DONE / FAILED`.
+- **Scenario** — the central object. It bundles one or more environments (whose
+  paradigms fix the metrics), so an experiment is defined once.
+- **Test** — a subject measured against a scenario, run environment by environment
+  (`PENDING → RUNNING → DONE / FAILED`). Results are data, not a pass/fail verdict.
 
 ## Internal SaaS model
 

@@ -21,10 +21,10 @@ laboratuvarları için.
 - **Ortam** — bir paradigmanın isimli, somut instance'ı: fiziksel kurulum
   (cm cinsinden geometri, görü kontrastı için yüzey rengi/malzemesi, bölgeler).
 - **Denek** — fare; sade tutulur (kod, cinsiyet, grup, doğum tarihi, not).
-- **Senaryo** — merkezî nesne. Bir ortamı, toplanacak metrikleri ve beklenen
-  sonuçlarını paketler; böylece bir deney bir kez tanımlanır.
-- **Test** — tek koşu: bir deneğin bir senaryoya göre ölçülmesi;
-  `PENDING → RUNNING → DONE / FAILED` akışı.
+- **Senaryo** — merkezî nesne. Bir veya birden çok ortamı (paradigmaları
+  metrikleri sabitler) paketler; böylece bir deney bir kez tanımlanır.
+- **Test** — bir deneğin bir senaryoya göre, ortam ortam koşturulması;
+  `PENDING → RUNNING → DONE / FAILED`. Sonuçlar veridir, geç/kal verdikti değil.
 
 ## İçeriden SaaS modeli
 

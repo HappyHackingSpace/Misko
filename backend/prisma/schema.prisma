@@ -79,10 +79,6 @@ model Scenario {
   id            String   @id @default(cuid())
   name          String
   description   String?
-  // Expected results / pass-fail contract: JSON array of
-  // { metricKey, operator, value, label? }. Metric keys are validated against
-  // the union of the scenario's environments' paradigm metric dictionaries.
-  acceptance    Json?
   // Optional free-form session parameters (trial count, duration, ...).
   sessionParams Json?
   createdAt     DateTime @default(now())
@@ -104,8 +100,7 @@ model Test {
   status             String    @default("PENDING") // PENDING | RUNNING | DONE | FAILED
   startedAt          DateTime?
   endedAt            DateTime?
-  result             Json? // CV summary metrics (+ qc, artifacts)
-  passed             Boolean? // evaluation vs the scenario's acceptance; null when none
+  result             Json? // per-environment metric results (manual or CV)
   notes              String?
   createdAt          DateTime  @default(now())
 
