@@ -378,33 +378,37 @@ const TREADMILL = {
 };
 
 /**
- * Default expected-results (acceptance) templates per paradigm, used to pre-fill
- * a scenario's expected results when an environment of that paradigm is added.
- * These are conservative, numeric STARTING POINTS meant to be reviewed and tuned
- * per study - not validated scientific thresholds. Every value is numeric so it
- * passes acceptance validation as-is.
+ * Event types per paradigm - what an operator can log during a run (and what the
+ * CV service derives from signals). They drive the manual event-logging UI and
+ * feed the metric engine (docs/METRIC_ENGINE.md). Each event carries a time `t`
+ * (seconds from run start); `payload` fields: `zone` is picked from the
+ * environment's zones, `number` fields are typed in.
  */
-const DEFAULT_SUGGESTED_ACCEPTANCE = Object.freeze({
-  MWM: [{ metricKey: "escape_latency_s", operator: "<=", value: 60 }],
-  OPEN_FIELD: [{ metricKey: "distance_cm", operator: ">=", value: 1000 }],
-  EPM: [{ metricKey: "open_arm_entries_count", operator: ">=", value: 1 }],
-  ROTAROD: [{ metricKey: "latency_to_fall_s", operator: ">=", value: 60 }],
-  Y_MAZE: [{ metricKey: "spontaneous_alternation_ratio", operator: ">=", value: 0.5 }],
-  NOVEL_OBJECT: [{ metricKey: "discrimination_index", operator: ">=", value: 0 }],
-  BARNES_MAZE: [{ metricKey: "primary_latency_s", operator: "<=", value: 120 }],
-  THREE_CHAMBER: [{ metricKey: "sociability_index", operator: ">=", value: 0 }],
-  LIGHT_DARK: [{ metricKey: "transitions_count", operator: ">=", value: 1 }],
-  POLE: [{ metricKey: "t_total_s", operator: "<=", value: 30 }],
-  TREADMILL: [{ metricKey: "run_distance_cm", operator: ">=", value: 1000 }],
+const ZONE_INOUT = [
+  { type: "zone_enter", label: "Zone enter", payload: { zone: "zone" } },
+  { type: "zone_exit", label: "Zone exit", payload: { zone: "zone" } },
+];
+const PARADIGM_EVENT_TYPES = Object.freeze({
+  OPEN_FIELD: [...ZONE_INOUT, { type: "immobile", label: "Immobility", payload: { seconds: "number" } }],
+  EPM: [...ZONE_INOUT, { type: "risk_assessment", label: "Risk assessment" }],
+  LIGHT_DARK: [...ZONE_INOUT, { type: "transition", label: "Light/dark transition" }],
+  MWM: [...ZONE_INOUT, { type: "platform_reached", label: "Platform reached" }, { type: "platform_cross", label: "Platform crossing" }],
+  Y_MAZE: [...ZONE_INOUT],
+  NOVEL_OBJECT: [{ type: "interaction", label: "Object interaction", payload: { object: "text", seconds: "number" } }],
+  BARNES_MAZE: [...ZONE_INOUT, { type: "target_hole", label: "Target hole reached" }, { type: "error", label: "Error (hole)", payload: { kind: "text" } }],
+  THREE_CHAMBER: [...ZONE_INOUT, { type: "interaction", label: "Interaction", payload: { seconds: "number" } }],
+  ROTAROD: [{ type: "fall", label: "Fall", payload: { rpm: "number" } }],
+  POLE: [{ type: "fall", label: "Fall" }],
+  TREADMILL: [{ type: "shock", label: "Shock" }, { type: "exhaustion", label: "Exhaustion" }],
 });
 
-/** Attach metric sets + default acceptance to the paradigm (single source). */
+/** Attach metric sets + event types to the paradigm (single source: metrics.js). */
 function withMetrics(spec) {
   return Object.freeze({
     ...spec,
     schemaVersion: RESULT_SCHEMA_VERSION,
     metrics: metricsForParadigm(spec.key),
-    suggestedAcceptance: DEFAULT_SUGGESTED_ACCEPTANCE[spec.key] ?? [],
+    eventTypes: PARADIGM_EVENT_TYPES[spec.key] ?? [],
   });
 }
 

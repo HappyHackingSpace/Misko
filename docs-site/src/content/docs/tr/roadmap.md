@@ -40,8 +40,8 @@ Tamamlandı: `Laboratory` singleton ve `Environment` modelleri + migration'lar; 
 - Kod sahipli `ParadigmSpec` kayıt defteri (11 paradigma): `MWM`, `OPEN_FIELD`, `EPM`, `ROTAROD`, `Y_MAZE`, `NOVEL_OBJECT`, `BARNES_MAZE`, `THREE_CHAMBER`, `LIGHT_DARK`, `POLE`, `TREADMILL`. ✅
 - [Ölçüm mimarisi](../measurements/) içindeki kod sahipli metrik sözlüğü. ✅
 - Kanonik birimler: sonuçlar `cm`, `cm_s`, `s`, `count`, `ratio`, `percent`, `deg`, `rpm`, `g`, `boolean` kullanır; apparatus parametreleri ek olarak `mm` ve `c` taşır. ✅
-- Paradigma başına parametreler, bölgeler, metrikler, önerilen kabul şablonları, QC gereksinimleri ve artefakt beklentileri. ✅
-- Opsiyonel, test bazlı, kullanıcı tanımlı kabul kriterleri (motor `backend/src/config/acceptance.js`, düzenleyici `frontend/src/components/AcceptanceEditor.vue`). ✅
+- Paradigma başına parametreler, bölgeler, metrikler, QC gereksinimleri ve artefakt beklentileri. ✅
+- Metrik başına `valueType` / `validRange` / `templated` (zone-bazlı) - hem manuel giriş hem CV bu sözleşmeye göre doğrular. ✅
 - `schemaVersion` ile sonuç şema versiyonlama. ✅
 - Salt-okunur inceleme API'si: `GET /api/paradigms`, `GET /api/paradigms/:key`, `GET /api/paradigms/metrics`, `GET /api/paradigms/units`. ✅
 
@@ -57,22 +57,21 @@ başlatmak "denek seç ve başlat" kadar basit olur. Domain küçük kalır: **D
 isimli instance'ı - fiziksel kurulum), **Senaryo** (merkezî nesne) ve **Test**
 (tek koşu).
 
-Bir senaryo her detayı taşır:
+Bir senaryo bir veya birden çok `Environment`'a (N-N) referans verir; böylece bir
+veya birden çok paradigmayı kapsayabilir; her ortamın paradigması metriklerini
+sabitler. Senaryoda geç/kal kriteri **yoktur** - davranışsal sonuç **veridir,
+verdikt değil**.
 
-- bir `Environment`'a (ve dolayısıyla bir paradigmaya) referans verir.
-- o paradigmanın metrik sözlüğünden hangi metriklerin toplanacağını seçer.
-- her metrik için beklenen sonuçları / kabul kriterlerini tanımlar (Step 2 kabul
-  motorunu kullanarak).
-- paradigmadan oturum parametrelerini taşır.
+`Test`, `Denek + Senaryo`'dur ve **ortam ortam** koşulur (Başlat → metrik
+sonuçlarını gir → Bitir). Sonuç ortam başına saklanır
+(`result.environments[envId].metrics`), ortamın paradigma sözlüğüne göre
+doğrulanır - CV servisinin göndereceği şekille aynı.
 
-`Test` ise sadece `Denek + Senaryo`'dur; koşturulduğunda senaryonun metriklerini
-toplar ve beklenen sonuçlara göre değerlendirir.
-
-- Başlangıç `Scenario`'sunu (`POOL | MAZE | STICK | PATH`) bu deney tanımına
-  dönüştür (ortam + metrikler + beklenen sonuçlar + oturum parametreleri).
-- Kabul/beklenen sonuçları `Test`'ten `Scenario`'ya taşı.
-- `Test = Denek + Senaryo` kalır; `Test.result` yapılandırılmış JSON olur.
-- `Subject` sade başlangıç modeli olarak kalır.
+- Başlangıç `Scenario`'su (`POOL | MAZE | STICK | PATH`) isimli ortam paketine
+  dönüştürüldü (+ opsiyonel oturum param). ✅
+- `Test.result` ortam-bazlı yapısal JSON; **`passed`/verdikt yok**. ✅
+- **sinyal** (ham, CV) / **metrik** (tanım) / **metrik sonucu** (değer) ayrıldı. ✅
+- `Subject` sade başlangıç modeli olarak kalır. ✅
 
 Önceki plandan çıkarılanlar: zengin `Subject`, `WeightLog`,
 `DiseaseModel`/`Treatment`, `Study -> Group`, ayrı `Apparatus` modeli. Fiziksel
@@ -115,7 +114,7 @@ düzenek `Environment`'tır; kalibrasyon Adım 5'te kalır.
 
 - Tracking confidence, dropped frame ratio, calibration error, occlusion ratio, out-of-bounds ratio, lighting warning ve contrast warning.
 - QC durumları: `PASS`, `WARN`, `REVIEW_REQUIRED`, `FAIL`.
-- QC davranışsal `passed` değerinden ayrıdır.
+- QC, metrik sonuçlarının yanında saklanır (veriyi niteler, verdikt değildir).
 - Video, overlay, trajectory ve metrik özetiyle manuel inceleme ekranı.
 - Study export'ları düşük kaliteli koşuları varsayılan olarak filtreler.
 
