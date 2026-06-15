@@ -16,7 +16,7 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-misko}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-misko}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set a strong POSTGRES_PASSWORD in .env}
       POSTGRES_DB: ${POSTGRES_DB:-misko}
     volumes:
       - db-data:/var/lib/postgresql/data
@@ -32,8 +32,8 @@ services:
     environment:
       NODE_ENV: production
       PORT: 4000
-      DATABASE_URL: postgresql://${POSTGRES_USER:-misko}:${POSTGRES_PASSWORD:-misko}@db:5432/${POSTGRES_DB:-misko}?schema=public
-      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-misko}:${POSTGRES_PASSWORD:?set a strong POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-misko}?schema=public
+      JWT_SECRET: ${JWT_SECRET:?set a strong JWT_SECRET in .env}
       JWT_TTL: ${JWT_TTL:-7d}
       CORS_ORIGIN: ${CORS_ORIGIN:-*}
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@fare.lab}

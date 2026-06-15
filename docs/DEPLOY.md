@@ -24,7 +24,12 @@ a personal access token that has `read:packages`.)
 
 1. Create a folder and put two files in it:
    - `docker-compose.prod.yml`
-   - `.env` (copied from `.env.prod.example`, edit `POSTGRES_PASSWORD` and `JWT_SECRET`)
+   - `.env` (copied from `.env.prod.example`)
+
+   In `.env`, `POSTGRES_PASSWORD` and `JWT_SECRET` are **required** - compose
+   refuses to start with them unset. For a real (non-demo) deployment also set
+   `CORS_ORIGIN` to the UI origin instead of `*`, and pin `IMAGE_TAG` to a
+   released version (e.g. `1.0.0`) instead of `latest` for a reproducible deploy.
 
 2. Pull and start:
 
