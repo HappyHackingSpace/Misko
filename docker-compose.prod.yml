@@ -1,0 +1,54 @@
+name: misko
+
+# Pull-based deployment: uses prebuilt images from GHCR instead of building from
+# source. Intended for machines without the source checkout (e.g. a reviewer).
+#
+#   1. Put this file and `.env.prod.example` (copied to `.env`) in a folder.
+#   2. docker compose -f docker-compose.prod.yml pull
+#   3. docker compose -f docker-compose.prod.yml up -d
+#   4. docker compose -f docker-compose.prod.yml logs backend   # one-time admin password
+#
+# Override IMAGE_OWNER / IMAGE_TAG in `.env` if the images live elsewhere.
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-misko}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-misko}
+      POSTGRES_DB: ${POSTGRES_DB:-misko}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-misko} -d ${POSTGRES_DB:-misko}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    image: ghcr.io/${IMAGE_OWNER:-happyhackingspace}/misko-backend:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      DATABASE_URL: postgresql://${POSTGRES_USER:-misko}:${POSTGRES_PASSWORD:-misko}@db:5432/${POSTGRES_DB:-misko}?schema=public
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      JWT_TTL: ${JWT_TTL:-7d}
+      CORS_ORIGIN: ${CORS_ORIGIN:-*}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@fare.lab}
+      LAB_NAME: ${LAB_NAME:-Mişko Laboratuvarı}
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    image: ghcr.io/${IMAGE_OWNER:-happyhackingspace}/misko-frontend:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "${FRONTEND_PORT:-8080}:80"
+
+volumes:
+  db-data:
