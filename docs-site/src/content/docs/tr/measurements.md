@@ -6,7 +6,8 @@ description: Paradigma spec'leri, metrik tanımları, MWM normalizasyonu ve kali
 Mişko'nun gevşek sonuç JSON'u değil, kararlı ölçüm kontratları tutması gerekir.
 Her paradigma, CV servisinin çalışmalar ve laboratuvarlar arasında
 karşılaştırılabilir sonuç üretebilmesi için parametrelerini, bölgelerini,
-metriklerini, kabul kurallarını ve kalite gereksinimlerini önceden tanımlamalıdır.
+metriklerini, olay tiplerini (CV detect spec'leri ile) ve kalite
+gereksinimlerini önceden tanımlamalıdır.
 
 ## Mimari ilke
 
@@ -14,7 +15,7 @@ Her sonuç dört katmandan geçer:
 
 | Katman | Amaç |
 |---|---|
-| `ParadigmSpec` | Parametreler, bölgeler, metrikler, kabul kuralları ve sonuç şeması için kod sahipli kontrat. |
+| `ParadigmSpec` | Parametreler, bölgeler, metrikler, olay tipleri (CV detect spec'leri ile) ve sonuç şeması için kod sahipli kontrat. |
 | `Apparatus` | Lab sahipli fiziksel düzenek tanımı: geometri, malzeme, yüzey ve cm cinsinden bölgeler. |
 | `Calibration` | Sabit düzenek veya tek test oturumu için pikselden cm'ye eşleme. |
 | `MetricDefinition` | Her metrik anahtarının birim, formül, normalizasyon ve QC bağımlılığını tanımlayan kod sahipli sözlük. |
@@ -30,7 +31,7 @@ Her paradigma için şu bölümleri içeren bir detay sayfası gerekir:
 - Oturum parametreleri: trial süresi, başlangıç pozisyonu, trial indeksi, protokol varyantı.
 - Bölgeler: zone key'leri, geometri tipi, koordinat sistemi ve türetme kuralı.
 - Metrikler: zorunlu ve opsiyonel metrik key'leri, birimler, tanımlar ve normalizasyon.
-- Önerilen kabul kriterleri: kullanıcının benimseyebileceği opsiyonel, kod sahipli şablonlar. Gerçek kabul kriterleri opsiyoneldir ve test bazlı tanımlanır (aşağıdaki "Kabul kriterleri" bölümüne bakın).
+- Olay tipleri: bir koşunun toplayabileceği olaylar, payload'ları ve her biri için CV `detect` spec'i.
 - QC gereksinimleri: takip güveni, düşen kareler, kalibrasyon hatası, occlusion, ışık ve kontrast.
 - Artefaktlar: video, trajectory, heatmap, kalibrasyon görseli ve debug overlay URL'leri.
 
@@ -44,33 +45,50 @@ interface ParadigmSpec {
   sessionParameters: FieldDef[];
   zones(config: ApparatusConfig): ZoneDef[];
   metrics: MetricDefinition[];
-  suggestedAcceptance: AcceptanceRule[];
+  eventTypes: EventTypeDef[];
   qc: QualityRequirement[];
 }
 ```
 
-## Kabul kriterleri
+## Geçti/kaldı verdikti yok
 
-Kabul kriterleri bir testin davranışsal pass/fail çizgisini belirler. Özellikleri:
+Bir lab test sonucu **veridir, verdikt değil**. Mişko davranışsal bir `passed`
+bayrağı hesaplamaz ve bir kabul kriteri katmanı yoktur. Bir değerin "iyi" olup
+olmadığı yorumdur, kayıt sistemine değil analiz katmanına aittir. Yalnızca QC
+(takip güvenilirliği) bir geçti/kaldı anlamı taşır, o da davranışla değil veri
+kalitesiyle ilgilidir.
 
-- **Opsiyonel**: kriteri olmayan test değerlendirilmez (`Test.passed = null`).
-- **Test bazlı**: her test kendi kriterlerini `Test.acceptanceCriteria` içinde JSON olarak tutar.
-- **Kullanıcı tanımlı**: kullanıcı paradigmanın geçerli bir metriğini, bir operatörü ve
-  eşik değerini seçer. Paradigma spec'leri yalnızca `suggestedAcceptance` şablonları
-  sunar; kullanıcı bunları benimseyip düzenleyebilir.
+## Olay tipleri ve CV tespiti
+
+Bir koşu **olaylar** toplar; metrikler bu olaylardan türetilir (bkz.
+`docs/METRIC_ENGINE.md`). Aynı olay akışı bugün manuel girişle, ileride ise CV
+servisiyle üretilir, yani olay katmanı Mişko ile bilgisayarlı görü arasındaki
+kontrattır.
+
+Her olay tipi, CV servisinin onu trajectory ve bölgelerden nasıl türettiğini
+tanımlayan bir `detect` spec'i bildirir:
 
 ```ts
-interface AcceptanceCriterion {
-  metricKey: string;                 // paradigmanın bilinen bir metrik anahtarı
-  operator: "<" | "<=" | ">" | ">=" | "==" | "!=" | "between";
-  value: number | [number, number]; // "between" için [min, max]
+interface EventTypeDef {
+  type: string;                       // örn. "zone_enter", "immobile", "fall"
+  label: string;
+  payload?: Record<string, "number" | "text" | "zone">;
+  detect: DetectSpec;
 }
+
+type DetectSpec =
+  | { kind: "zone_transition"; edge: "enter" | "exit"; zone?: string }
+  | { kind: "zone_first_enter"; zone: string }
+  | { kind: "speed_below"; threshold_cm_s: number; min_duration_s?: number }
+  | { kind: "custom" };               // özel bir dedektör/model gerektirir
 ```
 
-Bir sonuç gönderildiğinde motor her kriteri metriklere göre değerlendirir ve
-`Test.passed` değerini ayarlar: tümü geçerse `true`, herhangi biri kalırsa veya
-metriği eksikse `false`, kriter yoksa `null`. İstekte açık bir `passed` değeri
-verilirse otomatik değerlendirme yerine bu kullanılır (manuel inceleme).
+Jenerik türler (`zone_transition`, `zone_first_enter`, `speed_below`)
+**veri-güdümlüdür**: yalnızca bunları kullanan bir paradigma yeni CV kodu
+gerektirmez, olay tiplerini bildirmek yeterlidir. `custom`, özel bir dedektör
+gerektiren bir olayı işaretler (örn. bir rotarod düşüşü, bir sosyal etkileşim).
+Olay tipleri paradigma detay API'sinde sunulur
+(`GET /api/paradigms/:key` -> `eventTypes`).
 
 ## Lokalizasyon
 
@@ -172,8 +190,9 @@ speed'i her zaman göstermelidir.
 
 ## Kalite kontrol
 
-QC durumu davranışsal pass/fail'den ayrıdır. `Test.passed` davranışsal kabul
-sonucudur. `result.qc.status` güvenilirlik sonucudur.
+QC durumu (`result.qc.status`) yalnızca veri güvenilirliği hakkındadır.
+Davranışsal bir geçti/kaldı yoktur; davranışsal sonuç metrik verisinin
+kendisidir.
 
 | QC key | Birim | Varsayılan aksiyon |
 |---|---|---|

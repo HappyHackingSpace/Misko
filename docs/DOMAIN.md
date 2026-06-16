@@ -13,11 +13,10 @@ Paradigm (read-only code catalog)  ->  Environment (named physical instance)
                                             |
                                             v
                                          Scenario  (the central definition:
-                                                     environment + metrics +
-                                                     expected results)
+                                                     one or more environments)
                                             |
                                             v
-Test = Subject + Scenario  ->  result (metrics) + passed
+Test = Subject + Scenario  ->  result (events -> derived metrics, per environment)
 ```
 
 ## 0. Tenancy (single-tenant, on-prem)
@@ -46,8 +45,8 @@ These already exist (Steps 1-2).
 
 - **Paradigm**: a scientific test type **defined in code**, not editable DB rows
   (`backend/src/config/paradigms.js`). It declares the configurable apparatus
-  parameters, zones, the metric dictionary and suggested acceptance templates.
-  Read-only catalog: `GET /api/paradigms`, `GET /api/paradigms/:key`.
+  parameters, zones, the metric dictionary and the event types (each with a CV
+  `detect` spec). Read-only catalog: `GET /api/paradigms`, `GET /api/paradigms/:key`.
 - **Environment** ("Ortam"): a lab's named, persisted instance of a paradigm. It
   stores a self-contained snapshot `{ paradigmKey, schemaVersion, apparatus,
   zones }`; apparatus values are validated against the code-fixed parameter

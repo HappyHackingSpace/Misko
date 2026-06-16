@@ -5,10 +5,12 @@ import { useI18n } from "vue-i18n";
 import { api } from "../api.js";
 import { useBreadcrumb } from "../stores/breadcrumb.js";
 
-const { locale, t } = useI18n();
+const { locale, t, te } = useI18n();
 const route = useRoute();
 const router = useRouter();
 const crumb = useBreadcrumb();
+// Localize a parameter enum value (N/E/S/W, opaque/clear, ...); raw fallback.
+const tVal = (value) => (te(`paramValues.${value}`) ? t(`paramValues.${value}`) : value);
 
 const isNew = computed(() => !route.params.id);
 const paradigms = ref([]); // paradigm summaries for the dropdown and label lookup
@@ -153,10 +155,10 @@ onUnmounted(() => crumb.clear());
           <tr v-for="f in spec.apparatusParameters" :key="f.key">
             <td>{{ f.label }} <span class="muted">{{ f.key }}</span></td>
             <td><span class="pill">{{ f.unit }}</span></td>
-            <td class="muted">{{ f.min != null ? f.min + " - " + f.max : (f.options ? f.options.join(" / ") : "-") }}</td>
+            <td class="muted">{{ f.min != null ? f.min + " - " + f.max : (f.options ? f.options.map(tVal).join(" / ") : "-") }}</td>
             <td>
               <select v-if="f.type === 'enum'" v-model="apparatus[f.key]">
-                <option v-for="o in f.options" :key="o" :value="o">{{ o }}</option>
+                <option v-for="o in f.options" :key="o" :value="o">{{ tVal(o) }}</option>
               </select>
               <input
                 v-else

@@ -21,20 +21,24 @@ function tEnum(ns, value) {
   const key = `paradigms.${ns}.${value}`;
   return te(key) ? t(key) : value;
 }
+// Localize a parameter enum value (N/E/S/W, opaque/clear, fixed_speed, ...).
+function tVal(value) {
+  const key = `paramValues.${value}`;
+  return te(key) ? t(key) : value;
+}
 function speciesLabel(list) {
   return (list || []).map((s) => tEnum("species", s)).join(", ");
 }
 
 // Tabs are derived from the loaded spec: apparatus and metrics always exist;
-// zones, acceptance and qc only show when they carry data.
+// zones and qc only show when they carry data.
 const tabs = computed(() => {
   if (!selected.value) return [];
   const s = selected.value;
   const out = [{ key: "apparatus", label: t("paradigms.apparatusParams") }];
   if (s.zones.length) out.push({ key: "zones", label: t("paradigms.zones") });
   out.push({ key: "metrics", label: t("paradigms.metrics") });
-  if (s.suggestedAcceptance && s.suggestedAcceptance.length)
-    out.push({ key: "acceptance", label: t("paradigms.acceptance") });
+  if (s.eventTypes && s.eventTypes.length) out.push({ key: "events", label: t("paradigms.events") });
   if (s.qc.length) out.push({ key: "qc", label: t("paradigms.qc") });
   return out;
 });
@@ -122,8 +126,8 @@ onUnmounted(() => crumb.clear());
           <tr v-for="f in selected.apparatusParameters" :key="f.key">
             <td>{{ f.label }} <span class="muted">{{ f.key }}</span></td>
             <td><span class="pill">{{ f.unit }}</span></td>
-            <td class="muted">{{ f.min != null ? f.min + " - " + f.max : (f.options ? f.options.join(" / ") : "-") }}</td>
-            <td>{{ f.default ?? "-" }}</td>
+            <td class="muted">{{ f.min != null ? f.min + " - " + f.max : (f.options ? f.options.map(tVal).join(" / ") : "-") }}</td>
+            <td>{{ f.default != null ? tVal(f.default) : "-" }}</td>
           </tr>
         </tbody>
       </table>
@@ -159,15 +163,21 @@ onUnmounted(() => crumb.clear());
       </table>
     </div>
 
-    <!-- Acceptance criteria (suggested) -->
-    <div class="card" v-show="tab === 'acceptance'" v-if="selected.suggestedAcceptance && selected.suggestedAcceptance.length">
-      <p class="muted" style="margin-top:0">{{ $t("paradigms.suggested") }}</p>
-      <ul class="rules">
-        <li v-for="a in selected.suggestedAcceptance" :key="a.key">
-          <code>{{ a.metricKey }} {{ a.operator }} {{ a.value }}</code>
-          <span class="muted" v-if="a.appliesToTrialTypes"> · {{ a.appliesToTrialTypes.join(", ") }}</span>
-        </li>
-      </ul>
+    <!-- Event types + CV detection contract -->
+    <div class="card" v-show="tab === 'events'" v-if="selected.eventTypes && selected.eventTypes.length">
+      <p class="muted" style="margin-top:0">{{ $t("paradigms.eventsIntro") }}</p>
+      <table>
+        <thead><tr><th>{{ $t("paradigms.event") }}</th><th>{{ $t("paradigms.payload") }}</th><th>{{ $t("paradigms.detection") }}</th></tr></thead>
+        <tbody>
+          <tr v-for="et in selected.eventTypes" :key="et.type">
+            <td>{{ et.label }} <span class="muted">{{ et.type }}</span></td>
+            <td class="muted">{{ Object.keys(et.payload || {}).join(", ") || "-" }}</td>
+            <td>
+              <span class="pill" :class="et.detect?.kind === 'custom' ? 'pill-warn' : ''">{{ et.detect?.kind || "manual" }}</span>
+            </td>
+          </tr>
+        </tbody>
+      </table>
     </div>
 
     <!-- QC requirements -->
@@ -201,5 +211,6 @@ onUnmounted(() => crumb.clear());
 .rules { margin: 0; padding-left: 18px; }
 .rules li { margin: 4px 0; }
 .rules code { background: var(--active-bg); padding: 2px 6px; border-radius: 6px; }
+.pill-warn { color: #ffb454; border-color: #ffb454; }
 h3 { margin: 0 0 8px; }
 </style>

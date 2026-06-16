@@ -2,9 +2,10 @@
  * Paradigm registry (Step 2 - scientific contract).
  *
  * Code-owned ParadigmSpecs. Each paradigm declaratively carries its identity,
- * apparatus/session parameters, zone model, metric sets, acceptance criteria,
- * and QC requirements. This pins down "what the system means by each measurement"
- * before the real AI starts producing data.
+ * apparatus/session parameters, zone model, metric sets, event types (with CV
+ * `detect` specs), and QC requirements. This pins down "what the system means by
+ * each measurement" before the real AI starts producing data. Results are data,
+ * never a verdict - there is no pass/fail acceptance layer.
  *
  * Source: docs/MEASUREMENTS.md, section 2.
  */
@@ -36,26 +37,26 @@ function choice(key, label, options, { def, required = true } = {}) {
 
 const MWM = {
   key: "MWM",
-  name: "Morris Su Tanki",
+  name: "Morris Su Tankı",
   category: PARADIGM_CATEGORIES.LEARNING_MEMORY,
   species: ["mouse", "rat"],
   trialTypes: [
-    { key: "acquisition", label: "Ogrenme (platform var)", hasTarget: true },
+    { key: "acquisition", label: "Öğrenme (platform var)", hasTarget: true },
     { key: "probe", label: "Prob (platform yok)", hasTarget: false },
   ],
   apparatusParameters: [
-    num("tank_diameter_cm", "Tank capi", UNITS.CM, { min: 60, max: 250, def: 120 }),
-    num("platform_diameter_cm", "Platform capi", UNITS.CM, { min: 4, max: 20, def: 10 }),
+    num("tank_diameter_cm", "Tank çapı", UNITS.CM, { min: 60, max: 250, def: 120 }),
+    num("platform_diameter_cm", "Platform çapı", UNITS.CM, { min: 4, max: 20, def: 10 }),
     num("platform_center_x_cm", "Platform merkezi X", UNITS.CM, { min: -125, max: 125, def: 30 }),
     num("platform_center_y_cm", "Platform merkezi Y", UNITS.CM, { min: -125, max: 125, def: -30 }),
-    choice("platform_quadrant", "Platform ceyregi", ["NE", "NW", "SE", "SW"], { def: "SE" }),
-    num("wall_annulus_width_cm", "Duvar halkasi genisligi", UNITS.CM, { min: 4, max: 30, def: 12 }),
-    choice("water_opacity", "Su opakligi", ["opaque", "clear"], { def: "opaque" }),
-    num("water_temp_c", "Su sicakligi", UNITS.C, { min: 15, max: 30, def: 22, required: false }),
+    choice("platform_quadrant", "Platform çeyreği", ["NE", "NW", "SE", "SW"], { def: "SE" }),
+    num("wall_annulus_width_cm", "Duvar halkası genişliği", UNITS.CM, { min: 4, max: 30, def: 12 }),
+    choice("water_opacity", "Su opaklığı", ["opaque", "clear"], { def: "opaque" }),
+    num("water_temp_c", "Su sıcaklığı", UNITS.C, { min: 15, max: 30, def: 22, required: false }),
   ],
   sessionParameters: [
-    num("max_trial_duration_s", "Maks deneme suresi", UNITS.S, { min: 10, max: 300, def: 60 }),
-    choice("start_position", "Baslangic konumu", ["N", "E", "S", "W"], { def: "N" }),
+    num("max_trial_duration_s", "Maks deneme süresi", UNITS.S, { min: 10, max: 300, def: 60 }),
+    choice("start_position", "Başlangıç konumu", ["N", "E", "S", "W"], { def: "N" }),
     num("trial_index", "Deneme indeksi", UNITS.COUNT, { min: 1, max: 1000, def: 1, required: false }),
   ],
   zones(config = {}) {
@@ -63,13 +64,10 @@ const MWM = {
     const annulus = config.wall_annulus_width_cm ?? 12;
     return [
       { key: "platform", label: "Platform", type: "circle", role: "target", required: true },
-      { key: "target_quadrant", label: "Hedef ceyrek", type: "quadrant", role: "target", required: true },
-      { key: "wall_annulus", label: "Duvar halkasi", type: "annulus", role: "periphery", required: false, geometryCm: { outerRadius: r, innerRadius: r - annulus } },
+      { key: "target_quadrant", label: "Hedef çeyrek", type: "quadrant", role: "target", required: true },
+      { key: "wall_annulus", label: "Duvar halkası", type: "annulus", role: "periphery", required: false, geometryCm: { outerRadius: r, innerRadius: r - annulus } },
     ];
   },
-  suggestedAcceptance: [
-    { key: "escape_within_trial", metricKey: "escape_latency_s", operator: "<=", value: "max_trial_duration_s", appliesToTrialTypes: ["acquisition"], overridable: true },
-  ],
   qc: [
     { key: "min_tracking_confidence", operator: ">=", value: 0.7, overridable: true },
     { key: "max_dropped_frames_ratio", operator: "<=", value: 0.1, overridable: true },
@@ -79,18 +77,18 @@ const MWM = {
 
 const OPEN_FIELD = {
   key: "OPEN_FIELD",
-  name: "Acik Alan",
+  name: "Açık Alan",
   category: PARADIGM_CATEGORIES.ANXIETY,
   species: ["mouse", "rat"],
   trialTypes: [{ key: "standard", label: "Standart", hasTarget: false }],
   apparatusParameters: [
-    num("arena_width_cm", "Arena genisligi", UNITS.CM, { min: 20, max: 150, def: 50 }),
-    num("arena_height_cm", "Arena derinligi", UNITS.CM, { min: 20, max: 150, def: 50 }),
-    num("center_fraction", "Merkez orani", UNITS.RATIO, { min: 0.2, max: 0.8, def: 0.5 }),
+    num("arena_width_cm", "Arena genişliği", UNITS.CM, { min: 20, max: 150, def: 50 }),
+    num("arena_height_cm", "Arena derinliği", UNITS.CM, { min: 20, max: 150, def: 50 }),
+    num("center_fraction", "Merkez oranı", UNITS.RATIO, { min: 0.2, max: 0.8, def: 0.5 }),
   ],
   sessionParameters: [
-    num("max_trial_duration_s", "Maks deneme suresi", UNITS.S, { min: 60, max: 1800, def: 300 }),
-    num("immobility_threshold_cm_s", "Hareketsizlik esigi", UNITS.CM_S, { min: 0.1, max: 5, def: 2, required: false }),
+    num("max_trial_duration_s", "Maks deneme süresi", UNITS.S, { min: 60, max: 1800, def: 300 }),
+    num("immobility_threshold_cm_s", "Hareketsizlik eşiği", UNITS.CM_S, { min: 0.1, max: 5, def: 2, required: false }),
   ],
   zones(config = {}) {
     const w = config.arena_width_cm ?? 50;
@@ -98,10 +96,9 @@ const OPEN_FIELD = {
     const f = config.center_fraction ?? 0.5;
     return [
       { key: "center", label: "Merkez", type: "polygon", role: "center", required: true, geometryCm: { width: w * f, height: h * f } },
-      { key: "periphery", label: "Cevre", type: "polygon", role: "periphery", required: true, derivedFrom: "center" },
+      { key: "periphery", label: "Çevre", type: "polygon", role: "periphery", required: true, derivedFrom: "center" },
     ];
   },
-  suggestedAcceptance: [],
   qc: [
     { key: "min_tracking_confidence", operator: ">=", value: 0.7, overridable: true },
     { key: "max_dropped_frames_ratio", operator: "<=", value: 0.1, overridable: true },
@@ -111,27 +108,26 @@ const OPEN_FIELD = {
 
 const EPM = {
   key: "EPM",
-  name: "Yukseltilmis Arti Labirent",
+  name: "Yükseltilmiş Artı Labirent",
   category: PARADIGM_CATEGORIES.ANXIETY,
   species: ["mouse", "rat"],
   trialTypes: [{ key: "standard", label: "Standart", hasTarget: false }],
   apparatusParameters: [
-    num("arm_length_cm", "Kol uzunlugu", UNITS.CM, { min: 20, max: 80, def: 35 }),
-    num("arm_width_cm", "Kol genisligi", UNITS.CM, { min: 3, max: 15, def: 6 }),
-    num("center_size_cm", "Merkez kare kenari", UNITS.CM, { min: 3, max: 15, def: 6 }),
-    num("closed_wall_height_cm", "Kapali kol duvar yuksekligi", UNITS.CM, { min: 5, max: 40, def: 15, required: false }),
+    num("arm_length_cm", "Kol uzunluğu", UNITS.CM, { min: 20, max: 80, def: 35 }),
+    num("arm_width_cm", "Kol genişliği", UNITS.CM, { min: 3, max: 15, def: 6 }),
+    num("center_size_cm", "Merkez kare kenarı", UNITS.CM, { min: 3, max: 15, def: 6 }),
+    num("closed_wall_height_cm", "Kapalı kol duvar yüksekliği", UNITS.CM, { min: 5, max: 40, def: 15, required: false }),
   ],
   sessionParameters: [
-    num("max_trial_duration_s", "Maks deneme suresi", UNITS.S, { min: 120, max: 900, def: 300 }),
+    num("max_trial_duration_s", "Maks deneme süresi", UNITS.S, { min: 120, max: 900, def: 300 }),
   ],
   zones() {
     return [
-      { key: "open", label: "Acik kollar", type: "polygon", role: "open", required: true },
-      { key: "closed", label: "Kapali kollar", type: "polygon", role: "closed", required: true },
+      { key: "open", label: "Açık kollar", type: "polygon", role: "open", required: true },
+      { key: "closed", label: "Kapalı kollar", type: "polygon", role: "closed", required: true },
       { key: "center", label: "Merkez", type: "polygon", role: "center", required: true },
     ];
   },
-  suggestedAcceptance: [],
   qc: [
     { key: "min_tracking_confidence", operator: ">=", value: 0.7, overridable: true },
     { key: "max_dropped_frames_ratio", operator: "<=", value: 0.15, overridable: true },
@@ -145,25 +141,22 @@ const ROTAROD = {
   category: PARADIGM_CATEGORIES.MOTOR,
   species: ["mouse", "rat"],
   trialTypes: [
-    { key: "fixed_speed", label: "Sabit hiz", hasTarget: false },
+    { key: "fixed_speed", label: "Sabit hız", hasTarget: false },
     { key: "accelerating", label: "Hizlanan", hasTarget: false },
   ],
   apparatusParameters: [
-    num("rod_diameter_mm", "Cubuk capi", UNITS.MM, { min: 10, max: 80, def: 30, required: false }),
+    num("rod_diameter_mm", "Çubuk çapı", UNITS.MM, { min: 10, max: 80, def: 30, required: false }),
     num("min_rpm", "Min devir", UNITS.RPM, { min: 0, max: 80, def: 4 }),
     num("max_rpm", "Maks devir", UNITS.RPM, { min: 1, max: 100, def: 40 }),
-    num("acceleration_duration_s", "Hizlanma suresi", UNITS.S, { min: 30, max: 600, def: 300, required: false }),
+    num("acceleration_duration_s", "Hızlanma süresi", UNITS.S, { min: 30, max: 600, def: 300, required: false }),
   ],
   sessionParameters: [
-    num("max_trial_duration_s", "Maks deneme suresi", UNITS.S, { min: 30, max: 600, def: 300 }),
-    choice("rotation_mode", "Donus modu", ["fixed_speed", "accelerating"], { def: "accelerating" }),
+    num("max_trial_duration_s", "Maks deneme süresi", UNITS.S, { min: 30, max: 600, def: 300 }),
+    choice("rotation_mode", "Dönüş modu", ["fixed_speed", "accelerating"], { def: "accelerating" }),
   ],
   zones() {
     return [];
   },
-  suggestedAcceptance: [
-    { key: "minimum_latency", metricKey: "latency_to_fall_s", operator: ">=", value: "study.minimum_latency_s", overridable: true },
-  ],
   qc: [{ key: "min_tracking_confidence", operator: ">=", value: 0.6, overridable: true }],
 };
 
@@ -173,16 +166,16 @@ const Y_MAZE = {
   category: PARADIGM_CATEGORIES.LEARNING_MEMORY,
   species: ["mouse", "rat"],
   trialTypes: [
-    { key: "spontaneous", label: "Spontan degisim", hasTarget: false },
+    { key: "spontaneous", label: "Spontan değişim", hasTarget: false },
     { key: "novel_arm", label: "Yeni kol (2 denemeli)", hasTarget: true },
   ],
   apparatusParameters: [
-    num("arm_length_cm", "Kol uzunlugu", UNITS.CM, { min: 20, max: 60, def: 35 }),
-    num("arm_width_cm", "Kol genisligi", UNITS.CM, { min: 4, max: 15, def: 7 }),
-    num("arm_angle_deg", "Kollar arasi aci", UNITS.DEG, { min: 90, max: 120, def: 120, required: false }),
+    num("arm_length_cm", "Kol uzunluğu", UNITS.CM, { min: 20, max: 60, def: 35 }),
+    num("arm_width_cm", "Kol genişliği", UNITS.CM, { min: 4, max: 15, def: 7 }),
+    num("arm_angle_deg", "Kollar arası açı", UNITS.DEG, { min: 90, max: 120, def: 120, required: false }),
   ],
   sessionParameters: [
-    num("max_trial_duration_s", "Maks deneme suresi", UNITS.S, { min: 120, max: 900, def: 300 }),
+    num("max_trial_duration_s", "Maks deneme süresi", UNITS.S, { min: 120, max: 900, def: 300 }),
   ],
   zones() {
     return [
@@ -192,7 +185,6 @@ const Y_MAZE = {
       { key: "novel", label: "Yeni kol", type: "polygon", role: "target", required: false },
     ];
   },
-  suggestedAcceptance: [],
   qc: [
     { key: "min_tracking_confidence", operator: ">=", value: 0.7, overridable: true },
     { key: "max_calibration_error_cm", operator: "<=", value: 2, overridable: true },
@@ -201,7 +193,7 @@ const Y_MAZE = {
 
 const NOVEL_OBJECT = {
   key: "NOVEL_OBJECT",
-  name: "Yeni Nesne Tanima",
+  name: "Yeni Nesne Tanıma",
   category: PARADIGM_CATEGORIES.LEARNING_MEMORY,
   species: ["mouse", "rat"],
   trialTypes: [
@@ -209,21 +201,20 @@ const NOVEL_OBJECT = {
     { key: "test", label: "Test (yeni nesne)", hasTarget: true },
   ],
   apparatusParameters: [
-    num("arena_width_cm", "Arena genisligi", UNITS.CM, { min: 30, max: 100, def: 50 }),
-    num("arena_height_cm", "Arena derinligi", UNITS.CM, { min: 30, max: 100, def: 50 }),
-    num("object_zone_radius_cm", "Nesne kesif yaricapi", UNITS.CM, { min: 1, max: 10, def: 3 }),
+    num("arena_width_cm", "Arena genişliği", UNITS.CM, { min: 30, max: 100, def: 50 }),
+    num("arena_height_cm", "Arena derinliği", UNITS.CM, { min: 30, max: 100, def: 50 }),
+    num("object_zone_radius_cm", "Nesne keşif yarıçapı", UNITS.CM, { min: 1, max: 10, def: 3 }),
   ],
   sessionParameters: [
-    num("max_trial_duration_s", "Maks deneme suresi", UNITS.S, { min: 120, max: 900, def: 300 }),
+    num("max_trial_duration_s", "Maks deneme süresi", UNITS.S, { min: 120, max: 900, def: 300 }),
     choice("novel_object_position", "Yeni nesne konumu", ["left", "right"], { def: "right", required: false }),
   ],
   zones() {
     return [
       { key: "novel_object", label: "Yeni nesne", type: "circle", role: "target", required: true },
-      { key: "familiar_object", label: "Tanidik nesne", type: "circle", role: "control", required: true },
+      { key: "familiar_object", label: "Tanıdık nesne", type: "circle", role: "control", required: true },
     ];
   },
-  suggestedAcceptance: [],
   qc: [
     { key: "min_tracking_confidence", operator: ">=", value: 0.75, overridable: true },
     { key: "max_calibration_error_cm", operator: "<=", value: 1.5, overridable: true },
@@ -236,19 +227,19 @@ const BARNES_MAZE = {
   category: PARADIGM_CATEGORIES.LEARNING_MEMORY,
   species: ["mouse", "rat"],
   trialTypes: [
-    { key: "acquisition", label: "Ogrenme", hasTarget: true },
-    { key: "probe", label: "Prob (kacis kutusu yok)", hasTarget: true },
+    { key: "acquisition", label: "Öğrenme", hasTarget: true },
+    { key: "probe", label: "Prob (kaçış kutusu yok)", hasTarget: true },
   ],
   apparatusParameters: [
-    num("platform_diameter_cm", "Platform capi", UNITS.CM, { min: 60, max: 150, def: 92 }),
-    num("hole_count", "Delik sayisi", UNITS.COUNT, { min: 12, max: 40, def: 20 }),
-    num("hole_diameter_cm", "Delik capi", UNITS.CM, { min: 3, max: 10, def: 5 }),
+    num("platform_diameter_cm", "Platform çapı", UNITS.CM, { min: 60, max: 150, def: 92 }),
+    num("hole_count", "Delik sayısı", UNITS.COUNT, { min: 12, max: 40, def: 20 }),
+    num("hole_diameter_cm", "Delik çapı", UNITS.CM, { min: 3, max: 10, def: 5 }),
     // In the 1..hole_count range; the upper bound is the maximum of hole_count (40).
     // Also validated against the hole_count chosen in the apparatus configuration.
     num("target_hole_index", "Hedef delik indeksi", UNITS.COUNT, { min: 1, max: 40, def: 10, required: false }),
   ],
   sessionParameters: [
-    num("max_trial_duration_s", "Maks deneme suresi", UNITS.S, { min: 60, max: 600, def: 180 }),
+    num("max_trial_duration_s", "Maks deneme süresi", UNITS.S, { min: 60, max: 600, def: 180 }),
   ],
   zones() {
     return [
@@ -256,9 +247,6 @@ const BARNES_MAZE = {
       { key: "platform", label: "Platform", type: "circle", role: "open", required: true },
     ];
   },
-  suggestedAcceptance: [
-    { key: "reach_within_trial", metricKey: "primary_latency_s", operator: "<=", value: "max_trial_duration_s", appliesToTrialTypes: ["acquisition"], overridable: true },
-  ],
   qc: [
     { key: "min_tracking_confidence", operator: ">=", value: 0.7, overridable: true },
     { key: "max_calibration_error_cm", operator: "<=", value: 2, overridable: true },
@@ -267,31 +255,30 @@ const BARNES_MAZE = {
 
 const THREE_CHAMBER = {
   key: "THREE_CHAMBER",
-  name: "Uc Bolmeli Sosyallik",
+  name: "Üç Bölmeli Sosyallık",
   category: PARADIGM_CATEGORIES.SOCIAL,
   species: ["mouse", "rat"],
   trialTypes: [
-    { key: "sociability", label: "Sosyallik", hasTarget: true },
+    { key: "sociability", label: "Sosyallık", hasTarget: true },
     { key: "social_novelty", label: "Sosyal yenilik", hasTarget: true },
   ],
   apparatusParameters: [
-    num("chamber_width_cm", "Bolme genisligi", UNITS.CM, { min: 15, max: 40, def: 20 }),
-    num("chamber_height_cm", "Bolme derinligi", UNITS.CM, { min: 20, max: 60, def: 40 }),
-    num("interaction_zone_radius_cm", "Etkilesim bolgesi yaricapi", UNITS.CM, { min: 2, max: 12, def: 5 }),
+    num("chamber_width_cm", "Bölme genişliği", UNITS.CM, { min: 15, max: 40, def: 20 }),
+    num("chamber_height_cm", "Bölme derinliği", UNITS.CM, { min: 20, max: 60, def: 40 }),
+    num("interaction_zone_radius_cm", "Etkileşim bölgesi yarıçapı", UNITS.CM, { min: 2, max: 12, def: 5 }),
   ],
   sessionParameters: [
-    num("max_trial_duration_s", "Maks deneme suresi", UNITS.S, { min: 300, max: 900, def: 600 }),
-    choice("social_chamber_side", "Sosyal bolme tarafi", ["left", "right"], { def: "left", required: false }),
+    num("max_trial_duration_s", "Maks deneme süresi", UNITS.S, { min: 300, max: 900, def: 600 }),
+    choice("social_chamber_side", "Sosyal bölme tarafı", ["left", "right"], { def: "left", required: false }),
   ],
   zones() {
     return [
-      { key: "social_chamber", label: "Sosyal bolme", type: "polygon", role: "target", required: true },
-      { key: "object_chamber", label: "Nesne bolmesi", type: "polygon", role: "control", required: true },
-      { key: "center_chamber", label: "Orta bolme", type: "polygon", role: "center", required: true },
-      { key: "interaction", label: "Etkilesim bolgesi", type: "circle", role: "target", required: false },
+      { key: "social_chamber", label: "Sosyal bölme", type: "polygon", role: "target", required: true },
+      { key: "object_chamber", label: "Nesne bölmesi", type: "polygon", role: "control", required: true },
+      { key: "center_chamber", label: "Orta bölme", type: "polygon", role: "center", required: true },
+      { key: "interaction", label: "Etkileşim bölgesi", type: "circle", role: "target", required: false },
     ];
   },
-  suggestedAcceptance: [],
   qc: [
     { key: "min_tracking_confidence", operator: ">=", value: 0.7, overridable: true },
     { key: "max_calibration_error_cm", operator: "<=", value: 2, overridable: true },
@@ -300,26 +287,25 @@ const THREE_CHAMBER = {
 
 const LIGHT_DARK = {
   key: "LIGHT_DARK",
-  name: "Aydinlik/Karanlik Kutu",
+  name: "Aydınlık/Karanlık Kutu",
   category: PARADIGM_CATEGORIES.ANXIETY,
   species: ["mouse", "rat"],
   trialTypes: [{ key: "standard", label: "Standart", hasTarget: false }],
   apparatusParameters: [
-    num("box_width_cm", "Kutu genisligi", UNITS.CM, { min: 20, max: 60, def: 40 }),
-    num("box_height_cm", "Kutu derinligi", UNITS.CM, { min: 15, max: 40, def: 20 }),
-    num("light_fraction", "Aydinlik bolme orani", UNITS.RATIO, { min: 0.4, max: 0.6, def: 0.5, required: false }),
+    num("box_width_cm", "Kutu genişliği", UNITS.CM, { min: 20, max: 60, def: 40 }),
+    num("box_height_cm", "Kutu derinliği", UNITS.CM, { min: 15, max: 40, def: 20 }),
+    num("light_fraction", "Aydınlık bölme oranı", UNITS.RATIO, { min: 0.4, max: 0.6, def: 0.5, required: false }),
   ],
   sessionParameters: [
-    num("max_trial_duration_s", "Maks deneme suresi", UNITS.S, { min: 300, max: 900, def: 600 }),
-    choice("start_compartment", "Baslangic bolmesi", ["light", "dark"], { def: "light" }),
+    num("max_trial_duration_s", "Maks deneme süresi", UNITS.S, { min: 300, max: 900, def: 600 }),
+    choice("start_compartment", "Başlangıç bölmesi", ["light", "dark"], { def: "light" }),
   ],
   zones() {
     return [
-      { key: "light", label: "Aydinlik bolme", type: "polygon", role: "risk", required: true },
-      { key: "dark", label: "Karanlik bolme", type: "polygon", role: "closed", required: true },
+      { key: "light", label: "Aydınlık bölme", type: "polygon", role: "risk", required: true },
+      { key: "dark", label: "Karanlık bölme", type: "polygon", role: "closed", required: true },
     ];
   },
-  suggestedAcceptance: [],
   qc: [
     { key: "min_tracking_confidence", operator: ">=", value: 0.6, overridable: true },
     { key: "max_calibration_error_cm", operator: "<=", value: 2, overridable: true },
@@ -328,16 +314,16 @@ const LIGHT_DARK = {
 
 const POLE = {
   key: "POLE",
-  name: "Cubuk (Pole) Testi",
+  name: "Çubuk (Pole) Testi",
   category: PARADIGM_CATEGORIES.MOTOR,
   species: ["mouse", "rat"],
   trialTypes: [{ key: "standard", label: "Standart", hasTarget: false }],
   apparatusParameters: [
-    num("pole_length_cm", "Cubuk uzunlugu", UNITS.CM, { min: 30, max: 100, def: 50 }),
-    num("pole_diameter_mm", "Cubuk capi", UNITS.MM, { min: 5, max: 20, def: 10, required: false }),
+    num("pole_length_cm", "Çubuk uzunluğu", UNITS.CM, { min: 30, max: 100, def: 50 }),
+    num("pole_diameter_mm", "Çubuk çapı", UNITS.MM, { min: 5, max: 20, def: 10, required: false }),
   ],
   sessionParameters: [
-    num("max_trial_duration_s", "Maks deneme suresi", UNITS.S, { min: 30, max: 120, def: 60 }),
+    num("max_trial_duration_s", "Maks deneme süresi", UNITS.S, { min: 30, max: 120, def: 60 }),
   ],
   zones() {
     return [
@@ -345,35 +331,33 @@ const POLE = {
       { key: "base", label: "Taban", type: "line", role: "target", required: false },
     ];
   },
-  suggestedAcceptance: [],
   qc: [{ key: "min_tracking_confidence", operator: ">=", value: 0.6, overridable: true }],
 };
 
 const TREADMILL = {
   key: "TREADMILL",
-  name: "Kosu Bandi (Treadmill)",
+  name: "Koşu Bandı (Treadmill)",
   category: PARADIGM_CATEGORIES.MOTOR,
   species: ["mouse", "rat"],
   trialTypes: [
-    { key: "endurance", label: "Dayaniklilik (hizlanan)", hasTarget: false },
-    { key: "fixed_speed", label: "Sabit hiz", hasTarget: false },
+    { key: "endurance", label: "Dayanıklılık (hızlanan)", hasTarget: false },
+    { key: "fixed_speed", label: "Sabit hız", hasTarget: false },
   ],
   apparatusParameters: [
-    num("lane_length_cm", "Serit uzunlugu", UNITS.CM, { min: 20, max: 80, def: 40 }),
-    num("min_belt_speed_cm_s", "Min bant hizi", UNITS.CM_S, { min: 1, max: 50, def: 5 }),
-    num("max_belt_speed_cm_s", "Maks bant hizi", UNITS.CM_S, { min: 5, max: 120, def: 40 }),
-    num("incline_deg", "Egim", UNITS.DEG, { min: 0, max: 25, def: 0, required: false }),
+    num("lane_length_cm", "Şerit uzunluğu", UNITS.CM, { min: 20, max: 80, def: 40 }),
+    num("min_belt_speed_cm_s", "Min bant hızı", UNITS.CM_S, { min: 1, max: 50, def: 5 }),
+    num("max_belt_speed_cm_s", "Maks bant hızı", UNITS.CM_S, { min: 5, max: 120, def: 40 }),
+    num("incline_deg", "Eğim", UNITS.DEG, { min: 0, max: 25, def: 0, required: false }),
   ],
   sessionParameters: [
-    num("max_trial_duration_s", "Maks deneme suresi", UNITS.S, { min: 60, max: 7200, def: 1800 }),
-    choice("speed_mode", "Hiz modu", ["endurance", "fixed_speed"], { def: "endurance" }),
+    num("max_trial_duration_s", "Maks deneme süresi", UNITS.S, { min: 60, max: 7200, def: 1800 }),
+    choice("speed_mode", "Hız modu", ["endurance", "fixed_speed"], { def: "endurance" }),
   ],
   zones() {
     return [
-      { key: "rear_zone", label: "Geri (uyari) bolgesi", type: "polygon", role: "risk", required: false },
+      { key: "rear_zone", label: "Geri (uyarı) bölgesi", type: "polygon", role: "risk", required: false },
     ];
   },
-  suggestedAcceptance: [],
   qc: [{ key: "min_tracking_confidence", operator: ">=", value: 0.6, overridable: true }],
 };
 
@@ -384,22 +368,27 @@ const TREADMILL = {
  * (seconds from run start); `payload` fields: `zone` is picked from the
  * environment's zones, `number` fields are typed in.
  */
+// Each event type carries a `detect` spec: how the CV service should derive it
+// from the trajectory/zones. `zone_transition`/`speed_below`/`zone_first_enter`
+// are GENERIC (no per-paradigm CV code - declaration is enough). `custom` means a
+// dedicated detector/model is required (e.g. a fall, or a pose-based behaviour).
 const ZONE_INOUT = [
-  { type: "zone_enter", label: "Zone enter", payload: { zone: "zone" } },
-  { type: "zone_exit", label: "Zone exit", payload: { zone: "zone" } },
+  { type: "zone_enter", label: "Bölgeye giriş", payload: { zone: "zone" }, detect: { kind: "zone_transition", edge: "enter" } },
+  { type: "zone_exit", label: "Bölgeden çıkış", payload: { zone: "zone" }, detect: { kind: "zone_transition", edge: "exit" } },
 ];
+const IMMOBILE = { type: "immobile", label: "Hareketsizlik", payload: { seconds: "number" }, detect: { kind: "speed_below", threshold_cm_s: 2, min_duration_s: 1 } };
 const PARADIGM_EVENT_TYPES = Object.freeze({
-  OPEN_FIELD: [...ZONE_INOUT, { type: "immobile", label: "Immobility", payload: { seconds: "number" } }],
-  EPM: [...ZONE_INOUT, { type: "risk_assessment", label: "Risk assessment" }],
-  LIGHT_DARK: [...ZONE_INOUT, { type: "transition", label: "Light/dark transition" }],
-  MWM: [...ZONE_INOUT, { type: "platform_reached", label: "Platform reached" }, { type: "platform_cross", label: "Platform crossing" }],
+  OPEN_FIELD: [...ZONE_INOUT, IMMOBILE],
+  EPM: [...ZONE_INOUT, { type: "risk_assessment", label: "Risk değerlendirmesi", detect: { kind: "custom" } }],
+  LIGHT_DARK: [...ZONE_INOUT, { type: "transition", label: "Aydınlık/karanlık geçişi", detect: { kind: "zone_transition", edge: "enter" } }],
+  MWM: [...ZONE_INOUT, { type: "platform_reached", label: "Platforma ulaşma", detect: { kind: "zone_first_enter", zone: "platform" } }, { type: "platform_cross", label: "Platform geçişi", detect: { kind: "zone_transition", edge: "enter", zone: "platform" } }],
   Y_MAZE: [...ZONE_INOUT],
-  NOVEL_OBJECT: [{ type: "interaction", label: "Object interaction", payload: { object: "text", seconds: "number" } }],
-  BARNES_MAZE: [...ZONE_INOUT, { type: "target_hole", label: "Target hole reached" }, { type: "error", label: "Error (hole)", payload: { kind: "text" } }],
-  THREE_CHAMBER: [...ZONE_INOUT, { type: "interaction", label: "Interaction", payload: { seconds: "number" } }],
-  ROTAROD: [{ type: "fall", label: "Fall", payload: { rpm: "number" } }],
-  POLE: [{ type: "fall", label: "Fall" }],
-  TREADMILL: [{ type: "shock", label: "Shock" }, { type: "exhaustion", label: "Exhaustion" }],
+  NOVEL_OBJECT: [{ type: "interaction", label: "Nesne etkileşimi", payload: { object: "text", seconds: "number" }, detect: { kind: "custom" } }],
+  BARNES_MAZE: [...ZONE_INOUT, { type: "target_hole", label: "Hedef deliğe ulaşma", detect: { kind: "zone_first_enter", zone: "target" } }, { type: "error", label: "Hata (delik)", payload: { kind: "text" }, detect: { kind: "custom" } }],
+  THREE_CHAMBER: [...ZONE_INOUT, { type: "interaction", label: "Etkilesim", payload: { seconds: "number" }, detect: { kind: "custom" } }],
+  ROTAROD: [{ type: "fall", label: "Düşme", payload: { rpm: "number" }, detect: { kind: "custom" } }],
+  POLE: [{ type: "fall", label: "Düşme", detect: { kind: "custom" } }],
+  TREADMILL: [{ type: "shock", label: "Şok", detect: { kind: "custom" } }, { type: "exhaustion", label: "Tükenme", detect: { kind: "custom" } }],
 });
 
 /** Attach metric sets + event types to the paradigm (single source: metrics.js). */

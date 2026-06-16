@@ -10,7 +10,6 @@ import {
   metricsForParadigm,
 } from "../../config/metrics.js";
 import { UNIT_LIST } from "../../config/units.js";
-import { ACCEPTANCE_OPERATORS } from "../../config/acceptance.js";
 import { paginateArray } from "../../common/listQuery.js";
 import {
   normalizeLang,
@@ -50,14 +49,6 @@ paradigmRouter.get(
     const lang = normalizeLang(req.query.lang);
     const list = paradigm ? metricsForParadigm(paradigm) : METRIC_DEFINITIONS;
     res.json(localizeMetricList(list, lang));
-  }),
-);
-
-// Acceptance criteria operators (for the criteria builder)
-paradigmRouter.get(
-  "/acceptance-operators",
-  asyncHandler(async (_req, res) => {
-    res.json(ACCEPTANCE_OPERATORS);
   }),
 );
 
