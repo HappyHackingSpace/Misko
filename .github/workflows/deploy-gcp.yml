@@ -67,7 +67,7 @@ jobs:
             echo "CORS_ORIGIN=*"
             echo "ADMIN_EMAIL=admin@fare.lab"
             echo "LAB_NAME=Misko"
-            echo "FRONTEND_PORT=8080"
+            echo "FRONTEND_PORT=80"
           } > .env.deploy
 
       - name: Deploy over SSH
@@ -86,4 +86,4 @@ jobs:
         env:
           TAG: ${{ inputs.image_tag }}
           HOST: ${{ secrets.GCP_VM_HOST }}
-        run: echo "Deployed image_tag=${TAG} to ${HOST} (frontend on :8080)"
+        run: echo "Deployed image_tag=${TAG} to ${HOST} (frontend on :80)"
