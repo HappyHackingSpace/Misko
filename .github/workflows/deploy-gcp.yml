@@ -1,0 +1,86 @@
+name: Deploy to GCP VM
+
+# Manuel tetiklenen, onay gerektiren dağıtım. "production" environment'ı
+# required-reviewer ile korunur; yalnızca onaylı kişi (repo sahibi) deploy'u
+# başlatabilir. Push'ta otomatik çalışmaz.
+#
+# Yaptığı iş: GCP VM'ine SSH ile bağlanır, GHCR'deki hazır imajları çeker ve
+# docker compose ile (yeniden) başlatır. İmajlar önce "Release images" workflow'u
+# ile yayınlanmış olmalı.
+#
+# Gerekli GitHub secret'ları (Settings > Secrets and variables > Actions):
+#   GCP_VM_HOST          VM dış IP (veya hostname)
+#   GCP_VM_USER          SSH kullanıcı adı
+#   GCP_SSH_PRIVATE_KEY  Public anahtarı VM'de olan SSH private key (tam içerik)
+#   APP_POSTGRES_PASSWORD  Postgres şifresi (sabit kalmalı - DB volume'u buna bağlı)
+#   APP_JWT_SECRET         JWT imzalama anahtarı (sabit, güçlü rastgele)
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "GHCR imaj etiketi (örn. latest veya 1.0.0)"
+        required: true
+        default: latest
+
+concurrency:
+  group: deploy-gcp
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    environment: production   # <-- onay kapısı: yalnızca required reviewer başlatabilir
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Prepare SSH
+        env:
+          KEY: ${{ secrets.GCP_SSH_PRIVATE_KEY }}
+          HOST: ${{ secrets.GCP_VM_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: Render .env
+        env:
+          TAG: ${{ inputs.image_tag }}
+          PG: ${{ secrets.APP_POSTGRES_PASSWORD }}
+          JWT: ${{ secrets.APP_JWT_SECRET }}
+        run: |
+          {
+            echo "IMAGE_OWNER=happyhackingspace"
+            echo "IMAGE_TAG=${TAG}"
+            echo "POSTGRES_USER=misko"
+            echo "POSTGRES_PASSWORD=${PG}"
+            echo "POSTGRES_DB=misko"
+            echo "JWT_SECRET=${JWT}"
+            echo "JWT_TTL=7d"
+            echo "CORS_ORIGIN=*"
+            echo "ADMIN_EMAIL=admin@fare.lab"
+            echo "LAB_NAME=Misko"
+            echo "FRONTEND_PORT=8080"
+          } > .env.deploy
+
+      - name: Deploy over SSH
+        env:
+          HOST: ${{ secrets.GCP_VM_HOST }}
+          USER: ${{ secrets.GCP_VM_USER }}
+        run: |
+          SSH="ssh -i ~/.ssh/id_deploy -o StrictHostKeyChecking=accept-new"
+          SCP="scp -i ~/.ssh/id_deploy -o StrictHostKeyChecking=accept-new"
+          $SSH "$USER@$HOST" 'mkdir -p ~/misko'
+          $SCP docker-compose.prod.yml "$USER@$HOST:~/misko/docker-compose.prod.yml"
+          $SCP .env.deploy "$USER@$HOST:~/misko/.env"
+          $SSH "$USER@$HOST" 'cd ~/misko && docker compose -f docker-compose.prod.yml pull && docker compose -f docker-compose.prod.yml up -d && docker image prune -f'
+
+      - name: Summary
+        run: echo "Deployed image_tag=${{ inputs.image_tag }} to ${{ secrets.GCP_VM_HOST }} (frontend on :8080)"
