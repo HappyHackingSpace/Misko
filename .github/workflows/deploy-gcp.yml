@@ -65,8 +65,8 @@ jobs:
             echo "JWT_SECRET=${JWT}"
             echo "JWT_TTL=7d"
             echo "CORS_ORIGIN=*"
-            echo "ADMIN_EMAIL=admin@fare.lab"
-            echo "LAB_NAME=Misko"
+            echo "ADMIN_EMAIL=admin@miskolab.com"
+            echo "LAB_NAME=Yüzüncü Yıl Üniversitesi"
             echo "FRONTEND_PORT=80"
           } > .env.deploy
 

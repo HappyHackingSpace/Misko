@@ -126,7 +126,7 @@ değiştirmelisiniz.
 | `JWT_SECRET` | `change-me-in-production` | Giriş tokenlarını imzalayan gizli anahtar. Üretimde **mutlaka** değiştirin. |
 | `JWT_TTL` | `7d` | Giriş oturumunun geçerlilik süresi. |
 | `CORS_ORIGIN` | `*` | API'yi hangi web origin'lerin çağırabileceği. Üretimde kısıtlayın. |
-| `ADMIN_EMAIL` | `admin@fare.lab` | İlk açılışta oluşturulan superadmin e-postası. |
+| `ADMIN_EMAIL` | `admin@miskolab.com` | İlk açılışta oluşturulan superadmin e-postası. |
 | `LAB_NAME` | `Mişko Laboratuvarı` | Panelde markalama için gösterilen laboratuvar adı. |
 | `FRONTEND_PORT` | `8080` | Web paneli host portu. |
 
