@@ -47,7 +47,7 @@ a personal access token that has `read:packages`.)
    docker compose -f docker-compose.prod.yml logs backend
    ```
 
-   Look for the boxed line printed by the bootstrap step (email `admin@fare.lab`
+   Look for the boxed line printed by the bootstrap step (email `admin@miskolab.com`
    by default).
 
 4. Open the UI: http://localhost:8080 and sign in with that email/password.

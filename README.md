@@ -100,7 +100,7 @@ docker compose up -d --build
 - Migrations are applied automatically on container startup (`prisma migrate deploy`).
 
 The **superadmin** is created automatically on startup (`ADMIN_EMAIL`, default
-`admin@fare.lab`). The system **generates a strong password** and writes it to the
+`admin@miskolab.com`). The system **generates a strong password** and writes it to the
 backend log **once**:
 
 ```bash

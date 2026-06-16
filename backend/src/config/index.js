@@ -30,7 +30,7 @@ export const config = {
   },
   bcryptRounds: Number(process.env.BCRYPT_ROUNDS || 10),
   // Email for the superadmin bootstrap at Docker startup (the system generates the password)
-  adminEmail: process.env.ADMIN_EMAIL || "admin@fare.lab",
+  adminEmail: process.env.ADMIN_EMAIL || "admin@miskolab.com",
   // Laboratory name for the single-tenant (on-prem) install. The setup wizard
   // (bootstrap-admin.js) creates the Laboratory singleton with this; it is also
   // the fallback name for /api/meta branding when the singleton does not exist yet.
