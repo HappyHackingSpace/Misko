@@ -1,0 +1,124 @@
+name: Release images
+
+# Builds the backend and frontend images and pushes them to the GitHub
+# Container Registry (GHCR) so they can be pulled without cloning the repo.
+#
+# Multi-arch (amd64 + arm64) is built on NATIVE runners, not QEMU: the backend's
+# `prisma generate` crashes under arm64 emulation. Each (image, platform) builds
+# on its own runner and pushes by digest; a final job assembles the multi-arch
+# manifest list per image.
+#
+# Triggers:
+#   - a version tag push (v1.2.3) -> publishes :1.2.3, :1.2, :latest
+#   - manual run (Actions -> Release images -> Run workflow) -> publishes :latest
+#
+# Auth uses the built-in GITHUB_TOKEN; no secrets to configure. After the first
+# run, set both packages (misko-backend, misko-frontend) to Public under the
+# repo/org Packages settings so they can be pulled without logging in.
+
+on:
+  push:
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.name }} (${{ matrix.platform }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: backend,  context: ./backend,  platform: linux/amd64, runner: ubuntu-latest }
+          - { name: backend,  context: ./backend,  platform: linux/arm64, runner: ubuntu-24.04-arm }
+          - { name: frontend, context: ./frontend, platform: linux/amd64, runner: ubuntu-latest }
+          - { name: frontend, context: ./frontend, platform: linux/arm64, runner: ubuntu-24.04-arm }
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build & push by digest
+        id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: ${{ matrix.context }}
+          platforms: ${{ matrix.platform }}
+          outputs: type=image,name=ghcr.io/happyhackingspace/misko-${{ matrix.name }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=${{ matrix.name }}-${{ matrix.platform }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}-${{ matrix.platform }}
+
+      - name: Export digest
+        run: |
+          mkdir -p /tmp/digests
+          digest='${{ steps.build.outputs.digest }}'
+          touch "/tmp/digests/${digest#sha256:}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: digest-${{ matrix.name }}-${{ strategy.job-index }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  merge:
+    name: Manifest list (${{ matrix.name }})
+    needs: build
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        name: [backend, frontend]
+    steps:
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests
+          pattern: digest-${{ matrix.name }}-*
+          merge-multiple: true
+
+      - name: Image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/happyhackingspace/misko-${{ matrix.name }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest
+
+      - name: Create & push manifest list
+        working-directory: /tmp/digests
+        run: |
+          docker buildx imagetools create \
+            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(printf 'ghcr.io/happyhackingspace/misko-${{ matrix.name }}@sha256:%s ' *)
+
+      - name: Inspect
+        run: docker buildx imagetools inspect ghcr.io/happyhackingspace/misko-${{ matrix.name }}:latest
