@@ -83,4 +83,7 @@ jobs:
           $SSH "$USER@$HOST" 'cd ~/misko && docker compose -f docker-compose.prod.yml pull && docker compose -f docker-compose.prod.yml up -d && docker image prune -f'
 
       - name: Summary
-        run: echo "Deployed image_tag=${{ inputs.image_tag }} to ${{ secrets.GCP_VM_HOST }} (frontend on :8080)"
+        env:
+          TAG: ${{ inputs.image_tag }}
+          HOST: ${{ secrets.GCP_VM_HOST }}
+        run: echo "Deployed image_tag=${TAG} to ${HOST} (frontend on :8080)"
