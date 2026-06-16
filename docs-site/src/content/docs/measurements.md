@@ -4,7 +4,7 @@ description: Paradigm specs, metric definitions, MWM normalization, and quality 
 ---
 
 Mişko needs stable measurement contracts, not loose result JSON. Every paradigm
-must define its parameters, zones, metrics, acceptance rules, and quality
+must define its parameters, zones, metrics, event types, and quality
 requirements before the CV service can produce results that are comparable
 across studies and laboratories.
 
@@ -14,7 +14,7 @@ Every result passes through four layers:
 
 | Layer | Purpose |
 |---|---|
-| `ParadigmSpec` | Code-owned contract for parameters, zones, metrics, acceptance rules, and result schema. |
+| `ParadigmSpec` | Code-owned contract for parameters, zones, metrics, event types (with CV detect specs), and result schema. |
 | `Apparatus` | Lab-owned physical rig definition: geometry, material, surface, and zones in cm. |
 | `Calibration` | Pixel-to-cm mapping for a fixed rig or a single test session. |
 | `MetricDefinition` | Code-owned definition of each metric key, unit, formula, normalization, and QC dependency. |
@@ -30,7 +30,7 @@ Each paradigm needs a detail page with:
 - Session parameters: trial duration, start position, trial index, protocol variant.
 - Zones: zone keys, geometry type, coordinate system, and derivation rule.
 - Metrics: required and optional metric keys, units, definitions, and normalization.
-- Suggested acceptance criteria: optional, code-owned templates a user can adopt. Real acceptance criteria are optional and defined per test (see "Acceptance criteria" below).
+- Event types: the events a run can collect, their payloads, and the CV `detect` spec for each.
 - QC requirements: tracking confidence, dropped frames, calibration error, occlusion, lighting, and contrast.
 - Artifacts: video, trajectory, heatmap, calibration image, and debug overlay URLs.
 
@@ -44,33 +44,48 @@ interface ParadigmSpec {
   sessionParameters: FieldDef[];
   zones(config: ApparatusConfig): ZoneDef[];
   metrics: MetricDefinition[];
-  suggestedAcceptance: AcceptanceRule[];
+  eventTypes: EventTypeDef[];
   qc: QualityRequirement[];
 }
 ```
 
-## Acceptance criteria
+## No pass/fail verdict
 
-Acceptance criteria decide a test's behavioral pass/fail line. They are:
+A lab test result is **data, not a verdict**. Mişko does not compute a behavioral
+`passed` flag and there is no acceptance-criteria layer. Whether a value is "good"
+is interpretation, which belongs to the analysis layer, not to the recording
+system. Only QC (tracking reliability) has a pass/fail meaning, and that is about
+data quality, not behavior.
 
-- **Optional**: a test with no criteria stays unevaluated (`Test.passed = null`).
-- **Per test**: each test stores its own criteria as JSON in `Test.acceptanceCriteria`.
-- **User-defined**: the user picks any metric valid for the paradigm, an operator,
-  and a threshold. Paradigm specs only ship `suggestedAcceptance` templates that the
-  user can adopt and edit.
+## Event types and CV detection
+
+A run collects **events**; metrics are derived from them. The same event stream
+is produced by manual entry today and by the CV service later, so the event layer
+is the contract between Mişko and computer vision.
+
+Each event type declares a `detect` spec describing how the CV service derives it
+from the trajectory and zones:
 
 ```ts
-interface AcceptanceCriterion {
-  metricKey: string;                 // a known metric key for the paradigm
-  operator: "<" | "<=" | ">" | ">=" | "==" | "!=" | "between";
-  value: number | [number, number]; // [min, max] for "between"
+interface EventTypeDef {
+  type: string;                       // e.g. "zone_enter", "immobile", "fall"
+  label: string;
+  payload?: Record<string, "number" | "text" | "zone">;
+  detect: DetectSpec;
 }
+
+type DetectSpec =
+  | { kind: "zone_transition"; edge: "enter" | "exit"; zone?: string }
+  | { kind: "zone_first_enter"; zone: string }
+  | { kind: "speed_below"; threshold_cm_s: number; min_duration_s?: number }
+  | { kind: "custom" };               // requires a dedicated detector/model
 ```
 
-When a result is submitted, the engine evaluates every criterion against the
-metrics and sets `Test.passed`: `true` if all pass, `false` if any fails or its
-metric is missing, and `null` when there are no criteria. An explicit `passed`
-value in the request overrides automatic evaluation (manual review).
+The generic kinds (`zone_transition`, `zone_first_enter`, `speed_below`) are
+**data-driven**: a paradigm that only uses them needs no new CV code, declaring
+the event types is enough. `custom` flags an event that needs a dedicated
+detector (e.g. a rotarod fall, a social interaction). Event types are exposed on
+the paradigm detail API (`GET /api/paradigms/:key` -> `eventTypes`).
 
 ## Localization
 
@@ -172,8 +187,9 @@ reproducibility, and always report swim speed beside latency.
 
 ## Quality control
 
-QC status is separate from behavioral pass/fail. `Test.passed` is the behavioral
-acceptance result. `result.qc.status` is the reliability status.
+QC status is about data reliability only. There is no behavioral pass/fail: the
+behavioral result is the metric data itself. `result.qc.status` is the
+reliability status.
 
 | QC key | Unit | Default action |
 |---|---|---|

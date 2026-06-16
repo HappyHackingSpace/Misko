@@ -43,7 +43,7 @@ const columns = computed(() => [
       <template #cell-scenario="{ row }"><RouterLink class="link" :to="`/tests/${row.id}`">{{ row.scenario?.name }}</RouterLink></template>
       <template #cell-subject="{ row }">{{ row.subject?.code }}</template>
       <template #cell-operator="{ row }">{{ row.operator?.name }}</template>
-      <template #cell-status="{ row }"><span :class="'status-' + row.status">{{ row.status }}</span></template>
+      <template #cell-status="{ row }"><span :class="'status-' + row.status">{{ $t('statuses.' + row.status) }}</span></template>
     </DataTable>
   </div>
 </template>

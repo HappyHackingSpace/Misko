@@ -35,7 +35,7 @@ onMounted(async () => {
         <tr v-for="t in recent" :key="t.id">
           <td>{{ t.scenario?.name }}</td>
           <td>{{ t.subject?.code }}</td>
-          <td :class="'status-' + t.status">{{ t.status }}</td>
+          <td :class="'status-' + t.status">{{ $t('statuses.' + t.status) }}</td>
           <td class="muted">{{ new Date(t.createdAt).toLocaleString(locale) }}</td>
         </tr>
       </tbody>

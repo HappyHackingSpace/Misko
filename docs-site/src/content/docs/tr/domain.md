@@ -40,7 +40,7 @@ Sade tutulur: `code` (benzersiz), `sex`, `groupName` (serbest-metin deney grubu)
 
 - **Paradigma:** kullanıcının düzenlediği bir DB satırı değil, **kodda tanımlı**
   bilimsel bir test türüdür. Spec (parametreler, bölgeler, metrik sözlüğü,
-  önerilen kabul) mühendislik sahipliğindedir ve kararlıdır; yalnızca değerler
+  olay tipleri CV detect spec'i ile) mühendislik sahipliğindedir ve kararlıdır; yalnızca değerler
   kullanıcı verisidir. Salt-okunur katalog (`GET /api/paradigms`). Kayıt defteri:
   `MWM`, `OPEN_FIELD`, `EPM`, `ROTAROD`, `Y_MAZE`, `NOVEL_OBJECT`, `BARNES_MAZE`,
   `THREE_CHAMBER`, `LIGHT_DARK`, `POLE`, `TREADMILL`.
@@ -95,12 +95,12 @@ yok):
 
 | İzin \ Rol | SUPERADMIN | LAB_MANAGER | RESEARCHER | TECHNICIAN | VIEWER |
 |---|:--:|:--:|:--:|:--:|:--:|
-| `user:manage`     | ✅ | ✅ | — | — | — |
-| `lab:configure`   | ✅ | ✅ | — | — | — |
-| `subject:write`   | ✅ | ✅ | ✅ | — | — |
-| `apparatus:write` (ortamlar & senaryolar) | ✅ | ✅ | ✅ | — | — |
-| `test:write`      | ✅ | ✅ | ✅ | — | — |
-| `test:run`        | ✅ | ✅ | ✅ | ✅ | — |
+| `user:manage`     | ✅ | ✅ | - | - | - |
+| `lab:configure`   | ✅ | ✅ | - | - | - |
+| `subject:write`   | ✅ | ✅ | ✅ | - | - |
+| `apparatus:write` (ortamlar & senaryolar) | ✅ | ✅ | ✅ | - | - |
+| `test:write`      | ✅ | ✅ | ✅ | - | - |
+| `test:run`        | ✅ | ✅ | ✅ | ✅ | - |
 | `*:read`          | ✅ | ✅ | ✅ | ✅ | ✅ |
 
 `requirePermission("test:run")` middleware'i birincil kapıdır.

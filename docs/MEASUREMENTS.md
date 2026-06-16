@@ -16,7 +16,7 @@ Every result is produced through four explicit layers:
 
 | Layer | Owner | Purpose |
 |---|---|---|
-| `ParadigmSpec` | Misko code | Declares parameters, zones, metric definitions, acceptance rules, and result schema. |
+| `ParadigmSpec` | Misko code | Declares parameters, zones, metric definitions, event types (with CV detect specs), and result schema. |
 | `Apparatus` | Lab data in Misko | Stores the physical rig: geometry, surface, material, zones in cm, and paradigm-specific values. |
 | `Calibration` | Misko definition, CV execution | Maps camera pixels to the apparatus coordinate system. |
 | `MetricDefinition` | Misko code | Defines each measurement key, unit, calculation, normalization, QC dependencies, and aggregation behavior. |
@@ -40,7 +40,7 @@ for users, developers, and the CV service.
 | Session parameters | Per-test values such as trial duration, start position, timepoint, trial index, and protocol variant. |
 | Zones | Zone keys, geometry type, source of truth, coordinate system, and derivation rule. |
 | Metrics | Required and optional metric keys, units, definitions, and normalization rules. |
-| Acceptance criteria | Default pass/fail rules and which values can be overridden by the lab or study. |
+| Event types | The events a run can collect, their payloads, and the CV `detect` spec for each. |
 | QC requirements | Minimum tracking confidence, allowed dropped frames, calibration error, occlusion limits, and lighting checks. |
 | Artifacts | Expected video, trajectory, heatmap, calibration image, and debug overlay URLs. |
 
@@ -72,7 +72,7 @@ interface ParadigmSpec {
   sessionParameters: FieldDef[];
   zones(config: ApparatusConfig): ZoneDef[];
   metrics: MetricDefinition[];
-  suggestedAcceptance: AcceptanceRule[];
+  eventTypes: EventTypeDef[];
   qc: QualityRequirement[];
   validateApparatus(config: ApparatusConfig): ValidationError[];
   validateSession(config: SessionConfig): ValidationError[];
@@ -98,59 +98,46 @@ interface ZoneDef {
 }
 ```
 
-### 2.4 Acceptance criteria
+### 2.4 No pass/fail verdict
 
-Acceptance criteria are not hardcoded as a single `passed` formula. They are:
+A lab test result is **data, not a verdict**. Misko does not compute a
+behavioral `passed` flag and there is no acceptance-criteria layer. Whether a
+value is "good" is interpretation, which belongs to the analysis layer, not to
+the recording system. Only QC (tracking reliability) has a pass/fail meaning,
+and that is about data quality, not behavior.
 
-- **Optional**: a test with no criteria stays unevaluated (`Test.passed = null`).
-- **Per test**: each test stores its own criteria as JSON in `Test.acceptanceCriteria`.
-- **User-defined**: the user picks any metric valid for the paradigm, an operator,
-  and a threshold.
+### 2.5 Event types and CV detection
 
-The paradigm spec only carries `suggestedAcceptance`: optional, code-owned
-templates the user can adopt and edit. The user-facing criterion is concrete:
+A run collects **events**; metrics are derived from them (see
+`docs/METRIC_ENGINE.md`). The same event stream is produced by manual entry
+today and by the CV service later, so the event layer is the contract between
+Misko and computer vision.
 
-```ts
-interface AcceptanceCriterion {
-  metricKey: string;                  // a known metric key for the paradigm
-  operator: "<" | "<=" | ">" | ">=" | "==" | "!=" | "between";
-  value: number | [number, number];  // [min, max] for "between"
-}
-```
-
-The suggested template shape (display/seed only) keeps richer metadata:
+Each event type declares a `detect` spec describing how the CV service derives
+it from the trajectory and zones:
 
 ```ts
-interface AcceptanceRule {
-  key: string;
-  metricKey: string;
-  operator: "<" | "<=" | ">" | ">=" | "==" | "between";
-  value: number | [number, number] | string; // string = symbolic, e.g. "max_trial_duration_s"
-  appliesToTrialTypes?: string[];
-  overridable: boolean;
+interface EventTypeDef {
+  type: string;                       // e.g. "zone_enter", "immobile", "fall"
+  label: string;
+  payload?: Record<string, "number" | "text" | "zone">;
+  detect: DetectSpec;
 }
+
+type DetectSpec =
+  | { kind: "zone_transition"; edge: "enter" | "exit"; zone?: string }
+  | { kind: "zone_first_enter"; zone: string }
+  | { kind: "speed_below"; threshold_cm_s: number; min_duration_s?: number }
+  | { kind: "custom" };               // requires a dedicated detector/model
 ```
 
-Evaluation: when a result is submitted, every criterion is compared against the
-metrics. `Test.passed` becomes `true` if all pass, `false` if any fails or its
-metric is missing, and `null` when there are no criteria. An explicit `passed`
-in the request overrides automatic evaluation (manual review).
+The generic kinds (`zone_transition`, `zone_first_enter`, `speed_below`) are
+**data-driven**: a paradigm that only uses them needs no new CV code - declaring
+the event types is enough. `custom` flags an event that needs a dedicated
+detector (e.g. a rotarod fall, a social interaction). Event types are exposed on
+the paradigm detail API (`GET /api/paradigms/:key` -> `eventTypes`).
 
-Suggested templates:
-
-| Paradigm | Suggested rule |
-|---|---|
-| MWM | `escape_latency_s <= max_trial_duration_s` for acquisition trials. |
-| Barnes Maze | `primary_latency_s <= max_trial_duration_s` for acquisition trials. |
-| Rotarod | `latency_to_fall_s >= study.minimum_latency_s`. |
-| Open Field | Usually no pass/fail, only QC pass/fail. |
-| EPM | Usually no pass/fail, only QC pass/fail. |
-
-The engine lives in `backend/src/config/acceptance.js`
-(`validateAcceptanceCriteria`, `evaluateAcceptance`). Operators are exposed at
-`GET /api/paradigms/acceptance-operators`.
-
-### 2.5 Localization
+### 2.6 Localization
 
 The paradigm and metric vocabulary is the scientific contract and stays
 Turkish-only in the spec source (the default language). The read-only inspection
@@ -397,8 +384,8 @@ analysis.
 | `REVIEW_REQUIRED` | Metrics are stored but excluded from default study summaries until reviewed. |
 | `FAIL` | Metrics should not be used for scientific analysis. |
 
-`Test.passed` should remain the behavioral pass/fail or acceptance result. QC
-status is separate and should live under `result.qc.status`.
+QC status (`result.qc.status`) is about data reliability only. There is no
+behavioral pass/fail: the behavioral result is the metric data itself.
 
 ## 6. Result contract
 

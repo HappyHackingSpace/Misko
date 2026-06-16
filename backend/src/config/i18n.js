@@ -24,274 +24,290 @@ export function normalizeLang(lang) {
  */
 const LABELS_EN = Object.freeze({
   // Paradigm names
-  "Morris Su Tanki": "Morris Water Maze",
-  "Acik Alan": "Open Field",
-  "Yukseltilmis Arti Labirent": "Elevated Plus Maze",
+  "Morris Su Tankı": "Morris Water Maze",
+  "Açık Alan": "Open Field",
+  "Yükseltilmiş Artı Labirent": "Elevated Plus Maze",
   Rotarod: "Rotarod",
   "Y Labirenti": "Y Maze",
-  "Yeni Nesne Tanima": "Novel Object Recognition",
+  "Yeni Nesne Tanıma": "Novel Object Recognition",
   "Barnes Labirenti": "Barnes Maze",
-  "Uc Bolmeli Sosyallik": "Three-Chamber Sociability",
-  "Aydinlik/Karanlik Kutu": "Light/Dark Box",
-  "Cubuk (Pole) Testi": "Pole Test",
-  "Kosu Bandi (Treadmill)": "Treadmill",
+  "Üç Bölmeli Sosyallık": "Three-Chamber Sociability",
+  "Aydınlık/Karanlık Kutu": "Light/Dark Box",
+  "Çubuk (Pole) Testi": "Pole Test",
+  "Koşu Bandı (Treadmill)": "Treadmill",
 
   // Trial labels
-  "Ogrenme (platform var)": "Acquisition (platform present)",
+  "Öğrenme (platform var)": "Acquisition (platform present)",
   "Prob (platform yok)": "Probe (no platform)",
   Standart: "Standard",
-  "Sabit hiz": "Fixed speed",
+  "Sabit hız": "Fixed speed",
   Hizlanan: "Accelerating",
-  "Spontan degisim": "Spontaneous alternation",
+  "Spontan değişim": "Spontaneous alternation",
   "Yeni kol (2 denemeli)": "Novel arm (two trials)",
   Alistirma: "Familiarization",
   "Test (yeni nesne)": "Test (novel object)",
   Ogrenme: "Acquisition",
-  "Prob (kacis kutusu yok)": "Probe (no escape box)",
-  Sosyallik: "Sociability",
+  "Prob (kaçış kutusu yok)": "Probe (no escape box)",
+  Sosyallık: "Sociability",
   "Sosyal yenilik": "Social novelty",
-  "Dayaniklilik (hizlanan)": "Endurance (accelerating)",
+  "Dayanıklılık (hızlanan)": "Endurance (accelerating)",
 
   // Apparatus / session parameter labels
-  "Tank capi": "Tank diameter",
-  "Platform capi": "Platform diameter",
+  "Tank çapı": "Tank diameter",
+  "Platform çapı": "Platform diameter",
   "Platform merkezi X": "Platform center X",
   "Platform merkezi Y": "Platform center Y",
-  "Platform ceyregi": "Platform quadrant",
-  "Duvar halkasi genisligi": "Wall annulus width",
-  "Su opakligi": "Water opacity",
-  "Su sicakligi": "Water temperature",
-  "Maks deneme suresi": "Max trial duration",
-  "Baslangic konumu": "Start position",
+  "Platform çeyreği": "Platform quadrant",
+  "Duvar halkası genişliği": "Wall annulus width",
+  "Su opaklığı": "Water opacity",
+  "Su sıcaklığı": "Water temperature",
+  "Maks deneme süresi": "Max trial duration",
+  "Başlangıç konumu": "Start position",
   "Deneme indeksi": "Trial index",
-  "Arena genisligi": "Arena width",
-  "Arena derinligi": "Arena depth",
-  "Merkez orani": "Center fraction",
-  "Hareketsizlik esigi": "Immobility threshold",
-  "Kol uzunlugu": "Arm length",
-  "Kol genisligi": "Arm width",
-  "Merkez kare kenari": "Center square side",
-  "Kapali kol duvar yuksekligi": "Closed arm wall height",
-  "Cubuk capi": "Rod diameter",
+  "Arena genişliği": "Arena width",
+  "Arena derinliği": "Arena depth",
+  "Merkez oranı": "Center fraction",
+  "Hareketsizlik eşiği": "Immobility threshold",
+  "Kol uzunluğu": "Arm length",
+  "Kol genişliği": "Arm width",
+  "Merkez kare kenarı": "Center square side",
+  "Kapalı kol duvar yüksekliği": "Closed arm wall height",
+  "Çubuk çapı": "Rod diameter",
   "Min devir": "Min rpm",
   "Maks devir": "Max rpm",
-  "Hizlanma suresi": "Acceleration duration",
-  "Donus modu": "Rotation mode",
-  "Kollar arasi aci": "Angle between arms",
-  "Nesne kesif yaricapi": "Object exploration radius",
+  "Hızlanma süresi": "Acceleration duration",
+  "Dönüş modu": "Rotation mode",
+  "Kollar arası açı": "Angle between arms",
+  "Nesne keşif yarıçapı": "Object exploration radius",
   "Yeni nesne konumu": "Novel object position",
-  "Delik sayisi": "Hole count",
-  "Delik capi": "Hole diameter",
+  "Delik sayısı": "Hole count",
+  "Delik çapı": "Hole diameter",
   "Hedef delik indeksi": "Target hole index",
-  "Bolme genisligi": "Chamber width",
-  "Bolme derinligi": "Chamber depth",
-  "Etkilesim bolgesi yaricapi": "Interaction zone radius",
-  "Sosyal bolme tarafi": "Social chamber side",
-  "Kutu genisligi": "Box width",
-  "Kutu derinligi": "Box depth",
-  "Aydinlik bolme orani": "Light compartment fraction",
-  "Baslangic bolmesi": "Start compartment",
-  "Cubuk uzunlugu": "Pole length",
-  "Serit uzunlugu": "Lane length",
-  "Min bant hizi": "Min belt speed",
-  "Maks bant hizi": "Max belt speed",
+  "Bölme genişliği": "Chamber width",
+  "Bölme derinliği": "Chamber depth",
+  "Etkileşim bölgesi yarıçapı": "Interaction zone radius",
+  "Sosyal bölme tarafı": "Social chamber side",
+  "Kutu genişliği": "Box width",
+  "Kutu derinliği": "Box depth",
+  "Aydınlık bölme oranı": "Light compartment fraction",
+  "Başlangıç bölmesi": "Start compartment",
+  "Çubuk uzunluğu": "Pole length",
+  "Şerit uzunluğu": "Lane length",
+  "Min bant hızı": "Min belt speed",
+  "Maks bant hızı": "Max belt speed",
   Egim: "Incline",
-  "Hiz modu": "Speed mode",
+  "Hız modu": "Speed mode",
 
   // Zone labels
   Platform: "Platform",
-  "Hedef ceyrek": "Target quadrant",
-  "Duvar halkasi": "Wall annulus",
+  "Hedef çeyrek": "Target quadrant",
+  "Duvar halkası": "Wall annulus",
   Merkez: "Center",
   Cevre: "Periphery",
-  "Acik kollar": "Open arms",
-  "Kapali kollar": "Closed arms",
+  "Açık kollar": "Open arms",
+  "Kapalı kollar": "Closed arms",
   "A kolu": "Arm A",
   "B kolu": "Arm B",
   "C kolu": "Arm C",
   "Yeni kol": "Novel arm",
   "Yeni nesne": "Novel object",
-  "Tanidik nesne": "Familiar object",
+  "Tanıdık nesne": "Familiar object",
   "Hedef delik": "Target hole",
-  "Sosyal bolme": "Social chamber",
-  "Nesne bolmesi": "Object chamber",
-  "Orta bolme": "Center chamber",
-  "Etkilesim bolgesi": "Interaction zone",
-  "Aydinlik bolme": "Light compartment",
-  "Karanlik bolme": "Dark compartment",
+  "Sosyal bölme": "Social chamber",
+  "Nesne bölmesi": "Object chamber",
+  "Orta bölme": "Center chamber",
+  "Etkileşim bölgesi": "Interaction zone",
+  "Aydınlık bölme": "Light compartment",
+  "Karanlık bölme": "Dark compartment",
   Tepe: "Top",
   Taban: "Base",
-  "Geri (uyari) bolgesi": "Rear (warning) zone",
+  "Geri (uyarı) bölgesi": "Rear (warning) zone",
 
   // Metric labels
-  "Analiz suresi": "Analyzed duration",
+  "Analiz süresi": "Analyzed duration",
   "Toplam yol": "Total path",
-  "Ortalama hiz": "Mean speed",
-  "Maksimum hiz": "Maximum speed",
-  "Hareketsizlik suresi": "Immobility time",
-  "Bolge suresi": "Zone time",
-  "Bolge girisleri": "Zone entries",
-  "Bolgeye varis gecikmesi": "Latency to zone",
-  "Yol verimliligi": "Path efficiency",
-  "Kacis gecikmesi": "Escape latency",
-  "Yuzme yolu": "Swim path",
-  "Ortalama yuzme hizi": "Mean swim speed",
-  "Platform gecisleri": "Platform crossings",
-  "Hedef ceyrek suresi orani": "Target quadrant time ratio",
-  "Ceyrek suresi": "Quadrant time",
-  "Tigmotaksi suresi orani": "Thigmotaxis time ratio",
+  "Ortalama hız": "Mean speed",
+  "Maksimum hız": "Maximum speed",
+  "Hareketsizlik süresi": "Immobility time",
+  "Bölge süresi": "Zone time",
+  "Bölge girişleri": "Zone entries",
+  "Bölgeye varış gecikmesi": "Latency to zone",
+  "Yol verimliliği": "Path efficiency",
+  "Kaçış gecikmesi": "Escape latency",
+  "Yüzme yolu": "Swim path",
+  "Ortalama yüzme hızı": "Mean swim speed",
+  "Platform geçişleri": "Platform crossings",
+  "Hedef çeyrek süresi oranı": "Target quadrant time ratio",
+  "Çeyrek süresi": "Quadrant time",
+  "Tigmotaksi süresi oranı": "Thigmotaxis time ratio",
   "Platforma ortalama mesafe": "Mean distance to platform",
-  "Yonelim hatasi": "Heading error",
-  "Merkez suresi orani": "Center time ratio",
-  "Cevre suresi orani": "Periphery time ratio",
-  "Merkez girisleri": "Center entries",
-  "Acik kol suresi orani": "Open arm time ratio",
-  "Kapali kol suresi orani": "Closed arm time ratio",
-  "Acik kol girisleri": "Open arm entries",
-  "Kapali kol girisleri": "Closed arm entries",
-  "Acik kola varis gecikmesi": "Latency to open arm",
-  "Risk degerlendirme sayisi": "Risk assessment count",
-  "Dusme gecikmesi": "Latency to fall",
-  "Dusme anindaki devir": "Rpm at fall",
-  "Deneme suresi": "Trial duration",
-  "Dusme algilandi": "Fall detected",
-  "Ogrenme egimi": "Learning slope",
-  "Spontan degisim orani": "Spontaneous alternation ratio",
-  "Toplam kol girisi": "Total arm entries",
-  "Yeni kol suresi orani": "Novel arm time ratio",
-  "Yeni nesne kesif suresi": "Novel object exploration time",
-  "Tanidik nesne kesif suresi": "Familiar object exploration time",
-  "Ayrim indeksi": "Discrimination index",
-  "Toplam kesif suresi": "Total exploration time",
+  "Yönelim hatası": "Heading error",
+  "Merkez süresi oranı": "Center time ratio",
+  "Çevre süresi oranı": "Periphery time ratio",
+  "Merkez girişleri": "Center entries",
+  "Açık kol süresi oranı": "Open arm time ratio",
+  "Kapalı kol süresi oranı": "Closed arm time ratio",
+  "Açık kol girişleri": "Open arm entries",
+  "Kapalı kol girişleri": "Closed arm entries",
+  "Açık kola varış gecikmesi": "Latency to open arm",
+  "Risk değerlendirme sayısı": "Risk assessment count",
+  "Düşme gecikmesi": "Latency to fall",
+  "Düşme anındaki devir": "Rpm at fall",
+  "Deneme süresi": "Trial duration",
+  "Düşme algılandı": "Fall detected",
+  "Öğrenme eğimi": "Learning slope",
+  "Spontan değişim oranı": "Spontaneous alternation ratio",
+  "Toplam kol girişi": "Total arm entries",
+  "Yeni kol süresi oranı": "Novel arm time ratio",
+  "Yeni nesne keşif süresi": "Novel object exploration time",
+  "Tanıdık nesne keşif süresi": "Familiar object exploration time",
+  "Ayrım indeksi": "Discrimination index",
+  "Toplam keşif süresi": "Total exploration time",
   "Birincil gecikme": "Primary latency",
   "Birincil hata": "Primary errors",
   "Toplam hata": "Total errors",
-  "Sosyal bolme suresi": "Social chamber time",
-  "Nesne bolmesi suresi": "Object chamber time",
-  "Sosyallik indeksi": "Sociability index",
-  "Yakin etkilesim suresi": "Close interaction time",
-  "Aydinlik bolme suresi orani": "Light compartment time ratio",
-  "Aydinlik bolme girisleri": "Light compartment entries",
-  "Karanliga giris gecikmesi": "Latency to enter dark",
-  "Bolme gecisleri": "Compartment transitions",
-  "Donme suresi": "Turn time",
-  "Toplam inis suresi": "Total descent time",
-  "Inis hizi": "Descent speed",
-  "Kosu suresi": "Run time",
-  "Kosu mesafesi": "Run distance",
+  "Sosyal bölme süresi": "Social chamber time",
+  "Nesne bölmesi süresi": "Object chamber time",
+  "Sosyallık indeksi": "Sociability index",
+  "Yakın etkileşim süresi": "Close interaction time",
+  "Aydınlık bölme süresi oranı": "Light compartment time ratio",
+  "Aydınlık bölme girişleri": "Light compartment entries",
+  "Karanlığa giriş gecikmesi": "Latency to enter dark",
+  "Bölme geçişleri": "Compartment transitions",
+  "Dönme süresi": "Turn time",
+  "Toplam iniş süresi": "Total descent time",
+  "İniş hızı": "Descent speed",
+  "Koşu süresi": "Run time",
+  "Koşu mesafesi": "Run distance",
   "Bitkinlik gecikmesi": "Latency to exhaustion",
-  "Uyari/sok sayisi": "Warning/shock count",
+  "Uyarı/şok sayısı": "Warning/shock count",
+
+  // Event type labels
+  "Bölgeye giriş": "Zone enter",
+  "Bölgeden çıkış": "Zone exit",
+  Hareketsizlik: "Immobility",
+  "Risk değerlendirmesi": "Risk assessment",
+  "Aydınlık/karanlık geçişi": "Light/dark transition",
+  "Platforma ulaşma": "Platform reached",
+  "Platform geçişi": "Platform crossing",
+  "Nesne etkileşimi": "Object interaction",
+  "Hedef deliğe ulaşma": "Target hole reached",
+  "Hata (delik)": "Error (hole)",
+  Etkilesim: "Interaction",
+  Dusme: "Fall",
+  Sok: "Shock",
+  Tukenme: "Exhaustion",
 });
 
 /** Turkish -> English for metric definitions (long descriptions). */
 const DEFINITIONS_EN = Object.freeze({
-  "Gecersiz kareler kirpildiktan sonra analiz edilen zaman penceresi.":
+  "Geçersiz kareler kırpıldıktan sonra analiz edilen zaman penceresi.":
     "Analyzed time window after invalid frames are trimmed.",
-  "Apparatus koordinatlarinda toplam yol uzunlugu.":
+  "Apparatus koordinatlarında toplam yol uzunluğu.":
     "Total path length in apparatus coordinates.",
-  "Analiz penceresi boyunca ortalama hareket hizi.":
+  "Analiz penceresi boyunca ortalama hareket hızı.":
     "Mean movement speed over the analyzed window.",
-  "Yumusatilmis anlik hizin maksimumu.":
+  "Yumuşatılmış anlık hızın maksimumu.":
     "Maximum of the smoothed instantaneous speed.",
-  "Paradigmaya ozgu hareket esiginin altinda gecirilen sure.":
+  "Paradigmaya özgü hareket eşiğinin altında geçirilen süre.":
     "Time spent below the paradigm-specific movement threshold.",
-  "Tanimli bir bolge icinde gecirilen sure (anahtar: zone_time_s.{zoneKey}).":
+  "Tanımlı bir bölge içinde geçirilen süre (anahtar: zone_time_s.{zoneKey}).":
     "Time spent inside a declared zone (key: zone_time_s.{zoneKey}).",
-  "Debounce sonrasi bir bolgeye giris sayisi (anahtar: zone_entries.{zoneKey}).":
+  "Debounce sonrası bir bölgeye giriş sayısı (anahtar: zone_entries.{zoneKey}).":
     "Number of entries into a zone after debounce (key: zone_entries.{zoneKey}).",
-  "Deneme baslangicindan bir bolgeye ilk gecerli girise kadar gecen sure (anahtar: latency_to_zone_s.{zoneKey}).":
+  "Deneme başlangıcından bir bölgeye ilk geçerli girişe kadar geçen süre (anahtar: latency_to_zone_s.{zoneKey}).":
     "Time from trial start to first valid entry into a zone (key: latency_to_zone_s.{zoneKey}).",
-  "Hedefe duz cizgi mesafesinin gercek yol uzunluguna orani.":
+  "Hedefe düz çizgi mesafesinin gerçek yol uzunluğuna oranı.":
     "Straight-line distance to target divided by actual path length.",
-  "Ilk surekli platform-bolgesi girisine kadar gecen sure.":
+  "İlk sürekli platform-bölgesi girişine kadar geçen süre.":
     "Time to the first sustained platform-zone entry.",
-  "Platforma veya deneme sonuna kadar toplam yuzme yolu.":
+  "Platforma veya deneme sonuna kadar toplam yüzme yolu.":
     "Total swim path until the platform or trial end.",
-  "Ogrenme etkisini motor bozukluktan ayirmak icin kullanilir.":
+  "Öğrenme etkisini motor bozukluktan ayırmak için kullanılır.":
     "Used to separate learning effects from motor impairment.",
-  "Sadece prob denemeleri: eski platform bolgesinden gecis sayisi.":
+  "Sadece prob denemeleri: eski platform bölgesinden geçiş sayısı.":
     "Probe trials only: number of crossings through the former platform zone.",
-  "Hedef ceyrekte gecen surenin gecerli analiz suresine orani.":
+  "Hedef çeyrekte geçen sürenin geçerli analiz süresine oranı.":
     "Time in the target quadrant divided by the valid analyzed duration.",
-  "Bir ceyrekte gecen sure (anahtar: quadrant_time_s.{quadrant}, or. NE/NW/SE/SW).":
+  "Bir çeyrekte geçen süre (anahtar: quadrant_time_s.{quadrant}, ör. NE/NW/SE/SW).":
     "Time spent in a quadrant (key: quadrant_time_s.{quadrant}, e.g. NE/NW/SE/SW).",
-  "Tank duvarina yakin halka bolgede gecen sure orani.":
+  "Tank duvarına yakın halka bölgede geçen süre oranı.":
     "Ratio of time spent in the annulus near the tank wall.",
-  "Hedefe ortalama yakinlik; prob denemelerinde saglam bir olcut.":
+  "Hedefe ortalama yakınlık; prob denemelerinde sağlam bir ölçüt.":
     "Mean proximity to the target; a robust measure for probe trials.",
-  "Opsiyonel; heading veya yumusatilmis yol vektoru gerektirir.":
+  "Opsiyonel; heading veya yumuşatılmış yol vektörü gerektirir.":
     "Optional; requires heading or a smoothed path vector.",
-  "Merkez bolgede gecen surenin gecerli sureye orani.":
+  "Merkez bölgede geçen sürenin geçerli süreye oranı.":
     "Time in the center zone divided by the valid duration.",
-  "Cevre bolgede gecen surenin gecerli sureye orani.":
+  "Çevre bölgede geçen sürenin geçerli süreye oranı.":
     "Time in the periphery zone divided by the valid duration.",
-  "Debounce sonrasi merkez bolge girisleri.":
+  "Debounce sonrası merkez bölge girişleri.":
     "Center-zone entries after debounce.",
-  "Acik kollarda gecen surenin gecerli sureye orani.":
+  "Açık kollarda geçen sürenin geçerli süreye oranı.":
     "Time in the open arms divided by the valid duration.",
-  "Kapali kollarda gecen surenin gecerli sureye orani.":
+  "Kapalı kollarda geçen sürenin geçerli süreye oranı.":
     "Time in the closed arms divided by the valid duration.",
-  "Debounce sonrasi acik kol girisleri.": "Open-arm entries after debounce.",
-  "Debounce sonrasi kapali kol girisleri.": "Closed-arm entries after debounce.",
-  "Bir acik kola ilk giris suresi.": "Time of first entry into an open arm.",
-  "Opsiyonel; davranis siniflandirici varsa olay sayisi.":
+  "Debounce sonrası açık kol girişleri.": "Open-arm entries after debounce.",
+  "Debounce sonrası kapalı kol girişleri.": "Closed-arm entries after debounce.",
+  "Bir açık kola ilk giriş süresi.": "Time of first entry into an open arm.",
+  "Opsiyonel; davranış sınıflandırıcı varsa olay sayısı.":
     "Optional; event count when a behavior classifier is available.",
-  "Deneme baslangicindan dusme olayina kadar gecen sure.":
+  "Deneme başlangıcından düşme olayına kadar geçen süre.":
     "Time from trial start to the fall event.",
-  "Mod ve gecen sureden turetilir.": "Derived from the mode and the elapsed time.",
-  "Denek dusmezse maksimum sureye esit olabilir.":
+  "Mod ve geçen süreden türetilir.": "Derived from the mode and the elapsed time.",
+  "Denek düşmezse maksimum süreye eşit olabilir.":
     "May equal the maximum duration if the subject does not fall.",
-  "Bir dusme olayinin algilanip algilanmadigi.":
+  "Bir düşme olayının algılanıp algılanmadığı.":
     "Whether a fall event was detected.",
-  "Tekrarli denemeler arasinda calisma seviyesinde toplanir; tek deneme CV metrigi degildir.":
+  "Tekrarlı denemeler arasında çalışma seviyesinde toplanır; tek deneme CV metriği değildir.":
     "Aggregated at study level across repeated trials; not a single-trial CV metric.",
-  "Ardisik uclu kol dizilerindeki dogru degisim orani.":
+  "Ardışık üçlü kol dizilerindeki doğru değişim oranı.":
     "Rate of correct alternations in consecutive arm triplets.",
-  "Tum kollara toplam giris sayisi; lokomotor aktivite gostergesi.":
+  "Tüm kollara toplam giriş sayısı; lokomotor aktivite göstergesi.":
     "Total entries into all arms; an indicator of locomotor activity.",
-  "Iki denemeli protokolde yeni kolda gecen sure orani.":
+  "İki denemeli protokolde yeni kolda geçen süre oranı.":
     "Ratio of time spent in the novel arm in the two-trial protocol.",
-  "Yeni nesneyi aktif kesfetme suresi (burun nesneye yonelik).":
+  "Yeni nesneyi aktif keşfetme süresi (burun nesneye yönelik).":
     "Active exploration time of the novel object (nose oriented toward the object).",
-  "Tanidik nesneyi aktif kesfetme suresi.":
+  "Tanıdık nesneyi aktif keşfetme süresi.":
     "Active exploration time of the familiar object.",
-  "Tanima bellegi olcutu; -1 (tanidik) ile +1 (yeni) arasinda.":
+  "Tanıma belleği ölçütü; -1 (tanıdık) ile +1 (yeni) arasında.":
     "Recognition memory measure; between -1 (familiar) and +1 (novel).",
-  "Her iki nesneyi kesfetme suresinin toplami.":
+  "Her iki nesneyi keşfetme süresinin toplamı.":
     "Sum of exploration time for both objects.",
-  "Hedef delige ilk ulasma suresi.": "Time to first reach the target hole.",
-  "Hedef delige ulasmadan once yapilan yanlis delik ziyaretleri.":
+  "Hedef deliğe ilk ulaşma süresi.": "Time to first reach the target hole.",
+  "Hedef deliğe ulaşmadan önce yapılan yanlış delik ziyaretleri.":
     "Wrong hole visits before reaching the target hole.",
-  "Deneme boyunca toplam yanlis delik ziyareti.":
+  "Deneme boyunca toplam yanlış delik ziyareti.":
     "Total wrong hole visits during the trial.",
-  "Uyaran fareyi iceren bolmede gecen sure.":
+  "Uyaran fareyi içeren bölmede geçen süre.":
     "Time spent in the chamber containing the stimulus mouse.",
-  "Bos kafes/nesne bulunan bolmede gecen sure.":
+  "Boş kafes/nesne bulunan bölmede geçen süre.":
     "Time spent in the chamber with the empty cage/object.",
-  "Sosyal tercih olcutu; -1 (nesne) ile +1 (sosyal) arasinda.":
+  "Sosyal tercih ölçütü; -1 (nesne) ile +1 (sosyal) arasında.":
     "Social preference measure; between -1 (object) and +1 (social).",
-  "Uyaran kafesi etrafindaki etkilesim bolgesinde gecen sure.":
+  "Uyaran kafesi etrafındaki etkileşim bölgesinde geçen süre.":
     "Time spent in the interaction zone around the stimulus cage.",
-  "Aydinlik bolmede gecen surenin gecerli sureye orani.":
+  "Aydınlık bölmede geçen sürenin geçerli süreye oranı.":
     "Time in the light compartment divided by the valid duration.",
-  "Debounce sonrasi aydinlik bolmeye giris sayisi.":
+  "Debounce sonrası aydınlık bölmeye giriş sayısı.":
     "Number of entries into the light compartment after debounce.",
-  "Aydinlik baslangictan karanlik bolmeye ilk giris suresi.":
+  "Aydınlık başlangıçtan karanlık bölmeye ilk giriş süresi.":
     "Time of first entry into the dark compartment from a light start.",
-  "Aydinlik ve karanlik bolmeler arasi toplam gecis sayisi.":
+  "Aydınlık ve karanlık bölmeler arası toplam geçiş sayısı.":
     "Total number of transitions between the light and dark compartments.",
-  "Tepede asagi donmeyi tamamlama suresi.":
+  "Tepede aşağı dönmeyi tamamlama süresi.":
     "Time to complete the downward turn at the top.",
-  "Tabana ulasana kadar gecen toplam sure.":
+  "Tabana ulaşana kadar geçen toplam süre.":
     "Total time until reaching the base.",
-  "Ortalama dikey inis hizi.": "Mean vertical descent speed.",
-  "Bitkinlik veya deneme sonuna kadar aktif kosu suresi.":
+  "Ortalama dikey iniş hızı.": "Mean vertical descent speed.",
+  "Bitkinlik veya deneme sonuna kadar aktif koşu süresi.":
     "Active running time until exhaustion or trial end.",
-  "Bant hizi ve kosu suresinden turetilen toplam mesafe.":
+  "Bant hızı ve koşu süresinden türetilen toplam mesafe.":
     "Total distance derived from belt speed and run time.",
-  "Bitkinlik kriterine ulasana kadar gecen sure.":
+  "Bitkinlik kriterine ulaşana kadar geçen süre.":
     "Time until the exhaustion criterion is reached.",
-  "Bitkinlik kriteri olarak sayilan geri bolge temas/uyari sayisi.":
+  "Bitkinlik kriteri olarak sayılan geri bölge temas/uyarı sayısı.":
     "Count of rear-zone contacts/warnings counted as the exhaustion criterion.",
 });
 
@@ -343,5 +359,6 @@ export function localizeDetail(spec, lang) {
     sessionParameters: mapLabels(spec.sessionParameters),
     zones: mapLabels(spec.zones),
     metrics: localizeMetricList(spec.metrics, lang),
+    eventTypes: mapLabels(spec.eventTypes),
   };
 }

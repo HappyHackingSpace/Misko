@@ -38,7 +38,8 @@ Kept simple: `code` (unique), `sex`, `groupName` (free-text experiment group),
 ## Paradigm and Environment
 
 - **Paradigm:** a scientific test type **defined in code**, not an editable DB
-  row. The spec (parameters, zones, metric dictionary, suggested acceptance) is
+  row. The spec (parameters, zones, metric dictionary, and the event types, each
+  with a CV detect spec) is
   engineering-owned and stable; only the values are user data. Read-only catalog
   (`GET /api/paradigms`). Registry: `MWM`, `OPEN_FIELD`, `EPM`, `ROTAROD`,
   `Y_MAZE`, `NOVEL_OBJECT`, `BARNES_MAZE`, `THREE_CHAMBER`, `LIGHT_DARK`, `POLE`,
@@ -95,12 +96,12 @@ permissions):
 
 | Permission \ Role | SUPERADMIN | LAB_MANAGER | RESEARCHER | TECHNICIAN | VIEWER |
 |---|:--:|:--:|:--:|:--:|:--:|
-| `user:manage`     | ✅ | ✅ | — | — | — |
-| `lab:configure`   | ✅ | ✅ | — | — | — |
-| `subject:write`   | ✅ | ✅ | ✅ | — | — |
-| `apparatus:write` (environments & scenarios) | ✅ | ✅ | ✅ | — | — |
-| `test:write`      | ✅ | ✅ | ✅ | — | — |
-| `test:run`        | ✅ | ✅ | ✅ | ✅ | — |
+| `user:manage`     | ✅ | ✅ | - | - | - |
+| `lab:configure`   | ✅ | ✅ | - | - | - |
+| `subject:write`   | ✅ | ✅ | ✅ | - | - |
+| `apparatus:write` (environments & scenarios) | ✅ | ✅ | ✅ | - | - |
+| `test:write`      | ✅ | ✅ | ✅ | - | - |
+| `test:run`        | ✅ | ✅ | ✅ | ✅ | - |
 | `*:read`          | ✅ | ✅ | ✅ | ✅ | ✅ |
 
 Middleware `requirePermission("test:run")` is the primary gate.
