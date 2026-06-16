@@ -61,7 +61,7 @@ genelinde markalama için kullanılır.
 **Paradigmalar** ekranı, kodda tanımlı bilimsel test türlerinin salt okunur
 kataloğudur. Her paradigmanın kendi detay sayfası vardır (bir karta tıklayarak
 açılır); operasyonel kontrat burada salt okunur olarak gösterilir: apparatus
-parametreleri, bölgeler, metrikler, önerilen kabul kriterleri ve kalite kontrol
+parametreleri, bölgeler, metrikler, olay tipleri (CV detect spec'i ile) ve kalite kontrol
 gereksinimleri. Parametre kümesi ve geçerli aralıkları kod tarafından sabittir ve
 burada düzenlenemez.
 
@@ -136,18 +136,23 @@ Test, Mişko'daki merkezî kayıttır. Bir test çalıştırmak için:
 3. Test **beklemede** durumuyla oluşturulur. Çalıştırmak için (satıra tıklayarak)
    **detay sayfasını** açın.
 4. Detay sayfası senaryonun ortamlarını listeler. Tek tek çalıştırın: bir ortamda
-   **Başlat**'a basın, sonra **metrik formunu** doldurun. Form o ortamın
-   paradigmasından üretilir - her metrik için bir alan (birimi ve geçerli aralığı
-   ile), zone-bazlı metrikler için zone başına bir input.
-5. O ortamın metriklerini kaydetmek için **Bitir**'e basın. Her ortam için
+   **Başlat**'a basın, sonra koşu ilerledikçe **olayları girin**. Her olayın bir
+   tipi (ortamın paradigmasından), saniye cinsinden bir zaman damgası ve girilen
+   bölge gibi opsiyonel bir payload'ı vardır.
+5. Her ortam panelinde üstte canlı metrik değerlerini gösteren bir **metrik
+   counter bar**, altında ise iki sekme bulunur: **Zaman çizelgesi** (girilen
+   olaylar zaman sırasına göre, ayrıca düzenlenebilir olay listesi) ve **Grafikler**
+   (parametre bazlı bir bar grafik). Metrikler, olaylar eklendikçe veya silindikçe
+   canlı olarak yeniden hesaplanır.
+6. O ortamın sonucunu kaydetmek için **Bitir**'e basın. Her ortam için
    tekrarlayın.
-6. Tüm ortamlar bitince test **tamamlandı** olur. Sonuç ortam başına veri olarak
+7. Tüm ortamlar bitince test **tamamlandı** olur. Sonuç ortam başına veri olarak
    saklanır - geç/kal verdikti yoktur; yorum ve karşılaştırma sonradan analiz
    ekranlarında yapılır.
 
-Bugün metrikleri elle girmek ile yarın kamera sisteminden almak **aynı alanları
-ve aynı validation'ı** kullanır - form, CV servisinin göndereceği şeyi birebir
-yansıtır.
+Bugün olayları elle girmek ile yarın kamera sisteminden almak **aynı olay
+tiplerini ve aynı validation'ı** kullanır - elle giriş, CV servisinin göndereceği
+şeyi birebir yansıtır.
 
 Bir test tamamlandığında özet metrikleri ve varsa artefakt bağlantıları Mişko'da
 tutulur. Ham video ve kare kare veri ise ayrı kamera servisinde kalır.

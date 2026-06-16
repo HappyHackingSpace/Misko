@@ -1,9 +1,12 @@
 # Mişko - Paradigm-Owned Metric Engine (roadmap)
 
-> Status: design / roadmap. Decided with the team:
-> - Backend stays **Node** (no Go rewrite); add the computation architecture here.
-> - Each **paradigm owns its computation** (hardcoded, SOLID, one service per paradigm).
-> - A run collects **events**; the paradigm derives **metric results** from them,
+> Status: implemented (declarative engine). Decided with the team:
+> - Backend stays **Node** (no Go rewrite); the computation architecture lives here.
+> - Computation is **declarative**: each metric has a rule in `METRIC_RULES`
+>   (a data spec, not code), interpreted by one generic engine. Adding a metric or
+>   paradigm = declare it; no per-paradigm service code unless a genuinely new
+>   aggregation kind is needed.
+> - A run collects **events**; the engine derives **metric results** from them,
 >   **live** (as events are added) and **finalized on Finish**.
 > - Same engine for **manual entry** (operator logs events) and the future **CV**
 >   service (signals → events). Results are **data, never a pass/fail verdict**.
@@ -15,44 +18,42 @@
 | **Signal** | raw, real-time time series (trajectory, timestamps, pose) | CV service only (never Mişko) |
 | **Event** | a discrete occurrence during a run (`zone_enter{center}`, `fall`, `platform_reached`, `lap{duration}`) | Mişko, per test run |
 | **Metric (definition)** | what is measured for a paradigm (key, unit, valueType, validRange, aggMethod, source) | code (paradigm spec) |
-| **Metric result (value)** | the value for one run, **derived from events** by the paradigm's `compute()` | Mişko (`Test.result`) |
+| **Metric result (value)** | the value for one run, **derived from events** by `computeMetrics()` | Mişko (`Test.result`) |
 
 Manual entry produces **events**; CV produces **signals → events** (and a few
-`cvOnly` metrics directly). Both flow through the **same paradigm `compute()`**.
+`cvOnly` metrics directly). Both flow through the **same `computeMetrics()`**.
 
-## 2. Paradigm spec interface (hardcoded, one per paradigm)
+## 2. Declarative engine (one engine, data-driven rules)
 
-Each paradigm is a self-contained module implementing a common interface; the
-registry is the single list (Open/Closed - add a paradigm = add a module).
+There is a single engine, `backend/src/config/metricEngine.js`. A paradigm does
+not ship code; it declares two things and the engine does the rest:
+
+1. **Which metrics it has** - `metricsForParadigm(key)` (from the metric dictionary).
+2. **Which events it emits** - `eventTypes` in the paradigm spec, each carrying a
+   CV `detect` spec (see §4.1).
+
+Each metric key has a derivation **rule** in `METRIC_RULES` (a data spec, not a
+function):
 
 ```ts
-interface ParadigmSpec {
-  key: string;                 // 'MWM' | 'OPEN_FIELD' | ...
-  name: string; category: string;
-  apparatusParameters: Field[];
-  zones(config): Zone[];
-
-  // Metric DEFINITIONS (extends today's dictionary entry):
-  //   ...existing (unit, valueType, validRange, templated)
-  //   + aggMethod: 'count'|'sum'|'first'|'last'|'mean'|'max'|'min'|'any'|'derived'|'cvOnly'
-  //   + source:    'event' | 'computed' | 'cvOnly'
-  metrics: MetricDef[];
-
-  // Event TYPES this paradigm understands (drives the manual event-logging UI):
-  //   { type, label, payload?: { zone?: enum, value?: number }, ... }
-  eventTypes: EventType[];
-
-  // THE paradigm's own calculation. Pure function: events (+ optional cvOnly
-  // values + apparatus config) -> { [metricKey]: value }. Used live and on finish.
-  compute(events: Event[], config, extra?): Record<string, MetricValue>;
-
-  validate(config): void;
-}
+type MetricRule =
+  | { source: "event"; agg: "runEnd" }                                    // duration_s
+  | { source: "event"; agg: "count"; event: string; match?: object }      // center_entries_count
+  | { source: "event"; agg: "sumField"; event: string; field: string }    // immobility_s
+  | { source: "event"; agg: "firstT"; event: string; match?: object }     // escape_latency_s
+  | { source: "event"; agg: "any"; event: string }                        // fall_detected
+  | { source: "event"; agg: "zoneTime" }                                  // zone_time_s (templated)
+  | { source: "event"; agg: "zoneCount" }                                 // zone_entries (templated)
+  | { source: "computed"; agg: "ratio"; of: string; over: string }        // center_time_ratio
+  | { source: "cvOnly" };                                                  // distance_cm (from CV)
 ```
 
-`compute()` is where each paradigm's hardcoded logic lives, e.g. for `OPEN_FIELD`:
-count `zone_enter{center}` → `center_entries_count`; sum center intervals →
-`zone_time_s.center`; `center_time_ratio = zone_time_s.center / duration_s`.
+`computeMetrics(paradigmKey, events, cvInputs)` runs two passes: event/cvOnly
+metrics first, then `computed` ones (which read the first pass via dotted paths
+like `zone_time_s.center`). Generic interpreters (`count`, `sumField`, `firstT`,
+`zoneTime`, `zoneCount`, `ratio`, ...) cover every paradigm. Adding a metric =
+add a rule; adding a paradigm = list its metrics + event types. New engine code
+is only needed for a genuinely new aggregation kind.
 
 ## 3. Event model on a run
 
@@ -75,62 +76,84 @@ count `zone_enter{center}` → `center_entries_count`; sum center intervals →
 ```
 
 - **events** are the source of truth for manual entry.
-- **metrics** are always recomputed by `compute()` - never hand-edited directly
-  (except `cvOnly`/optional values the user may type, kept in `cvInputs`).
+- **metrics** are always recomputed by `computeMetrics()` - never hand-edited
+  directly (except `cvOnly`/optional values the user may type, kept in `cvInputs`).
 
 ## 4. Metric source taxonomy
 
-- **event** (`count`/`sum`/`first`/`last`/`any`): derived from logged events.
-  Shown in the manual UI as event buttons.
-- **computed** (`derived`): ratios/indices computed from other metrics inside
-  `compute()` (e.g. `center_time_ratio`, `discrimination_index`). Not entered.
+- **event** (`count`/`sumField`/`firstT`/`any`/`zoneTime`/`zoneCount`): derived
+  from logged events. Shown in the manual UI as event buttons.
+- **computed** (`ratio`): ratios/indices computed from other metrics in a second
+  pass (e.g. `center_time_ratio`). Not entered.
 - **cvOnly**: trajectory/sensor values a human cannot log (`distance_cm`,
   `mean_speed_cm_s`, `heading_error_deg`, `rpm_at_fall`). Hidden from manual entry
-  (or an explicit optional override); the CV service supplies them.
+  (or an explicit optional override); the CV service supplies them via `cvInputs`.
 
-(The full metric → aggMethod/source table is in §6; it is reviewed and tuned per
-paradigm, the per-paradigm "own calculation".)
+### 4.1 Event detection (`detect` spec) - the CV contract
+
+Each `eventTypes` entry carries a `detect` spec describing how the CV service
+derives that event from the trajectory/zones. The generic kinds are
+**data-driven** (no per-paradigm CV code needed); `custom` flags a dedicated
+detector:
+
+| `detect.kind` | Meaning | Example events |
+|---|---|---|
+| `zone_transition` | animal crosses a zone boundary (`edge: enter\|exit`) | `zone_enter`, `zone_exit`, `transition` |
+| `zone_first_enter` | first time a target zone is entered (latency) | `platform_reached`, `target_hole` |
+| `speed_below` | speed under a threshold for `min_duration_s` | `immobile` |
+| `custom` | needs a dedicated detector / model | `fall`, `interaction`, `risk_assessment` |
+
+This is the key to "**define the paradigm, no CV code change**": a paradigm that
+only uses the generic kinds extends coverage purely by declaration. Only `custom`
+events require new CV work.
 
 ## 5. Data flow
 
 ```
-MANUAL:  operator taps event buttons → POST events → compute(events) → metrics (live)
+MANUAL:  operator taps event buttons → POST events → computeMetrics(events) → metrics (live)
                                                    → Finish → final compute, status DONE
-CV:      camera → signals → CV derives events (+ cvOnly values) → POST → same compute
+CV:      camera → signals → CV derives events via detect specs (+ cvInputs) → POST → same compute
 ```
 
-- Live: appending an event re-runs `compute` and updates `metrics` (preview).
-- Finish: marks the environment DONE; final `compute` is authoritative.
-- One `compute` per paradigm, one code path for both sources.
+- Live: appending an event re-runs `computeMetrics` and updates `metrics` (preview).
+- Finish: marks the environment DONE; the final `computeMetrics` is authoritative.
+- One engine, one code path for both sources.
 
 ## 6. Roadmap (phased)
 
-**Phase 0 - done (uncommitted on `feat/manual-result-entry`):** removed the
-pass/fail verdict + per-scenario acceptance; per-environment result structure;
-metric dictionary with `valueType`/`validRange`/`templated`; `validateMetrics`.
+**Phase 0 - done:** removed the pass/fail verdict + per-scenario acceptance;
+per-environment result structure; metric dictionary with
+`valueType`/`validRange`/`templated`.
 
-**Phase 1 - paradigm spec + metric taxonomy (code, no UI):**
-- Add `aggMethod` + `source` to every metric definition (the §6 table).
-- Add `eventTypes` to each paradigm spec.
-- Define the `ParadigmSpec.compute(events, config)` interface + a registry.
-- Implement `compute()` per paradigm, hardcoded, with unit tests. Order:
-  `OPEN_FIELD`, `EPM`, `ROTAROD`, `MWM` first, then the rest.
+**Phase 1 - declarative engine + event types - done:**
+- `metricEngine.js` with the `METRIC_RULES` data-driven map and generic
+  interpreters; `computeMetrics(paradigmKey, events, cvInputs)`.
+- `eventTypes` on each paradigm spec, each with a `detect` CV spec (§4.1).
+- Removed the dead acceptance machinery (`acceptance.js`, `suggestedAcceptance`,
+  `/api/paradigms/acceptance-operators`).
+- Coverage is complete for `OPEN_FIELD`; rules for the other paradigms' shared
+  metrics are declared and extended as their event types are exercised.
 
-**Phase 2 - run events + computation (backend):**
+**Phase 2 - run events + computation (backend) - done:**
 - `result.environments[envId].events` storage; `POST /api/tests/:id/
-  environments/:envId/events` (append) and event-validation against the
-  paradigm's `eventTypes`.
+  environments/:envId/events` (append) + `DELETE .../events/:index`, validated
+  against the paradigm's `eventTypes`.
 - Recompute metrics on each append (live) and on Finish (authoritative).
 - `cvInputs` channel for `cvOnly` values.
 
-**Phase 3 - manual event-logging UI (frontend):**
-- Per-environment panel: buttons for the paradigm's `eventTypes` (with zone
-  pickers where needed), a running event log (add/remove), and a **live metric
-  preview** computed from events; Finish.
-- `cvOnly` metrics shown read-only / optional override.
+**Phase 3 - manual event-logging UI (frontend) - done:**
+- Per-environment panel: a **metric counter bar** on top (live parameter-based
+  metric values), then two tabs:
+  - **Timeline**: an event-based vertical timeline (each event placed by its
+    second `t`, color-coded by event type) plus the editable event log
+    (add via the drawer, remove per row).
+  - **Charts**: a parameter-based **bar chart** with a metric picker.
+- Event-type picker (with zone pickers where needed); Finish/Reopen.
+- Paradigm detail page surfaces `eventTypes` + their `detect` kinds.
 
 **Phase 4 - CV integration (Step 4):**
-- CV pushes `events` (+ `cvInputs`) to the same endpoint; identical `compute`.
+- CV pushes `events` (+ `cvInputs`) to the same endpoint; identical compute. The
+  `detect` specs are the contract: generic kinds need no new CV code.
 - Service auth (`X-Service-Key`), idempotency, artifacts.
 
 **Phase 5 - analysis:** aggregate metric results across tests/groups (no verdicts).

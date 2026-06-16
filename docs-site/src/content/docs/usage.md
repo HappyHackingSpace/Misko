@@ -61,7 +61,7 @@ branding across the panel.
 The **Paradigms** screen is a read-only catalog of the scientific test types
 defined in code. Each paradigm has its own detail page (open it by clicking a
 card), where the operational contract is shown read-only: apparatus parameters,
-zones, metrics, suggested acceptance criteria and quality control requirements.
+zones, metrics, event types and quality control requirements.
 The parameter set and their valid ranges are fixed in code and cannot be edited
 here.
 
@@ -132,18 +132,22 @@ The test is the central record in Mişko. To run one:
 3. The test is created with status **pending**. Open its **detail page** (click
    the row) to run it.
 4. The detail page lists the scenario's environments. Run them one by one: click
-   **Start** on an environment, then fill its **metric form**. The form is
-   generated from that environment's paradigm - one field per metric (with its
-   unit and valid range), and one input per zone for zone-based metrics.
-5. Click **Finish** to record that environment's metrics. Repeat for each
+   **Start** on an environment, then **log events** as the run unfolds. Each event
+   has a type (from the environment's paradigm), a timestamp in seconds, and an
+   optional payload such as the zone entered.
+5. Each environment panel shows a **metric counter bar** on top with the live
+   metric values, and two tabs below it: a **Timeline** (the logged events placed
+   in time order, plus the editable event list) and **Charts** (a parameter-based
+   bar chart). Metrics recompute live as events are added or removed.
+6. Click **Finish** to record that environment's result. Repeat for each
    environment.
-6. When every environment is done the test becomes **done**. The result is stored
+7. When every environment is done the test becomes **done**. The result is stored
    as data per environment - there is no pass/fail verdict; interpretation and
    comparison happen later in the analysis views.
 
-Entering metrics by hand today and receiving them from the camera system later
-use the **same fields and the same validation** - the form just mirrors what the
-CV service will push.
+Logging events by hand today and receiving them from the camera system later use
+the **same event types and the same validation** - the manual flow just mirrors
+what the CV service will push.
 
 Once a test is done, its summary metrics and any artifact links are kept by
 Mişko. The raw video and frame-by-frame data stay in the separate camera

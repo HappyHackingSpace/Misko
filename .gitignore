@@ -217,5 +217,5 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
-# Local Claude Code tooling
+# Claude Code (local settings)
 .claude/

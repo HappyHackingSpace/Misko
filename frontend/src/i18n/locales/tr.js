@@ -169,11 +169,39 @@ export default {
       notStarted: "Başlamadı. Bu ortamın olaylarını girmeye başlamak için Başlat'a tıklayın.",
       events: "Olaylar",
       liveMetrics: "Metrikler (canlı)",
-      addEvent: "Ekle",
+      addEvent: "Olay ekle",
+      addEventShort: "Ekle",
       noEvents: "Henüz olay eklenmedi.",
-      zone: "Zone...",
+      zone: "Bölge...",
       tSeconds: "t (sn)",
       edit: "Yeniden aç",
+      charts: "Grafikler",
+      timeline: "Zaman çizelgesi",
+      chartByParam: "Parametre bazlı",
+      pickMetric: "Metrik seç",
+      noChartData: "Grafik için sayısal veri yok.",
+    },
+    // Durum enum'ları (anahtarlar backend status değerleriyle birebir).
+    statuses: {
+      PENDING: "Beklemede",
+      RUNNING: "Çalışıyor",
+      DONE: "Tamamlandı",
+      FAILED: "Başarısız",
+    },
+    // Parametre enum değerleri (apparatus/session choice seçenekleri). Anahtarlar
+    // backend'deki ham değerlerle birebir; eşleşme yoksa ham değer gösterilir.
+    paramValues: {
+      N: "Kuzey", E: "Doğu", S: "Güney", W: "Batı",
+      NE: "Kuzeydoğu", NW: "Kuzeybatı", SE: "Güneydoğu", SW: "Güneybatı",
+      opaque: "Opak", clear: "Şeffaf",
+      fixed_speed: "Sabit hız", accelerating: "Hızlanan", endurance: "Dayanıklılık",
+      left: "Sol", right: "Sağ",
+      light: "Aydınlık", dark: "Karanlık",
+    },
+    // Olay payload alan adları.
+    payloadFields: {
+      zone: "Bölge", seconds: "Saniye", number: "Sayı",
+      object: "Nesne", text: "Metin", kind: "Tür", rpm: "Devir",
     },
     scenarios: {
       title: "Senaryolar",
@@ -232,8 +260,12 @@ export default {
       required: "Zorunlu",
       metrics: "Metrikler",
       metric: "Metrik",
-      acceptance: "Kabul kriterleri",
-      suggested: "önerilen",
+      events: "Olaylar",
+      event: "Olay",
+      payload: "Veri",
+      detection: "Tespit",
+      eventsIntro:
+        "Bir koşu olay toplar; metrikler bu olaylardan türetilir. Her olayın bir tespit yöntemi vardır: jenerik kurallar (zone_transition, speed_below, zone_first_enter) görüntü işleme tarafında ek kod gerektirmez; \"custom\" özel bir dedektör ister.",
       qc: "Kalite kontrol",
       createEnvironment: "Bu paradigmadan ortam oluştur",
     },
@@ -272,7 +304,7 @@ export default {
       passwordOptional: "Şifre (opsiyonel)",
       passwordPlaceholder: "boşsa üretilir",
       namePlaceholder: "Ahmet Yılmaz",
-      emailPlaceholder: "ahmet{'@'}miskolab.com",
+      emailPlaceholder: "ahmet{'@'}fare.lab",
       resetPassword: "Şifre sıfırla",
       createdWithPassword:
         "Kullanıcı oluşturuldu. {email} için üretilen şifre (bir kez gösterilir): {password}",
