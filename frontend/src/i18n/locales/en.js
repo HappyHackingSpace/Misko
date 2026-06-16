@@ -169,11 +169,39 @@ export default {
       notStarted: "Not started. Click Start to begin logging this environment's events.",
       events: "Events",
       liveMetrics: "Metrics (live)",
-      addEvent: "Add",
+      addEvent: "Add event",
+      addEventShort: "Add",
       noEvents: "No events logged yet.",
       zone: "Zone...",
       tSeconds: "t (s)",
       edit: "Reopen",
+      charts: "Charts",
+      timeline: "Timeline",
+      chartByParam: "By parameter",
+      pickMetric: "Pick a metric",
+      noChartData: "No numeric data to chart yet.",
+    },
+    // Status enums (keys match the backend status values exactly).
+    statuses: {
+      PENDING: "Pending",
+      RUNNING: "Running",
+      DONE: "Done",
+      FAILED: "Failed",
+    },
+    // Parameter enum values (apparatus/session choice options). Keys match the
+    // backend raw values; unmapped values fall back to the raw value.
+    paramValues: {
+      N: "North", E: "East", S: "South", W: "West",
+      NE: "Northeast", NW: "Northwest", SE: "Southeast", SW: "Southwest",
+      opaque: "Opaque", clear: "Clear",
+      fixed_speed: "Fixed speed", accelerating: "Accelerating", endurance: "Endurance",
+      left: "Left", right: "Right",
+      light: "Light", dark: "Dark",
+    },
+    // Event payload field names.
+    payloadFields: {
+      zone: "Zone", seconds: "Seconds", number: "Number",
+      object: "Object", text: "Text", kind: "Kind", rpm: "RPM",
     },
     scenarios: {
       title: "Scenarios",
@@ -232,8 +260,12 @@ export default {
       required: "Required",
       metrics: "Metrics",
       metric: "Metric",
-      acceptance: "Acceptance criteria",
-      suggested: "suggested",
+      events: "Events",
+      event: "Event",
+      payload: "Payload",
+      detection: "Detection",
+      eventsIntro:
+        "A run collects events; metrics are derived from them. Each event has a detection method: generic rules (zone_transition, speed_below, zone_first_enter) need no extra computer-vision code; \"custom\" requires a dedicated detector.",
       qc: "Quality control",
       createEnvironment: "Create environment from this paradigm",
     },
