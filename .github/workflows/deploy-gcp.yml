@@ -79,7 +79,12 @@ jobs:
           SCP="scp -i ~/.ssh/id_deploy -o StrictHostKeyChecking=accept-new"
           $SSH "$USER@$HOST" 'mkdir -p ~/misko'
           $SCP docker-compose.prod.yml "$USER@$HOST:~/misko/docker-compose.prod.yml"
-          $SCP .env.deploy "$USER@$HOST:~/misko/.env"
+          # .env'i yalnızca yoksa oluştur: mevcut DB şifresi/secret'lar korunur,
+          # böylece her deploy'da DB sıfırlanmaz / auth bozulmaz.
+          $SCP .env.deploy "$USER@$HOST:~/misko/.env.new"
+          $SSH "$USER@$HOST" 'cd ~/misko && if [ -f .env ]; then rm -f .env.new; else mv .env.new .env; fi'
+          # Güncel imajı çek (bayat cache kalmasın), değişen container'ları yenile,
+          # eski/dangling imajları temizle.
           $SSH "$USER@$HOST" 'cd ~/misko && docker compose -f docker-compose.prod.yml pull && docker compose -f docker-compose.prod.yml up -d && docker image prune -f'
 
       - name: Summary
