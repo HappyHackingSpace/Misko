@@ -123,7 +123,7 @@ use, but you should change the secrets before any real deployment.
 | `JWT_SECRET` | `change-me-in-production` | Secret used to sign login tokens. **Must** be changed for production. |
 | `JWT_TTL` | `7d` | How long a login session stays valid. |
 | `CORS_ORIGIN` | `*` | Which web origins may call the API. Restrict this in production. |
-| `ADMIN_EMAIL` | `admin@fare.lab` | Email of the superadmin created on first startup. |
+| `ADMIN_EMAIL` | `admin@miskolab.com` | Email of the superadmin created on first startup. |
 | `LAB_NAME` | `Mişko Laboratuvarı` | Lab name shown in the panel for branding. |
 | `FRONTEND_PORT` | `8080` | Host port for the web panel. |
 

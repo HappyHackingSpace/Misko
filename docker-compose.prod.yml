@@ -36,7 +36,7 @@ services:
       JWT_SECRET: ${JWT_SECRET:?set a strong JWT_SECRET in .env}
       JWT_TTL: ${JWT_TTL:-7d}
       CORS_ORIGIN: ${CORS_ORIGIN:-*}
-      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@fare.lab}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@miskolab.com}
       LAB_NAME: ${LAB_NAME:-Mişko Laboratuvarı}
     depends_on:
       db:
