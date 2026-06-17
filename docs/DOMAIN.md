@@ -101,6 +101,22 @@ A `Test` is a run of a `Scenario` against a `Subject`. The operator runs it
 There is **no** `passed`/verdict. Starting a test only asks for a subject and a
 scenario; everything else comes from the scenario's environments.
 
+### 5a. Comment (test discussion)
+
+A `Comment` is a free-form note attached to a `Test` (`backend/src/modules/comments`).
+
+- `testId`, `authorId`, `body` (raw text), `createdAt`, `updatedAt`; both FKs
+  cascade-delete.
+- `body` is validated at the API layer (`comment.validation.js`): control
+  characters stripped, trimmed, non-empty, max 2000 chars. It is stored verbatim
+  and **never** rendered as HTML - the Vue frontend uses text interpolation, so
+  stored content cannot execute (XSS-safe). Prisma parameterizes every query, so
+  the body cannot drive SQL injection.
+- Authorization (in the service, not the permission matrix): read/create for any
+  authenticated user (every role can comment); edit for the author only; delete
+  for the author or a privileged role (`SUPERADMIN`/`LAB_MANAGER`).
+- Writes are rate-limited per user (20/min, `middleware/rateLimit.js`).
+
 ## 6. Roles and permissions (RBAC)
 
 Five roles with a **code-defined permission matrix** (no DB-editable permissions);

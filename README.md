@@ -13,6 +13,7 @@ and the tests themselves are all defined and tracked through the application.
 - **Subjects** — mice (code, sex, group, notes).
 - **Test devices** — the phones the tests run on (Android / iOS).
 - **Tests** — scenario + subject + operator + device; `PENDING → RUNNING → DONE / FAILED` status flow.
+- **Comments**: a discussion thread on every test. Any signed-in user can post (stored as plain text, rendered escaped); authors edit/delete their own, privileged roles moderate. Per-user rate limit.
 - **Dashboard** — summary counts and recent tests.
 
 ## Tech stack

@@ -94,6 +94,11 @@ export default {
         eventIndex: "Olay indeksi aralık dışı",
         envNotInScenario: "Ortam bu testin senaryosuna ait değil",
       },
+      comment: {
+        cannotEdit: "Yalnızca kendi yorumlarınızı düzenleyebilirsiniz",
+        cannotDelete: "Bu yorumu silemezsiniz",
+        rateLimited: "Çok hızlı yorum yapıyorsunuz, lütfen biraz yavaşlayın",
+      },
       environment: {
         paramNumeric: "{key} sayısal olmalı",
         paramMin: "{key} en az {min} olmalı",
@@ -164,6 +169,19 @@ export default {
       empty: "Test yok.",
       metrics: "Metrikler",
       noResult: "Henüz sonuç yok.",
+    },
+    comments: {
+      title: "Yorumlar",
+      placeholder: "Bir yorum yazın...",
+      submit: "Gönder",
+      empty: "Henüz yorum yok. İlk yorumu siz yazın.",
+      edit: "Düzenle",
+      save: "Kaydet",
+      cancel: "Vazgeç",
+      delete: "Sil",
+      edited: "(düzenlendi)",
+      confirmDelete: "Bu yorum silinsin mi?",
+      unknownAuthor: "Bilinmiyor",
     },
     results: {
       notStarted: "Başlamadı. Bu ortamın olaylarını girmeye başlamak için Başlat'a tıklayın.",

@@ -153,6 +153,27 @@ Once a test is done, its summary metrics and any artifact links are kept by
 Mişko. The raw video and frame-by-frame data stay in the separate camera
 service.
 
+## Commenting on a test
+
+Every test detail page has a **Comments** thread at the bottom, so the lab can
+discuss a run in context (an unusual observation, a follow-up question, a note
+for whoever analyzes the data later).
+
+- **Anyone signed in can comment.** Writing a comment is open to every role,
+  including `VIEWER`. Reading is open to everyone too.
+- Type in the box and click **Post**. A comment is limited to 2000 characters
+  and cannot be empty; the counter under the box shows how much you have used.
+- You can **edit** or **delete** your own comments. A `SUPERADMIN` or
+  `LAB_MANAGER` can also delete any comment for moderation, but cannot edit
+  someone else's words.
+- Comments are plain text. Anything you type - including things that look like
+  HTML or code - is shown exactly as written and is never executed, so the thread
+  is safe to paste into. Line breaks are preserved.
+
+To keep the thread useful, comments are lightly rate-limited: a single user can
+post at most 20 comments per minute. If you hit the limit, wait a moment and try
+again.
+
 ## The dashboard
 
 The **Dashboard** is the home screen. It shows summary counts (how many

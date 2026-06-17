@@ -94,6 +94,11 @@ export default {
         eventIndex: "Event index out of range",
         envNotInScenario: "Environment is not part of this test's scenario",
       },
+      comment: {
+        cannotEdit: "You can only edit your own comments",
+        cannotDelete: "You cannot delete this comment",
+        rateLimited: "You are commenting too fast, please slow down",
+      },
       environment: {
         paramNumeric: "{key} must be numeric",
         paramMin: "{key} must be at least {min}",
@@ -164,6 +169,19 @@ export default {
       empty: "No tests.",
       metrics: "Metrics",
       noResult: "No result yet.",
+    },
+    comments: {
+      title: "Comments",
+      placeholder: "Write a comment...",
+      submit: "Post",
+      empty: "No comments yet. Be the first to comment.",
+      edit: "Edit",
+      save: "Save",
+      cancel: "Cancel",
+      delete: "Delete",
+      edited: "(edited)",
+      confirmDelete: "Delete this comment?",
+      unknownAuthor: "Unknown",
     },
     results: {
       notStarted: "Not started. Click Start to begin logging this environment's events.",

@@ -157,6 +157,27 @@ tiplerini ve aynı validation'ı** kullanır - elle giriş, CV servisinin gönde
 Bir test tamamlandığında özet metrikleri ve varsa artefakt bağlantıları Mişko'da
 tutulur. Ham video ve kare kare veri ise ayrı kamera servisinde kalır.
 
+## Bir teste yorum yazma
+
+Her test detay sayfasının altında bir **Yorumlar** alanı vardır; böylece
+laboratuvar bir koşuyu bağlamı içinde tartışabilir (sıra dışı bir gözlem, bir
+soru ya da veriyi sonradan analiz edecek kişiye bir not).
+
+- **Giriş yapan herkes yorum yazabilir.** Yorum yazmak `VIEWER` dahil tüm
+  rollere açıktır. Okuma da herkese açıktır.
+- Kutuya yazıp **Gönder**'e basın. Bir yorum en fazla 2000 karakter olabilir ve
+  boş olamaz; kutunun altındaki sayaç ne kadar kullandığınızı gösterir.
+- Kendi yorumlarınızı **düzenleyebilir** veya **silebilirsiniz**. Bir
+  `SUPERADMIN` veya `LAB_MANAGER`, moderasyon amacıyla herhangi bir yorumu
+  silebilir, ancak başkasının sözlerini düzenleyemez.
+- Yorumlar düz metindir. Yazdığınız her şey - HTML ya da koda benzeyen şeyler
+  dahil - tam olarak yazıldığı gibi gösterilir ve asla çalıştırılmaz; bu yüzden
+  alana güvenle yapıştırabilirsiniz. Satır sonları korunur.
+
+Alanın işlevsel kalması için yorumlar hafifçe hız sınırlıdır: tek bir kullanıcı
+dakikada en fazla 20 yorum gönderebilir. Sınıra takılırsanız biraz bekleyip
+tekrar deneyin.
+
 ## Pano
 
 **Pano** ana ekrandır. Özet sayıları (kaç denek, senaryo, test) ve en son testleri
