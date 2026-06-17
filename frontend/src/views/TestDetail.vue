@@ -6,6 +6,7 @@ import { api } from "../api.js";
 import { useBreadcrumb } from "../stores/breadcrumb.js";
 import MetricBarChart from "../components/MetricBarChart.vue";
 import EventTimeline from "../components/EventTimeline.vue";
+import TestComments from "../components/TestComments.vue";
 
 const { t, te, locale } = useI18n();
 const route = useRoute();
@@ -296,6 +297,9 @@ onUnmounted(() => crumb.clear());
         </div>
       </template>
     </div>
+
+    <!-- Discussion thread: open to every authenticated user. -->
+    <TestComments :test-id="route.params.id" />
   </div>
 
   <!-- Event-add drawer (right) -->

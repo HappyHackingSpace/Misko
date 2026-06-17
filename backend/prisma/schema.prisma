@@ -57,6 +57,7 @@ model User {
   role      String   @default("RESEARCHER")
   createdAt DateTime @default(now())
   tests     Test[]
+  comments  Comment[]
 }
 
 // Subject / Mouse
@@ -104,10 +105,33 @@ model Test {
   notes              String?
   createdAt          DateTime  @default(now())
 
+  comments           Comment[]
+
   // Postgres does not auto-index FK columns; we add these for list/filter queries
   @@index([scenarioId])
   @@index([subjectId])
   @@index([operatorId])
   @@index([status])
+  @@index([createdAt])
+}
+
+// Comment - free-form discussion thread attached to a Test. Any authenticated
+// user can post (see docs/DOMAIN.md, the permission matrix only gates deletion).
+// `body` is stored as raw text; it is never interpreted as HTML. The frontend
+// renders it with text interpolation (auto-escaped), so stored content cannot
+// execute. Validation (length, control-char stripping) happens at the API layer
+// (src/modules/comments/comment.validation.js).
+model Comment {
+  id        String   @id @default(cuid())
+  test      Test     @relation(fields: [testId], references: [id], onDelete: Cascade)
+  testId    String
+  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  authorId  String
+  body      String // raw user text, max length enforced at the API layer
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([testId])
+  @@index([authorId])
   @@index([createdAt])
 }

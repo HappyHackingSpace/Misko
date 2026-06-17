@@ -88,6 +88,29 @@ ortam** koşturur (Başlat → metrik sonuçlarını gir → Bitir):
 
 `passed`/verdikt **yoktur**. Test başlatmak yalnızca denek ve senaryo ister.
 
+## Yorum (test tartışması)
+
+`Comment`, bir `Test`'e iliştirilen serbest metin notudur ve bir tartışma alanı
+oluşturur.
+
+- `testId`, `authorId`, `body` (ham metin), `createdAt`, `updatedAt`.
+- `body` olduğu gibi saklanır ve **asla** HTML olarak yorumlanmaz; API
+  katmanında uzunluğu sınırlanır (en fazla 2000 karakter), kırpılır ve kontrol
+  karakterlerinden arındırılır.
+- Bir testin silinmesi yorumlarına kademeli yansır; bir kullanıcının silinmesi de
+  onun yorumlarına yansır.
+
+Yetkilendirme bilinçli olarak basittir ve izin matrisinin parçası değildir:
+
+- **okuma / oluşturma**: giriş yapan herhangi bir kullanıcı (yani her rol yorum
+  yazabilir).
+- **düzenleme**: yalnızca yazarın kendisi.
+- **silme**: yazar veya moderasyon için yetkili bir rol (`SUPERADMIN` /
+  `LAB_MANAGER`).
+
+Yorum yazma işlemleri, hafif bir kötüye kullanım önlemi olarak kullanıcı başına
+hız sınırlıdır (dakikada 20).
+
 ## Roller & izinler (RBAC)
 
 **Kodda tanımlı izin matrisi** olan beş lab odaklı rol (DB'den düzenlenebilir izin

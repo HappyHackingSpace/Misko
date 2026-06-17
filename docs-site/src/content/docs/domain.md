@@ -89,6 +89,25 @@ A `Test` is a run of a `Scenario` against a `Subject`. The operator runs it
 There is **no** `passed`/verdict. Starting a test only asks for a subject and a
 scenario.
 
+## Comment (test discussion)
+
+A `Comment` is a free-form note attached to a `Test`, forming a discussion
+thread.
+
+- `testId`, `authorId`, `body` (raw text), `createdAt`, `updatedAt`.
+- `body` is stored verbatim and **never** interpreted as HTML; it is bounded
+  (max 2000 chars), trimmed, and stripped of control characters at the API layer.
+- Deleting a test cascades to its comments; deleting a user cascades to theirs.
+
+Authorization is deliberately simple and not part of the permission matrix:
+
+- **read / create**: any authenticated user (so every role can comment).
+- **edit**: the author only.
+- **delete**: the author, or a privileged role (`SUPERADMIN` / `LAB_MANAGER`) for
+  moderation.
+
+Comment writes are rate-limited per user (20/min) as a light anti-abuse measure.
+
 ## Roles & permissions (RBAC)
 
 Five lab-oriented roles with a **code-defined permission matrix** (no DB-editable
