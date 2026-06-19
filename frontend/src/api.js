@@ -26,8 +26,14 @@ export async function api(path, { method = "GET", body } = {}) {
     body: body ? JSON.stringify(body) : undefined,
   });
   if (res.status === 204) return null;
-  const data = await res.json().catch(() => ({}));
+  const isJson = res.headers.get("content-type")?.includes("application/json");
+  const data = isJson ? await res.json().catch(() => ({})) : {};
+  
   if (!res.ok) {
+    if (res.status === 401 && !path.includes("/auth/login")) {
+      setToken(null);
+      window.location.href = "/login";
+    }
     const error = new Error(localizeError(data, res.status));
     error.code = data?.code;
     error.status = res.status;

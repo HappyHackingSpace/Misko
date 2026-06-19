@@ -9,6 +9,9 @@ import { ApiError } from "../utils/ApiError.js";
  * keyed by user id and each user's own bucket is pruned on every request, so
  * memory stays bounded by the number of recently-active users.
  *
+ * Stale (empty) buckets are deleted from the Map to prevent unbounded growth
+ * over long uptime.
+ *
  * @param {{ windowMs?: number, max?: number, code?: string, message?: string }} [options]
  */
 export function rateLimit({ windowMs = 60_000, max = 20, code = "common.rateLimited", message = "Too many requests, slow down" } = {}) {
@@ -23,11 +26,16 @@ export function rateLimit({ windowMs = 60_000, max = 20, code = "common.rateLimi
 
     if (recent.length >= max) {
       const retryAfter = Math.ceil((windowMs - (now - recent[0])) / 1000);
-      throw ApiError.tooManyRequests(message, code, { retryAfter });
+      // Use next(err) instead of throw for Express 5 sync-middleware safety.
+      return next(ApiError.tooManyRequests(message, code, { retryAfter }));
     }
 
     recent.push(now);
-    buckets.set(key, recent);
+    if (recent.length === 0) {
+      buckets.delete(key);
+    } else {
+      buckets.set(key, recent);
+    }
     next();
   };
 }

@@ -10,12 +10,16 @@ const recent = ref([]);
 onMounted(async () => {
   // List endpoints return a paginated envelope; `total` gives the count and the
   // tests query doubles as the "recent" feed (newest first, first 6 rows).
-  const [tests, scenarios, subjects] = await Promise.all([
-    api("/tests?pageSize=6&sort=createdAt&order=desc"),
-    api("/scenarios?pageSize=1"), api("/subjects?pageSize=1"),
-  ]);
-  counts.value = { tests: tests.total, scenarios: scenarios.total, subjects: subjects.total };
-  recent.value = tests.data;
+  try {
+    const [tests, scenarios, subjects] = await Promise.all([
+      api("/tests?pageSize=6&sort=createdAt&order=desc"),
+      api("/scenarios?pageSize=1"), api("/subjects?pageSize=1"),
+    ]);
+    counts.value = { tests: tests.total, scenarios: scenarios.total, subjects: subjects.total };
+    recent.value = tests.data;
+  } catch (err) {
+    console.error("Dashboard failed to load data:", err);
+  }
 });
 </script>
 

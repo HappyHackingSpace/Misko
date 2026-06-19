@@ -53,7 +53,6 @@ table{width:100%;border-collapse:collapse;font-size:13.5px}
 th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line)}
 th{color:var(--muted);font-weight:600}
 .pill{font-size:11px;padding:3px 9px;border-radius:999px;border:1px solid var(--line);color:var(--muted)}
-.pill.POOL{color:#4cc2ff} .pill.MAZE{color:#9b8cff} .pill.STICK{color:#ffb454} .pill.PATH{color:#46d369}
 .err{color:var(--bad);font-size:13px;margin-top:8px}
 .notice{margin-top:10px;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:rgba(70,211,105,.08);color:var(--good);font-size:13px;font-family:ui-monospace,monospace;word-break:break-all}
 .center{min-height:100vh;display:grid;place-items:center}

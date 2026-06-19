@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { asyncHandler } from "../../utils/asyncHandler.js";
 import { requirePermission } from "../../middleware/authenticate.js";
+import { validateBody } from "../../middleware/validate.js";
 import { PERMISSIONS } from "../../config/permissions.js";
 import {
   listEnvironments,
@@ -9,6 +10,7 @@ import {
   updateEnvironment,
   deleteEnvironment,
 } from "./environment.service.js";
+import { createEnvironmentSchema, updateEnvironmentSchema } from "./environment.validation.js";
 
 /**
  * Environment ("Ortam") CRUD.
@@ -36,6 +38,7 @@ environmentRouter.get(
 environmentRouter.post(
   "/",
   requirePermission(PERMISSIONS.APPARATUS_WRITE),
+  validateBody(createEnvironmentSchema),
   asyncHandler(async (req, res) => {
     res.status(201).json(await createEnvironment(req.body ?? {}));
   }),
@@ -44,6 +47,7 @@ environmentRouter.post(
 environmentRouter.patch(
   "/:id",
   requirePermission(PERMISSIONS.APPARATUS_WRITE),
+  validateBody(updateEnvironmentSchema),
   asyncHandler(async (req, res) => {
     res.json(await updateEnvironment(req.params.id, req.body ?? {}));
   }),

@@ -7,13 +7,22 @@ import { prisma } from "../src/lib/prisma.js";
 // The admin user is NOT created here; the superadmin is created at Docker startup
 // via `prisma/bootstrap-admin.js`. For a local admin: `npm run db:bootstrap`.
 async function main() {
-  await prisma.subject.upsert({
-    where: { code: "F-001" },
-    update: {},
-    create: { code: "F-001", sex: "M", groupName: "kontrol" },
-  });
+  const subjects = [
+    { code: "F-001", sex: "M", groupName: "kontrol" },
+    { code: "F-002", sex: "M", groupName: "kontrol" },
+    { code: "F-003", sex: "F", groupName: "deney" },
+    { code: "F-004", sex: "F", groupName: "deney" },
+  ];
 
-  console.log("Seed done (subject F-001). For an admin: npm run db:bootstrap");
+  for (const s of subjects) {
+    await prisma.subject.upsert({
+      where: { code: s.code },
+      update: {},
+      create: s,
+    });
+  }
+
+  console.log("Seed done (4 subjects). For an admin: npm run db:bootstrap");
 }
 
 main().then(() => process.exit(0)).catch((e) => { console.error(e); process.exit(1); });

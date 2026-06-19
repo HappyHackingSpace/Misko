@@ -20,7 +20,7 @@ export const config = {
   isProd,
   isTest: nodeEnv === "test",
   port: Number(process.env.PORT || 4000),
-  databaseUrl: required("DATABASE_URL", isProd ? undefined : "postgresql://misko:misko@localhost:5432/misko?schema=public"),
+  databaseUrl: required("DATABASE_URL", isProd || nodeEnv === "test" ? undefined : "postgresql://misko:misko@localhost:5432/misko?schema=public"),
   jwt: {
     secret: required("JWT_SECRET", isProd ? undefined : "dev-secret-change-me"),
     ttl: process.env.JWT_TTL || "7d",

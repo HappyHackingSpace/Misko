@@ -16,7 +16,7 @@ import { metricsForParadigm } from "./metrics.js";
  * Result schema versioning. On result submission (Step 4) these values are
  * embedded in the result; the major version is bumped on backward-incompatible changes.
  */
-export const RESULT_SCHEMA_VERSION = 1;
+export const RESULT_SCHEMA_VERSION = 2;
 
 export const PARADIGM_CATEGORIES = Object.freeze({
   LEARNING_MEMORY: "learning_memory",
