@@ -42,7 +42,7 @@ jobs:
           - { name: frontend, context: ./frontend, platform: linux/amd64, runner: ubuntu-latest }
           - { name: frontend, context: ./frontend, platform: linux/arm64, runner: ubuntu-24.04-arm }
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
 
