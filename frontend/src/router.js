@@ -1,21 +1,21 @@
 import { createRouter, createWebHistory } from "vue-router";
 import { useAuth } from "./stores/auth.js";
 
-import Login from "./views/Login.vue";
-import Dashboard from "./views/Dashboard.vue";
-import Scenarios from "./views/Scenarios.vue";
-import ScenarioForm from "./views/ScenarioForm.vue";
-import Paradigms from "./views/Paradigms.vue";
-import ParadigmDetail from "./views/ParadigmDetail.vue";
-import Environments from "./views/Environments.vue";
-import EnvironmentForm from "./views/EnvironmentForm.vue";
-import Subjects from "./views/Subjects.vue";
-import SubjectForm from "./views/SubjectForm.vue";
-import Tests from "./views/Tests.vue";
-import TestNew from "./views/TestNew.vue";
-import TestDetail from "./views/TestDetail.vue";
-import Users from "./views/Users.vue";
-import UserForm from "./views/UserForm.vue";
+const Login = () => import("./views/Login.vue");
+const Dashboard = () => import("./views/Dashboard.vue");
+const Scenarios = () => import("./views/Scenarios.vue");
+const ScenarioForm = () => import("./views/ScenarioForm.vue");
+const Paradigms = () => import("./views/Paradigms.vue");
+const ParadigmDetail = () => import("./views/ParadigmDetail.vue");
+const Environments = () => import("./views/Environments.vue");
+const EnvironmentForm = () => import("./views/EnvironmentForm.vue");
+const Subjects = () => import("./views/Subjects.vue");
+const SubjectForm = () => import("./views/SubjectForm.vue");
+const Tests = () => import("./views/Tests.vue");
+const TestNew = () => import("./views/TestNew.vue");
+const TestDetail = () => import("./views/TestDetail.vue");
+const Users = () => import("./views/Users.vue");
+const UserForm = () => import("./views/UserForm.vue");
 
 const routes = [
   { path: "/login", component: Login, meta: { public: true } },

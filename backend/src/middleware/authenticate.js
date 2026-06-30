@@ -30,11 +30,13 @@ export const authenticate = asyncHandler(async (req, _res, next) => {
 /**
  * Middleware that enforces specific roles (e.g. requireRole("SUPERADMIN")).
  * Kept for coarse checks; the real authorization gate is `requirePermission`.
+ *
+ * Uses next(err) instead of throw for Express 5 sync-middleware safety.
  */
 export const requireRole = (...roles) =>
   (req, _res, next) => {
     if (!req.user || !roles.includes(req.user.role)) {
-      throw ApiError.forbidden("You do not have permission for this action", "auth.forbidden");
+      return next(ApiError.forbidden("You do not have permission for this action", "auth.forbidden"));
     }
     next();
   };
@@ -42,11 +44,13 @@ export const requireRole = (...roles) =>
 /**
  * Middleware that checks authorization against the in-code permission matrix
  * (e.g. requirePermission("subject:write")). This is the primary authorization gate.
+ *
+ * Uses next(err) instead of throw for Express 5 sync-middleware safety.
  */
 export const requirePermission = (permission) =>
   (req, _res, next) => {
     if (!req.user || !hasPermission(req.user.role, permission)) {
-      throw ApiError.forbidden("You do not have permission for this action", "auth.forbidden");
+      return next(ApiError.forbidden("You do not have permission for this action", "auth.forbidden"));
     }
     next();
   };

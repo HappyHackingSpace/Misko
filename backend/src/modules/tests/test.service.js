@@ -1,7 +1,7 @@
 import { prisma } from "../../lib/prisma.js";
 import { ApiError } from "../../utils/ApiError.js";
 import { buildListQuery, listResult } from "../../common/listQuery.js";
-import { getParadigmSpec } from "../../config/paradigms.js";
+import { getParadigmSpec, RESULT_SCHEMA_VERSION } from "../../config/paradigms.js";
 import { computeMetrics, validateEvent } from "../../config/metricEngine.js";
 
 /**
@@ -14,7 +14,6 @@ import { computeMetrics, validateEvent } from "../../config/metricEngine.js";
  *     { status, startedAt, endedAt, events: [...], cvInputs?: {...}, metrics: {...} } } }
  */
 
-const RESULT_SCHEMA_VERSION = 2;
 
 const include = {
   scenario: {
@@ -31,7 +30,7 @@ const include = {
 export async function list(query = {}) {
   const q = buildListQuery(query, {
     searchFields: ["notes"],
-    filterFields: { status: "enum", passed: "boolean" },
+    filterFields: { status: "enum" },
     sortFields: ["status", "createdAt"],
   });
   const [data, total] = await Promise.all([
@@ -52,8 +51,12 @@ export async function create({ scenarioId, subjectId, notes }, operatorId) {
   if (!scenarioId || !subjectId) {
     throw ApiError.badRequest("scenarioId and subjectId are required", "test.idsRequired");
   }
-  const scenario = await prisma.scenario.findUnique({ where: { id: scenarioId } });
+  const [scenario, subject] = await Promise.all([
+    prisma.scenario.findUnique({ where: { id: scenarioId } }),
+    prisma.subject.findUnique({ where: { id: subjectId } }),
+  ]);
   if (!scenario) throw ApiError.badRequest("Unknown scenario", "scenario.notFound");
+  if (!subject) throw ApiError.badRequest("Unknown subject", "subject.notFound");
 
   return prisma.test.create({
     data: { scenarioId, subjectId, notes: notes || null, operatorId },
@@ -61,11 +64,38 @@ export async function create({ scenarioId, subjectId, notes }, operatorId) {
   });
 }
 
+/**
+ * Valid test-level status transitions. The environment-level lifecycle
+ * (PENDING -> RUNNING -> DONE) is managed by submitEnvironmentResult;
+ * this gate covers manual overrides at the test level (e.g. cancel).
+ */
+const VALID_STATUS_TRANSITIONS = {
+  PENDING: ["RUNNING", "FAILED"],
+  RUNNING: ["DONE", "FAILED"],
+  DONE: ["RUNNING"],       // re-open
+  FAILED: ["PENDING"],     // retry
+};
+
 /** Test-level updates: overall status (e.g. cancel -> FAILED) and notes. */
 export async function update(id, payload) {
   const { status, notes } = payload;
   const data = {};
-  if (status !== undefined) data.status = status;
+
+  if (status !== undefined) {
+    const test = await prisma.test.findUnique({ where: { id }, select: { status: true } });
+    if (!test) throw ApiError.notFound("Not found", "common.notFound");
+
+    const allowed = VALID_STATUS_TRANSITIONS[test.status] ?? [];
+    if (!allowed.includes(status)) {
+      throw ApiError.badRequest(
+        `Cannot transition from ${test.status} to ${status}`,
+        "test.invalidTransition",
+        { from: test.status, to: status },
+      );
+    }
+    data.status = status;
+  }
+
   if (notes !== undefined) data.notes = notes;
   return prisma.test.update({ where: { id }, data, include });
 }

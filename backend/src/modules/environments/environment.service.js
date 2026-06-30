@@ -82,14 +82,18 @@ function buildConfig(spec, apparatusInput = {}) {
 
 /** Lists environments for the lab with pagination, search, filter and sort. */
 export async function listEnvironments(query = {}) {
+  const lab = await getLaboratory();
   const q = buildListQuery(query, {
     searchFields: ["name", "notes"],
     filterFields: { name: "text", paradigmKey: "enum" },
     sortFields: ["name", "paradigmKey", "createdAt"],
   });
+  
+  const where = { ...q.where, laboratoryId: lab.id };
+
   const [data, total] = await Promise.all([
-    prisma.environment.findMany({ where: q.where, orderBy: q.orderBy, skip: q.skip, take: q.take }),
-    prisma.environment.count({ where: q.where }),
+    prisma.environment.findMany({ where, orderBy: q.orderBy, skip: q.skip, take: q.take }),
+    prisma.environment.count({ where }),
   ]);
   return listResult(data, total, q);
 }

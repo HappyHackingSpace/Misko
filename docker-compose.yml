@@ -26,7 +26,7 @@ services:
       NODE_ENV: production
       PORT: 4000
       DATABASE_URL: postgresql://${POSTGRES_USER:-misko}:${POSTGRES_PASSWORD:-misko}@db:5432/${POSTGRES_DB:-misko}?schema=public
-      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set in production}
       JWT_TTL: ${JWT_TTL:-7d}
       CORS_ORIGIN: ${CORS_ORIGIN:-*}
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@miskolab.com}

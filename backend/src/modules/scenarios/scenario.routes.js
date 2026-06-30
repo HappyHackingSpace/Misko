@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { asyncHandler } from "../../utils/asyncHandler.js";
 import { requirePermission } from "../../middleware/authenticate.js";
+import { validateBody } from "../../middleware/validate.js";
 import { PERMISSIONS } from "../../config/permissions.js";
 import {
   listScenarios,
@@ -9,6 +10,7 @@ import {
   updateScenario,
   deleteScenario,
 } from "./scenario.service.js";
+import { createScenarioSchema, updateScenarioSchema } from "./scenario.validation.js";
 
 /**
  * Scenario CRUD - the central experiment definition (docs/DOMAIN.md §3).
@@ -24,11 +26,11 @@ scenarioRouter.get("/:id", asyncHandler(async (req, res) => {
   res.json(await getScenario(req.params.id));
 }));
 
-scenarioRouter.post("/", requirePermission(PERMISSIONS.APPARATUS_WRITE), asyncHandler(async (req, res) => {
+scenarioRouter.post("/", requirePermission(PERMISSIONS.APPARATUS_WRITE), validateBody(createScenarioSchema), asyncHandler(async (req, res) => {
   res.status(201).json(await createScenario(req.body ?? {}));
 }));
 
-scenarioRouter.patch("/:id", requirePermission(PERMISSIONS.APPARATUS_WRITE), asyncHandler(async (req, res) => {
+scenarioRouter.patch("/:id", requirePermission(PERMISSIONS.APPARATUS_WRITE), validateBody(updateScenarioSchema), asyncHandler(async (req, res) => {
   res.json(await updateScenario(req.params.id, req.body ?? {}));
 }));
 

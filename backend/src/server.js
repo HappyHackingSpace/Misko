@@ -10,6 +10,14 @@ const server = app.listen(config.port, () => {
 
 async function shutdown(signal) {
   console.log(`\n${signal} received, shutting down...`);
+
+  // Force exit after 10 seconds if graceful shutdown stalls (e.g. open connections).
+  const forceTimer = setTimeout(() => {
+    console.error("Graceful shutdown timed out, forcing exit.");
+    process.exit(1);
+  }, 10_000);
+  forceTimer.unref();
+
   server.close(async () => {
     await disconnectPrisma();
     process.exit(0);
