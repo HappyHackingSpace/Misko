@@ -29,7 +29,7 @@ COPY prisma ./prisma
 COPY prisma.config.ts ./
 COPY src ./src
 COPY docker-entrypoint.sh ./docker-entrypoint.sh
-RUN chmod +x ./docker-entrypoint.sh && chown -R nodejs:nodejs /app
+RUN sed -i 's/\r$//' ./docker-entrypoint.sh && chmod +x ./docker-entrypoint.sh && chown -R nodejs:nodejs /app
 
 USER nodejs
 EXPOSE 4000
