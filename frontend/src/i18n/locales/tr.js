@@ -17,6 +17,7 @@ export default {
       settings: "Ayarlar",
       users: "Kullanıcılar",
       logout: "Çıkış",
+      menu: "Menü",
     },
     prefs: {
       language: "Dil",

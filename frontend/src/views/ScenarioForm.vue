@@ -111,7 +111,7 @@ onUnmounted(() => crumb.clear());
 </template>
 
 <style scoped>
-.actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+.actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
 .section { font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin: 18px 0 8px; }
 .env-list { display: flex; flex-direction: column; gap: 6px; }
 .env-item { display: flex; align-items: center; gap: 8px; cursor: pointer; }

@@ -119,5 +119,5 @@ onUnmounted(() => crumb.clear());
 </template>
 
 <style scoped>
-.actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+.actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
 </style>

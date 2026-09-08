@@ -120,64 +120,72 @@ onUnmounted(() => crumb.clear());
 
     <!-- Apparatus parameters (read-only template; values are chosen per environment) -->
     <div class="card" v-show="tab === 'apparatus'">
-      <table>
-        <thead><tr><th>{{ $t("paradigms.field") }}</th><th>{{ $t("paradigms.unit") }}</th><th>{{ $t("paradigms.range") }}</th><th>{{ $t("paradigms.default") }}</th></tr></thead>
-        <tbody>
-          <tr v-for="f in selected.apparatusParameters" :key="f.key">
-            <td>{{ f.label }} <span class="muted">{{ f.key }}</span></td>
-            <td><span class="pill">{{ f.unit }}</span></td>
-            <td class="muted">{{ f.min != null ? f.min + " - " + f.max : (f.options ? f.options.map(tVal).join(" / ") : "-") }}</td>
-            <td>{{ f.default != null ? tVal(f.default) : "-" }}</td>
-          </tr>
-        </tbody>
-      </table>
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th>{{ $t("paradigms.field") }}</th><th>{{ $t("paradigms.unit") }}</th><th>{{ $t("paradigms.range") }}</th><th>{{ $t("paradigms.default") }}</th></tr></thead>
+          <tbody>
+            <tr v-for="f in selected.apparatusParameters" :key="f.key">
+              <td>{{ f.label }} <span class="muted">{{ f.key }}</span></td>
+              <td><span class="pill">{{ f.unit }}</span></td>
+              <td class="muted">{{ f.min != null ? f.min + " - " + f.max : (f.options ? f.options.map(tVal).join(" / ") : "-") }}</td>
+              <td>{{ f.default != null ? tVal(f.default) : "-" }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </div>
 
     <!-- Zones -->
     <div class="card" v-show="tab === 'zones'" v-if="selected.zones.length">
-      <table>
-        <thead><tr><th>{{ $t("common.name") }}</th><th>{{ $t("paradigms.zoneType") }}</th><th>{{ $t("paradigms.zoneRole") }}</th><th>{{ $t("paradigms.required") }}</th></tr></thead>
-        <tbody>
-          <tr v-for="z in selected.zones" :key="z.key">
-            <td>{{ z.label }} <span class="muted">{{ z.key }}</span></td>
-            <td class="muted">{{ tEnum("zoneTypes", z.type) }}</td>
-            <td><span class="pill">{{ tEnum("zoneRoles", z.role) }}</span></td>
-            <td>{{ z.required ? "✓" : "" }}</td>
-          </tr>
-        </tbody>
-      </table>
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th>{{ $t("common.name") }}</th><th>{{ $t("paradigms.zoneType") }}</th><th>{{ $t("paradigms.zoneRole") }}</th><th>{{ $t("paradigms.required") }}</th></tr></thead>
+          <tbody>
+            <tr v-for="z in selected.zones" :key="z.key">
+              <td>{{ z.label }} <span class="muted">{{ z.key }}</span></td>
+              <td class="muted">{{ tEnum("zoneTypes", z.type) }}</td>
+              <td><span class="pill">{{ tEnum("zoneRoles", z.role) }}</span></td>
+              <td>{{ z.required ? "✓" : "" }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </div>
 
     <!-- Metrics -->
     <div class="card" v-show="tab === 'metrics'">
-      <table>
-        <thead><tr><th>{{ $t("paradigms.metric") }}</th><th>{{ $t("paradigms.unit") }}</th><th>{{ $t("paradigms.required") }}</th><th>{{ $t("common.description") }}</th></tr></thead>
-        <tbody>
-          <tr v-for="m in selected.metrics" :key="m.key">
-            <td>{{ m.label }} <span class="muted">{{ m.key }}<template v-if="m.templated">.*</template></span></td>
-            <td><span class="pill">{{ m.unit }}</span></td>
-            <td>{{ m.required ? "✓" : "" }}</td>
-            <td class="muted">{{ m.definition }}</td>
-          </tr>
-        </tbody>
-      </table>
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th>{{ $t("paradigms.metric") }}</th><th>{{ $t("paradigms.unit") }}</th><th>{{ $t("paradigms.required") }}</th><th>{{ $t("common.description") }}</th></tr></thead>
+          <tbody>
+            <tr v-for="m in selected.metrics" :key="m.key">
+              <td>{{ m.label }} <span class="muted">{{ m.key }}<template v-if="m.templated">.*</template></span></td>
+              <td><span class="pill">{{ m.unit }}</span></td>
+              <td>{{ m.required ? "✓" : "" }}</td>
+              <td class="muted">{{ m.definition }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </div>
 
     <!-- Event types + CV detection contract -->
     <div class="card" v-show="tab === 'events'" v-if="selected.eventTypes && selected.eventTypes.length">
       <p class="muted" style="margin-top:0">{{ $t("paradigms.eventsIntro") }}</p>
-      <table>
-        <thead><tr><th>{{ $t("paradigms.event") }}</th><th>{{ $t("paradigms.payload") }}</th><th>{{ $t("paradigms.detection") }}</th></tr></thead>
-        <tbody>
-          <tr v-for="et in selected.eventTypes" :key="et.type">
-            <td>{{ et.label }} <span class="muted">{{ et.type }}</span></td>
-            <td class="muted">{{ Object.keys(et.payload || {}).join(", ") || "-" }}</td>
-            <td>
-              <span class="pill" :class="et.detect?.kind === 'custom' ? 'pill-warn' : ''">{{ et.detect?.kind || "manual" }}</span>
-            </td>
-          </tr>
-        </tbody>
-      </table>
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th>{{ $t("paradigms.event") }}</th><th>{{ $t("paradigms.payload") }}</th><th>{{ $t("paradigms.detection") }}</th></tr></thead>
+          <tbody>
+            <tr v-for="et in selected.eventTypes" :key="et.type">
+              <td>{{ et.label }} <span class="muted">{{ et.type }}</span></td>
+              <td class="muted">{{ Object.keys(et.payload || {}).join(", ") || "-" }}</td>
+              <td>
+                <span class="pill" :class="et.detect?.kind === 'custom' ? 'pill-warn' : ''">{{ et.detect?.kind || "manual" }}</span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </div>
 
     <!-- QC requirements -->
@@ -193,9 +201,9 @@ onUnmounted(() => crumb.clear());
 
 <style scoped>
 .detail { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
-.detail-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.detail-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .detail-head h2 { margin: 0; }
-.head-actions { display: flex; align-items: center; gap: 8px; }
+.head-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .tabs { display: flex; flex-wrap: wrap; gap: 6px; border-bottom: 1px solid var(--line); }
 .tab {

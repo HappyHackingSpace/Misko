@@ -55,7 +55,7 @@ const columns = computed(() => [
 </template>
 
 <style scoped>
-.head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .link { color: var(--accent); cursor: pointer; font-weight: 600; text-decoration: none; }
 .link:hover { text-decoration: underline; }
 </style>

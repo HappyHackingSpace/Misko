@@ -78,9 +78,14 @@ onMounted(loadParadigms);
 </template>
 
 <style scoped>
-.lab-head { display: flex; align-items: center; margin-bottom: 12px; gap: 12px; }
+.lab-head { display: flex; align-items: center; margin-bottom: 12px; gap: 12px; flex-wrap: wrap; }
 .lab-head-side { flex: 1; }
 .lab-head-side.right { display: flex; justify-content: flex-end; }
+@media (max-width: 520px) {
+  .lab-head { justify-content: center; }
+  .lab-head-side { flex-basis: 100%; order: 2; }
+  .lab-head-side.right { justify-content: center; }
+}
 .link { color: var(--accent); cursor: pointer; font-weight: 600; text-decoration: none; }
 .link:hover { text-decoration: underline; }
 </style>

@@ -17,6 +17,7 @@ export default {
       settings: "Settings",
       users: "Users",
       logout: "Log out",
+      menu: "Menu",
     },
     prefs: {
       language: "Language",

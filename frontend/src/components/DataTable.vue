@@ -299,4 +299,9 @@ tbody tr:hover td { background: var(--active-bg, #f6f6f6); }
 .dt-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .dt-pagesize, .dt-pager { display: flex; align-items: center; gap: 8px; }
 .dt-page { min-width: 90px; text-align: center; }
+@media (max-width: 520px) {
+  .dt-toolbar { flex-direction: column; align-items: stretch; }
+  .dt-search { min-width: 0; max-width: none; width: 100%; }
+  .dt-toolbar-right { justify-content: space-between; }
+}
 </style>

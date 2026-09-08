@@ -208,15 +208,17 @@ onUnmounted(() => crumb.clear());
           <button class="danger" @click="remove">{{ $t("common.delete") }}</button>
         </div>
       </div>
-      <table class="kv">
-        <tbody>
-          <tr><th>{{ $t("tests.scenario") }}</th><td>{{ test.scenario?.name }}</td></tr>
-          <tr><th>{{ $t("tests.subject") }}</th><td>{{ test.subject?.code }}</td></tr>
-          <tr><th>{{ $t("tests.operator") }}</th><td>{{ test.operator?.name }}</td></tr>
-          <tr><th>{{ $t("tests.status") }}</th><td><span :class="'status-' + test.status">{{ statusLabel(test.status) }}</span></td></tr>
-          <tr v-if="test.notes"><th>{{ $t("common.notes") }}</th><td class="muted">{{ test.notes }}</td></tr>
-        </tbody>
-      </table>
+      <div class="table-scroll">
+        <table class="kv">
+          <tbody>
+            <tr><th>{{ $t("tests.scenario") }}</th><td>{{ test.scenario?.name }}</td></tr>
+            <tr><th>{{ $t("tests.subject") }}</th><td>{{ test.subject?.code }}</td></tr>
+            <tr><th>{{ $t("tests.operator") }}</th><td>{{ test.operator?.name }}</td></tr>
+            <tr><th>{{ $t("tests.status") }}</th><td><span :class="'status-' + test.status">{{ statusLabel(test.status) }}</span></td></tr>
+            <tr v-if="test.notes"><th>{{ $t("common.notes") }}</th><td class="muted">{{ test.notes }}</td></tr>
+          </tbody>
+        </table>
+      </div>
     </div>
 
     <!-- One run section per scenario environment -->
@@ -262,16 +264,18 @@ onUnmounted(() => crumb.clear());
             </div>
             <div class="col">
               <h5>{{ $t("results.events") }}</h5>
-              <table class="events" v-if="envEntry(env.id).events?.length">
-                <tbody>
-                  <tr v-for="(ev, i) in envEntry(env.id).events" :key="i">
-                    <td>{{ eventLabel(env, ev.type) }}</td>
-                    <td class="muted">t={{ ev.t }}s</td>
-                    <td class="muted">{{ payloadStr(env, ev.payload) }}</td>
-                    <td v-if="envEntry(env.id).status === 'RUNNING'"><button class="danger small" @click="removeEvent(env.id, i)">×</button></td>
-                  </tr>
-                </tbody>
-              </table>
+              <div class="table-scroll" v-if="envEntry(env.id).events?.length">
+                <table class="events">
+                  <tbody>
+                    <tr v-for="(ev, i) in envEntry(env.id).events" :key="i">
+                      <td>{{ eventLabel(env, ev.type) }}</td>
+                      <td class="muted">t={{ ev.t }}s</td>
+                      <td class="muted">{{ payloadStr(env, ev.payload) }}</td>
+                      <td v-if="envEntry(env.id).status === 'RUNNING'"><button class="danger small" @click="removeEvent(env.id, i)">×</button></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
               <p v-else class="muted">{{ $t("results.noEvents") }}</p>
             </div>
           </div>
@@ -340,7 +344,7 @@ onUnmounted(() => crumb.clear());
 .detail { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
 .detail-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .head-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.env-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.env-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
 .env-head h4 { margin: 0; }
 .env-head-right { display: flex; align-items: center; gap: 10px; }
 .cols { display: flex; gap: 24px; flex-wrap: wrap; }
@@ -374,7 +378,7 @@ onUnmounted(() => crumb.clear());
 .events { width: 100%; border-collapse: collapse; }
 .events td { padding: 5px 8px; border-bottom: 1px solid var(--line); }
 .kv th { text-align: left; padding-right: 16px; white-space: nowrap; vertical-align: top; }
-.actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+.actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
 .small { padding: 4px 10px; font-size: .85rem; }
 
 /* Drawer */
