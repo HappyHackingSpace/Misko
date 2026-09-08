@@ -77,6 +77,10 @@ onBeforeUnmount(() => {
   background: var(--accent); color: #04141d; font-size: 12px; font-weight: 800;
 }
 .name { font-size: 13px; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 520px) {
+  .name { display: none; }
+  .dropdown { right: -10px; min-width: 200px; }
+}
 .chev { color: var(--muted); transition: transform .15s ease; }
 .chev.up { transform: rotate(180deg); }
 .dropdown {

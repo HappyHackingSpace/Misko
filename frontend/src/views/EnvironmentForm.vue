@@ -149,29 +149,31 @@ onUnmounted(() => crumb.clear());
     <!-- Apparatus values for the selected paradigm -->
     <div v-if="spec">
       <h3>{{ $t("environments.apparatus") }}</h3>
-      <table>
-        <thead><tr><th>{{ $t("paradigms.field") }}</th><th>{{ $t("paradigms.unit") }}</th><th>{{ $t("paradigms.range") }}</th><th>{{ $t("paradigms.value") }}</th></tr></thead>
-        <tbody>
-          <tr v-for="f in spec.apparatusParameters" :key="f.key">
-            <td>{{ f.label }} <span class="muted">{{ f.key }}</span></td>
-            <td><span class="pill">{{ f.unit }}</span></td>
-            <td class="muted">{{ f.min != null ? f.min + " - " + f.max : (f.options ? f.options.map(tVal).join(" / ") : "-") }}</td>
-            <td>
-              <select v-if="f.type === 'enum'" v-model="apparatus[f.key]">
-                <option v-for="o in f.options" :key="o" :value="o">{{ tVal(o) }}</option>
-              </select>
-              <input
-                v-else
-                type="number"
-                class="num"
-                :min="f.min ?? undefined"
-                :max="f.max ?? undefined"
-                v-model.number="apparatus[f.key]"
-              />
-            </td>
-          </tr>
-        </tbody>
-      </table>
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th>{{ $t("paradigms.field") }}</th><th>{{ $t("paradigms.unit") }}</th><th>{{ $t("paradigms.range") }}</th><th>{{ $t("paradigms.value") }}</th></tr></thead>
+          <tbody>
+            <tr v-for="f in spec.apparatusParameters" :key="f.key">
+              <td>{{ f.label }} <span class="muted">{{ f.key }}</span></td>
+              <td><span class="pill">{{ f.unit }}</span></td>
+              <td class="muted">{{ f.min != null ? f.min + " - " + f.max : (f.options ? f.options.map(tVal).join(" / ") : "-") }}</td>
+              <td>
+                <select v-if="f.type === 'enum'" v-model="apparatus[f.key]">
+                  <option v-for="o in f.options" :key="o" :value="o">{{ tVal(o) }}</option>
+                </select>
+                <input
+                  v-else
+                  type="number"
+                  class="num"
+                  :min="f.min ?? undefined"
+                  :max="f.max ?? undefined"
+                  v-model.number="apparatus[f.key]"
+                />
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </div>
 
     <p class="err" v-if="err">{{ err }}</p>
@@ -185,7 +187,7 @@ onUnmounted(() => crumb.clear());
 
 <style scoped>
 .hint { margin: 4px 0 0; }
-.actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+.actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
 .num { width: 120px; }
 h3 { margin: 16px 0 8px; }
 </style>

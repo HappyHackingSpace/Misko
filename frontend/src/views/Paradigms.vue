@@ -63,7 +63,7 @@ watch(locale, () => table.reload());
 </template>
 
 <style scoped>
-.lab-head { display: flex; align-items: center; margin-bottom: 12px; }
+.lab-head { display: flex; align-items: center; margin-bottom: 12px; flex-wrap: wrap; justify-content: center; }
 .lab-head-side { flex: 1; }
 .link { color: var(--accent); cursor: pointer; font-weight: 600; text-decoration: none; }
 .link:hover { text-decoration: underline; }
