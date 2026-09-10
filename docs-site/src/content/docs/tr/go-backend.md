@@ -19,7 +19,8 @@ Bu branch'i canlıya almayın.
 | Laboratuvar ayarları (kurulum başına tek laboratuvar) | Hazır |
 | Denekler, deneyler, aşamalar, gruplar ve katılımlar | Hazır |
 | Hastalık modelleri, maddeler, müdahale planları ve uygulamalar | Hazır |
-| Paradigmalar, testler, video analizi | Henüz yok |
+| Open Field metrik tanımlarıyla paradigma kataloğu | Hazır |
+| Diğer on paradigma, testler, video analizi | Henüz yok |
 | Yeni API üzerinde Vue paneli | Henüz yok |
 
 ## Kurulum
@@ -204,6 +205,24 @@ RESEARCHER bunları `POST /api/disease-models` ve `POST /api/substances`
 
 Miktarları `"0.25"` gibi ondalık metin olarak yazın. Kayıtlar, madde adı
 değişse veya plan sonradan güncellense bile kaydedildikleri ad ve dozu korur.
+
+### Paradigma kataloğu
+
+Giriş yapmış her kullanıcı paradigma kataloğunu okuyabilir. Paradigmalar kodda
+tanımlıdır ve API üzerinden oluşturulamaz, değiştirilemez veya silinemez.
+
+- `GET /api/paradigms`, paradigmaları yayımlanmış sürümleriyle ve otomatik video
+  analizinin kullanılabilir olup olmadığıyla (`automatedAnalysis`) listeler.
+  Şu an OPEN_FIELD yayımlanmıştır ve otomatik analiz henüz yoktur.
+- `GET /api/paradigms/{key}` en son sürümü, `GET /api/paradigms/{key}/versions/{version}`
+  ise tam olarak bir sürümü döndürür. Her sürüm; birim, izin verilen aralık ve
+  varsayılan değerleriyle düzenek ve oturum parametrelerini, bölgelerini ve
+  olaylarını, her metrik için de tanımı, formülü, girdileri ve veri eksik
+  olduğunda ne olacağını listeler.
+
+Sonuçlar her zaman hesaplandıkları paradigma sürümünü, metrik motoru sürümünü ve
+sonuç şeması sürümünü belirtir. Hesaplanamayan bir metrik sıfır olarak değil,
+nedeniyle birlikte eksik olarak raporlanır.
 
 ### Hatalar
 

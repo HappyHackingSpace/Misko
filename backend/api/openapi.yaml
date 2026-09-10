@@ -968,6 +968,41 @@ paths:
         '200': {description: One page of administrations, content: {application/json: {schema: {$ref: '#/components/schemas/AdministrationPage'}}}}
         '400': {$ref: '#/components/responses/Problem'}
         '401': {$ref: '#/components/responses/Problem'}
+  /api/paradigms:
+    get:
+      operationId: listParadigms
+      summary: Paradigms with their published versions (*:read); the catalog is read-only
+      responses:
+        '200':
+          description: Paradigms ordered by key
+          content:
+            application/json:
+              schema: {type: object, required: [data], properties: {data: {type: array, items: {$ref: '#/components/schemas/ParadigmSummary'}}}}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+  /api/paradigms/{key}:
+    parameters:
+      - $ref: '#/components/parameters/ParadigmKey'
+    get:
+      operationId: getLatestParadigm
+      summary: Manifest of the latest published version (*:read)
+      responses:
+        '200': {description: Manifest, content: {application/json: {schema: {$ref: '#/components/schemas/ParadigmManifest'}}}}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+  /api/paradigms/{key}/versions/{version}:
+    parameters:
+      - $ref: '#/components/parameters/ParadigmKey'
+      - {name: version, in: path, required: true, schema: {type: integer, minimum: 1}}
+    get:
+      operationId: getParadigmVersion
+      summary: Manifest of one published version, as consumed by analysis workers (*:read)
+      responses:
+        '200': {description: Manifest, content: {application/json: {schema: {$ref: '#/components/schemas/ParadigmManifest'}}}}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
 components:
   parameters:
     ID: {name: id, in: path, required: true, schema: {type: string, format: uuid}}
@@ -977,6 +1012,7 @@ components:
     ExperimentFilter: {name: experimentId, in: query, schema: {type: string, format: uuid}}
     From: {name: from, in: query, schema: {type: string, format: date-time}, description: Inclusive lower bound on administeredAt}
     To: {name: to, in: query, schema: {type: string, format: date-time}, description: Exclusive upper bound on administeredAt}
+    ParadigmKey: {name: key, in: path, required: true, schema: {type: string, pattern: '^[A-Z_]+$'}, example: OPEN_FIELD}
   securitySchemes:
     bearer:
       type: http
@@ -1383,6 +1419,67 @@ components:
         total: {type: integer}
         page: {type: integer}
         pageSize: {type: integer}
+    ParadigmSummary:
+      type: object
+      required: [key, name, category, species, versions, latestVersion, automatedAnalysis]
+      properties:
+        key: {type: string}
+        name: {type: string}
+        category: {type: string, enum: [LEARNING_MEMORY, ANXIETY, MOTOR, SOCIAL]}
+        species: {type: array, items: {type: string}}
+        versions: {type: array, items: {type: integer}}
+        latestVersion: {type: integer}
+        automatedAnalysis: {type: boolean, description: Whether a real analysis worker supports this paradigm; catalog presence alone does not}
+    ParadigmParameter:
+      type: object
+      required: [key, label, unit, min, max, default]
+      properties:
+        key: {type: string}
+        label: {type: string}
+        unit: {type: string, enum: [cm, cm_s, s, count, ratio]}
+        min: {type: number}
+        max: {type: number}
+        default: {type: number}
+    ParadigmMetric:
+      type: object
+      required: [key, label, unit, valueType, definition, formula, missingWhen, inputs, min, max, tolerance]
+      properties:
+        key: {type: string}
+        label: {type: string}
+        unit: {type: string, enum: [cm, cm_s, s, count, ratio]}
+        valueType: {type: string, enum: [number, integer]}
+        definition: {type: string}
+        formula: {type: string}
+        missingWhen: {type: string, description: When the metric is reported missing instead of a value}
+        inputs: {type: array, items: {type: string}}
+        min: {type: number}
+        max: {type: number}
+        tolerance: {type: number, description: Absolute tolerance in the metric unit}
+    ParadigmManifest:
+      type: object
+      required: [key, name, category, species, trialTypes, version, metricEngineVersion, resultSchemaVersion, automatedAnalysis, apparatusParameters, sessionParameters, zones, events, metrics, qc]
+      properties:
+        key: {type: string}
+        name: {type: string}
+        category: {type: string}
+        species: {type: array, items: {type: string}}
+        trialTypes: {type: array, items: {type: string}}
+        version: {type: integer, description: ParadigmVersion; a published version never changes}
+        metricEngineVersion: {type: integer}
+        resultSchemaVersion: {type: integer}
+        automatedAnalysis: {type: boolean}
+        apparatusParameters: {type: array, items: {$ref: '#/components/schemas/ParadigmParameter'}}
+        sessionParameters: {type: array, items: {$ref: '#/components/schemas/ParadigmParameter'}}
+        zones:
+          type: array
+          items: {type: object, required: [key, role, geometry], properties: {key: {type: string}, role: {type: string}, geometry: {type: string}}}
+        events:
+          type: array
+          items: {type: object, required: [type, kind, definition], properties: {type: {type: string}, kind: {type: string, enum: [INTERVAL, POINT]}, definition: {type: string}}}
+        metrics: {type: array, items: {$ref: '#/components/schemas/ParadigmMetric'}}
+        qc:
+          type: array
+          items: {type: object, required: [key, operator, value, unit], properties: {key: {type: string}, operator: {type: string}, value: {type: number}, unit: {type: string}}}
     Probe:
       type: object
       additionalProperties: false

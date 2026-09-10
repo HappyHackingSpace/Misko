@@ -19,7 +19,8 @@ current release. Do not deploy this branch.
 | Laboratory settings (one laboratory per installation) | Implemented |
 | Subjects, experiments, phases, groups and enrollments | Implemented |
 | Disease models, substances, intervention plans and administrations | Implemented |
-| Paradigms, tests, video analysis | Not yet |
+| Paradigm catalog with Open Field metric definitions | Implemented |
+| Other ten paradigms, tests, video analysis | Not yet |
 | Vue panel on the new API | Not yet |
 
 ## Installation
@@ -204,6 +205,24 @@ RESEARCHER maintain them with `POST /api/disease-models` and
 
 Write amounts as decimal text, for example `"0.25"`. Records keep the names and
 doses they were saved with, even if a substance is renamed or a plan changes later.
+
+### Paradigm catalog
+
+Every signed-in user can read the paradigm catalog. Paradigms are defined in the
+code and cannot be created, edited or deleted through the API.
+
+- `GET /api/paradigms` lists paradigms with their published versions and whether
+  automated video analysis is available (`automatedAnalysis`). Today OPEN_FIELD
+  is published, and automated analysis is not available yet.
+- `GET /api/paradigms/{key}` returns the latest version, and
+  `GET /api/paradigms/{key}/versions/{version}` returns one exact version. Each
+  version lists its apparatus and session parameters with units, allowed ranges
+  and defaults, its zones and events, and for every metric the definition,
+  formula, inputs and what happens when data is missing.
+
+Results always name the paradigm version, the metric engine version and the
+result schema version they were computed with. A metric that cannot be computed
+is reported as missing with a reason, never as zero.
 
 ### Errors
 
