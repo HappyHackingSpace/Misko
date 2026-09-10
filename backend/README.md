@@ -9,8 +9,9 @@ Integration branch `new-backend`. The rebuild is incomplete; do not release it.
 | [#126](https://github.com/HappyHackingSpace/Misko/issues/126) | Subjects, experiments, phases, groups, enrollments and dated group assignments |
 | [#127](https://github.com/HappyHackingSpace/Misko/issues/127) | Disease models, substances, intervention plans, weights, subject conditions and actual administrations |
 | [#128](https://github.com/HappyHackingSpace/Misko/issues/128) | Read-only versioned paradigm catalog and the OPEN_FIELD metric engine |
+| [#129](https://github.com/HappyHackingSpace/Misko/issues/129) | The other ten paradigm contracts and metric engines, calibrated zones, scored events and pinned manifests |
 
-The other ten paradigms, tests, GCS uploads and video analysis are separate following issues. The Vue application is not wired to this API yet; its old
+Tests, GCS uploads and video analysis are separate following issues. The Vue application is not wired to this API yet; its old
 business routes return 404. There is no legacy API adapter or data migration.
 
 ## Layout and boundaries
@@ -179,9 +180,10 @@ change means a new published version, and callers only receive copies.
   the calculations and `ResultSchemaVersion` the shape of a result. Every result
   and manifest carries all three.
 - `GET /api/paradigms/{key}/versions/{version}` is the manifest a worker
-  consumes: parameters with units, ranges and defaults, zones, interval and
-  point events, metrics with definition, formula, inputs, missing-data rule and
-  tolerance, and QC rules.
+  consumes: parameters with units, ranges, defaults and value type, zones
+  (derived from parameters or calibrated per video), the scored input events the
+  engine consumes, the interval and point events it derives, metrics with
+  definition, formula, inputs, missing-data rule and tolerance, and QC rules.
 - `automatedAnalysis` stays false until a real worker capability is registered;
   catalog presence does not mean a video can be analyzed.
 
@@ -206,7 +208,51 @@ samples need finite coordinates, timestamps must be non-negative and strictly
 increasing, and unknown or out-of-range parameters are rejected. The engine also
 emits `in_center` and `immobile` intervals and `center_entry` points for the
 event timeline. Tolerances are 1e-6 in the metric unit for times, distances and
-speeds, and 1e-9 for ratios and counts. The other ten paradigms follow in #129.
+speeds, and 1e-9 for ratios and counts; booleans use 1e-9 too.
+
+### The other ten paradigms (version 1)
+
+Every paradigm takes the same input: parameters, samples, calibrated zone
+shapes, scored observed events, the event types that were scored, and the
+recorded duration. Calibrated zones are circles or polygons with at least three
+vertices, in the same centimeter coordinates as the samples, and include their
+boundary; each shape of a multi-shape zone counts as the same zone. Unknown,
+missing required or malformed zones are rejected. An observed event needs a
+declared and scored type, the declared point or interval shape, an allowed
+label, and must end within the recorded duration; single events occur at most
+once. Trajectory paradigms use the OPEN_FIELD counted-interval rule: time and
+zone membership come from the earlier sample, an entry is a counted interval
+whose earlier sample is outside the zone and whose later sample is inside, and
+latency is the time of the first tracked sample inside the zone.
+
+| Paradigm | Input | Metrics |
+|---|---|---|
+| `MWM` | Trajectory in tank-centered centimeters, x east and y north; platform, target quadrant and wall annulus derived from parameters; samples outside the tank are lost | escape latency (start of the first platform dwell of at least `min_platform_dwell_s`), path length and mean swim speed up to the escape, target quadrant and thigmotaxis time ratios, platform crossings, time-weighted mean distance to the platform |
+| `EPM` | Trajectory; calibrated `center`, `open_arms`, `closed_arms`; scored `risk_assessment` points | distance, zone times and ratios, open and closed arm entries, latency to open arm, risk assessment count |
+| `Y_MAZE` | Trajectory; calibrated `arm_a`, `arm_b`, `arm_c`; optional `novel_arm` (1 to 3) | total arm entries (the start arm is the first entry), spontaneous alternation ratio, novel arm time ratio |
+| `BARNES_MAZE` | Trajectory; calibrated `target_hole` and `holes` with one shape per hole | primary latency, primary errors (hole entries before the target), total errors |
+| `THREE_CHAMBER` | Trajectory; calibrated chambers, optional `social_interaction` and `object_interaction` | chamber times, sociability index `(social - object) / (social + object)`, interaction times, chamber entries |
+| `LIGHT_DARK` | Box-local trajectory split at `box_width_cm x light_fraction`; the dividing line belongs to the dark side | light and dark time, light time ratio, light entries, transitions, latency to dark |
+| `ROTAROD` | Scored single `fall` point; fixed or accelerating rod | latency to fall (censored at `max_trial_duration_s`), fall detected, rpm at fall |
+| `POLE` | Scored single `turn_complete`, `base_reached` and `fall` points | time to turn, total time, descent time and speed, fall detected |
+| `TREADMILL` | Scored single `exhaustion` and repeated `shock` points; fixed or accelerating belt | latency to exhaustion, run time, run distance (integral of the belt speed), shocks strictly before the run ends |
+| `NOVEL_OBJECT` | Scored `exploration` intervals labeled `novel` or `familiar` | novel, familiar and total exploration (overlaps count once), discrimination index |
+
+Missing metrics carry a reason instead of zero: `NO_VALID_INTERVALS`,
+`EVENT_NOT_OBSERVED` (for example no escape in a probe trial),
+`NOT_SCORED` (the event type was not scored), `ZERO_DENOMINATOR`,
+`INSUFFICIENT_ENTRIES` (fewer than three Y maze entries), `INCOMPLETE_RECORDING`
+(no event and a recording shorter than the cut-off), `NOT_APPLICABLE` (no novel
+arm), `ZONE_NOT_PROVIDED` (an optional zone was not calibrated) and
+`BELOW_EXPLORATION_CRITERION`. Rules across parameters reject a platform outside
+the tank, a wall annulus as wide as the tank radius, and end speeds below start
+speeds.
+
+Every published manifest is pinned to a golden file in
+`internal/paradigms/adapters/http/testdata/manifests`, and the test fails when a
+published contract changes or disappears. Change a contract by publishing a new
+version; `go test ./internal/paradigms/adapters/http -update` only writes
+goldens for versions that do not have one yet.
 
 ## Local container run
 

@@ -19,8 +19,8 @@ Bu branch'i canlıya almayın.
 | Laboratuvar ayarları (kurulum başına tek laboratuvar) | Hazır |
 | Denekler, deneyler, aşamalar, gruplar ve katılımlar | Hazır |
 | Hastalık modelleri, maddeler, müdahale planları ve uygulamalar | Hazır |
-| Open Field metrik tanımlarıyla paradigma kataloğu | Hazır |
-| Diğer on paradigma, testler, video analizi | Henüz yok |
+| On bir paradigmanın metrik tanımlarıyla paradigma kataloğu | Hazır |
+| Testler, video yükleme ve video analizi | Henüz yok |
 | Yeni API üzerinde Vue paneli | Henüz yok |
 
 ## Kurulum
@@ -213,16 +213,31 @@ tanımlıdır ve API üzerinden oluşturulamaz, değiştirilemez veya silinemez.
 
 - `GET /api/paradigms`, paradigmaları yayımlanmış sürümleriyle ve otomatik video
   analizinin kullanılabilir olup olmadığıyla (`automatedAnalysis`) listeler.
-  Şu an OPEN_FIELD yayımlanmıştır ve otomatik analiz henüz yoktur.
+  On bir paradigma yayımlanmıştır: `BARNES_MAZE`, `EPM`, `LIGHT_DARK`, `MWM`,
+  `NOVEL_OBJECT`, `OPEN_FIELD`, `POLE`, `ROTAROD`, `THREE_CHAMBER`, `TREADMILL`
+  ve `Y_MAZE`. Hiçbiri için otomatik analiz henüz yoktur.
 - `GET /api/paradigms/{key}` en son sürümü, `GET /api/paradigms/{key}/versions/{version}`
   ise tam olarak bir sürümü döndürür. Her sürüm; birim, izin verilen aralık ve
   varsayılan değerleriyle düzenek ve oturum parametrelerini, bölgelerini ve
   olaylarını, her metrik için de tanımı, formülü, girdileri ve veri eksik
   olduğunda ne olacağını listeler.
 
+Bazı paradigmalar izlenen konumdan fazlasına ihtiyaç duyar:
+
+- `calibrated` olarak işaretlenen bölgeler (örneğin yükseltilmiş artı labirent
+  kolları veya Barnes labirenti delikleri) her video için daire ya da çokgen
+  olarak çizilir. Su labirenti platformu gibi diğer bölgeler düzenek
+  parametrelerinden hesaplanır.
+- `inputEvents`, izlenmek yerine puanlanan gözlemleri listeler: rotarod düşüşü,
+  pole testi dönüşleri veya yeni nesne keşfi gibi. Puanlanmamış bir olay türü
+  sıfır değil, eksik metrik üretir.
+
 Sonuçlar her zaman hesaplandıkları paradigma sürümünü, metrik motoru sürümünü ve
 sonuç şeması sürümünü belirtir. Hesaplanamayan bir metrik sıfır olarak değil,
-nedeniyle birlikte eksik olarak raporlanır.
+nedeniyle birlikte eksik olarak raporlanır. Örneğin kaçışın olmadığı bir probe
+denemesi `EVENT_NOT_OBSERVED`, üçten az kol girişi olan bir Y labirenti denemesi
+`INSUFFICIENT_ENTRIES` bildirir. Yayımlanmış bir sürüm asla değişmez; değişen
+bir tanım yeni bir sürüm olarak yayımlanır.
 
 ### Hatalar
 

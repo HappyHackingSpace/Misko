@@ -64,7 +64,7 @@ func openFieldV1() definition {
 				{Key: "max_calibration_error_cm", Operator: "<=", Value: 2, Unit: Centimeter},
 			},
 		},
-		evaluate: evaluateOpenField,
+		evaluate: func(e evaluation) computation { return evaluateOpenField(e.params, e.samples) },
 	}
 }
 

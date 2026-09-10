@@ -99,24 +99,29 @@ type summaryJSON struct {
 }
 
 type parameterJSON struct {
-	Key     string  `json:"key"`
-	Label   string  `json:"label"`
-	Unit    string  `json:"unit"`
-	Min     float64 `json:"min"`
-	Max     float64 `json:"max"`
-	Default float64 `json:"default"`
+	Key       string  `json:"key"`
+	Label     string  `json:"label"`
+	Unit      string  `json:"unit"`
+	ValueType string  `json:"valueType"`
+	Min       float64 `json:"min"`
+	Max       float64 `json:"max"`
+	Default   float64 `json:"default"`
 }
 
 type zoneJSON struct {
-	Key      string `json:"key"`
-	Role     string `json:"role"`
-	Geometry string `json:"geometry"`
+	Key        string `json:"key"`
+	Role       string `json:"role"`
+	Geometry   string `json:"geometry"`
+	Calibrated bool   `json:"calibrated"`
+	Required   bool   `json:"required"`
 }
 
 type eventJSON struct {
-	Type       string `json:"type"`
-	Kind       string `json:"kind"`
-	Definition string `json:"definition"`
+	Type       string   `json:"type"`
+	Kind       string   `json:"kind"`
+	Labels     []string `json:"labels"`
+	Single     bool     `json:"single"`
+	Definition string   `json:"definition"`
 }
 
 type metricJSON struct {
@@ -153,6 +158,7 @@ type manifestJSON struct {
 	ApparatusParameters []parameterJSON `json:"apparatusParameters"`
 	SessionParameters   []parameterJSON `json:"sessionParameters"`
 	Zones               []zoneJSON      `json:"zones"`
+	InputEvents         []eventJSON     `json:"inputEvents"`
 	Events              []eventJSON     `json:"events"`
 	Metrics             []metricJSON    `json:"metrics"`
 	QC                  []qcJSON        `json:"qc"`
@@ -164,19 +170,13 @@ func toManifest(m application.Manifest) manifestJSON {
 		Key: p.Key, Name: p.Name, Category: string(p.Category), Species: p.Species, TrialTypes: p.TrialTypes, Version: p.Version,
 		MetricEngineVersion: m.MetricEngineVersion, ResultSchemaVersion: m.ResultSchemaVersion, AutomatedAnalysis: m.AutomatedAnalysis,
 		ApparatusParameters: parameters(p.ApparatusParameters), SessionParameters: parameters(p.SessionParameters),
+		Zones: []zoneJSON{}, InputEvents: events(p.InputEvents), Events: events(p.Events), Metrics: []metricJSON{}, QC: []qcJSON{},
 	}
 	for _, z := range p.Zones {
-		out.Zones = append(out.Zones, zoneJSON{z.Key, z.Role, z.Geometry})
-	}
-	for _, e := range p.Events {
-		out.Events = append(out.Events, eventJSON{e.Type, string(e.Kind), e.Definition})
+		out.Zones = append(out.Zones, zoneJSON{z.Key, z.Role, z.Geometry, z.Calibrated, z.Required})
 	}
 	for _, mt := range p.Metrics {
-		valueType := "number"
-		if mt.Integer {
-			valueType = "integer"
-		}
-		out.Metrics = append(out.Metrics, metricJSON{mt.Key, mt.Label, string(mt.Unit), valueType, mt.Definition, mt.Formula, mt.MissingWhen, mt.Inputs, mt.Min, mt.Max, mt.Tolerance})
+		out.Metrics = append(out.Metrics, metricJSON{mt.Key, mt.Label, string(mt.Unit), valueType(mt.Integer), mt.Definition, mt.Formula, mt.MissingWhen, mt.Inputs, mt.Min, mt.Max, mt.Tolerance})
 	}
 	for _, q := range p.QC {
 		out.QC = append(out.QC, qcJSON{q.Key, q.Operator, q.Value, string(q.Unit)})
@@ -187,7 +187,26 @@ func toManifest(m application.Manifest) manifestJSON {
 func parameters(params []domain.Parameter) []parameterJSON {
 	out := make([]parameterJSON, 0, len(params))
 	for _, p := range params {
-		out = append(out, parameterJSON{p.Key, p.Label, string(p.Unit), p.Min, p.Max, p.Default})
+		out = append(out, parameterJSON{p.Key, p.Label, string(p.Unit), valueType(p.Integer), p.Min, p.Max, p.Default})
 	}
 	return out
+}
+
+func events(defs []domain.EventDefinition) []eventJSON {
+	out := make([]eventJSON, 0, len(defs))
+	for _, e := range defs {
+		labels := e.Labels
+		if labels == nil {
+			labels = []string{}
+		}
+		out = append(out, eventJSON{e.Type, string(e.Kind), labels, e.Single, e.Definition})
+	}
+	return out
+}
+
+func valueType(integer bool) string {
+	if integer {
+		return "integer"
+	}
+	return "number"
 }
