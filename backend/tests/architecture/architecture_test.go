@@ -26,6 +26,12 @@ func TestLayerPolicy(t *testing.T) {
 		{"internal/subjects/adapters/http/handler.go", module + "/internal/identity/adapters/postgres", false},
 		{"internal/bootstrap/app.go", module + "/internal/subjects/adapters/postgres", true},
 		{"internal/subjects/domain/subject.go", "os", false},
+		// access/domain is the shared RBAC kernel every inner layer may use.
+		{"internal/subjects/domain/subject.go", module + "/internal/access/domain", true},
+		{"internal/subjects/application/create.go", module + "/internal/access/domain", true},
+		{"internal/subjects/application/create.go", module + "/internal/access/adapters/http", false},
+		{"internal/access/domain/role.go", module + "/internal/identity/domain", false},
+		{"internal/access/domain/role.go", "net/http", false},
 	} {
 		t.Run(tc.path+"->"+tc.dependency, func(t *testing.T) {
 			if got := allowed(tc.path, tc.dependency); got != tc.allowed {

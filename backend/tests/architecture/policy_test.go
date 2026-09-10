@@ -35,7 +35,8 @@ func allowed(file, dependency string) bool {
 	layer := parts[2]
 	switch layer {
 	case "domain", "application":
-		if pure[dependency] {
+		// The RBAC kernel is shared so every use case authorizes the same way.
+		if pure[dependency] || dependency == module+"/internal/access/domain" {
 			return true
 		}
 		if strings.HasSuffix(file, "_test.go") && (dependency == "testing" || dependency == "testing/quick") {

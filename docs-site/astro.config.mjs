@@ -30,6 +30,7 @@ export default defineConfig({
           items: [
             { label: "Overview", translations: { tr: "Genel bakış" }, slug: "overview" },
             { label: "Installation", translations: { tr: "Kurulum" }, slug: "installation" },
+            { label: "Go backend (preview)", translations: { tr: "Go backend (önizleme)" }, slug: "go-backend" },
             { label: "Usage", translations: { tr: "Kullanım" }, slug: "usage" },
             { label: "Architecture", translations: { tr: "Mimari" }, slug: "architecture" },
           ],

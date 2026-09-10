@@ -1,13 +1,21 @@
 openapi: 3.1.0
 info:
   title: Misko API
-  version: 0.1.0
-  description: Foundation only. Business and authentication endpoints follow in separate issues.
+  version: 0.2.0
+  description: >-
+    Health, authentication, user management and the laboratory singleton.
+    Every error response carries a stable `code` and an English `error` message.
+    401 means missing, invalid, expired or revoked credentials; 403 means the
+    current role lacks the permission. Roles are read from the database on every
+    request, never from the token.
+security:
+  - bearer: []
 paths:
   /api/health:
     get:
       operationId: getLiveness
       summary: Process liveness; independent of PostgreSQL
+      security: []
       responses:
         '200':
           description: Process is accepting HTTP
@@ -19,6 +27,7 @@ paths:
     get:
       operationId: getReadiness
       summary: PostgreSQL schema is installed and the process is not draining
+      security: []
       responses:
         '200':
           description: Ready
@@ -32,7 +41,348 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Probe'
+  /api/meta:
+    get:
+      operationId: getMeta
+      summary: Public branding for the sign-in screen
+      security: []
+      responses:
+        '200':
+          description: Application and laboratory name; labName is null before setup
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [appName, labName]
+                properties:
+                  appName: {type: string}
+                  labName: {type: [string, 'null']}
+  /api/auth/login:
+    post:
+      operationId: login
+      summary: Exchange email and password for a bearer token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [email, password]
+              properties:
+                email: {type: string}
+                password: {type: string}
+      responses:
+        '200':
+          $ref: '#/components/responses/Session'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          description: auth.invalidCredentials; unknown accounts and wrong passwords are indistinguishable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/auth/me:
+    get:
+      operationId: getCurrentUser
+      summary: Current user and the permissions of their current role
+      responses:
+        '200':
+          description: Current user
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [user, permissions]
+                properties:
+                  user:
+                    $ref: '#/components/schemas/User'
+                  permissions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Permission'
+        '401':
+          $ref: '#/components/responses/Problem'
+  /api/auth/password:
+    post:
+      operationId: changeOwnPassword
+      summary: Change the caller's password; all earlier tokens are revoked
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [currentPassword, newPassword]
+              properties:
+                currentPassword: {type: string}
+                newPassword:
+                  $ref: '#/components/schemas/NewPassword'
+      responses:
+        '200':
+          $ref: '#/components/responses/Session'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Problem'
+  /api/users:
+    get:
+      operationId: listUsers
+      summary: List users (user:manage)
+      parameters:
+        - {name: search, in: query, schema: {type: string, maxLength: 100}, description: Case-insensitive match on name or email}
+        - {name: role, in: query, schema: {$ref: '#/components/schemas/Role'}}
+        - {name: sort, in: query, schema: {type: string, enum: [name, email, role, createdAt], default: createdAt}}
+        - {name: order, in: query, schema: {type: string, enum: [asc, desc]}, description: Defaults to desc for createdAt and asc otherwise}
+        - {name: page, in: query, schema: {type: integer, minimum: 1, default: 1}}
+        - {name: pageSize, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 10}, description: Values above 100 are capped}
+      responses:
+        '200':
+          description: One page of users, ordered with id as a stable tie-breaker
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [data, total, page, pageSize]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/User'
+                  total: {type: integer}
+                  page: {type: integer}
+                  pageSize: {type: integer}
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+    post:
+      operationId: createUser
+      summary: Create a user (user:manage); there is no public signup
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [email, name, role]
+              properties:
+                email: {type: string, maxLength: 254}
+                name: {type: string, minLength: 1, maxLength: 120}
+                role:
+                  $ref: '#/components/schemas/Role'
+                password:
+                  $ref: '#/components/schemas/NewPassword'
+      responses:
+        '201':
+          description: Created; generatedPassword is present only when no password was supplied
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [user]
+                properties:
+                  user:
+                    $ref: '#/components/schemas/User'
+                  generatedPassword: {type: string}
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+  /api/users/{id}:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      operationId: getUser
+      summary: Get a user (user:manage)
+      responses:
+        '200':
+          $ref: '#/components/responses/User'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+    patch:
+      operationId: updateUser
+      summary: Rename a user or change their role (user:manage)
+      description: The last SUPERADMIN or LAB_MANAGER cannot be demoted to an unprivileged role (409 user.lastPrivileged).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              minProperties: 1
+              properties:
+                name: {type: string, minLength: 1, maxLength: 120}
+                role:
+                  $ref: '#/components/schemas/Role'
+      responses:
+        '200':
+          $ref: '#/components/responses/User'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+    delete:
+      operationId: deleteUser
+      summary: Delete a user (user:manage)
+      description: Users cannot delete themselves (400 user.cannotDeleteSelf) and the last privileged user remains (409 user.lastPrivileged).
+      responses:
+        '204':
+          description: Deleted; the user's tokens stop authenticating immediately
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+  /api/users/{id}/reset-password:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+    post:
+      operationId: resetUserPassword
+      summary: Set another user's password and revoke their tokens (user:manage)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                password:
+                  $ref: '#/components/schemas/NewPassword'
+      responses:
+        '200':
+          description: generatedPassword is present only when no password was supplied
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                properties:
+                  generatedPassword: {type: string}
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+  /api/lab:
+    get:
+      operationId: getLaboratory
+      summary: The laboratory singleton (*:read)
+      responses:
+        '200':
+          $ref: '#/components/responses/Laboratory'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+    patch:
+      operationId: updateLaboratory
+      summary: Update laboratory fields (lab:configure); an empty code clears it
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              minProperties: 1
+              properties:
+                name: {type: string, minLength: 1, maxLength: 120}
+                code: {type: string, pattern: '^[A-Za-z0-9._-]{0,32}$'}
+                timezone: {type: string, description: IANA time zone name}
+      responses:
+        '200':
+          $ref: '#/components/responses/Laboratory'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
 components:
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: HS256 token with issuer, audience and expiry; see backend/README.md
+  responses:
+    Problem:
+      description: Error with a stable code
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Session:
+      description: Bearer token and the signed-in user
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: false
+            required: [token, tokenType, expiresAt, user]
+            properties:
+              token: {type: string}
+              tokenType: {type: string, enum: [Bearer]}
+              expiresAt: {type: string, format: date-time}
+              user:
+                $ref: '#/components/schemas/User'
+    User:
+      description: User
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/User'
+    Laboratory:
+      description: Laboratory
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: false
+            required: [name, code, timezone, createdAt, updatedAt]
+            properties:
+              name: {type: string}
+              code: {type: [string, 'null']}
+              timezone: {type: string}
+              createdAt: {type: string, format: date-time}
+              updatedAt: {type: string, format: date-time}
   schemas:
     Probe:
       type: object
@@ -42,3 +392,30 @@ components:
         status:
           type: string
           enum: [ok, unavailable]
+    Problem:
+      type: object
+      additionalProperties: false
+      required: [error, code]
+      properties:
+        error: {type: string}
+        code: {type: string}
+    Role:
+      type: string
+      enum: [SUPERADMIN, LAB_MANAGER, RESEARCHER, TECHNICIAN, VIEWER]
+    Permission:
+      type: string
+      enum: ['user:manage', 'lab:configure', 'study:write', 'subject:write', 'weight:write', 'apparatus:write', 'test:write', 'test:run', '*:read']
+    NewPassword:
+      type: string
+      description: At least 8 characters and at most 72 UTF-8 bytes; compared byte for byte
+    User:
+      type: object
+      additionalProperties: false
+      required: [id, email, name, role, createdAt]
+      properties:
+        id: {type: string, format: uuid}
+        email: {type: string}
+        name: {type: string}
+        role:
+          $ref: '#/components/schemas/Role'
+        createdAt: {type: string, format: date-time}

@@ -1,0 +1,27 @@
+version: "2"
+overrides:
+  go:
+    overrides:
+      - db_type: uuid
+        go_type: string
+      - db_type: timestamptz
+        go_type: time.Time
+sql:
+  - engine: postgresql
+    schema: schema
+    queries: internal/identity/adapters/postgres/queries.sql
+    gen:
+      go:
+        package: sqlcgen
+        out: internal/identity/adapters/postgres/sqlcgen
+        sql_package: pgx/v5
+        emit_pointers_for_null_types: true
+  - engine: postgresql
+    schema: schema
+    queries: internal/laboratory/adapters/postgres/queries.sql
+    gen:
+      go:
+        package: sqlcgen
+        out: internal/laboratory/adapters/postgres/sqlcgen
+        sql_package: pgx/v5
+        emit_pointers_for_null_types: true
