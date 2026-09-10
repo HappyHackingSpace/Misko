@@ -17,8 +17,8 @@ type MiskoAdministration struct {
 	SubjectID           string
 	SubstanceID         string
 	SubstanceName       string
-	PlanID              pgtype.UUID
-	WeightMeasurementID pgtype.UUID
+	PlanID              *string
+	WeightMeasurementID *string
 	BodyMilligrams      *int64
 	AmountMicro         int64
 	Unit                string
@@ -82,7 +82,7 @@ type MiskoGroupAssignment struct {
 	EnrollmentID string
 	GroupID      string
 	ValidFrom    time.Time
-	ValidTo      pgtype.Timestamptz
+	ValidTo      *time.Time
 	CreatedAt    time.Time
 }
 
@@ -90,7 +90,7 @@ type MiskoInterventionPlan struct {
 	ID           string
 	ExperimentID string
 	GroupID      string
-	PhaseID      pgtype.UUID
+	PhaseID      *string
 	SubstanceID  string
 	AmountMicro  int64
 	Unit         string
@@ -127,7 +127,7 @@ type MiskoSubjectCondition struct {
 	SubjectID        string
 	DiseaseModelID   string
 	DiseaseModelName string
-	EnrollmentID     pgtype.UUID
+	EnrollmentID     *string
 	Status           string
 	ObservedAt       time.Time
 	Notes            *string

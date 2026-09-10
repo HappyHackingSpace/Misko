@@ -14,6 +14,9 @@ import (
 	identitypostgres "github.com/HappyHackingSpace/Misko/backend/internal/identity/adapters/postgres"
 	"github.com/HappyHackingSpace/Misko/backend/internal/identity/adapters/token"
 	identityapp "github.com/HappyHackingSpace/Misko/backend/internal/identity/application"
+	interventionshttp "github.com/HappyHackingSpace/Misko/backend/internal/interventions/adapters/http"
+	interventionspostgres "github.com/HappyHackingSpace/Misko/backend/internal/interventions/adapters/postgres"
+	interventionsapp "github.com/HappyHackingSpace/Misko/backend/internal/interventions/application"
 	laboratoryhttp "github.com/HappyHackingSpace/Misko/backend/internal/laboratory/adapters/http"
 	laboratorypostgres "github.com/HappyHackingSpace/Misko/backend/internal/laboratory/adapters/postgres"
 	laboratoryapp "github.com/HappyHackingSpace/Misko/backend/internal/laboratory/application"
@@ -74,6 +77,7 @@ func NewAPI(pool *pgxpool.Pool, cfg config.Config, auth config.Auth, logger *slo
 	laboratory := laboratoryapp.New(laboratorypostgres.NewStore(pool))
 	subjects := subjectsapp.New(subjectspostgres.NewStore(pool), time.Now)
 	experiments := experimentsapp.New(experimentspostgres.NewStore(pool))
+	interventions := interventionsapp.New(interventionspostgres.NewStore(pool), time.Now)
 	readiness := healthapp.New(healthpostgres.New(pool), cfg.ProbeTimeout)
 
 	mux := http.NewServeMux()
@@ -85,5 +89,6 @@ func NewAPI(pool *pgxpool.Pool, cfg config.Config, auth config.Auth, logger *slo
 	laboratoryhttp.Register(mux, laboratory, authenticate, logger)
 	subjectshttp.Register(mux, subjects, authenticate, logger)
 	experimentshttp.Register(mux, experiments, authenticate, logger)
+	interventionshttp.Register(mux, interventions, authenticate, logger)
 	return API{Handler: mux, BeginDrain: readiness.BeginDrain}, nil
 }

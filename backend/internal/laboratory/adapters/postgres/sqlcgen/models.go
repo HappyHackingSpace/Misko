@@ -10,6 +10,33 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type MiskoAdministration struct {
+	ID                  string
+	ExperimentID        string
+	EnrollmentID        string
+	SubjectID           string
+	SubstanceID         string
+	SubstanceName       string
+	PlanID              pgtype.UUID
+	WeightMeasurementID pgtype.UUID
+	BodyMilligrams      *int64
+	AmountMicro         int64
+	Unit                string
+	Route               string
+	AdministeredAt      time.Time
+	Notes               *string
+	RecordedBy          string
+	CreatedAt           time.Time
+}
+
+type MiskoDiseaseModel struct {
+	ID          string
+	Name        string
+	Description *string
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
 type MiskoEnrollment struct {
 	ID           string
 	ExperimentID string
@@ -59,6 +86,21 @@ type MiskoGroupAssignment struct {
 	CreatedAt    time.Time
 }
 
+type MiskoInterventionPlan struct {
+	ID           string
+	ExperimentID string
+	GroupID      string
+	PhaseID      pgtype.UUID
+	SubstanceID  string
+	AmountMicro  int64
+	Unit         string
+	Route        string
+	Schedule     string
+	Notes        *string
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+}
+
 type MiskoLaboratory struct {
 	Singleton bool
 	Name      string
@@ -80,6 +122,27 @@ type MiskoSubject struct {
 	UpdatedAt time.Time
 }
 
+type MiskoSubjectCondition struct {
+	ID               string
+	SubjectID        string
+	DiseaseModelID   string
+	DiseaseModelName string
+	EnrollmentID     pgtype.UUID
+	Status           string
+	ObservedAt       time.Time
+	Notes            *string
+	RecordedBy       string
+	CreatedAt        time.Time
+}
+
+type MiskoSubstance struct {
+	ID          string
+	Name        string
+	Description *string
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
 type MiskoUser struct {
 	ID             string
 	Email          string
@@ -89,4 +152,13 @@ type MiskoUser struct {
 	SessionVersion int32
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
+}
+
+type MiskoWeightMeasurement struct {
+	ID             string
+	SubjectID      string
+	BodyMilligrams int64
+	MeasuredAt     time.Time
+	RecordedBy     string
+	CreatedAt      time.Time
 }

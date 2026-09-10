@@ -139,6 +139,9 @@ func (s *Store) DeletePhase(ctx context.Context, experimentID, phaseID string) e
 		return application.ErrPhaseNotFound
 	}
 	deleted, err := s.queries.DeletePhase(ctx, sqlcgen.DeletePhaseParams{ExperimentID: experimentID, ID: phaseID})
+	if code, _ := pgtx.Violation(err); code == "23503" {
+		return application.ErrPhaseInUse
+	}
 	if err != nil {
 		return fmt.Errorf("delete phase: %w", err)
 	}
