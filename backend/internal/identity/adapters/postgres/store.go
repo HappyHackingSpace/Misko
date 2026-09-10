@@ -13,14 +13,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"regexp"
-	"strings"
 	"time"
-)
-
-var (
-	uuidPattern = regexp.MustCompile(`^(?i)[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
-	likeEscaper = strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
 )
 
 type Store struct {
@@ -51,7 +44,7 @@ func (s *Store) CreateUser(ctx context.Context, u application.NewUser) (domain.U
 }
 
 func (s *Store) User(ctx context.Context, id string) (domain.User, error) {
-	if !uuidPattern.MatchString(id) {
+	if !pgtx.ValidUUID(id) {
 		return domain.User{}, application.ErrNotFound
 	}
 	row, err := s.queries.GetUser(ctx, id)
@@ -70,7 +63,7 @@ func (s *Store) AccountByEmail(ctx context.Context, email string) (application.A
 }
 
 func (s *Store) AccountByID(ctx context.Context, id string) (application.Account, error) {
-	if !uuidPattern.MatchString(id) {
+	if !pgtx.ValidUUID(id) {
 		return application.Account{}, application.ErrNotFound
 	}
 	row, err := s.queries.GetAccountByID(ctx, id)
@@ -81,7 +74,7 @@ func (s *Store) AccountByID(ctx context.Context, id string) (application.Account
 }
 
 func (s *Store) ListUsers(ctx context.Context, f application.UserFilter) ([]domain.User, int, error) {
-	search := likeEscaper.Replace(f.Search)
+	search := pgtx.EscapeLike(f.Search)
 	rows, err := s.queries.ListUsers(ctx, sqlcgen.ListUsersParams{
 		Search: search, Role: string(f.Role), SortKey: f.Sort, Descending: f.Descending,
 		PageLimit: int32(f.Limit), PageOffset: int32(f.Offset),
@@ -105,7 +98,7 @@ func (s *Store) ListUsers(ctx context.Context, f application.UserFilter) ([]doma
 }
 
 func (s *Store) UpdateUser(ctx context.Context, id string, c application.UserChange) (domain.User, error) {
-	if !uuidPattern.MatchString(id) {
+	if !pgtx.ValidUUID(id) {
 		return domain.User{}, application.ErrNotFound
 	}
 	params := sqlcgen.UpdateUserParams{ID: id, Name: c.Name}
@@ -121,7 +114,7 @@ func (s *Store) UpdateUser(ctx context.Context, id string, c application.UserCha
 }
 
 func (s *Store) SetPasswordHash(ctx context.Context, id, hash string) (int, error) {
-	if !uuidPattern.MatchString(id) {
+	if !pgtx.ValidUUID(id) {
 		return 0, application.ErrNotFound
 	}
 	version, err := s.queries.SetPasswordHash(ctx, sqlcgen.SetPasswordHashParams{ID: id, PasswordHash: hash})
@@ -132,7 +125,7 @@ func (s *Store) SetPasswordHash(ctx context.Context, id, hash string) (int, erro
 }
 
 func (s *Store) DeleteUser(ctx context.Context, id string) error {
-	if !uuidPattern.MatchString(id) {
+	if !pgtx.ValidUUID(id) {
 		return application.ErrNotFound
 	}
 	deleted, err := s.queries.DeleteUser(ctx, id)

@@ -1,6 +1,6 @@
 ---
 title: Go backend (önizleme)
-description: new-backend branch'inde yeniden yazılan Go backend'in kurulumu ve kullanımı; giriş, kullanıcılar, roller ve laboratuvar ayarları.
+description: new-backend branch'inde yeniden yazılan Go backend'in kurulumu ve kullanımı; giriş, kullanıcılar, roller, laboratuvar ayarları, denekler ve deneyler.
 ---
 
 :::caution
@@ -17,7 +17,8 @@ Bu branch'i canlıya almayın.
 | Giriş, mevcut kullanıcı, kendi şifresini değiştirme | Hazır |
 | Beş rolle kullanıcı yönetimi | Hazır |
 | Laboratuvar ayarları (kurulum başına tek laboratuvar) | Hazır |
-| Denekler, deneyler, paradigmalar, video analizi | Henüz yok |
+| Denekler, deneyler, aşamalar, gruplar ve katılımlar | Hazır |
+| Hastalık modelleri, paradigmalar, testler, video analizi | Henüz yok |
 | Yeni API üzerinde Vue paneli | Henüz yok |
 
 ## Kurulum
@@ -43,6 +44,11 @@ curl --fail http://127.0.0.1:4000/api/ready
 `setup` terminal olmadan çalışırsa (örneğin CI içinde) `-credentials-file YOL`
 verilmedikçe başlamayı reddeder. Bu durumda şifre, yalnızca sahibinin
 okuyabildiği yeni bir dosyaya yazılır. Şifre hiçbir zaman loglara yazılmaz.
+
+Compose veritabanı yerine kendi PostgreSQL sunucunuzu kullanıyorsanız sürüm
+PostgreSQL 18 veya üzeri olmalıdır. Şema, PostgreSQL ile birlikte gelen
+`btree_gist` eklentisini etkinleştirdiği için `schema` komutunu çalıştıran
+kullanıcının veritabanında nesne oluşturma izni olmalıdır.
 
 ### Ayarlar
 
@@ -113,6 +119,59 @@ Giriş yapmış her kullanıcı `GET /api/lab` ile okuyabilir. SUPERADMIN ve
 LAB_MANAGER, `PATCH /api/lab` ile `name`, `code` ve `timezone` alanlarını
 değiştirebilir. Boş `code` değeri kodu temizler. `GET /api/meta` herkese açıktır
 ve giriş ekranı için laboratuvar adını döndürür.
+
+### Denekler
+
+Giriş yapmış her kullanıcı denekleri okuyabilir. SUPERADMIN, LAB_MANAGER ve
+RESEARCHER denekleri değiştirebilir.
+
+- `POST /api/subjects`, `code`, `species` (`MOUSE` veya `RAT`), `sex` (`FEMALE`,
+  `MALE` veya `UNKNOWN`) ve isteğe bağlı `strain`, `birthDate` (`YYYY-AA-GG`) ve
+  `notes` ile denek oluşturur. Kodlar büyük/küçük harf farkı gözetmeden benzersizdir.
+- `GET /api/subjects`, denekleri `search`, `species`, `sex`, `sort`, `order`,
+  `page` ve `pageSize` ile listeler.
+- `PATCH /api/subjects/{id}`, gönderdiğiniz alanları değiştirir. Boş `strain`,
+  `birthDate` veya `notes` değeri alanı temizler.
+- `DELETE /api/subjects/{id}`, hiçbir deneye katılmamış bir deneği siler.
+- `GET /api/subjects/{id}/enrollments`, deneğin katıldığı tüm deneyleri gösterir.
+
+Denek kendi başına bir kayıttır; aynı hayvan kopyalanmadan birden fazla deneye
+katılabilir.
+
+### Deneyler
+
+Giriş yapmış her kullanıcı deneyleri okuyabilir. SUPERADMIN, LAB_MANAGER ve
+RESEARCHER deney tasarlayabilir ve denek katabilir.
+
+1. Deneyi `POST /api/experiments` (`code`, `title`, isteğe bağlı `description`
+   ve `requiresControl`) ile oluşturun. Deney detayındaki
+   `controlRequirementMet`, kontrol grubu eklendiğinde true olur.
+2. Ölçüm aşamalarını `POST /api/experiments/{id}/phases` (`name`, `position`)
+   ile ekleyin; örneğin 1. sırada Baseline, 2. sırada Post-treatment.
+3. Grupları `POST /api/experiments/{id}/groups` (`name`, `CONTROL` veya
+   `TREATMENT` değerli `role`, isteğe bağlı `targetSize`) ile ekleyin.
+   `GET /api/experiments/{id}/groups` her grubun hedefini ve şu an gruptaki denek
+   sayısını gösterir.
+4. Deneği `POST /api/experiments/{id}/enrollments` (`subjectId`, `enrolledAt`,
+   isteğe bağlı `groupId`) ile deneye katın. Bir denek aynı deneye yalnızca bir
+   kez katılabilir.
+5. Deneği başka bir gruba
+   `POST /api/experiments/{id}/enrollments/{enrollmentId}/assignments`
+   (`groupId`, `effectiveFrom`) ile taşıyın. Önceki grup dönemi o anda biter ve
+   `GET /api/experiments/{id}/enrollments/{enrollmentId}` ile görülen geçmişte kalır.
+
+Aşamalar ve gruplar bilerek ayrıdır. Aşama deneğin ne zaman ölçüldüğünü, grup
+hangi kola ait olduğunu söyler. Sağlıklı baseline ölçümü yapılan, tedavi grubuna
+atanmış bir denek tedavi grubunda kalır.
+
+Sistem şunları reddeder:
+
+- başka bir deneye ait aşama, grup veya katılım kayıtları,
+- başka bir dönemle çakışan, katılımdan önce başlayan ya da mevcut dönemden sonra
+  başlamayan grup dönemleri,
+- hâlâ ataması olan bir grubun ya da deneye katılmış bir deneğin silinmesi.
+
+Deneyler ve katılımlar henüz silinemez; araştırma kayıtları korunur.
 
 ### Hatalar
 

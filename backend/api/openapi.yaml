@@ -335,7 +335,421 @@ paths:
           $ref: '#/components/responses/Problem'
         '404':
           $ref: '#/components/responses/Problem'
+  /api/subjects:
+    get:
+      operationId: listSubjects
+      summary: List subjects (*:read)
+      parameters:
+        - {name: search, in: query, schema: {type: string, maxLength: 100}, description: Case-insensitive match on code or strain}
+        - {name: species, in: query, schema: {$ref: '#/components/schemas/Species'}}
+        - {name: sex, in: query, schema: {$ref: '#/components/schemas/Sex'}}
+        - {name: sort, in: query, schema: {type: string, enum: [code, species, sex, birthDate, createdAt], default: createdAt}}
+        - {name: order, in: query, schema: {type: string, enum: [asc, desc]}, description: Defaults to desc for createdAt and asc otherwise}
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: One page of subjects, ordered with id as a stable tie-breaker
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, total, page, pageSize]
+                properties:
+                  data: {type: array, items: {$ref: '#/components/schemas/Subject'}}
+                  total: {type: integer}
+                  page: {type: integer}
+                  pageSize: {type: integer}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+    post:
+      operationId: createSubject
+      summary: Create a subject (subject:write)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/SubjectInput'}
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Subject'}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/subjects/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      operationId: getSubject
+      summary: Get a subject (*:read)
+      responses:
+        '200':
+          description: Subject
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Subject'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+    patch:
+      operationId: updateSubject
+      summary: Update provided subject fields (subject:write)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/SubjectPatch'}
+      responses:
+        '200':
+          description: Updated subject
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Subject'}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+    delete:
+      operationId: deleteSubject
+      summary: Delete a subject that is not enrolled (subject:write)
+      responses:
+        '204': {description: Deleted}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/subjects/{id}/enrollments:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      operationId: listSubjectEnrollments
+      summary: Every enrollment of a subject across experiments, newest first (*:read)
+      responses:
+        '200':
+          description: Enrollments; empty for an unknown subject
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: {type: array, items: {$ref: '#/components/schemas/Enrollment'}}
+        '401': {$ref: '#/components/responses/Problem'}
+  /api/experiments:
+    get:
+      operationId: listExperiments
+      summary: List experiments (*:read)
+      parameters:
+        - {name: search, in: query, schema: {type: string, maxLength: 100}, description: Case-insensitive match on code or title}
+        - {name: sort, in: query, schema: {type: string, enum: [code, title, createdAt], default: createdAt}}
+        - {name: order, in: query, schema: {type: string, enum: [asc, desc]}, description: Defaults to desc for createdAt and asc otherwise}
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: One page of experiments
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, total, page, pageSize]
+                properties:
+                  data: {type: array, items: {$ref: '#/components/schemas/Experiment'}}
+                  total: {type: integer}
+                  page: {type: integer}
+                  pageSize: {type: integer}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+    post:
+      operationId: createExperiment
+      summary: Create an experiment (study:write)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ExperimentInput'}
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Experiment'}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/experiments/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      operationId: getExperiment
+      summary: Experiment with its control requirement status (*:read)
+      responses:
+        '200':
+          description: Experiment
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ExperimentDetail'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+    patch:
+      operationId: updateExperiment
+      summary: Update provided experiment fields (study:write)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ExperimentPatch'}
+      responses:
+        '200':
+          description: Updated experiment
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Experiment'}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/experiments/{id}/phases:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      operationId: listPhases
+      summary: Measurement phases ordered by position (*:read)
+      responses:
+        '200':
+          description: Phases
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: {type: array, items: {$ref: '#/components/schemas/Phase'}}
+        '401': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+    post:
+      operationId: createPhase
+      summary: Add a measurement phase (study:write)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/PhaseInput'}
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Phase'}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/experiments/{id}/phases/{phaseId}:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+      - {name: phaseId, in: path, required: true, schema: {type: string, format: uuid}}
+    patch:
+      operationId: updatePhase
+      summary: Update a phase of this experiment (study:write); other experiments' phases are 404
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/PhasePatch'}
+      responses:
+        '200':
+          description: Updated phase
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Phase'}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+    delete:
+      operationId: deletePhase
+      summary: Delete a phase of this experiment (study:write)
+      responses:
+        '204': {description: Deleted}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+  /api/experiments/{id}/groups:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      operationId: listGroups
+      summary: Groups with target size and subjects assigned now (*:read)
+      responses:
+        '200':
+          description: Groups ordered by name
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: {type: array, items: {$ref: '#/components/schemas/GroupSize'}}
+        '401': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+    post:
+      operationId: createGroup
+      summary: Add a group (study:write)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/GroupInput'}
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Group'}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/experiments/{id}/groups/{groupId}:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+      - {name: groupId, in: path, required: true, schema: {type: string, format: uuid}}
+    patch:
+      operationId: updateGroup
+      summary: Update a group of this experiment (study:write); other experiments' groups are 404
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/GroupPatch'}
+      responses:
+        '200':
+          description: Updated group
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Group'}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+    delete:
+      operationId: deleteGroup
+      summary: Delete a group without assignments (study:write)
+      responses:
+        '204': {description: Deleted}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/experiments/{id}/enrollments:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      operationId: listEnrollments
+      summary: List enrollments of this experiment (*:read)
+      parameters:
+        - {name: subjectId, in: query, schema: {type: string, format: uuid}}
+        - {name: groupId, in: query, schema: {type: string, format: uuid}, description: Group assigned now}
+        - {name: order, in: query, schema: {type: string, enum: [asc, desc], default: desc}, description: By enrolledAt}
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: One page of enrollments
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, total, page, pageSize]
+                properties:
+                  data: {type: array, items: {$ref: '#/components/schemas/Enrollment'}}
+                  total: {type: integer}
+                  page: {type: integer}
+                  pageSize: {type: integer}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+    post:
+      operationId: enrollSubject
+      summary: Enroll a subject, optionally into an initial group (study:write)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/EnrollmentInput'}
+      responses:
+        '201':
+          description: Enrolled
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Enrollment'}
+        '400':
+          description: enrollment.subjectNotFound, assignment.groupNotInExperiment, common.invalidTime or validation errors
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/experiments/{id}/enrollments/{enrollmentId}:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+      - {name: enrollmentId, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      operationId: getEnrollment
+      summary: Enrollment with its full assignment history (*:read)
+      responses:
+        '200':
+          description: Enrollment
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/EnrollmentDetail'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+  /api/experiments/{id}/enrollments/{enrollmentId}/assignments:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+      - {name: enrollmentId, in: path, required: true, schema: {type: string, format: uuid}}
+    post:
+      operationId: assignGroup
+      summary: Move an enrolled subject to a group from effectiveFrom (study:write)
+      description: >-
+        The open assignment is closed at effectiveFrom and kept as history.
+        409 assignment.alreadyInGroup, assignment.outOfOrder or assignment.overlap;
+        400 assignment.groupNotInExperiment or assignment.beforeEnrollment.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/AssignmentInput'}
+      responses:
+        '201':
+          description: New assignment
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Assignment'}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
 components:
+  parameters:
+    ID: {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+    Page: {name: page, in: query, schema: {type: integer, minimum: 1, default: 1}}
+    PageSize: {name: pageSize, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 10}, description: Values above 100 are capped}
   securitySchemes:
     bearer:
       type: http
@@ -384,6 +798,192 @@ components:
               createdAt: {type: string, format: date-time}
               updatedAt: {type: string, format: date-time}
   schemas:
+    Species: {type: string, enum: [MOUSE, RAT]}
+    Sex: {type: string, enum: [FEMALE, MALE, UNKNOWN]}
+    GroupRole: {type: string, enum: [CONTROL, TREATMENT]}
+    Code:
+      type: string
+      pattern: '^[A-Za-z0-9._/-]{1,64}$'
+      description: Unique ignoring case
+    Subject:
+      type: object
+      required: [id, code, species, sex, strain, birthDate, notes, createdAt, updatedAt]
+      properties:
+        id: {type: string, format: uuid}
+        code: {$ref: '#/components/schemas/Code'}
+        species: {$ref: '#/components/schemas/Species'}
+        sex: {$ref: '#/components/schemas/Sex'}
+        strain: {type: [string, 'null'], maxLength: 120}
+        birthDate: {type: [string, 'null'], format: date}
+        notes: {type: [string, 'null'], maxLength: 2000}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+    SubjectInput:
+      type: object
+      additionalProperties: false
+      required: [code, species, sex]
+      properties:
+        code: {$ref: '#/components/schemas/Code'}
+        species: {$ref: '#/components/schemas/Species'}
+        sex: {$ref: '#/components/schemas/Sex'}
+        strain: {type: string, maxLength: 120}
+        birthDate: {type: string, format: date, description: Not later than one day after the current UTC date}
+        notes: {type: string, maxLength: 2000}
+    SubjectPatch:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      description: Omitted fields are unchanged; an empty strain, birthDate or notes clears it
+      properties:
+        code: {$ref: '#/components/schemas/Code'}
+        species: {$ref: '#/components/schemas/Species'}
+        sex: {$ref: '#/components/schemas/Sex'}
+        strain: {type: string, maxLength: 120}
+        birthDate: {type: string, description: YYYY-MM-DD or empty}
+        notes: {type: string, maxLength: 2000}
+    Experiment:
+      type: object
+      required: [id, code, title, description, requiresControl, createdAt, updatedAt]
+      properties:
+        id: {type: string, format: uuid}
+        code: {$ref: '#/components/schemas/Code'}
+        title: {type: string, minLength: 1, maxLength: 200}
+        description: {type: [string, 'null'], maxLength: 5000}
+        requiresControl: {type: boolean}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+    ExperimentDetail:
+      allOf:
+        - $ref: '#/components/schemas/Experiment'
+        - type: object
+          required: [controlRequirementMet]
+          properties:
+            controlRequirementMet: {type: boolean, description: True unless a control group is required and none exists}
+    ExperimentInput:
+      type: object
+      additionalProperties: false
+      required: [code, title]
+      properties:
+        code: {$ref: '#/components/schemas/Code'}
+        title: {type: string, minLength: 1, maxLength: 200}
+        description: {type: string, maxLength: 5000}
+        requiresControl: {type: boolean, default: false}
+    ExperimentPatch:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      description: Omitted fields are unchanged; an empty description clears it
+      properties:
+        code: {$ref: '#/components/schemas/Code'}
+        title: {type: string, minLength: 1, maxLength: 200}
+        description: {type: string, maxLength: 5000}
+        requiresControl: {type: boolean}
+    Phase:
+      type: object
+      required: [id, experimentId, name, position, description, createdAt, updatedAt]
+      properties:
+        id: {type: string, format: uuid}
+        experimentId: {type: string, format: uuid}
+        name: {type: string, description: Unique within the experiment ignoring case}
+        position: {type: integer, minimum: 1, maximum: 1000, description: Unique within the experiment}
+        description: {type: [string, 'null']}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+    PhaseInput:
+      type: object
+      additionalProperties: false
+      required: [name, position]
+      properties:
+        name: {type: string, minLength: 1, maxLength: 120}
+        position: {type: integer, minimum: 1, maximum: 1000}
+        description: {type: string, maxLength: 5000}
+    PhasePatch:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        name: {type: string, minLength: 1, maxLength: 120}
+        position: {type: integer, minimum: 1, maximum: 1000}
+        description: {type: string, maxLength: 5000}
+    Group:
+      type: object
+      required: [id, experimentId, name, role, targetSize, description, createdAt, updatedAt]
+      properties:
+        id: {type: string, format: uuid}
+        experimentId: {type: string, format: uuid}
+        name: {type: string, description: Unique within the experiment ignoring case}
+        role: {$ref: '#/components/schemas/GroupRole'}
+        targetSize: {type: [integer, 'null'], minimum: 1}
+        description: {type: [string, 'null']}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+    GroupSize:
+      allOf:
+        - $ref: '#/components/schemas/Group'
+        - type: object
+          required: [activeSubjects]
+          properties:
+            activeSubjects: {type: integer, description: Assignments active at the database clock}
+    GroupInput:
+      type: object
+      additionalProperties: false
+      required: [name, role]
+      properties:
+        name: {type: string, minLength: 1, maxLength: 120}
+        role: {$ref: '#/components/schemas/GroupRole'}
+        targetSize: {type: integer, minimum: 0, maximum: 100000, description: 0 means no target}
+        description: {type: string, maxLength: 5000}
+    GroupPatch:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      description: Omitted fields are unchanged; targetSize 0 removes the target
+      properties:
+        name: {type: string, minLength: 1, maxLength: 120}
+        role: {$ref: '#/components/schemas/GroupRole'}
+        targetSize: {type: integer, minimum: 0, maximum: 100000}
+        description: {type: string, maxLength: 5000}
+    Enrollment:
+      type: object
+      required: [id, experimentId, subjectId, enrolledAt, currentGroupId, createdAt]
+      properties:
+        id: {type: string, format: uuid}
+        experimentId: {type: string, format: uuid}
+        subjectId: {type: string, format: uuid}
+        enrolledAt: {type: string, format: date-time}
+        currentGroupId: {type: [string, 'null'], format: uuid, description: Group assigned now}
+        createdAt: {type: string, format: date-time}
+    EnrollmentDetail:
+      allOf:
+        - $ref: '#/components/schemas/Enrollment'
+        - type: object
+          required: [assignments]
+          properties:
+            assignments: {type: array, items: {$ref: '#/components/schemas/Assignment'}, description: Oldest first}
+    EnrollmentInput:
+      type: object
+      additionalProperties: false
+      required: [subjectId, enrolledAt]
+      properties:
+        subjectId: {type: string, format: uuid}
+        enrolledAt: {type: string, format: date-time}
+        groupId: {type: string, format: uuid, description: Initial group starting at enrolledAt}
+    Assignment:
+      type: object
+      required: [id, groupId, validFrom, validTo, createdAt]
+      properties:
+        id: {type: string, format: uuid}
+        groupId: {type: string, format: uuid}
+        validFrom: {type: string, format: date-time}
+        validTo: {type: [string, 'null'], format: date-time, description: Exclusive end; null while open}
+        createdAt: {type: string, format: date-time}
+    AssignmentInput:
+      type: object
+      additionalProperties: false
+      required: [groupId, effectiveFrom]
+      properties:
+        groupId: {type: string, format: uuid}
+        effectiveFrom: {type: string, format: date-time}
     Probe:
       type: object
       additionalProperties: false

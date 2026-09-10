@@ -8,7 +8,6 @@ import (
 	"github.com/HappyHackingSpace/Misko/backend/internal/platform/httpjson"
 	"log/slog"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -131,7 +130,7 @@ func (h handler) listUsers(w http.ResponseWriter, r *http.Request, p application
 	q := r.URL.Query()
 	page, err := h.service.ListUsers(r.Context(), p.Actor, application.UserQuery{
 		Search: q.Get("search"), Role: q.Get("role"), Sort: q.Get("sort"), Order: q.Get("order"),
-		Page: queryInt(q.Get("page")), PageSize: queryInt(q.Get("pageSize")),
+		Page: httpjson.QueryInt(q.Get("page")), PageSize: httpjson.QueryInt(q.Get("pageSize")),
 	})
 	if err != nil {
 		h.fail(w, r, err)
@@ -225,19 +224,6 @@ func (h handler) deleteUser(w http.ResponseWriter, r *http.Request, p applicatio
 
 func (h handler) fail(w http.ResponseWriter, r *http.Request, err error) {
 	httpjson.Fail(w, r, h.logger, err, failures)
-}
-
-// queryInt returns 0 for an absent value and -1 for a malformed one, which the
-// use case rejects after checking authorization.
-func queryInt(raw string) int {
-	if raw == "" {
-		return 0
-	}
-	n, err := strconv.Atoi(raw)
-	if err != nil || n < 0 {
-		return -1
-	}
-	return n
 }
 
 type userJSON struct {
