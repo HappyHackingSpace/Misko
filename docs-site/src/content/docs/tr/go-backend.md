@@ -18,7 +18,8 @@ Bu branch'i canlıya almayın.
 | Beş rolle kullanıcı yönetimi | Hazır |
 | Laboratuvar ayarları (kurulum başına tek laboratuvar) | Hazır |
 | Denekler, deneyler, aşamalar, gruplar ve katılımlar | Hazır |
-| Hastalık modelleri, paradigmalar, testler, video analizi | Henüz yok |
+| Hastalık modelleri, maddeler, müdahale planları ve uygulamalar | Hazır |
+| Paradigmalar, testler, video analizi | Henüz yok |
 | Yeni API üzerinde Vue paneli | Henüz yok |
 
 ## Kurulum
@@ -172,6 +173,37 @@ Sistem şunları reddeder:
 - hâlâ ataması olan bir grubun ya da deneye katılmış bir deneğin silinmesi.
 
 Deneyler ve katılımlar henüz silinemez; araştırma kayıtları korunur.
+
+### Müdahaleler
+
+Hastalık modelleri ve maddeler ortak listelerdir. SUPERADMIN, LAB_MANAGER ve
+RESEARCHER bunları `POST /api/disease-models` ve `POST /api/substances`
+(`name`, isteğe bağlı `description`) ile yönetir.
+
+- **Planlar**: `POST /api/experiments/{id}/intervention-plans` bir grubun ne
+  alması gerektiğini tanımlar (`groupId`, `substanceId`, `amount`, `unit`,
+  `route`, `schedule`, isteğe bağlı `phaseId`). Plan, bir şeyin verildiğini
+  asla kaydetmez.
+- **Ağırlıklar**: TECHNICIAN ve üstü roller vücut ağırlığını
+  `POST /api/subjects/{id}/weights` (`grams`, `measuredAt`) ile kaydeder.
+- **Durumlar**: TECHNICIAN ve üstü roller gözlemleri
+  `POST /api/subjects/{id}/conditions` (`diseaseModelId`, `status`,
+  `observedAt`) ile kaydeder. İndüksiyon (`INDUCED`) ve doğrulama (`CONFIRMED`
+  veya `NOT_CONFIRMED`) ayrı gözlemler olarak kaydedilir.
+  `GET /api/subjects/{id}/conditions` geçmişi ve güncel durumu gösterir;
+  `GET /api/conditions?current=true&status=CONFIRMED` denekleri güncel
+  durumlarına göre bulur.
+- **Uygulamalar**: TECHNICIAN ve üstü roller gerçekten verileni
+  `POST /api/experiments/{id}/enrollments/{enrollmentId}/administrations`
+  (`substanceId`, `amount`, `unit`, `route`, `administeredAt`, isteğe bağlı
+  `planId` ve `weightMeasurementId`) ile kaydeder. Kilogram başına dozlar
+  (`mg/kg`, `ug/kg`, `IU/kg`) aynı hayvanın son 7 gün içindeki ağırlığını
+  gerektirir ve yanıt mutlak dozu gösterir. `GET /api/subjects/{id}/administrations`
+  ve `GET /api/administrations`, `substanceId`, `experimentId`, `from` ve `to`
+  ile filtrelenir.
+
+Miktarları `"0.25"` gibi ondalık metin olarak yazın. Kayıtlar, madde adı
+değişse veya plan sonradan güncellense bile kaydedildikleri ad ve dozu korur.
 
 ### Hatalar
 

@@ -745,11 +745,238 @@ paths:
         '403': {$ref: '#/components/responses/Problem'}
         '404': {$ref: '#/components/responses/Problem'}
         '409': {$ref: '#/components/responses/Problem'}
+  /api/disease-models:
+    get:
+      operationId: listDiseaseModels
+      summary: Disease models ordered by name (*:read)
+      responses:
+        '200': {description: Disease models, content: {application/json: {schema: {$ref: '#/components/schemas/CatalogList'}}}}
+        '401': {$ref: '#/components/responses/Problem'}
+    post:
+      operationId: createDiseaseModel
+      summary: Create a disease model (study:write)
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CatalogInput'}}}}
+      responses:
+        '201': {description: Created, content: {application/json: {schema: {$ref: '#/components/schemas/CatalogEntry'}}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/disease-models/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    patch:
+      operationId: updateDiseaseModel
+      summary: Update a disease model (study:write); recorded conditions keep their original name
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CatalogPatch'}}}}
+      responses:
+        '200': {description: Updated, content: {application/json: {schema: {$ref: '#/components/schemas/CatalogEntry'}}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/substances:
+    get:
+      operationId: listSubstances
+      summary: Substances ordered by name (*:read)
+      responses:
+        '200': {description: Substances, content: {application/json: {schema: {$ref: '#/components/schemas/CatalogList'}}}}
+        '401': {$ref: '#/components/responses/Problem'}
+    post:
+      operationId: createSubstance
+      summary: Create a substance (study:write)
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CatalogInput'}}}}
+      responses:
+        '201': {description: Created, content: {application/json: {schema: {$ref: '#/components/schemas/CatalogEntry'}}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/substances/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    patch:
+      operationId: updateSubstance
+      summary: Update a substance (study:write); recorded administrations keep their original name
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CatalogPatch'}}}}
+      responses:
+        '200': {description: Updated, content: {application/json: {schema: {$ref: '#/components/schemas/CatalogEntry'}}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/experiments/{id}/intervention-plans:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      operationId: listInterventionPlans
+      summary: Intervention plans of this experiment (*:read)
+      responses:
+        '200':
+          description: Plans in creation order
+          content:
+            application/json:
+              schema: {type: object, required: [data], properties: {data: {type: array, items: {$ref: '#/components/schemas/InterventionPlan'}}}}
+        '401': {$ref: '#/components/responses/Problem'}
+    post:
+      operationId: createInterventionPlan
+      summary: Plan what a group should receive (study:write); records no administration
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/InterventionPlanInput'}}}}
+      responses:
+        '201': {description: Created, content: {application/json: {schema: {$ref: '#/components/schemas/InterventionPlan'}}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+  /api/experiments/{id}/intervention-plans/{planId}:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+      - {name: planId, in: path, required: true, schema: {type: string, format: uuid}}
+    patch:
+      operationId: updateInterventionPlan
+      summary: Update a plan (study:write); recorded administrations are unchanged
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/InterventionPlanPatch'}}}}
+      responses:
+        '200': {description: Updated, content: {application/json: {schema: {$ref: '#/components/schemas/InterventionPlan'}}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+  /api/subjects/{id}/weights:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      operationId: listWeights
+      summary: Body weights of a subject, newest first (*:read)
+      responses:
+        '200':
+          description: Weights
+          content:
+            application/json:
+              schema: {type: object, required: [data], properties: {data: {type: array, items: {$ref: '#/components/schemas/WeightMeasurement'}}}}
+        '401': {$ref: '#/components/responses/Problem'}
+    post:
+      operationId: recordWeight
+      summary: Record a body weight (weight:write)
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/WeightInput'}}}}
+      responses:
+        '201': {description: Recorded, content: {application/json: {schema: {$ref: '#/components/schemas/WeightMeasurement'}}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+  /api/subjects/{id}/conditions:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      operationId: listSubjectConditions
+      summary: Condition history (newest first) and current status per disease model (*:read)
+      parameters:
+        - {name: diseaseModelId, in: query, schema: {type: string, format: uuid}}
+      responses:
+        '200':
+          description: History and current conditions
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [history, current]
+                properties:
+                  history: {type: array, items: {$ref: '#/components/schemas/SubjectCondition'}}
+                  current: {type: array, items: {$ref: '#/components/schemas/SubjectCondition'}}
+        '401': {$ref: '#/components/responses/Problem'}
+    post:
+      operationId: recordCondition
+      summary: Record a condition observation (test:run); induction and confirmation are separate records
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/SubjectConditionInput'}}}}
+      responses:
+        '201': {description: Recorded, content: {application/json: {schema: {$ref: '#/components/schemas/SubjectCondition'}}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+  /api/conditions:
+    get:
+      operationId: listConditions
+      summary: Condition observations across subjects (*:read)
+      parameters:
+        - {name: diseaseModelId, in: query, schema: {type: string, format: uuid}}
+        - {name: status, in: query, schema: {$ref: '#/components/schemas/ConditionStatus'}}
+        - {name: current, in: query, schema: {type: boolean, default: false}, description: Only the latest observation per subject and disease model}
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: One page of observations, newest first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, total, page, pageSize]
+                properties:
+                  data: {type: array, items: {$ref: '#/components/schemas/SubjectCondition'}}
+                  total: {type: integer}
+                  page: {type: integer}
+                  pageSize: {type: integer}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+  /api/experiments/{id}/enrollments/{enrollmentId}/administrations:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+      - {name: enrollmentId, in: path, required: true, schema: {type: string, format: uuid}}
+    post:
+      operationId: recordAdministration
+      summary: Record an actual administration for an enrollment (test:run)
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/AdministrationInput'}}}}
+      responses:
+        '201': {description: Recorded, content: {application/json: {schema: {$ref: '#/components/schemas/Administration'}}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+  /api/subjects/{id}/administrations:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      operationId: listSubjectAdministrations
+      summary: Administration history of a subject, newest first (*:read)
+      parameters:
+        - $ref: '#/components/parameters/SubstanceFilter'
+        - $ref: '#/components/parameters/ExperimentFilter'
+        - $ref: '#/components/parameters/From'
+        - $ref: '#/components/parameters/To'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200': {description: One page of administrations, content: {application/json: {schema: {$ref: '#/components/schemas/AdministrationPage'}}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+  /api/administrations:
+    get:
+      operationId: listAdministrations
+      summary: Administrations across subjects, newest first (*:read)
+      parameters:
+        - $ref: '#/components/parameters/SubstanceFilter'
+        - $ref: '#/components/parameters/ExperimentFilter'
+        - $ref: '#/components/parameters/From'
+        - $ref: '#/components/parameters/To'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200': {description: One page of administrations, content: {application/json: {schema: {$ref: '#/components/schemas/AdministrationPage'}}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
 components:
   parameters:
     ID: {name: id, in: path, required: true, schema: {type: string, format: uuid}}
     Page: {name: page, in: query, schema: {type: integer, minimum: 1, default: 1}}
     PageSize: {name: pageSize, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 10}, description: Values above 100 are capped}
+    SubstanceFilter: {name: substanceId, in: query, schema: {type: string, format: uuid}}
+    ExperimentFilter: {name: experimentId, in: query, schema: {type: string, format: uuid}}
+    From: {name: from, in: query, schema: {type: string, format: date-time}, description: Inclusive lower bound on administeredAt}
+    To: {name: to, in: query, schema: {type: string, format: date-time}, description: Exclusive upper bound on administeredAt}
   securitySchemes:
     bearer:
       type: http
@@ -984,6 +1211,178 @@ components:
       properties:
         groupId: {type: string, format: uuid}
         effectiveFrom: {type: string, format: date-time}
+    CatalogEntry:
+      type: object
+      required: [id, name, description, createdAt, updatedAt]
+      properties:
+        id: {type: string, format: uuid}
+        name: {type: string, description: Unique ignoring case}
+        description: {type: [string, 'null']}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+    CatalogList:
+      type: object
+      required: [data]
+      properties:
+        data: {type: array, items: {$ref: '#/components/schemas/CatalogEntry'}}
+    CatalogInput:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name: {type: string, minLength: 1, maxLength: 120}
+        description: {type: string, maxLength: 5000}
+    CatalogPatch:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        name: {type: string, minLength: 1, maxLength: 120}
+        description: {type: string, maxLength: 5000, description: Empty clears it}
+    Amount:
+      type: string
+      pattern: '^[0-9]{1,9}(\.[0-9]{1,6})?$'
+      description: Positive decimal, stored exactly
+    DoseUnit:
+      type: string
+      enum: [mg, ug, g, mL, uL, IU, mg/kg, ug/kg, IU/kg]
+    AdministrationRoute:
+      type: string
+      enum: [ORAL, INTRAPERITONEAL, SUBCUTANEOUS, INTRAVENOUS, INTRAMUSCULAR, INTRANASAL, INTRACEREBROVENTRICULAR, TOPICAL, INHALATION]
+    Dose:
+      type: object
+      required: [amount, unit]
+      properties:
+        amount: {$ref: '#/components/schemas/Amount'}
+        unit: {$ref: '#/components/schemas/DoseUnit'}
+    InterventionPlan:
+      type: object
+      required: [id, experimentId, groupId, phaseId, substanceId, dose, route, schedule, notes, createdAt, updatedAt]
+      properties:
+        id: {type: string, format: uuid}
+        experimentId: {type: string, format: uuid}
+        groupId: {type: string, format: uuid}
+        phaseId: {type: [string, 'null'], format: uuid}
+        substanceId: {type: string, format: uuid}
+        dose: {$ref: '#/components/schemas/Dose'}
+        route: {$ref: '#/components/schemas/AdministrationRoute'}
+        schedule: {type: string}
+        notes: {type: [string, 'null']}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+    InterventionPlanInput:
+      type: object
+      additionalProperties: false
+      required: [groupId, substanceId, amount, unit, route, schedule]
+      properties:
+        groupId: {type: string, format: uuid}
+        phaseId: {type: string, format: uuid}
+        substanceId: {type: string, format: uuid}
+        amount: {$ref: '#/components/schemas/Amount'}
+        unit: {$ref: '#/components/schemas/DoseUnit'}
+        route: {$ref: '#/components/schemas/AdministrationRoute'}
+        schedule: {type: string, minLength: 1, maxLength: 500}
+        notes: {type: string, maxLength: 2000}
+    InterventionPlanPatch:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      description: amount and unit must be sent together
+      properties:
+        amount: {$ref: '#/components/schemas/Amount'}
+        unit: {$ref: '#/components/schemas/DoseUnit'}
+        route: {$ref: '#/components/schemas/AdministrationRoute'}
+        schedule: {type: string, minLength: 1, maxLength: 500}
+        notes: {type: string, maxLength: 2000}
+    WeightMeasurement:
+      type: object
+      required: [id, subjectId, grams, measuredAt, recordedBy, createdAt]
+      properties:
+        id: {type: string, format: uuid}
+        subjectId: {type: string, format: uuid}
+        grams: {type: string, description: Up to 3 decimals}
+        measuredAt: {type: string, format: date-time}
+        recordedBy: {type: string, format: uuid}
+        createdAt: {type: string, format: date-time}
+    WeightInput:
+      type: object
+      additionalProperties: false
+      required: [grams, measuredAt]
+      properties:
+        grams: {type: string, pattern: '^[0-9]{1,4}(\.[0-9]{1,3})?$', description: Between 0.001 and 5000}
+        measuredAt: {type: string, format: date-time, description: Not in the future}
+    ConditionStatus:
+      type: string
+      enum: [INDUCED, CONFIRMED, NOT_CONFIRMED, RESOLVED]
+    SubjectCondition:
+      type: object
+      required: [id, subjectId, diseaseModelId, diseaseModelName, enrollmentId, status, observedAt, notes, recordedBy, createdAt]
+      properties:
+        id: {type: string, format: uuid}
+        subjectId: {type: string, format: uuid}
+        diseaseModelId: {type: string, format: uuid}
+        diseaseModelName: {type: string, description: Name when the observation was recorded}
+        enrollmentId: {type: [string, 'null'], format: uuid}
+        status: {$ref: '#/components/schemas/ConditionStatus'}
+        observedAt: {type: string, format: date-time}
+        notes: {type: [string, 'null']}
+        recordedBy: {type: string, format: uuid}
+        createdAt: {type: string, format: date-time}
+    SubjectConditionInput:
+      type: object
+      additionalProperties: false
+      required: [diseaseModelId, status, observedAt]
+      properties:
+        diseaseModelId: {type: string, format: uuid}
+        status: {$ref: '#/components/schemas/ConditionStatus'}
+        observedAt: {type: string, format: date-time, description: Not in the future}
+        enrollmentId: {type: string, format: uuid, description: Must belong to the same subject}
+        notes: {type: string, maxLength: 2000}
+    Administration:
+      type: object
+      required: [id, experimentId, enrollmentId, subjectId, substanceId, substanceName, planId, weightMeasurementId, bodyWeightGrams, dose, absoluteDose, route, administeredAt, notes, recordedBy, createdAt]
+      properties:
+        id: {type: string, format: uuid}
+        experimentId: {type: string, format: uuid}
+        enrollmentId: {type: string, format: uuid}
+        subjectId: {type: string, format: uuid}
+        substanceId: {type: string, format: uuid}
+        substanceName: {type: string, description: Name when the administration was recorded}
+        planId: {type: [string, 'null'], format: uuid}
+        weightMeasurementId: {type: [string, 'null'], format: uuid}
+        bodyWeightGrams: {type: [string, 'null'], description: Weight used for a per-kilogram dose}
+        dose: {$ref: '#/components/schemas/Dose'}
+        absoluteDose:
+          description: Dose multiplied by body mass for per-kilogram units, rounded half up to 6 decimals; equal to dose otherwise
+          oneOf:
+            - $ref: '#/components/schemas/Dose'
+            - type: 'null'
+        route: {$ref: '#/components/schemas/AdministrationRoute'}
+        administeredAt: {type: string, format: date-time}
+        notes: {type: [string, 'null']}
+        recordedBy: {type: string, format: uuid}
+        createdAt: {type: string, format: date-time}
+    AdministrationInput:
+      type: object
+      additionalProperties: false
+      required: [substanceId, amount, unit, route, administeredAt]
+      properties:
+        substanceId: {type: string, format: uuid}
+        planId: {type: string, format: uuid, description: Same experiment and substance; the subject must be in the plan's group at administeredAt}
+        weightMeasurementId: {type: string, format: uuid, description: Required for per-kilogram units; same subject, measured within the 7 days before}
+        amount: {$ref: '#/components/schemas/Amount'}
+        unit: {$ref: '#/components/schemas/DoseUnit'}
+        route: {$ref: '#/components/schemas/AdministrationRoute'}
+        administeredAt: {type: string, format: date-time, description: Not before enrollment and not in the future}
+        notes: {type: string, maxLength: 2000}
+    AdministrationPage:
+      type: object
+      required: [data, total, page, pageSize]
+      properties:
+        data: {type: array, items: {$ref: '#/components/schemas/Administration'}}
+        total: {type: integer}
+        page: {type: integer}
+        pageSize: {type: integer}
     Probe:
       type: object
       additionalProperties: false

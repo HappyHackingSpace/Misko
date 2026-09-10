@@ -24,6 +24,7 @@ var failures = []httpjson.Failure{
 	{Err: application.ErrPhaseConflict, Status: http.StatusConflict, Code: "phase.conflict"},
 	{Err: application.ErrGroupNameTaken, Status: http.StatusConflict, Code: "group.nameTaken"},
 	{Err: application.ErrGroupInUse, Status: http.StatusConflict, Code: "group.inUse"},
+	{Err: application.ErrPhaseInUse, Status: http.StatusConflict, Code: "phase.inUse"},
 	{Err: application.ErrAlreadyEnrolled, Status: http.StatusConflict, Code: "enrollment.duplicate"},
 	{Err: application.ErrOverlappingAssignment, Status: http.StatusConflict, Code: "assignment.overlap"},
 	{Err: application.ErrInvalidTime, Status: http.StatusBadRequest, Code: "common.invalidTime"},

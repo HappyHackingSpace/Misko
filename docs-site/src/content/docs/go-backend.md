@@ -18,7 +18,8 @@ current release. Do not deploy this branch.
 | User management with the five roles | Implemented |
 | Laboratory settings (one laboratory per installation) | Implemented |
 | Subjects, experiments, phases, groups and enrollments | Implemented |
-| Disease models, paradigms, tests, video analysis | Not yet |
+| Disease models, substances, intervention plans and administrations | Implemented |
+| Paradigms, tests, video analysis | Not yet |
 | Vue panel on the new API | Not yet |
 
 ## Installation
@@ -174,6 +175,35 @@ The system refuses:
 - deleting a group that still has assignments, or a subject that is enrolled.
 
 Experiments and enrollments cannot be deleted yet, so research records are kept.
+
+### Interventions
+
+Disease models and substances are shared lists. SUPERADMIN, LAB_MANAGER and
+RESEARCHER maintain them with `POST /api/disease-models` and
+`POST /api/substances` (`name`, optional `description`).
+
+- **Plans**: `POST /api/experiments/{id}/intervention-plans` describes what a
+  group should receive (`groupId`, `substanceId`, `amount`, `unit`, `route`,
+  `schedule`, optional `phaseId`). A plan never records that anything was given.
+- **Weights**: TECHNICIAN and above record body weight with
+  `POST /api/subjects/{id}/weights` (`grams`, `measuredAt`).
+- **Conditions**: TECHNICIAN and above record observations with
+  `POST /api/subjects/{id}/conditions` (`diseaseModelId`, `status`,
+  `observedAt`). Record induction (`INDUCED`) and confirmation (`CONFIRMED` or
+  `NOT_CONFIRMED`) as separate observations. `GET /api/subjects/{id}/conditions`
+  shows the history and the current status, and
+  `GET /api/conditions?current=true&status=CONFIRMED` finds subjects by their
+  current status.
+- **Administrations**: TECHNICIAN and above record what was actually given with
+  `POST /api/experiments/{id}/enrollments/{enrollmentId}/administrations`
+  (`substanceId`, `amount`, `unit`, `route`, `administeredAt`, optional `planId`
+  and `weightMeasurementId`). Doses per kilogram (`mg/kg`, `ug/kg`, `IU/kg`)
+  need a weight of the same animal from the previous 7 days, and the response
+  shows the absolute dose. `GET /api/subjects/{id}/administrations` and
+  `GET /api/administrations` filter by `substanceId`, `experimentId`, `from` and `to`.
+
+Write amounts as decimal text, for example `"0.25"`. Records keep the names and
+doses they were saved with, even if a substance is renamed or a plan changes later.
 
 ### Errors
 

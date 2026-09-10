@@ -7,9 +7,9 @@ Integration branch `new-backend`. The rebuild is incomplete; do not release it.
 | [#124](https://github.com/HappyHackingSpace/Misko/issues/124) | Liveness/readiness, graceful shutdown, fresh schema installation, architecture checks |
 | [#125](https://github.com/HappyHackingSpace/Misko/issues/125) | Login, current user, own password change, user management, laboratory singleton, RBAC, idempotent setup |
 | [#126](https://github.com/HappyHackingSpace/Misko/issues/126) | Subjects, experiments, phases, groups, enrollments and dated group assignments |
+| [#127](https://github.com/HappyHackingSpace/Misko/issues/127) | Disease models, substances, intervention plans, weights, subject conditions and actual administrations |
 
-Disease models, paradigms, tests, GCS uploads and video analysis are separate
-following issues. The Vue application is not wired to this API yet; its old
+Paradigms, tests, GCS uploads and video analysis are separate following issues. The Vue application is not wired to this API yet; its old
 business routes return 404. There is no legacy API adapter or data migration.
 
 ## Layout and boundaries
@@ -22,6 +22,7 @@ business routes return 404. There is no legacy API adapter or data migration.
 - `internal/laboratory`: the laboratory singleton.
 - `internal/subjects`: laboratory animals, independent of experiments.
 - `internal/experiments`: experiments, measurement phases, groups, enrollments and group assignments.
+- `internal/interventions`: disease models, substances, intervention plans, body weights, subject conditions and actual administrations.
 - `internal/health`: readiness use case and probes.
 - `internal/platform`: configuration, HTTP server lifecycle, JSON helpers, PostgreSQL transaction and error helpers, and the integration-test database helper. No business rules.
 - `schema`: embedded SQL files, applied in lexical order in one transaction; never run by the API.
@@ -67,6 +68,10 @@ The five roles and their permissions are static code, not database rows.
 | `POST /api/subjects`, `PATCH, DELETE /api/subjects/{id}` | `subject:write` |
 | `GET /api/experiments`, `GET /api/experiments/{id}` and its `phases`, `groups`, `enrollments`, `enrollments/{enrollmentId}` | `*:read` |
 | `POST, PATCH` experiments; `POST, PATCH, DELETE` phases and groups; `POST` enrollments and `enrollments/{enrollmentId}/assignments` | `study:write` |
+| `GET /api/disease-models`, `/api/substances`, `/api/conditions`, `/api/administrations`; `GET /api/experiments/{id}/intervention-plans`; `GET /api/subjects/{id}/weights`, `conditions`, `administrations` | `*:read` |
+| `POST, PATCH` disease models, substances and intervention plans | `study:write` |
+| `POST /api/subjects/{id}/weights` | `weight:write` |
+| `POST /api/subjects/{id}/conditions`, `POST /api/experiments/{id}/enrollments/{enrollmentId}/administrations` | `test:run` |
 
 Use cases check the actor and permission themselves; HTTP handlers only translate.
 Rules enforced by tests:
@@ -126,6 +131,40 @@ experiment. Lists are paginated with `page` and `pageSize` (default 10, maximum
 `species`, `sex`, `birthDate` or `createdAt`; experiments filter by `search` and
 sort by `code`, `title` or `createdAt`; enrollments filter by `subjectId` and
 current `groupId` and sort by `enrolledAt`.
+
+## Interventions
+
+A plan is not an administration, and induction is not a confirmed disease.
+
+- **Disease model** and **substance**: named catalog entries, unique ignoring case.
+- **Intervention plan**: what a group of an experiment is meant to receive
+  (substance, dose, route, schedule and optional phase). Creating or changing a
+  plan never records an administration.
+- **Weight measurement**: a subject's body weight in grams, with up to 3
+  decimals and at most 5000 g.
+- **Subject condition**: an append-only observation of a disease model with
+  status `INDUCED`, `CONFIRMED`, `NOT_CONFIRMED` or `RESOLVED`, optionally linked
+  to one of the same subject's enrollments. The current status per model is the
+  latest observation; `GET /api/conditions?current=true` filters on it.
+- **Administration**: an actual administration recorded against an enrollment,
+  with substance, amount, unit, route and time. It cannot precede enrollment or
+  lie in the future (5 minutes of clock skew are tolerated). Per-kilogram units
+  (`mg/kg`, `ug/kg`, `IU/kg`) need a weight of the same subject measured within
+  the 7 days before, and the response includes `absoluteDose` (dose times body
+  mass, rounded half up to 6 decimals). A linked plan must belong to the same
+  experiment, use the same substance and match the subject's group at that time.
+
+Amounts are decimal strings with up to 6 decimals and are stored as exact
+integers. Doses and dates are never inferred from plans. Records copy the
+substance or disease model name, dose, route and body weight when saved, so
+renaming a definition or editing a plan does not change history. Units: `mg`,
+`ug`, `g`, `mL`, `uL`, `IU`, `mg/kg`, `ug/kg`, `IU/kg`. Routes: `ORAL`,
+`INTRAPERITONEAL`, `SUBCUTANEOUS`, `INTRAVENOUS`, `INTRAMUSCULAR`, `INTRANASAL`,
+`INTRACEREBROVENTRICULAR`, `TOPICAL`, `INHALATION`. Composite foreign keys tie
+an administration's subject to its enrollment and its weight to the same
+subject, and a check constraint requires a weight for per-kilogram doses.
+Phases and groups referenced by plans cannot be deleted. Weights, conditions and
+administrations cannot be edited or deleted yet.
 
 ## Local container run
 
@@ -207,8 +246,8 @@ and deliberately leave their fixture. Identity, laboratory, subject, experiment
 and end-to-end HTTP tests create uniquely named `misko_test_*` databases and drop
 only those. They cover concurrent last-administrator protection, concurrent
 setup, concurrent enrollment and assignment, cross-experiment references,
-overlapping periods, target versus actual group counts, SQL constraints, search
-escaping, stable paging and the read/write RBAC matrix over HTTP.
+overlapping periods, target versus actual group counts, intervention references and
+history, per-kilogram dose conversion, SQL constraints, search escaping, stable paging and the read/write RBAC matrix over HTTP.
 
 CI runs these checks on PRs, including PRs targeting `new-backend`, then builds the
 container without pushing an image. Publication jobs are restricted to `main`;

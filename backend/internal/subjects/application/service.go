@@ -15,7 +15,7 @@ import (
 var (
 	ErrNotFound     = errors.New("subject not found")
 	ErrCodeTaken    = errors.New("subject code is already in use")
-	ErrInUse        = errors.New("subject is enrolled in an experiment and cannot be deleted")
+	ErrInUse        = errors.New("subject has enrollments or recorded measurements and cannot be deleted")
 	ErrNoChanges    = errors.New("no fields to update")
 	ErrInvalidQuery = errors.New("invalid list query")
 )
