@@ -10,6 +10,7 @@ Integration branch `new-backend`. The rebuild is incomplete; do not release it.
 | [#127](https://github.com/HappyHackingSpace/Misko/issues/127) | Disease models, substances, intervention plans, weights, subject conditions and actual administrations |
 | [#128](https://github.com/HappyHackingSpace/Misko/issues/128) | Read-only versioned paradigm catalog and the OPEN_FIELD metric engine |
 | [#129](https://github.com/HappyHackingSpace/Misko/issues/129) | The other ten paradigm contracts and metric engines, calibrated zones, scored events and pinned manifests |
+| [#130](https://github.com/HappyHackingSpace/Misko/issues/130) | Environments with immutable measurement revisions and experiment test protocols with immutable versions |
 
 Tests, GCS uploads and video analysis are separate following issues. The Vue application is not wired to this API yet; its old
 business routes return 404. There is no legacy API adapter or data migration.
@@ -26,6 +27,8 @@ business routes return 404. There is no legacy API adapter or data migration.
 - `internal/experiments`: experiments, measurement phases, groups, enrollments and group assignments.
 - `internal/interventions`: disease models, substances, intervention plans, body weights, subject conditions and actual administrations.
 - `internal/paradigms`: the hardcoded, versioned paradigm catalog and pure metric engine.
+- `internal/environments`: physical apparatus and their immutable measurement revisions.
+- `internal/protocols`: test protocols of an experiment with immutable versions of ordered paradigm steps.
 - `internal/health`: readiness use case and probes.
 - `internal/platform`: configuration, HTTP server lifecycle, JSON helpers, PostgreSQL transaction and error helpers, and the integration-test database helper. No business rules.
 - `schema`: embedded SQL files, applied in lexical order in one transaction; never run by the API.
@@ -40,7 +43,8 @@ any domain or application package but never another domain's adapters: other
 HTTP adapters resolve the caller through `identityhttp.Authenticator`, a function
 wired in the composition root. Relationships between domains, such as an
 enrollment's subject, are enforced with foreign keys rather than cross-domain
-imports. `net/http`, `database/sql`, JWT, bcrypt, pgx and GCP packages cannot
+imports. Environments and protocols check parameters through small `catalog`
+adapters that call `internal/paradigms/domain`. `net/http`, `database/sql`, JWT, bcrypt, pgx and GCP packages cannot
 enter inner layers. The architecture test scans every Go file under `internal`,
 including inactive build tags.
 
@@ -76,6 +80,8 @@ The five roles and their permissions are static code, not database rows.
 | `POST, PATCH` disease models, substances and intervention plans | `study:write` |
 | `POST /api/subjects/{id}/weights` | `weight:write` |
 | `POST /api/subjects/{id}/conditions`, `POST /api/experiments/{id}/enrollments/{enrollmentId}/administrations` | `test:run` |
+| `GET /api/environments`, `GET /api/environments/{id}`, its `revisions` and `revisions/{number}`; `GET /api/experiments/{id}/protocols`, `protocols/{protocolId}`, its `versions` and `versions/{number}` | `*:read` |
+| `POST, PATCH` environments; `POST` environment revisions; `POST, PATCH` protocols; `POST` protocol versions | `apparatus:write` |
 
 Use cases check the actor and permission themselves; HTTP handlers only translate.
 Rules enforced by tests:
@@ -253,6 +259,40 @@ Every published manifest is pinned to a golden file in
 published contract changes or disappears. Change a contract by publishing a new
 version; `go test ./internal/paradigms/adapters/http -update` only writes
 goldens for versions that do not have one yet.
+
+## Environments and protocols
+
+An environment is a physical apparatus set up for one paradigm, such as a
+particular water tank. Its measurements are stored as numbered revisions.
+
+- Creating an environment stores revision 1; `POST /api/environments/{id}/revisions`
+  adds the next number. The environment row is locked while a revision is
+  numbered, so concurrent revisions get consecutive numbers.
+- A revision gives every apparatus parameter of its paradigm version, because no
+  physical measurement is defaulted. Values must be within range and satisfy the
+  version's rules across parameters, such as an MWM platform inside the tank.
+- Revisions are immutable: a trigger rejects `UPDATE` and `DELETE`, and a
+  composite foreign key stops the environment's paradigm from changing. Only an
+  environment's name and notes can be edited.
+
+A protocol belongs to one experiment and has numbered versions. A version is an
+ordered list of 1 to 50 steps, and the steps may use different paradigms.
+
+- A step names a paradigm key and version, an environment revision of the same
+  paradigm and version, a trial type defined by that version, 1 to 1000 trials,
+  an inter-trial interval of 0 to 86400 seconds and session parameter values.
+  Positions run from 1 without gaps or duplicates.
+- Session values are validated together with the revision's apparatus values and
+  stored with defaults filled in.
+- Versions and steps are immutable. Triggers reject `UPDATE` and `DELETE`, a
+  composite foreign key keeps each step's paradigm and version equal to its
+  revision's, and a deferred constraint trigger rejects steps added to a version
+  after it was committed.
+- A new environment revision never changes a version that references an earlier
+  revision; publish a new protocol version to use it. Tests will reference a
+  fixed protocol version and, through its steps, fixed environment revisions.
+- Protocol routes are scoped to their experiment, so another experiment's
+  protocol id returns 404.
 
 ## Local container run
 

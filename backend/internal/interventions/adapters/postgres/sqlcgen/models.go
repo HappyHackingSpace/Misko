@@ -45,6 +45,27 @@ type MiskoEnrollment struct {
 	CreatedAt    time.Time
 }
 
+type MiskoEnvironment struct {
+	ID          string
+	Name        string
+	ParadigmKey string
+	Notes       *string
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+type MiskoEnvironmentRevision struct {
+	ID              string
+	EnvironmentID   string
+	ParadigmKey     string
+	Number          int32
+	ParadigmVersion int32
+	Apparatus       []byte
+	Notes           *string
+	CreatedBy       string
+	CreatedAt       time.Time
+}
+
 type MiskoExperiment struct {
 	ID              string
 	Code            string
@@ -108,6 +129,39 @@ type MiskoLaboratory struct {
 	Timezone  string
 	CreatedAt time.Time
 	UpdatedAt time.Time
+}
+
+type MiskoProtocol struct {
+	ID           string
+	ExperimentID string
+	Name         string
+	Description  *string
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+}
+
+type MiskoProtocolStep struct {
+	ProtocolVersionID     string
+	Position              int32
+	ParadigmKey           string
+	ParadigmVersion       int32
+	EnvironmentRevisionID string
+	TrialType             string
+	Trials                int32
+	InterTrialIntervalS   int32
+	Session               []byte
+	Notes                 *string
+}
+
+type MiskoProtocolVersion struct {
+	ID           string
+	ExperimentID string
+	ProtocolID   string
+	Number       int32
+	StepCount    int32
+	Notes        *string
+	CreatedBy    string
+	CreatedAt    time.Time
 }
 
 type MiskoSubject struct {

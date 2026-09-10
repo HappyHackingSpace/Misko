@@ -1003,6 +1003,187 @@ paths:
         '401': {$ref: '#/components/responses/Problem'}
         '403': {$ref: '#/components/responses/Problem'}
         '404': {$ref: '#/components/responses/Problem'}
+  /api/environments:
+    get:
+      operationId: listEnvironments
+      summary: Environments ordered by name (*:read)
+      parameters:
+        - {name: paradigmKey, in: query, schema: {type: string, pattern: '^[A-Z][A-Z_]{0,39}$'}, description: Only environments of this paradigm}
+      responses:
+        '200':
+          description: Environments
+          content:
+            application/json:
+              schema: {type: object, required: [data], properties: {data: {type: array, items: {$ref: '#/components/schemas/Environment'}}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+    post:
+      operationId: createEnvironment
+      summary: Create an environment with its first revision (apparatus:write)
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/EnvironmentInput'}}}}
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [environment, revision]
+                properties:
+                  environment: {$ref: '#/components/schemas/Environment'}
+                  revision: {$ref: '#/components/schemas/EnvironmentRevision'}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/environments/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      operationId: getEnvironment
+      summary: One environment (*:read)
+      responses:
+        '200': {description: Environment, content: {application/json: {schema: {$ref: '#/components/schemas/Environment'}}}}
+        '401': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+    patch:
+      operationId: updateEnvironment
+      summary: Rename an environment or edit its notes (apparatus:write); measurements change only through revisions
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/EnvironmentPatch'}}}}
+      responses:
+        '200': {description: Updated, content: {application/json: {schema: {$ref: '#/components/schemas/Environment'}}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/environments/{id}/revisions:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      operationId: listEnvironmentRevisions
+      summary: Revisions of an environment, oldest first (*:read)
+      responses:
+        '200':
+          description: Revisions
+          content:
+            application/json:
+              schema: {type: object, required: [data], properties: {data: {type: array, items: {$ref: '#/components/schemas/EnvironmentRevision'}}}}
+        '401': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+    post:
+      operationId: createEnvironmentRevision
+      summary: Store new measurements as the next revision (apparatus:write); earlier revisions never change
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/EnvironmentRevisionInput'}}}}
+      responses:
+        '201': {description: Created, content: {application/json: {schema: {$ref: '#/components/schemas/EnvironmentRevision'}}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+  /api/environments/{id}/revisions/{number}:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+      - {name: number, in: path, required: true, schema: {type: integer, minimum: 1}}
+    get:
+      operationId: getEnvironmentRevision
+      summary: One revision by number (*:read)
+      responses:
+        '200': {description: Revision, content: {application/json: {schema: {$ref: '#/components/schemas/EnvironmentRevision'}}}}
+        '401': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+  /api/experiments/{id}/protocols:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      operationId: listProtocols
+      summary: Protocols of this experiment ordered by name (*:read)
+      responses:
+        '200':
+          description: Protocols
+          content:
+            application/json:
+              schema: {type: object, required: [data], properties: {data: {type: array, items: {$ref: '#/components/schemas/Protocol'}}}}
+        '401': {$ref: '#/components/responses/Problem'}
+    post:
+      operationId: createProtocol
+      summary: Create a protocol with its first version (apparatus:write)
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ProtocolInput'}}}}
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [protocol, version]
+                properties:
+                  protocol: {$ref: '#/components/schemas/Protocol'}
+                  version: {$ref: '#/components/schemas/ProtocolVersion'}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/experiments/{id}/protocols/{protocolId}:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+      - {name: protocolId, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      operationId: getProtocol
+      summary: One protocol of this experiment (*:read)
+      responses:
+        '200': {description: Protocol, content: {application/json: {schema: {$ref: '#/components/schemas/Protocol'}}}}
+        '401': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+    patch:
+      operationId: updateProtocol
+      summary: Rename a protocol or edit its description (apparatus:write); steps change only through versions
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ProtocolPatch'}}}}
+      responses:
+        '200': {description: Updated, content: {application/json: {schema: {$ref: '#/components/schemas/Protocol'}}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/experiments/{id}/protocols/{protocolId}/versions:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+      - {name: protocolId, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      operationId: listProtocolVersions
+      summary: Versions of a protocol with their steps, oldest first (*:read)
+      responses:
+        '200':
+          description: Versions
+          content:
+            application/json:
+              schema: {type: object, required: [data], properties: {data: {type: array, items: {$ref: '#/components/schemas/ProtocolVersion'}}}}
+        '401': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+    post:
+      operationId: createProtocolVersion
+      summary: Store the next version (apparatus:write); earlier versions never change
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ProtocolVersionInput'}}}}
+      responses:
+        '201': {description: Created, content: {application/json: {schema: {$ref: '#/components/schemas/ProtocolVersion'}}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+  /api/experiments/{id}/protocols/{protocolId}/versions/{number}:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+      - {name: protocolId, in: path, required: true, schema: {type: string, format: uuid}}
+      - {name: number, in: path, required: true, schema: {type: integer, minimum: 1}}
+    get:
+      operationId: getProtocolVersion
+      summary: One version with its steps (*:read)
+      responses:
+        '200': {description: Version, content: {application/json: {schema: {$ref: '#/components/schemas/ProtocolVersion'}}}}
+        '401': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
 components:
   parameters:
     ID: {name: id, in: path, required: true, schema: {type: string, format: uuid}}
@@ -1503,6 +1684,143 @@ components:
         qc:
           type: array
           items: {type: object, required: [key, operator, value, unit], properties: {key: {type: string}, operator: {type: string}, value: {type: number}, unit: {type: string}}}
+    ParameterValues:
+      type: object
+      additionalProperties: {type: number}
+      description: Parameter values by key, in the units of the paradigm manifest
+    ConstantKey: {type: string, pattern: '^[A-Z][A-Z_]{0,39}$'}
+    Environment:
+      type: object
+      required: [id, name, paradigmKey, notes, latestRevision, createdAt, updatedAt]
+      properties:
+        id: {type: string, format: uuid}
+        name: {type: string}
+        paradigmKey: {$ref: '#/components/schemas/ConstantKey'}
+        notes: {type: [string, 'null']}
+        latestRevision: {type: integer, minimum: 1}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+    EnvironmentRevision:
+      type: object
+      required: [id, environmentId, number, paradigmKey, paradigmVersion, apparatus, notes, createdBy, createdAt]
+      description: Immutable measurements validated against one paradigm version
+      properties:
+        id: {type: string, format: uuid}
+        environmentId: {type: string, format: uuid}
+        number: {type: integer, minimum: 1}
+        paradigmKey: {$ref: '#/components/schemas/ConstantKey'}
+        paradigmVersion: {type: integer, minimum: 1}
+        apparatus: {$ref: '#/components/schemas/ParameterValues'}
+        notes: {type: [string, 'null']}
+        createdBy: {type: string, format: uuid}
+        createdAt: {type: string, format: date-time}
+    EnvironmentRevisionInput:
+      type: object
+      additionalProperties: false
+      required: [paradigmVersion, apparatus]
+      properties:
+        paradigmVersion: {type: integer, minimum: 1}
+        apparatus:
+          allOf: [{$ref: '#/components/schemas/ParameterValues'}]
+          description: Every apparatus parameter of the paradigm version, within range and consistent; no measurement is defaulted
+        notes: {type: string, maxLength: 2000}
+    EnvironmentInput:
+      type: object
+      additionalProperties: false
+      required: [name, paradigmKey, revision]
+      properties:
+        name: {type: string, minLength: 1, maxLength: 120}
+        paradigmKey: {$ref: '#/components/schemas/ConstantKey'}
+        notes: {type: string, maxLength: 2000}
+        revision: {$ref: '#/components/schemas/EnvironmentRevisionInput'}
+    EnvironmentPatch:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      description: An empty notes value clears the notes
+      properties:
+        name: {type: string, minLength: 1, maxLength: 120}
+        notes: {type: string, maxLength: 2000}
+    Protocol:
+      type: object
+      required: [id, experimentId, name, description, latestVersion, createdAt, updatedAt]
+      properties:
+        id: {type: string, format: uuid}
+        experimentId: {type: string, format: uuid}
+        name: {type: string}
+        description: {type: [string, 'null']}
+        latestVersion: {type: integer, minimum: 1}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+    ProtocolStep:
+      type: object
+      required: [position, paradigmKey, paradigmVersion, environmentId, environmentRevision, environmentRevisionId, trialType, trials, interTrialIntervalS, session, notes]
+      properties:
+        position: {type: integer, minimum: 1, maximum: 50}
+        paradigmKey: {$ref: '#/components/schemas/ConstantKey'}
+        paradigmVersion: {type: integer, minimum: 1}
+        environmentId: {type: string, format: uuid}
+        environmentRevision: {type: integer, minimum: 1, description: Number of the referenced revision}
+        environmentRevisionId: {type: string, format: uuid}
+        trialType: {$ref: '#/components/schemas/ConstantKey'}
+        trials: {type: integer, minimum: 1, maximum: 1000}
+        interTrialIntervalS: {type: integer, minimum: 0, maximum: 86400}
+        session:
+          allOf: [{$ref: '#/components/schemas/ParameterValues'}]
+          description: Every session parameter of the paradigm version, with defaults filled in
+        notes: {type: [string, 'null']}
+    ProtocolStepInput:
+      type: object
+      additionalProperties: false
+      required: [position, paradigmKey, paradigmVersion, environmentRevisionId, trialType, trials]
+      properties:
+        position: {type: integer, minimum: 1, maximum: 50, description: Positions run from 1 without gaps or duplicates}
+        paradigmKey: {$ref: '#/components/schemas/ConstantKey'}
+        paradigmVersion: {type: integer, minimum: 1}
+        environmentRevisionId: {type: string, format: uuid, description: A revision set up for the same paradigm key and version}
+        trialType: {$ref: '#/components/schemas/ConstantKey'}
+        trials: {type: integer, minimum: 1, maximum: 1000}
+        interTrialIntervalS: {type: integer, minimum: 0, maximum: 86400, default: 0}
+        session:
+          allOf: [{$ref: '#/components/schemas/ParameterValues'}]
+          description: Session parameters of the paradigm version; omitted ones take their defaults
+        notes: {type: string, maxLength: 2000}
+    ProtocolVersion:
+      type: object
+      required: [id, experimentId, protocolId, number, notes, createdBy, createdAt, steps]
+      description: Immutable; tests reference a fixed version
+      properties:
+        id: {type: string, format: uuid}
+        experimentId: {type: string, format: uuid}
+        protocolId: {type: string, format: uuid}
+        number: {type: integer, minimum: 1}
+        notes: {type: [string, 'null']}
+        createdBy: {type: string, format: uuid}
+        createdAt: {type: string, format: date-time}
+        steps: {type: array, items: {$ref: '#/components/schemas/ProtocolStep'}}
+    ProtocolVersionInput:
+      type: object
+      additionalProperties: false
+      required: [steps]
+      properties:
+        notes: {type: string, maxLength: 2000}
+        steps: {type: array, minItems: 1, maxItems: 50, items: {$ref: '#/components/schemas/ProtocolStepInput'}}
+    ProtocolInput:
+      type: object
+      additionalProperties: false
+      required: [name, version]
+      properties:
+        name: {type: string, minLength: 1, maxLength: 120}
+        description: {type: string, maxLength: 5000}
+        version: {$ref: '#/components/schemas/ProtocolVersionInput'}
+    ProtocolPatch:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      description: An empty description clears it
+      properties:
+        name: {type: string, minLength: 1, maxLength: 120}
+        description: {type: string, maxLength: 5000}
     Probe:
       type: object
       additionalProperties: false
