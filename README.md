@@ -1,11 +1,12 @@
 # 🐭 Mişko
 
-> **`new-backend` foundation:** this branch is being rebuilt in Go. Start with
+> **`new-backend` rebuild:** this branch is being rebuilt in Go. Start with
 > [backend/README.md](backend/README.md) for the currently implemented endpoints,
 > setup and tests. The previous feature list and Node/Prisma commands below are
-> historical and do not describe this branch. The Vue business UI, RBAC and video
-> workflow are not implemented in foundation issue #124. No release or deployment
-> should be made before the [rebuild epic](https://github.com/HappyHackingSpace/Misko/issues/123) is complete.
+> historical and do not describe this branch. Authentication, user management and
+> RBAC exist in the Go API (#125); the Vue business UI and video workflow are not
+> implemented yet. No release or deployment should be made before the
+> [rebuild epic](https://github.com/HappyHackingSpace/Misko/issues/123) is complete.
 
 
 Behavioral test management system for laboratory mice.
