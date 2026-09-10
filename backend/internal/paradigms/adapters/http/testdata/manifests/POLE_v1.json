@@ -1,0 +1,173 @@
+{
+  "key": "POLE",
+  "name": "Pole test",
+  "category": "MOTOR",
+  "species": [
+    "MOUSE",
+    "RAT"
+  ],
+  "trialTypes": [
+    "STANDARD"
+  ],
+  "version": 1,
+  "metricEngineVersion": 1,
+  "resultSchemaVersion": 1,
+  "automatedAnalysis": false,
+  "apparatusParameters": [
+    {
+      "key": "pole_length_cm",
+      "label": "Pole length",
+      "unit": "cm",
+      "valueType": "number",
+      "min": 30,
+      "max": 100,
+      "default": 50
+    }
+  ],
+  "sessionParameters": [
+    {
+      "key": "max_trial_duration_s",
+      "label": "Trial cut-off",
+      "unit": "s",
+      "valueType": "number",
+      "min": 30,
+      "max": 120,
+      "default": 60
+    }
+  ],
+  "zones": [],
+  "inputEvents": [
+    {
+      "type": "turn_complete",
+      "kind": "POINT",
+      "labels": [],
+      "single": true,
+      "definition": "The subject has turned to face downward."
+    },
+    {
+      "type": "base_reached",
+      "kind": "POINT",
+      "labels": [],
+      "single": true,
+      "definition": "All paws reach the base."
+    },
+    {
+      "type": "fall",
+      "kind": "POINT",
+      "labels": [],
+      "single": true,
+      "definition": "The subject falls off the pole."
+    }
+  ],
+  "events": [
+    {
+      "type": "turn_complete",
+      "kind": "POINT",
+      "labels": [],
+      "single": false,
+      "definition": "Scored turn, passed through."
+    },
+    {
+      "type": "base_reached",
+      "kind": "POINT",
+      "labels": [],
+      "single": false,
+      "definition": "Scored arrival at the base, passed through."
+    },
+    {
+      "type": "fall",
+      "kind": "POINT",
+      "labels": [],
+      "single": false,
+      "definition": "Scored fall, passed through."
+    }
+  ],
+  "metrics": [
+    {
+      "key": "t_turn_s",
+      "label": "Time to turn",
+      "unit": "s",
+      "valueType": "number",
+      "definition": "Time of the turn_complete event from the trial start.",
+      "formula": "turn_complete time",
+      "missingWhen": "Missing (NOT_SCORED) when the event was not scored and (EVENT_NOT_OBSERVED) when it did not occur.",
+      "inputs": [
+        "turn_complete event"
+      ],
+      "min": 0,
+      "max": 120,
+      "tolerance": 0.000001
+    },
+    {
+      "key": "t_total_s",
+      "label": "Total time",
+      "unit": "s",
+      "valueType": "number",
+      "definition": "Time of the base_reached event from the trial start. No cut-off value is imputed.",
+      "formula": "base_reached time",
+      "missingWhen": "Missing (NOT_SCORED) when the event was not scored and (EVENT_NOT_OBSERVED) when it did not occur.",
+      "inputs": [
+        "base_reached event"
+      ],
+      "min": 0,
+      "max": 120,
+      "tolerance": 0.000001
+    },
+    {
+      "key": "descent_time_s",
+      "label": "Descent time",
+      "unit": "s",
+      "valueType": "number",
+      "definition": "Time from completing the turn to reaching the base.",
+      "formula": "t_total_s - t_turn_s",
+      "missingWhen": "Missing with the reason of the first missing event.",
+      "inputs": [
+        "turn_complete event",
+        "base_reached event"
+      ],
+      "min": 0,
+      "max": 120,
+      "tolerance": 0.000001
+    },
+    {
+      "key": "descent_speed_cm_s",
+      "label": "Descent speed",
+      "unit": "cm_s",
+      "valueType": "number",
+      "definition": "Pole length divided by the descent time.",
+      "formula": "pole_length_cm / descent_time_s",
+      "missingWhen": "Missing (ZERO_DENOMINATOR) when the descent time is 0; otherwise missing with the reason of descent_time_s.",
+      "inputs": [
+        "turn_complete event",
+        "base_reached event",
+        "pole_length_cm"
+      ],
+      "min": 0,
+      "max": 10000,
+      "tolerance": 0.000001
+    },
+    {
+      "key": "fall_detected",
+      "label": "Fall detected",
+      "unit": "boolean",
+      "valueType": "integer",
+      "definition": "1 when a fall was scored, 0 when falls were scored and none occurred.",
+      "formula": "fall observed",
+      "missingWhen": "Missing (NOT_SCORED) when falls were not scored.",
+      "inputs": [
+        "fall event"
+      ],
+      "min": 0,
+      "max": 1,
+      "tolerance": 1e-9
+    }
+  ],
+  "qc": [
+    {
+      "key": "max_event_time_uncertainty_s",
+      "operator": "\u003c=",
+      "value": 0.5,
+      "unit": "s"
+    }
+  ]
+}

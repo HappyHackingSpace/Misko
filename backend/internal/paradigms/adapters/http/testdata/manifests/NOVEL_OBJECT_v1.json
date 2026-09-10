@@ -1,0 +1,157 @@
+{
+  "key": "NOVEL_OBJECT",
+  "name": "Novel object recognition",
+  "category": "LEARNING_MEMORY",
+  "species": [
+    "MOUSE",
+    "RAT"
+  ],
+  "trialTypes": [
+    "FAMILIARIZATION",
+    "TEST"
+  ],
+  "version": 1,
+  "metricEngineVersion": 1,
+  "resultSchemaVersion": 1,
+  "automatedAnalysis": false,
+  "apparatusParameters": [
+    {
+      "key": "arena_width_cm",
+      "label": "Arena width",
+      "unit": "cm",
+      "valueType": "number",
+      "min": 30,
+      "max": 100,
+      "default": 50
+    },
+    {
+      "key": "arena_height_cm",
+      "label": "Arena depth",
+      "unit": "cm",
+      "valueType": "number",
+      "min": 30,
+      "max": 100,
+      "default": 50
+    },
+    {
+      "key": "object_zone_radius_cm",
+      "label": "Distance from an object within which directed sniffing counts as exploration",
+      "unit": "cm",
+      "valueType": "number",
+      "min": 1,
+      "max": 10,
+      "default": 3
+    }
+  ],
+  "sessionParameters": [
+    {
+      "key": "min_total_exploration_s",
+      "label": "Minimum total exploration for a valid index",
+      "unit": "s",
+      "valueType": "number",
+      "min": 0,
+      "max": 120,
+      "default": 0
+    }
+  ],
+  "zones": [],
+  "inputEvents": [
+    {
+      "type": "exploration",
+      "kind": "INTERVAL",
+      "labels": [
+        "novel",
+        "familiar"
+      ],
+      "single": false,
+      "definition": "Nose directed at an object within object_zone_radius_cm; climbing or sitting on the object is not exploration."
+    }
+  ],
+  "events": [
+    {
+      "type": "exploration_novel",
+      "kind": "INTERVAL",
+      "labels": [],
+      "single": false,
+      "definition": "Merged novel-object exploration."
+    },
+    {
+      "type": "exploration_familiar",
+      "kind": "INTERVAL",
+      "labels": [],
+      "single": false,
+      "definition": "Merged familiar-object exploration."
+    }
+  ],
+  "metrics": [
+    {
+      "key": "novel_object_time_s",
+      "label": "Novel object exploration",
+      "unit": "s",
+      "valueType": "number",
+      "definition": "Length of the union of novel exploration intervals; overlaps count once.",
+      "formula": "union length(novel intervals)",
+      "missingWhen": "Missing (NOT_SCORED) when exploration was not scored.",
+      "inputs": [
+        "exploration events"
+      ],
+      "min": 0,
+      "max": 86400,
+      "tolerance": 0.000001
+    },
+    {
+      "key": "familiar_object_time_s",
+      "label": "Familiar object exploration",
+      "unit": "s",
+      "valueType": "number",
+      "definition": "Length of the union of familiar exploration intervals.",
+      "formula": "union length(familiar intervals)",
+      "missingWhen": "Missing (NOT_SCORED) when exploration was not scored.",
+      "inputs": [
+        "exploration events"
+      ],
+      "min": 0,
+      "max": 86400,
+      "tolerance": 0.000001
+    },
+    {
+      "key": "total_exploration_time_s",
+      "label": "Total exploration",
+      "unit": "s",
+      "valueType": "number",
+      "definition": "Novel plus familiar exploration.",
+      "formula": "novel_object_time_s + familiar_object_time_s",
+      "missingWhen": "Missing (NOT_SCORED) when exploration was not scored.",
+      "inputs": [
+        "exploration events"
+      ],
+      "min": 0,
+      "max": 86400,
+      "tolerance": 0.000001
+    },
+    {
+      "key": "discrimination_index",
+      "label": "Discrimination index",
+      "unit": "ratio",
+      "valueType": "number",
+      "definition": "Recognition memory, from -1 (familiar) to +1 (novel).",
+      "formula": "(novel - familiar) / (novel + familiar)",
+      "missingWhen": "Missing (NOT_SCORED) when not scored, (BELOW_EXPLORATION_CRITERION) when total exploration is below min_total_exploration_s, (ZERO_DENOMINATOR) when it is 0.",
+      "inputs": [
+        "exploration events",
+        "min_total_exploration_s"
+      ],
+      "min": -1,
+      "max": 1,
+      "tolerance": 1e-9
+    }
+  ],
+  "qc": [
+    {
+      "key": "max_event_time_uncertainty_s",
+      "operator": "\u003c=",
+      "value": 0.5,
+      "unit": "s"
+    }
+  ]
+}

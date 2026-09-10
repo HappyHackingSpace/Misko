@@ -1,0 +1,258 @@
+{
+  "key": "LIGHT_DARK",
+  "name": "Light/dark box",
+  "category": "ANXIETY",
+  "species": [
+    "MOUSE",
+    "RAT"
+  ],
+  "trialTypes": [
+    "STANDARD"
+  ],
+  "version": 1,
+  "metricEngineVersion": 1,
+  "resultSchemaVersion": 1,
+  "automatedAnalysis": false,
+  "apparatusParameters": [
+    {
+      "key": "box_width_cm",
+      "label": "Box width along the light/dark axis",
+      "unit": "cm",
+      "valueType": "number",
+      "min": 20,
+      "max": 60,
+      "default": 40
+    },
+    {
+      "key": "box_height_cm",
+      "label": "Box depth",
+      "unit": "cm",
+      "valueType": "number",
+      "min": 15,
+      "max": 40,
+      "default": 20
+    },
+    {
+      "key": "light_fraction",
+      "label": "Light compartment share of the width",
+      "unit": "ratio",
+      "valueType": "number",
+      "min": 0.4,
+      "max": 0.6,
+      "default": 0.5
+    }
+  ],
+  "sessionParameters": [
+    {
+      "key": "max_sample_gap_s",
+      "label": "Longest gap between samples that still counts as tracked",
+      "unit": "s",
+      "valueType": "number",
+      "min": 0.01,
+      "max": 5,
+      "default": 0.5
+    }
+  ],
+  "zones": [
+    {
+      "key": "light",
+      "role": "RISK",
+      "geometry": "0 \u003c= x \u003c box_width_cm x light_fraction, within the box.",
+      "calibrated": false,
+      "required": true
+    },
+    {
+      "key": "dark",
+      "role": "CLOSED",
+      "geometry": "box_width_cm x light_fraction \u003c= x \u003c= box_width_cm; the dividing line belongs to the dark side.",
+      "calibrated": false,
+      "required": true
+    }
+  ],
+  "inputEvents": [],
+  "events": [
+    {
+      "type": "in_light",
+      "kind": "INTERVAL",
+      "labels": [],
+      "single": false,
+      "definition": "Contiguous counted intervals whose earlier sample is in light."
+    },
+    {
+      "type": "in_dark",
+      "kind": "INTERVAL",
+      "labels": [],
+      "single": false,
+      "definition": "Contiguous counted intervals whose earlier sample is in dark."
+    },
+    {
+      "type": "light_entry",
+      "kind": "POINT",
+      "labels": [],
+      "single": false,
+      "definition": "Later sample time of a counted interval entering light."
+    },
+    {
+      "type": "dark_entry",
+      "kind": "POINT",
+      "labels": [],
+      "single": false,
+      "definition": "Later sample time of a counted interval entering dark."
+    }
+  ],
+  "metrics": [
+    {
+      "key": "duration_s",
+      "label": "Analyzed duration",
+      "unit": "s",
+      "valueType": "number",
+      "definition": "Samples are box-local centimeters with the origin at the light-side corner; samples outside the box count as lost. A counted interval is a pair of consecutive tracked samples with 0 \u003c dt \u003c= max_sample_gap_s.",
+      "formula": "sum(dt over counted intervals)",
+      "missingWhen": "Missing (NO_VALID_INTERVALS) when there is no counted interval.",
+      "inputs": [
+        "samples",
+        "box_width_cm",
+        "box_height_cm",
+        "light_fraction",
+        "max_sample_gap_s"
+      ],
+      "min": 0,
+      "max": 86400,
+      "tolerance": 0.000001
+    },
+    {
+      "key": "light_time_s",
+      "label": "Time in light",
+      "unit": "s",
+      "valueType": "number",
+      "definition": "Counted time whose earlier sample is in the light compartment.",
+      "formula": "sum(dt in light)",
+      "missingWhen": "Missing (NO_VALID_INTERVALS) when there is no counted interval.",
+      "inputs": [
+        "samples",
+        "box_width_cm",
+        "box_height_cm",
+        "light_fraction",
+        "max_sample_gap_s"
+      ],
+      "min": 0,
+      "max": 86400,
+      "tolerance": 0.000001
+    },
+    {
+      "key": "dark_time_s",
+      "label": "Time in dark",
+      "unit": "s",
+      "valueType": "number",
+      "definition": "Counted time whose earlier sample is in the dark compartment.",
+      "formula": "sum(dt in dark)",
+      "missingWhen": "Missing (NO_VALID_INTERVALS) when there is no counted interval.",
+      "inputs": [
+        "samples",
+        "box_width_cm",
+        "box_height_cm",
+        "light_fraction",
+        "max_sample_gap_s"
+      ],
+      "min": 0,
+      "max": 86400,
+      "tolerance": 0.000001
+    },
+    {
+      "key": "light_time_ratio",
+      "label": "Light time ratio",
+      "unit": "ratio",
+      "valueType": "number",
+      "definition": "Share of analyzed duration in the light compartment.",
+      "formula": "light_time_s / duration_s",
+      "missingWhen": "Missing (NO_VALID_INTERVALS) when there is no counted interval.",
+      "inputs": [
+        "samples",
+        "box_width_cm",
+        "box_height_cm",
+        "light_fraction",
+        "max_sample_gap_s"
+      ],
+      "min": 0,
+      "max": 1,
+      "tolerance": 1e-9
+    },
+    {
+      "key": "light_entries_count",
+      "label": "Light entries",
+      "unit": "count",
+      "valueType": "integer",
+      "definition": "Counted intervals from dark to light.",
+      "formula": "count(dark to light)",
+      "missingWhen": "Missing (NO_VALID_INTERVALS) when there is no counted interval.",
+      "inputs": [
+        "samples",
+        "box_width_cm",
+        "box_height_cm",
+        "light_fraction",
+        "max_sample_gap_s"
+      ],
+      "min": 0,
+      "max": 1000000,
+      "tolerance": 1e-9
+    },
+    {
+      "key": "transitions_count",
+      "label": "Transitions",
+      "unit": "count",
+      "valueType": "integer",
+      "definition": "Counted intervals whose samples are in different compartments.",
+      "formula": "count(light to dark) + count(dark to light)",
+      "missingWhen": "Missing (NO_VALID_INTERVALS) when there is no counted interval.",
+      "inputs": [
+        "samples",
+        "box_width_cm",
+        "box_height_cm",
+        "light_fraction",
+        "max_sample_gap_s"
+      ],
+      "min": 0,
+      "max": 1000000,
+      "tolerance": 1e-9
+    },
+    {
+      "key": "latency_to_dark_s",
+      "label": "Latency to dark",
+      "unit": "s",
+      "valueType": "number",
+      "definition": "Time of the first tracked sample inside the zone, from the trial start. The zone is dark.",
+      "formula": "first tracked sample time in dark",
+      "missingWhen": "Missing (EVENT_NOT_OBSERVED) when no tracked sample is inside the zone; missing (NO_VALID_INTERVALS) without counted intervals.",
+      "inputs": [
+        "samples",
+        "box_width_cm",
+        "box_height_cm",
+        "light_fraction",
+        "max_sample_gap_s"
+      ],
+      "min": 0,
+      "max": 86400,
+      "tolerance": 0.000001
+    }
+  ],
+  "qc": [
+    {
+      "key": "min_tracking_confidence",
+      "operator": "\u003e=",
+      "value": 0.7,
+      "unit": "ratio"
+    },
+    {
+      "key": "max_lost_frame_ratio",
+      "operator": "\u003c=",
+      "value": 0.1,
+      "unit": "ratio"
+    },
+    {
+      "key": "max_calibration_error_cm",
+      "operator": "\u003c=",
+      "value": 2,
+      "unit": "cm"
+    }
+  ]
+}

@@ -1,0 +1,191 @@
+{
+  "key": "TREADMILL",
+  "name": "Treadmill",
+  "category": "MOTOR",
+  "species": [
+    "MOUSE",
+    "RAT"
+  ],
+  "trialTypes": [
+    "ENDURANCE",
+    "FIXED_SPEED"
+  ],
+  "version": 1,
+  "metricEngineVersion": 1,
+  "resultSchemaVersion": 1,
+  "automatedAnalysis": false,
+  "apparatusParameters": [
+    {
+      "key": "lane_length_cm",
+      "label": "Lane length",
+      "unit": "cm",
+      "valueType": "number",
+      "min": 20,
+      "max": 80,
+      "default": 40
+    }
+  ],
+  "sessionParameters": [
+    {
+      "key": "accelerating",
+      "label": "Accelerating belt: 1 accelerating, 0 fixed at start_speed_cm_s",
+      "unit": "boolean",
+      "valueType": "integer",
+      "min": 0,
+      "max": 1,
+      "default": 1
+    },
+    {
+      "key": "start_speed_cm_s",
+      "label": "Belt speed at start",
+      "unit": "cm_s",
+      "valueType": "number",
+      "min": 1,
+      "max": 50,
+      "default": 5
+    },
+    {
+      "key": "end_speed_cm_s",
+      "label": "Belt speed after acceleration",
+      "unit": "cm_s",
+      "valueType": "number",
+      "min": 5,
+      "max": 120,
+      "default": 40
+    },
+    {
+      "key": "acceleration_duration_s",
+      "label": "Time from start to end speed",
+      "unit": "s",
+      "valueType": "number",
+      "min": 1,
+      "max": 7200,
+      "default": 1800
+    },
+    {
+      "key": "max_trial_duration_s",
+      "label": "Trial cut-off",
+      "unit": "s",
+      "valueType": "number",
+      "min": 60,
+      "max": 7200,
+      "default": 1800
+    }
+  ],
+  "zones": [],
+  "inputEvents": [
+    {
+      "type": "exhaustion",
+      "kind": "POINT",
+      "labels": [],
+      "single": true,
+      "definition": "The exhaustion criterion is met."
+    },
+    {
+      "type": "shock",
+      "kind": "POINT",
+      "labels": [],
+      "single": false,
+      "definition": "A shock or rear-grid contact."
+    }
+  ],
+  "events": [
+    {
+      "type": "exhaustion",
+      "kind": "POINT",
+      "labels": [],
+      "single": false,
+      "definition": "Scored exhaustion, passed through."
+    },
+    {
+      "type": "shock",
+      "kind": "POINT",
+      "labels": [],
+      "single": false,
+      "definition": "Scored shock, passed through."
+    }
+  ],
+  "metrics": [
+    {
+      "key": "latency_to_exhaustion_s",
+      "label": "Latency to exhaustion",
+      "unit": "s",
+      "valueType": "number",
+      "definition": "Exhaustion time by the cut-off.",
+      "formula": "exhaustion time",
+      "missingWhen": "Missing (NOT_SCORED) when not scored, (EVENT_NOT_OBSERVED) when the full trial was recorded without exhaustion, (INCOMPLETE_RECORDING) otherwise.",
+      "inputs": [
+        "exhaustion event",
+        "max_trial_duration_s",
+        "recording duration"
+      ],
+      "min": 0,
+      "max": 7200,
+      "tolerance": 0.000001
+    },
+    {
+      "key": "run_time_s",
+      "label": "Run time",
+      "unit": "s",
+      "valueType": "number",
+      "definition": "Exhaustion time, or max_trial_duration_s when the full trial was recorded without exhaustion.",
+      "formula": "min(exhaustion time, max_trial_duration_s)",
+      "missingWhen": "Missing (NOT_SCORED) when the event was not scored; missing (INCOMPLETE_RECORDING) when it was not observed and the recording is shorter than max_trial_duration_s.",
+      "inputs": [
+        "exhaustion event",
+        "max_trial_duration_s",
+        "recording duration"
+      ],
+      "min": 0,
+      "max": 7200,
+      "tolerance": 0.000001
+    },
+    {
+      "key": "run_distance_cm",
+      "label": "Run distance",
+      "unit": "cm",
+      "valueType": "number",
+      "definition": "Integral of the belt speed over the run time; the speed rises linearly from start to end over acceleration_duration_s, then stays constant.",
+      "formula": "integral of speed(t) dt over [0, run_time_s]",
+      "missingWhen": "Missing (NOT_SCORED) when the event was not scored; missing (INCOMPLETE_RECORDING) when it was not observed and the recording is shorter than max_trial_duration_s.",
+      "inputs": [
+        "exhaustion event",
+        "max_trial_duration_s",
+        "recording duration",
+        "accelerating",
+        "start_speed_cm_s",
+        "end_speed_cm_s",
+        "acceleration_duration_s"
+      ],
+      "min": 0,
+      "max": 10000000,
+      "tolerance": 0.000001
+    },
+    {
+      "key": "shock_count",
+      "label": "Shocks",
+      "unit": "count",
+      "valueType": "integer",
+      "definition": "Shocks strictly before the end of the run.",
+      "formula": "count(shock time \u003c run end)",
+      "missingWhen": "Missing (NOT_SCORED) when shocks were not scored; otherwise missing with the reason of run_time_s.",
+      "inputs": [
+        "exhaustion event",
+        "max_trial_duration_s",
+        "recording duration",
+        "shock events"
+      ],
+      "min": 0,
+      "max": 1000000,
+      "tolerance": 1e-9
+    }
+  ],
+  "qc": [
+    {
+      "key": "max_event_time_uncertainty_s",
+      "operator": "\u003c=",
+      "value": 0.5,
+      "unit": "s"
+    }
+  ]
+}

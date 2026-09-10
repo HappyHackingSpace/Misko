@@ -19,8 +19,8 @@ current release. Do not deploy this branch.
 | Laboratory settings (one laboratory per installation) | Implemented |
 | Subjects, experiments, phases, groups and enrollments | Implemented |
 | Disease models, substances, intervention plans and administrations | Implemented |
-| Paradigm catalog with Open Field metric definitions | Implemented |
-| Other ten paradigms, tests, video analysis | Not yet |
+| Paradigm catalog with metric definitions for eleven paradigms | Implemented |
+| Tests, video uploads and video analysis | Not yet |
 | Vue panel on the new API | Not yet |
 
 ## Installation
@@ -212,17 +212,31 @@ Every signed-in user can read the paradigm catalog. Paradigms are defined in the
 code and cannot be created, edited or deleted through the API.
 
 - `GET /api/paradigms` lists paradigms with their published versions and whether
-  automated video analysis is available (`automatedAnalysis`). Today OPEN_FIELD
-  is published, and automated analysis is not available yet.
+  automated video analysis is available (`automatedAnalysis`). Eleven
+  paradigms are published: `BARNES_MAZE`, `EPM`, `LIGHT_DARK`, `MWM`,
+  `NOVEL_OBJECT`, `OPEN_FIELD`, `POLE`, `ROTAROD`, `THREE_CHAMBER`, `TREADMILL`
+  and `Y_MAZE`. Automated analysis is not available for any of them yet.
 - `GET /api/paradigms/{key}` returns the latest version, and
   `GET /api/paradigms/{key}/versions/{version}` returns one exact version. Each
   version lists its apparatus and session parameters with units, allowed ranges
   and defaults, its zones and events, and for every metric the definition,
   formula, inputs and what happens when data is missing.
 
+Some paradigms need more than a tracked position:
+
+- Zones marked `calibrated`, such as the elevated plus maze arms or the Barnes
+  maze holes, are drawn per video as circles or polygons. Other zones, such as the
+  water maze platform, come from the apparatus parameters.
+- `inputEvents` lists observations that are scored rather than tracked, such as
+  a rotarod fall, pole test turns or novel object exploration. An event type that
+  was not scored produces missing metrics, not zeros.
+
 Results always name the paradigm version, the metric engine version and the
 result schema version they were computed with. A metric that cannot be computed
-is reported as missing with a reason, never as zero.
+is reported as missing with a reason, never as zero. For example, a probe trial
+without an escape reports `EVENT_NOT_OBSERVED`, and a Y maze trial with fewer
+than three arm entries reports `INSUFFICIENT_ENTRIES`. A published version never
+changes; a changed definition is published as a new version.
 
 ### Errors
 

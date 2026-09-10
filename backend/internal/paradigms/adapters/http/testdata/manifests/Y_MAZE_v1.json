@@ -1,0 +1,222 @@
+{
+  "key": "Y_MAZE",
+  "name": "Y maze",
+  "category": "LEARNING_MEMORY",
+  "species": [
+    "MOUSE",
+    "RAT"
+  ],
+  "trialTypes": [
+    "SPONTANEOUS_ALTERNATION",
+    "NOVEL_ARM"
+  ],
+  "version": 1,
+  "metricEngineVersion": 1,
+  "resultSchemaVersion": 1,
+  "automatedAnalysis": false,
+  "apparatusParameters": [
+    {
+      "key": "arm_length_cm",
+      "label": "Arm length, used to review calibrated zones",
+      "unit": "cm",
+      "valueType": "number",
+      "min": 20,
+      "max": 60,
+      "default": 35
+    }
+  ],
+  "sessionParameters": [
+    {
+      "key": "max_sample_gap_s",
+      "label": "Longest gap between samples that still counts as tracked",
+      "unit": "s",
+      "valueType": "number",
+      "min": 0.01,
+      "max": 5,
+      "default": 0.5
+    },
+    {
+      "key": "novel_arm",
+      "label": "Novel arm in a two-trial protocol: 0 none, 1 arm_a, 2 arm_b, 3 arm_c",
+      "unit": "count",
+      "valueType": "integer",
+      "min": 0,
+      "max": 3,
+      "default": 0
+    }
+  ],
+  "zones": [
+    {
+      "key": "arm_a",
+      "role": "ARM",
+      "geometry": "Arm A.",
+      "calibrated": true,
+      "required": true
+    },
+    {
+      "key": "arm_b",
+      "role": "ARM",
+      "geometry": "Arm B.",
+      "calibrated": true,
+      "required": true
+    },
+    {
+      "key": "arm_c",
+      "role": "ARM",
+      "geometry": "Arm C.",
+      "calibrated": true,
+      "required": true
+    }
+  ],
+  "inputEvents": [],
+  "events": [
+    {
+      "type": "in_arm_a",
+      "kind": "INTERVAL",
+      "labels": [],
+      "single": false,
+      "definition": "Contiguous counted intervals whose earlier sample is in arm_a."
+    },
+    {
+      "type": "in_arm_b",
+      "kind": "INTERVAL",
+      "labels": [],
+      "single": false,
+      "definition": "Contiguous counted intervals whose earlier sample is in arm_b."
+    },
+    {
+      "type": "in_arm_c",
+      "kind": "INTERVAL",
+      "labels": [],
+      "single": false,
+      "definition": "Contiguous counted intervals whose earlier sample is in arm_c."
+    },
+    {
+      "type": "arm_a_entry",
+      "kind": "POINT",
+      "labels": [],
+      "single": false,
+      "definition": "Later sample time of a counted interval entering arm_a."
+    },
+    {
+      "type": "arm_b_entry",
+      "kind": "POINT",
+      "labels": [],
+      "single": false,
+      "definition": "Later sample time of a counted interval entering arm_b."
+    },
+    {
+      "type": "arm_c_entry",
+      "kind": "POINT",
+      "labels": [],
+      "single": false,
+      "definition": "Later sample time of a counted interval entering arm_c."
+    }
+  ],
+  "metrics": [
+    {
+      "key": "duration_s",
+      "label": "Analyzed duration",
+      "unit": "s",
+      "valueType": "number",
+      "definition": "Samples and calibrated zone shapes use the same coordinates in centimeters; zones are evaluated independently and include their boundary. A counted interval is a pair of consecutive tracked samples with 0 \u003c dt \u003c= max_sample_gap_s.",
+      "formula": "sum(dt over counted intervals)",
+      "missingWhen": "Missing (NO_VALID_INTERVALS) when there is no counted interval.",
+      "inputs": [
+        "samples",
+        "max_sample_gap_s"
+      ],
+      "min": 0,
+      "max": 86400,
+      "tolerance": 0.000001
+    },
+    {
+      "key": "distance_cm",
+      "label": "Distance traveled",
+      "unit": "cm",
+      "valueType": "number",
+      "definition": "Path length over counted intervals.",
+      "formula": "sum(hypot(dx, dy))",
+      "missingWhen": "Missing (NO_VALID_INTERVALS) when there is no counted interval.",
+      "inputs": [
+        "samples",
+        "max_sample_gap_s"
+      ],
+      "min": 0,
+      "max": 1000000,
+      "tolerance": 0.000001
+    },
+    {
+      "key": "total_arm_entries_count",
+      "label": "Total arm entries",
+      "unit": "count",
+      "valueType": "integer",
+      "definition": "The arm holding the first tracked sample counts as the first entry; each later arm entry follows the entry rule, and re-entering the same arm counts again. An entry is a counted interval whose earlier sample is outside the zone and whose later sample is inside.",
+      "formula": "1 (start arm) + count(arm entries)",
+      "missingWhen": "Missing (NO_VALID_INTERVALS) when there is no counted interval.",
+      "inputs": [
+        "samples",
+        "max_sample_gap_s",
+        "calibrated arm zones"
+      ],
+      "min": 0,
+      "max": 1000000,
+      "tolerance": 1e-9
+    },
+    {
+      "key": "spontaneous_alternation_ratio",
+      "label": "Spontaneous alternation ratio",
+      "unit": "ratio",
+      "valueType": "number",
+      "definition": "Share of overlapping entry triplets that visit three different arms.",
+      "formula": "alternations / (total_arm_entries_count - 2)",
+      "missingWhen": "Missing (INSUFFICIENT_ENTRIES) with fewer than 3 entries; missing (NO_VALID_INTERVALS) without counted intervals.",
+      "inputs": [
+        "samples",
+        "max_sample_gap_s",
+        "calibrated arm zones"
+      ],
+      "min": 0,
+      "max": 1,
+      "tolerance": 1e-9
+    },
+    {
+      "key": "novel_arm_time_ratio",
+      "label": "Novel arm time ratio",
+      "unit": "ratio",
+      "valueType": "number",
+      "definition": "Share of analyzed duration whose earlier sample is in the novel arm.",
+      "formula": "novel arm time / duration_s",
+      "missingWhen": "Missing (NOT_APPLICABLE) when novel_arm is 0; missing (NO_VALID_INTERVALS) without counted intervals.",
+      "inputs": [
+        "samples",
+        "max_sample_gap_s",
+        "calibrated arm zones",
+        "novel_arm"
+      ],
+      "min": 0,
+      "max": 1,
+      "tolerance": 1e-9
+    }
+  ],
+  "qc": [
+    {
+      "key": "min_tracking_confidence",
+      "operator": "\u003e=",
+      "value": 0.7,
+      "unit": "ratio"
+    },
+    {
+      "key": "max_lost_frame_ratio",
+      "operator": "\u003c=",
+      "value": 0.1,
+      "unit": "ratio"
+    },
+    {
+      "key": "max_calibration_error_cm",
+      "operator": "\u003c=",
+      "value": 2,
+      "unit": "cm"
+    }
+  ]
+}

@@ -1432,11 +1432,12 @@ components:
         automatedAnalysis: {type: boolean, description: Whether a real analysis worker supports this paradigm; catalog presence alone does not}
     ParadigmParameter:
       type: object
-      required: [key, label, unit, min, max, default]
+      required: [key, label, unit, valueType, min, max, default]
       properties:
         key: {type: string}
         label: {type: string}
-        unit: {type: string, enum: [cm, cm_s, s, count, ratio]}
+        unit: {type: string, enum: [cm, cm_s, s, count, ratio, rpm, boolean]}
+        valueType: {type: string, enum: [number, integer], description: Integer parameters accept whole numbers only; booleans are 0 or 1}
         min: {type: number}
         max: {type: number}
         default: {type: number}
@@ -1446,7 +1447,7 @@ components:
       properties:
         key: {type: string}
         label: {type: string}
-        unit: {type: string, enum: [cm, cm_s, s, count, ratio]}
+        unit: {type: string, enum: [cm, cm_s, s, count, ratio, rpm, boolean]}
         valueType: {type: string, enum: [number, integer]}
         definition: {type: string}
         formula: {type: string}
@@ -1455,9 +1456,18 @@ components:
         min: {type: number}
         max: {type: number}
         tolerance: {type: number, description: Absolute tolerance in the metric unit}
+    ParadigmEvent:
+      type: object
+      required: [type, kind, labels, single, definition]
+      properties:
+        type: {type: string}
+        kind: {type: string, enum: [INTERVAL, POINT]}
+        labels: {type: array, items: {type: string}, description: Allowed labels; empty when the event takes no label}
+        single: {type: boolean, description: The event may occur at most once per trial}
+        definition: {type: string}
     ParadigmManifest:
       type: object
-      required: [key, name, category, species, trialTypes, version, metricEngineVersion, resultSchemaVersion, automatedAnalysis, apparatusParameters, sessionParameters, zones, events, metrics, qc]
+      required: [key, name, category, species, trialTypes, version, metricEngineVersion, resultSchemaVersion, automatedAnalysis, apparatusParameters, sessionParameters, zones, inputEvents, events, metrics, qc]
       properties:
         key: {type: string}
         name: {type: string}
@@ -1472,10 +1482,23 @@ components:
         sessionParameters: {type: array, items: {$ref: '#/components/schemas/ParadigmParameter'}}
         zones:
           type: array
-          items: {type: object, required: [key, role, geometry], properties: {key: {type: string}, role: {type: string}, geometry: {type: string}}}
+          items:
+            type: object
+            required: [key, role, geometry, calibrated, required]
+            properties:
+              key: {type: string}
+              role: {type: string}
+              geometry: {type: string}
+              calibrated: {type: boolean, description: Shapes come with the analysis input (per-video calibration) instead of being derived from parameters}
+              required: {type: boolean}
+        inputEvents:
+          type: array
+          description: Scored observations the metric engine consumes
+          items: {$ref: '#/components/schemas/ParadigmEvent'}
         events:
           type: array
-          items: {type: object, required: [type, kind, definition], properties: {type: {type: string}, kind: {type: string, enum: [INTERVAL, POINT]}, definition: {type: string}}}
+          description: Intervals and points the metric engine derives
+          items: {$ref: '#/components/schemas/ParadigmEvent'}
         metrics: {type: array, items: {$ref: '#/components/schemas/ParadigmMetric'}}
         qc:
           type: array

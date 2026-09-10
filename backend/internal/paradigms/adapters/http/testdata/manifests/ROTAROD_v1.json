@@ -1,0 +1,150 @@
+{
+  "key": "ROTAROD",
+  "name": "Rotarod",
+  "category": "MOTOR",
+  "species": [
+    "MOUSE",
+    "RAT"
+  ],
+  "trialTypes": [
+    "FIXED_SPEED",
+    "ACCELERATING"
+  ],
+  "version": 1,
+  "metricEngineVersion": 1,
+  "resultSchemaVersion": 1,
+  "automatedAnalysis": false,
+  "apparatusParameters": [
+    {
+      "key": "start_rpm",
+      "label": "Rod speed at trial start",
+      "unit": "rpm",
+      "valueType": "number",
+      "min": 0,
+      "max": 80,
+      "default": 4
+    },
+    {
+      "key": "end_rpm",
+      "label": "Rod speed after acceleration",
+      "unit": "rpm",
+      "valueType": "number",
+      "min": 1,
+      "max": 100,
+      "default": 40
+    }
+  ],
+  "sessionParameters": [
+    {
+      "key": "accelerating",
+      "label": "Accelerating mode: 1 accelerating, 0 fixed at start_rpm",
+      "unit": "boolean",
+      "valueType": "integer",
+      "min": 0,
+      "max": 1,
+      "default": 1
+    },
+    {
+      "key": "acceleration_duration_s",
+      "label": "Time from start_rpm to end_rpm",
+      "unit": "s",
+      "valueType": "number",
+      "min": 1,
+      "max": 600,
+      "default": 300
+    },
+    {
+      "key": "max_trial_duration_s",
+      "label": "Trial cut-off",
+      "unit": "s",
+      "valueType": "number",
+      "min": 30,
+      "max": 600,
+      "default": 300
+    }
+  ],
+  "zones": [],
+  "inputEvents": [
+    {
+      "type": "fall",
+      "kind": "POINT",
+      "labels": [],
+      "single": true,
+      "definition": "The subject falls or passively rotates a full turn."
+    }
+  ],
+  "events": [
+    {
+      "type": "fall",
+      "kind": "POINT",
+      "labels": [],
+      "single": false,
+      "definition": "Scored fall, passed through."
+    }
+  ],
+  "metrics": [
+    {
+      "key": "latency_to_fall_s",
+      "label": "Latency to fall",
+      "unit": "s",
+      "valueType": "number",
+      "definition": "Fall time; without a fall by the cut-off, the latency is censored at max_trial_duration_s.",
+      "formula": "min(fall time, max_trial_duration_s)",
+      "missingWhen": "Missing (NOT_SCORED) when the event was not scored; missing (INCOMPLETE_RECORDING) when it was not observed and the recording is shorter than max_trial_duration_s.",
+      "inputs": [
+        "fall event",
+        "max_trial_duration_s",
+        "recording duration"
+      ],
+      "min": 0,
+      "max": 3600,
+      "tolerance": 0.000001
+    },
+    {
+      "key": "fall_detected",
+      "label": "Fall detected",
+      "unit": "boolean",
+      "valueType": "integer",
+      "definition": "1 when a fall occurs by the cut-off, 0 when the whole trial was recorded without one.",
+      "formula": "fall time \u003c= max_trial_duration_s",
+      "missingWhen": "Missing (NOT_SCORED) when the event was not scored; missing (INCOMPLETE_RECORDING) when it was not observed and the recording is shorter than max_trial_duration_s.",
+      "inputs": [
+        "fall event",
+        "max_trial_duration_s",
+        "recording duration"
+      ],
+      "min": 0,
+      "max": 1,
+      "tolerance": 1e-9
+    },
+    {
+      "key": "rpm_at_fall",
+      "label": "Speed at fall",
+      "unit": "rpm",
+      "valueType": "number",
+      "definition": "Rod speed at the fall time; accelerating linearly from start_rpm to end_rpm, then constant.",
+      "formula": "accelerating: start + (end - start) x min(t, acceleration_duration_s) / acceleration_duration_s; fixed: start_rpm",
+      "missingWhen": "Missing (EVENT_NOT_OBSERVED) without a fall by the cut-off; also missing when not scored or incompletely recorded.",
+      "inputs": [
+        "fall event",
+        "max_trial_duration_s",
+        "recording duration",
+        "accelerating",
+        "start_rpm",
+        "end_rpm",
+        "acceleration_duration_s"
+      ],
+      "min": 0,
+      "max": 100,
+      "tolerance": 0.000001
+    }
+  ],
+  "qc": [
+    {
+      "key": "max_event_time_uncertainty_s",
+      "operator": "\u003c=",
+      "value": 0.5,
+      "unit": "s"
+    }
+  ]
+}

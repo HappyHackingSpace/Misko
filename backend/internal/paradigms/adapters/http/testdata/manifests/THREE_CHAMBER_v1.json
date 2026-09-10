@@ -1,0 +1,317 @@
+{
+  "key": "THREE_CHAMBER",
+  "name": "Three-chamber sociability",
+  "category": "SOCIAL",
+  "species": [
+    "MOUSE",
+    "RAT"
+  ],
+  "trialTypes": [
+    "SOCIABILITY",
+    "SOCIAL_NOVELTY"
+  ],
+  "version": 1,
+  "metricEngineVersion": 1,
+  "resultSchemaVersion": 1,
+  "automatedAnalysis": false,
+  "apparatusParameters": [
+    {
+      "key": "chamber_width_cm",
+      "label": "Chamber width, used to review calibrated zones",
+      "unit": "cm",
+      "valueType": "number",
+      "min": 15,
+      "max": 40,
+      "default": 20
+    },
+    {
+      "key": "chamber_height_cm",
+      "label": "Chamber depth, used to review calibrated zones",
+      "unit": "cm",
+      "valueType": "number",
+      "min": 20,
+      "max": 60,
+      "default": 40
+    }
+  ],
+  "sessionParameters": [
+    {
+      "key": "max_sample_gap_s",
+      "label": "Longest gap between samples that still counts as tracked",
+      "unit": "s",
+      "valueType": "number",
+      "min": 0.01,
+      "max": 5,
+      "default": 0.5
+    }
+  ],
+  "zones": [
+    {
+      "key": "social_chamber",
+      "role": "TARGET",
+      "geometry": "Chamber with the stimulus animal.",
+      "calibrated": true,
+      "required": true
+    },
+    {
+      "key": "object_chamber",
+      "role": "CONTROL",
+      "geometry": "Chamber with the empty cage or object.",
+      "calibrated": true,
+      "required": true
+    },
+    {
+      "key": "center_chamber",
+      "role": "CENTER",
+      "geometry": "Middle chamber.",
+      "calibrated": true,
+      "required": true
+    },
+    {
+      "key": "social_interaction",
+      "role": "TARGET",
+      "geometry": "Close-interaction area around the stimulus cage.",
+      "calibrated": true,
+      "required": false
+    },
+    {
+      "key": "object_interaction",
+      "role": "CONTROL",
+      "geometry": "Close-interaction area around the object cage.",
+      "calibrated": true,
+      "required": false
+    }
+  ],
+  "inputEvents": [],
+  "events": [
+    {
+      "type": "in_social_chamber",
+      "kind": "INTERVAL",
+      "labels": [],
+      "single": false,
+      "definition": "Contiguous counted intervals whose earlier sample is in social_chamber."
+    },
+    {
+      "type": "in_object_chamber",
+      "kind": "INTERVAL",
+      "labels": [],
+      "single": false,
+      "definition": "Contiguous counted intervals whose earlier sample is in object_chamber."
+    },
+    {
+      "type": "in_center_chamber",
+      "kind": "INTERVAL",
+      "labels": [],
+      "single": false,
+      "definition": "Contiguous counted intervals whose earlier sample is in center_chamber."
+    },
+    {
+      "type": "in_social_interaction",
+      "kind": "INTERVAL",
+      "labels": [],
+      "single": false,
+      "definition": "Contiguous counted intervals whose earlier sample is in social_interaction."
+    },
+    {
+      "type": "in_object_interaction",
+      "kind": "INTERVAL",
+      "labels": [],
+      "single": false,
+      "definition": "Contiguous counted intervals whose earlier sample is in object_interaction."
+    },
+    {
+      "type": "social_chamber_entry",
+      "kind": "POINT",
+      "labels": [],
+      "single": false,
+      "definition": "Later sample time of a counted interval entering social_chamber."
+    },
+    {
+      "type": "object_chamber_entry",
+      "kind": "POINT",
+      "labels": [],
+      "single": false,
+      "definition": "Later sample time of a counted interval entering object_chamber."
+    },
+    {
+      "type": "center_chamber_entry",
+      "kind": "POINT",
+      "labels": [],
+      "single": false,
+      "definition": "Later sample time of a counted interval entering center_chamber."
+    }
+  ],
+  "metrics": [
+    {
+      "key": "duration_s",
+      "label": "Analyzed duration",
+      "unit": "s",
+      "valueType": "number",
+      "definition": "Samples and calibrated zone shapes use the same coordinates in centimeters; zones are evaluated independently and include their boundary. A counted interval is a pair of consecutive tracked samples with 0 \u003c dt \u003c= max_sample_gap_s.",
+      "formula": "sum(dt over counted intervals)",
+      "missingWhen": "Missing (NO_VALID_INTERVALS) when there is no counted interval.",
+      "inputs": [
+        "samples",
+        "max_sample_gap_s"
+      ],
+      "min": 0,
+      "max": 86400,
+      "tolerance": 0.000001
+    },
+    {
+      "key": "social_chamber_time_s",
+      "label": "Time in social chamber",
+      "unit": "s",
+      "valueType": "number",
+      "definition": "Counted time whose earlier sample is in the social chamber.",
+      "formula": "sum(dt in social_chamber)",
+      "missingWhen": "Missing (NO_VALID_INTERVALS) when there is no counted interval.",
+      "inputs": [
+        "samples",
+        "max_sample_gap_s",
+        "calibrated chamber zones"
+      ],
+      "min": 0,
+      "max": 86400,
+      "tolerance": 0.000001
+    },
+    {
+      "key": "object_chamber_time_s",
+      "label": "Time in object chamber",
+      "unit": "s",
+      "valueType": "number",
+      "definition": "Counted time whose earlier sample is in the object chamber.",
+      "formula": "sum(dt in object_chamber)",
+      "missingWhen": "Missing (NO_VALID_INTERVALS) when there is no counted interval.",
+      "inputs": [
+        "samples",
+        "max_sample_gap_s",
+        "calibrated chamber zones"
+      ],
+      "min": 0,
+      "max": 86400,
+      "tolerance": 0.000001
+    },
+    {
+      "key": "center_chamber_time_s",
+      "label": "Time in center chamber",
+      "unit": "s",
+      "valueType": "number",
+      "definition": "Counted time whose earlier sample is in the center chamber.",
+      "formula": "sum(dt in center_chamber)",
+      "missingWhen": "Missing (NO_VALID_INTERVALS) when there is no counted interval.",
+      "inputs": [
+        "samples",
+        "max_sample_gap_s",
+        "calibrated chamber zones"
+      ],
+      "min": 0,
+      "max": 86400,
+      "tolerance": 0.000001
+    },
+    {
+      "key": "sociability_index",
+      "label": "Sociability index",
+      "unit": "ratio",
+      "valueType": "number",
+      "definition": "Preference for the social chamber, from -1 (object) to +1 (social).",
+      "formula": "(social - object) / (social + object)",
+      "missingWhen": "Missing (ZERO_DENOMINATOR) when both chamber times are 0; missing (NO_VALID_INTERVALS) without counted intervals.",
+      "inputs": [
+        "social_chamber_time_s",
+        "object_chamber_time_s"
+      ],
+      "min": -1,
+      "max": 1,
+      "tolerance": 1e-9
+    },
+    {
+      "key": "social_interaction_time_s",
+      "label": "Social interaction time",
+      "unit": "s",
+      "valueType": "number",
+      "definition": "Counted time whose earlier sample is in the social interaction zone.",
+      "formula": "sum(dt in social_interaction)",
+      "missingWhen": "Missing (ZONE_NOT_PROVIDED) when the interaction zone is not calibrated; missing (NO_VALID_INTERVALS) without counted intervals.",
+      "inputs": [
+        "samples",
+        "max_sample_gap_s",
+        "social_interaction zone"
+      ],
+      "min": 0,
+      "max": 86400,
+      "tolerance": 0.000001
+    },
+    {
+      "key": "object_interaction_time_s",
+      "label": "Object interaction time",
+      "unit": "s",
+      "valueType": "number",
+      "definition": "Counted time whose earlier sample is in the object interaction zone.",
+      "formula": "sum(dt in object_interaction)",
+      "missingWhen": "Missing (ZONE_NOT_PROVIDED) when the interaction zone is not calibrated; missing (NO_VALID_INTERVALS) without counted intervals.",
+      "inputs": [
+        "samples",
+        "max_sample_gap_s",
+        "object_interaction zone"
+      ],
+      "min": 0,
+      "max": 86400,
+      "tolerance": 0.000001
+    },
+    {
+      "key": "social_chamber_entries_count",
+      "label": "Social chamber entries",
+      "unit": "count",
+      "valueType": "integer",
+      "definition": "An entry is a counted interval whose earlier sample is outside the zone and whose later sample is inside.",
+      "formula": "count(social_chamber entries)",
+      "missingWhen": "Missing (NO_VALID_INTERVALS) when there is no counted interval.",
+      "inputs": [
+        "samples",
+        "max_sample_gap_s",
+        "calibrated chamber zones"
+      ],
+      "min": 0,
+      "max": 1000000,
+      "tolerance": 1e-9
+    },
+    {
+      "key": "object_chamber_entries_count",
+      "label": "Object chamber entries",
+      "unit": "count",
+      "valueType": "integer",
+      "definition": "An entry is a counted interval whose earlier sample is outside the zone and whose later sample is inside.",
+      "formula": "count(object_chamber entries)",
+      "missingWhen": "Missing (NO_VALID_INTERVALS) when there is no counted interval.",
+      "inputs": [
+        "samples",
+        "max_sample_gap_s",
+        "calibrated chamber zones"
+      ],
+      "min": 0,
+      "max": 1000000,
+      "tolerance": 1e-9
+    }
+  ],
+  "qc": [
+    {
+      "key": "min_tracking_confidence",
+      "operator": "\u003e=",
+      "value": 0.7,
+      "unit": "ratio"
+    },
+    {
+      "key": "max_lost_frame_ratio",
+      "operator": "\u003c=",
+      "value": 0.1,
+      "unit": "ratio"
+    },
+    {
+      "key": "max_calibration_error_cm",
+      "operator": "\u003c=",
+      "value": 2,
+      "unit": "cm"
+    }
+  ]
+}
