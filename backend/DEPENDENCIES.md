@@ -25,4 +25,5 @@ needs cgo and a C compiler. Standard `net/http`, `slog`, `testing`, `httptest`,
 `go vet` and `gofmt` are used without extra frameworks. No unused GCS or CV
 packages are preinstalled; each owning issue resolves and pins its then-current
 stable dependencies with tests. The schema uses `uuidv7()`, which requires
-PostgreSQL 18 or later.
+PostgreSQL 18 or later, and the trusted `btree_gist` contrib extension shipped
+with PostgreSQL for the group assignment exclusion constraint.

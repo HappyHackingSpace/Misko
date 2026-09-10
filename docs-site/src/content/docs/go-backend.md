@@ -1,6 +1,6 @@
 ---
 title: Go backend (preview)
-description: Install and use the Go backend being rebuilt on the new-backend branch, including sign-in, users, roles and laboratory settings.
+description: Install and use the Go backend being rebuilt on the new-backend branch, including sign-in, users, roles, laboratory settings, subjects and experiments.
 ---
 
 :::caution
@@ -17,7 +17,8 @@ current release. Do not deploy this branch.
 | Sign-in, current user, own password change | Implemented |
 | User management with the five roles | Implemented |
 | Laboratory settings (one laboratory per installation) | Implemented |
-| Subjects, experiments, paradigms, video analysis | Not yet |
+| Subjects, experiments, phases, groups and enrollments | Implemented |
+| Disease models, paradigms, tests, video analysis | Not yet |
 | Vue panel on the new API | Not yet |
 
 ## Installation
@@ -43,6 +44,11 @@ curl --fail http://127.0.0.1:4000/api/ready
 If `setup` runs without a terminal (for example in CI), it refuses to start
 unless you pass `-credentials-file PATH`. The password then goes into that new
 file, readable only by its owner. It is never written to logs.
+
+If you use your own PostgreSQL server instead of the Compose database, it must be
+PostgreSQL 18 or later. The user that runs `schema` needs permission to create
+objects in the database, because the schema enables the bundled `btree_gist`
+extension.
 
 ### Settings
 
@@ -113,6 +119,61 @@ Every signed-in user can read `GET /api/lab`. SUPERADMIN and LAB_MANAGER can
 change `name`, `code` and `timezone` with `PATCH /api/lab`. An empty `code`
 clears it. `GET /api/meta` is public and returns the laboratory name for the
 sign-in screen.
+
+### Subjects
+
+Every signed-in user can read subjects. SUPERADMIN, LAB_MANAGER and RESEARCHER
+can change them.
+
+- `POST /api/subjects` creates a subject with `code`, `species` (`MOUSE` or
+  `RAT`), `sex` (`FEMALE`, `MALE` or `UNKNOWN`) and optional `strain`,
+  `birthDate` (`YYYY-MM-DD`) and `notes`. Codes are unique regardless of upper
+  or lower case.
+- `GET /api/subjects` lists subjects with `search`, `species`, `sex`, `sort`,
+  `order`, `page` and `pageSize`.
+- `PATCH /api/subjects/{id}` changes the fields you send. An empty `strain`,
+  `birthDate` or `notes` clears it.
+- `DELETE /api/subjects/{id}` deletes a subject that is not enrolled in any experiment.
+- `GET /api/subjects/{id}/enrollments` shows every experiment the subject is enrolled in.
+
+A subject exists on its own, so the same animal can join several experiments
+without being copied.
+
+### Experiments
+
+Every signed-in user can read experiments. SUPERADMIN, LAB_MANAGER and
+RESEARCHER can design them and enroll subjects.
+
+1. Create the experiment with `POST /api/experiments` (`code`, `title`, optional
+   `description` and `requiresControl`). The experiment detail shows
+   `controlRequirementMet`, which becomes true once a control group exists.
+2. Add measurement phases with `POST /api/experiments/{id}/phases` (`name`,
+   `position`), for example Baseline at position 1 and Post-treatment at position 2.
+3. Add groups with `POST /api/experiments/{id}/groups` (`name`, `role` of
+   `CONTROL` or `TREATMENT`, optional `targetSize`).
+   `GET /api/experiments/{id}/groups` shows each group's target and how many
+   subjects are in it right now.
+4. Enroll a subject with `POST /api/experiments/{id}/enrollments` (`subjectId`,
+   `enrolledAt`, optional `groupId`). A subject can be enrolled only once in
+   each experiment.
+5. Move a subject to another group with
+   `POST /api/experiments/{id}/enrollments/{enrollmentId}/assignments`
+   (`groupId`, `effectiveFrom`). The previous group period ends at that moment
+   and stays in the history shown by
+   `GET /api/experiments/{id}/enrollments/{enrollmentId}`.
+
+Phases and groups are separate on purpose. A phase says when a subject is
+measured; a group says which arm it belongs to. A treated subject measured at a
+healthy baseline stays in its treatment group.
+
+The system refuses:
+
+- phases, groups or enrollments that belong to another experiment,
+- a group period that overlaps another one, starts before enrollment or does not
+  start after the current period,
+- deleting a group that still has assignments, or a subject that is enrolled.
+
+Experiments and enrollments cannot be deleted yet, so research records are kept.
 
 ### Errors
 

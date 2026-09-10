@@ -6,8 +6,9 @@ Integration branch `new-backend`. The rebuild is incomplete; do not release it.
 |---|---|
 | [#124](https://github.com/HappyHackingSpace/Misko/issues/124) | Liveness/readiness, graceful shutdown, fresh schema installation, architecture checks |
 | [#125](https://github.com/HappyHackingSpace/Misko/issues/125) | Login, current user, own password change, user management, laboratory singleton, RBAC, idempotent setup |
+| [#126](https://github.com/HappyHackingSpace/Misko/issues/126) | Subjects, experiments, phases, groups, enrollments and dated group assignments |
 
-Subjects, experiments, paradigms, GCS uploads and video analysis are separate
+Disease models, paradigms, tests, GCS uploads and video analysis are separate
 following issues. The Vue application is not wired to this API yet; its old
 business routes return 404. There is no legacy API adapter or data migration.
 
@@ -19,8 +20,10 @@ business routes return 404. There is no legacy API adapter or data migration.
 - `internal/access/domain`: the shared RBAC kernel (roles, permission matrix, authenticated actor).
 - `internal/identity`: users, passwords, tokens and user administration.
 - `internal/laboratory`: the laboratory singleton.
+- `internal/subjects`: laboratory animals, independent of experiments.
+- `internal/experiments`: experiments, measurement phases, groups, enrollments and group assignments.
 - `internal/health`: readiness use case and probes.
-- `internal/platform`: configuration, HTTP server lifecycle, JSON helpers, serializable transactions and the integration-test database helper. No business rules.
+- `internal/platform`: configuration, HTTP server lifecycle, JSON helpers, PostgreSQL transaction and error helpers, and the integration-test database helper. No business rules.
 - `schema`: embedded SQL files, applied in lexical order in one transaction; never run by the API.
 - `sqlc.yaml`, `internal/*/adapters/postgres/queries.sql`: SQL sources for the generated `sqlcgen` packages. Do not edit generated code; run `make generate`.
 - `tests/architecture`: source import checks with positive and negative policy fixtures.
@@ -31,9 +34,11 @@ domain. `internal/access/domain` is the only domain package other domains may
 import, so every use case authorizes against the same matrix. Adapters may use
 any domain or application package but never another domain's adapters: other
 HTTP adapters resolve the caller through `identityhttp.Authenticator`, a function
-wired in the composition root. `net/http`, `database/sql`, JWT, bcrypt, pgx and
-GCP packages cannot enter inner layers. The architecture test scans every Go file
-under `internal`, including inactive build tags.
+wired in the composition root. Relationships between domains, such as an
+enrollment's subject, are enforced with foreign keys rather than cross-domain
+imports. `net/http`, `database/sql`, JWT, bcrypt, pgx and GCP packages cannot
+enter inner layers. The architecture test scans every Go file under `internal`,
+including inactive build tags.
 
 ## Roles and permissions
 
@@ -58,6 +63,10 @@ The five roles and their permissions are static code, not database rows.
 | `GET, POST /api/users`; `GET, PATCH, DELETE /api/users/{id}`; `POST /api/users/{id}/reset-password` | `user:manage` |
 | `GET /api/lab` | `*:read` |
 | `PATCH /api/lab` | `lab:configure` |
+| `GET /api/subjects`, `GET /api/subjects/{id}`, `GET /api/subjects/{id}/enrollments` | `*:read` |
+| `POST /api/subjects`, `PATCH, DELETE /api/subjects/{id}` | `subject:write` |
+| `GET /api/experiments`, `GET /api/experiments/{id}` and its `phases`, `groups`, `enrollments`, `enrollments/{enrollmentId}` | `*:read` |
+| `POST, PATCH` experiments; `POST, PATCH, DELETE` phases and groups; `POST` enrollments and `enrollments/{enrollmentId}/assignments` | `study:write` |
 
 Use cases check the actor and permission themselves; HTTP handlers only translate.
 Rules enforced by tests:
@@ -81,6 +90,42 @@ Rules enforced by tests:
   privileged user exists, so repeated runs create nothing.
 - Unexpected errors log the route pattern and error only, never headers, bodies,
   tokens or passwords. Clients receive a stable `code` and a generic message.
+
+## Subjects and experiments
+
+A subject's identity does not depend on any experiment; one subject can be
+enrolled in many experiments and later tested many times.
+
+- **Subject**: code (unique ignoring case), species (`MOUSE`, `RAT`), sex
+  (`FEMALE`, `MALE`, `UNKNOWN`), optional strain, birth date (not in the future)
+  and notes. A subject cannot be deleted while it is enrolled.
+- **Experiment**: code (unique ignoring case), title, description and
+  `requiresControl`. The experiment detail reports `controlRequirementMet`.
+- **Phase**: an ordered measurement period such as a healthy baseline. Name
+  (ignoring case) and position are unique within the experiment. A phase never
+  implies a group.
+- **Group**: an arm with role `CONTROL` or `TREATMENT` and an optional
+  `targetSize`. The group list returns `activeSubjects`, the assignments active
+  at the database clock, so target and actual counts can be compared. A group
+  with assignments cannot be deleted.
+- **Enrollment**: one per subject per experiment, with `enrolledAt`. An initial
+  `groupId` may be given; the assignment then starts at enrollment.
+- **Group assignment**: a dated period `[validFrom, validTo)`. Moving a subject
+  closes its open assignment at `effectiveFrom` and opens a new one, so crossover
+  keeps full history. A new assignment must start after the current one and not
+  before enrollment, and cannot repeat the current group. A future assignment is
+  stored but does not change today's counts.
+
+The database enforces these relationships as well: composite foreign keys keep
+an assignment's enrollment and group in the same experiment, a GiST exclusion
+constraint forbids overlapping periods for one enrollment, and a row lock on the
+enrollment serializes concurrent assignments. Routes under
+`/api/experiments/{id}` return 404 for phases, groups and enrollments of another
+experiment. Lists are paginated with `page` and `pageSize` (default 10, maximum
+100): subjects filter by `search`, `species`, `sex` and sort by `code`,
+`species`, `sex`, `birthDate` or `createdAt`; experiments filter by `search` and
+sort by `code`, `title` or `createdAt`; enrollments filter by `subjectId` and
+current `groupId` and sort by `enrolledAt`.
 
 ## Local container run
 
@@ -114,8 +159,10 @@ frontend or GCP deployment is started. Re-running `schema` refuses an existing
 
 ## Run Go directly
 
-Use the version in `go.mod` and a dedicated empty PostgreSQL database. Export
-the variables below (see `.env.example`), then from `backend/`:
+Use the version in `go.mod` and a dedicated empty PostgreSQL 18 database. The
+schema creates the `btree_gist` extension, a trusted contrib extension, so the
+installing user needs CREATE permission on the database. Export the variables
+below (see `.env.example`), then from `backend/`:
 
 ```sh
 go run ./cmd/bootstrap schema
@@ -156,10 +203,12 @@ editing schema or query SQL, run `make generate` and commit the result.
 
 Integration tests need a PostgreSQL server where the user may create databases.
 `TEST_DATABASE_URL` must name an empty database: the schema tests install into it
-and deliberately leave their fixture. Identity, laboratory and end-to-end HTTP
-tests create uniquely named `misko_test_*` databases and drop only those. They
-cover concurrent last-administrator protection, concurrent setup, SQL constraints,
-search escaping, stable paging and the full RBAC matrix over HTTP.
+and deliberately leave their fixture. Identity, laboratory, subject, experiment
+and end-to-end HTTP tests create uniquely named `misko_test_*` databases and drop
+only those. They cover concurrent last-administrator protection, concurrent
+setup, concurrent enrollment and assignment, cross-experiment references,
+overlapping periods, target versus actual group counts, SQL constraints, search
+escaping, stable paging and the read/write RBAC matrix over HTTP.
 
 CI runs these checks on PRs, including PRs targeting `new-backend`, then builds the
 container without pushing an image. Publication jobs are restricted to `main`;
@@ -168,6 +217,7 @@ enabled for `new-backend`.
 
 Known limits: login has no rate limiting yet, and there is no server-side logout
 (a client signs out by discarding its token; password changes revoke all tokens).
+Experiments and enrollments cannot be deleted yet; research records are kept.
 
 [OpenAPI](api/openapi.yaml) describes only implemented endpoints.
 [Dependencies](DEPENDENCIES.md) records pinned versions and verification sources.

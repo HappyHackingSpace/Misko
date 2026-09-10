@@ -3,6 +3,9 @@ package bootstrap
 import (
 	"context"
 	"errors"
+	experimentshttp "github.com/HappyHackingSpace/Misko/backend/internal/experiments/adapters/http"
+	experimentspostgres "github.com/HappyHackingSpace/Misko/backend/internal/experiments/adapters/postgres"
+	experimentsapp "github.com/HappyHackingSpace/Misko/backend/internal/experiments/application"
 	healthhttp "github.com/HappyHackingSpace/Misko/backend/internal/health/adapters/http"
 	healthpostgres "github.com/HappyHackingSpace/Misko/backend/internal/health/adapters/postgres"
 	healthapp "github.com/HappyHackingSpace/Misko/backend/internal/health/application"
@@ -16,6 +19,9 @@ import (
 	laboratoryapp "github.com/HappyHackingSpace/Misko/backend/internal/laboratory/application"
 	"github.com/HappyHackingSpace/Misko/backend/internal/platform/config"
 	"github.com/HappyHackingSpace/Misko/backend/internal/platform/httpserver"
+	subjectshttp "github.com/HappyHackingSpace/Misko/backend/internal/subjects/adapters/http"
+	subjectspostgres "github.com/HappyHackingSpace/Misko/backend/internal/subjects/adapters/postgres"
+	subjectsapp "github.com/HappyHackingSpace/Misko/backend/internal/subjects/application"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"log/slog"
 	"net"
@@ -66,6 +72,8 @@ func NewAPI(pool *pgxpool.Pool, cfg config.Config, auth config.Auth, logger *slo
 	}
 	identity := identityapp.New(identitypostgres.NewStore(pool), tokens, passwords)
 	laboratory := laboratoryapp.New(laboratorypostgres.NewStore(pool))
+	subjects := subjectsapp.New(subjectspostgres.NewStore(pool), time.Now)
+	experiments := experimentsapp.New(experimentspostgres.NewStore(pool))
 	readiness := healthapp.New(healthpostgres.New(pool), cfg.ProbeTimeout)
 
 	mux := http.NewServeMux()
@@ -73,6 +81,9 @@ func NewAPI(pool *pgxpool.Pool, cfg config.Config, auth config.Auth, logger *slo
 	mux.Handle("/api/health", health)
 	mux.Handle("/api/ready", health)
 	identityhttp.Register(mux, identity, logger)
-	laboratoryhttp.Register(mux, laboratory, identityhttp.Authenticator(identity), logger)
+	authenticate := identityhttp.Authenticator(identity)
+	laboratoryhttp.Register(mux, laboratory, authenticate, logger)
+	subjectshttp.Register(mux, subjects, authenticate, logger)
+	experimentshttp.Register(mux, experiments, authenticate, logger)
 	return API{Handler: mux, BeginDrain: readiness.BeginDrain}, nil
 }

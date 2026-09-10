@@ -6,13 +6,76 @@ package sqlcgen
 
 import (
 	"time"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
+
+type MiskoEnrollment struct {
+	ID           string
+	ExperimentID string
+	SubjectID    string
+	EnrolledAt   time.Time
+	CreatedAt    time.Time
+}
+
+type MiskoExperiment struct {
+	ID              string
+	Code            string
+	Title           string
+	Description     *string
+	RequiresControl bool
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+}
+
+type MiskoExperimentGroup struct {
+	ID           string
+	ExperimentID string
+	Name         string
+	Role         string
+	TargetSize   *int32
+	Description  *string
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+}
+
+type MiskoExperimentPhase struct {
+	ID           string
+	ExperimentID string
+	Name         string
+	Position     int32
+	Description  *string
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+}
+
+type MiskoGroupAssignment struct {
+	ID           string
+	ExperimentID string
+	EnrollmentID string
+	GroupID      string
+	ValidFrom    time.Time
+	ValidTo      pgtype.Timestamptz
+	CreatedAt    time.Time
+}
 
 type MiskoLaboratory struct {
 	Singleton bool
 	Name      string
 	Code      *string
 	Timezone  string
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+type MiskoSubject struct {
+	ID        string
+	Code      string
+	Species   string
+	Sex       string
+	Strain    *string
+	BirthDate pgtype.Date
+	Notes     *string
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }

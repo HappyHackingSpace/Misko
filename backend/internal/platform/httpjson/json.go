@@ -9,6 +9,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strconv"
 )
 
 const MaxBodyBytes = 1 << 20
@@ -86,4 +87,17 @@ func Fail(w http.ResponseWriter, r *http.Request, logger *slog.Logger, err error
 	}
 	logger.ErrorContext(r.Context(), "request failed", "route", r.Pattern, "error", err)
 	Error(w, http.StatusInternalServerError, "common.serverError", "internal server error")
+}
+
+// QueryInt returns 0 for an absent value and -1 for a malformed or negative one,
+// which use cases reject after checking authorization.
+func QueryInt(raw string) int {
+	if raw == "" {
+		return 0
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil || n < 0 {
+		return -1
+	}
+	return n
 }

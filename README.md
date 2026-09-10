@@ -4,8 +4,8 @@
 > [backend/README.md](backend/README.md) for the currently implemented endpoints,
 > setup and tests. The previous feature list and Node/Prisma commands below are
 > historical and do not describe this branch. Authentication, user management and
-> RBAC exist in the Go API (#125); the Vue business UI and video workflow are not
-> implemented yet. No release or deployment should be made before the
+> RBAC (#125), subjects and experiments (#126) exist in the Go API; the Vue
+> business UI and video workflow are not implemented yet. No release or deployment should be made before the
 > [rebuild epic](https://github.com/HappyHackingSpace/Misko/issues/123) is complete.
 
 
