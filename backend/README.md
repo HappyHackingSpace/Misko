@@ -8,8 +8,9 @@ Integration branch `new-backend`. The rebuild is incomplete; do not release it.
 | [#125](https://github.com/HappyHackingSpace/Misko/issues/125) | Login, current user, own password change, user management, laboratory singleton, RBAC, idempotent setup |
 | [#126](https://github.com/HappyHackingSpace/Misko/issues/126) | Subjects, experiments, phases, groups, enrollments and dated group assignments |
 | [#127](https://github.com/HappyHackingSpace/Misko/issues/127) | Disease models, substances, intervention plans, weights, subject conditions and actual administrations |
+| [#128](https://github.com/HappyHackingSpace/Misko/issues/128) | Read-only versioned paradigm catalog and the OPEN_FIELD metric engine |
 
-Paradigms, tests, GCS uploads and video analysis are separate following issues. The Vue application is not wired to this API yet; its old
+The other ten paradigms, tests, GCS uploads and video analysis are separate following issues. The Vue application is not wired to this API yet; its old
 business routes return 404. There is no legacy API adapter or data migration.
 
 ## Layout and boundaries
@@ -23,6 +24,7 @@ business routes return 404. There is no legacy API adapter or data migration.
 - `internal/subjects`: laboratory animals, independent of experiments.
 - `internal/experiments`: experiments, measurement phases, groups, enrollments and group assignments.
 - `internal/interventions`: disease models, substances, intervention plans, body weights, subject conditions and actual administrations.
+- `internal/paradigms`: the hardcoded, versioned paradigm catalog and pure metric engine.
 - `internal/health`: readiness use case and probes.
 - `internal/platform`: configuration, HTTP server lifecycle, JSON helpers, PostgreSQL transaction and error helpers, and the integration-test database helper. No business rules.
 - `schema`: embedded SQL files, applied in lexical order in one transaction; never run by the API.
@@ -63,6 +65,7 @@ The five roles and their permissions are static code, not database rows.
 | `GET /api/auth/me`, `POST /api/auth/password` | Any signed-in user |
 | `GET, POST /api/users`; `GET, PATCH, DELETE /api/users/{id}`; `POST /api/users/{id}/reset-password` | `user:manage` |
 | `GET /api/lab` | `*:read` |
+| `GET /api/paradigms`, `GET /api/paradigms/{key}`, `GET /api/paradigms/{key}/versions/{version}` | `*:read` |
 | `PATCH /api/lab` | `lab:configure` |
 | `GET /api/subjects`, `GET /api/subjects/{id}`, `GET /api/subjects/{id}/enrollments` | `*:read` |
 | `POST /api/subjects`, `PATCH, DELETE /api/subjects/{id}` | `subject:write` |
@@ -165,6 +168,45 @@ an administration's subject to its enrollment and its weight to the same
 subject, and a check constraint requires a weight for per-kilogram doses.
 Phases and groups referenced by plans cannot be deleted. Weights, conditions and
 administrations cannot be edited or deleted yet.
+
+## Paradigm catalog and metric engine
+
+Paradigm, metric, unit, event and calculation definitions are Go code in
+`internal/paradigms/domain`. There are no create, update or delete routes; a
+change means a new published version, and callers only receive copies.
+
+- `ParadigmVersion` identifies one paradigm's contract, `MetricEngineVersion`
+  the calculations and `ResultSchemaVersion` the shape of a result. Every result
+  and manifest carries all three.
+- `GET /api/paradigms/{key}/versions/{version}` is the manifest a worker
+  consumes: parameters with units, ranges and defaults, zones, interval and
+  point events, metrics with definition, formula, inputs, missing-data rule and
+  tolerance, and QC rules.
+- `automatedAnalysis` stays false until a real worker capability is registered;
+  catalog presence does not mean a video can be analyzed.
+
+OPEN_FIELD version 1 evaluates a trajectory of samples (time in microseconds,
+x and y in arena-local centimeters, tracked or lost). A counted interval is a
+pair of consecutive samples that are both tracked and inside the arena with
+0 < dt <= `max_sample_gap_s`.
+
+| Metric | Calculation |
+|---|---|
+| `duration_s` | Sum of dt over counted intervals |
+| `distance_cm` | Sum of straight-line steps over counted intervals; lost frames are not interpolated |
+| `mean_speed_cm_s` | `distance_cm / duration_s` |
+| `center_time_s`, `periphery_time_s` | Counted time attributed to the zone of the earlier sample; the center rectangle includes its boundary |
+| `center_time_ratio`, `periphery_time_ratio` | Zone time divided by `duration_s` |
+| `center_entries_count` | Counted intervals moving from periphery to center; starting in the center is not an entry |
+| `immobility_s` | Contiguous intervals with speed strictly below `immobility_threshold_cm_s`, in bouts of at least `min_immobility_bout_s` |
+
+Samples outside the arena count as lost. With no counted interval, every metric
+is reported missing with reason `NO_VALID_INTERVALS`, never as zero. Tracked
+samples need finite coordinates, timestamps must be non-negative and strictly
+increasing, and unknown or out-of-range parameters are rejected. The engine also
+emits `in_center` and `immobile` intervals and `center_entry` points for the
+event timeline. Tolerances are 1e-6 in the metric unit for times, distances and
+speeds, and 1e-9 for ratios and counts. The other ten paradigms follow in #129.
 
 ## Local container run
 

@@ -20,6 +20,8 @@ import (
 	laboratoryhttp "github.com/HappyHackingSpace/Misko/backend/internal/laboratory/adapters/http"
 	laboratorypostgres "github.com/HappyHackingSpace/Misko/backend/internal/laboratory/adapters/postgres"
 	laboratoryapp "github.com/HappyHackingSpace/Misko/backend/internal/laboratory/application"
+	paradigmshttp "github.com/HappyHackingSpace/Misko/backend/internal/paradigms/adapters/http"
+	paradigmsapp "github.com/HappyHackingSpace/Misko/backend/internal/paradigms/application"
 	"github.com/HappyHackingSpace/Misko/backend/internal/platform/config"
 	"github.com/HappyHackingSpace/Misko/backend/internal/platform/httpserver"
 	subjectshttp "github.com/HappyHackingSpace/Misko/backend/internal/subjects/adapters/http"
@@ -90,5 +92,6 @@ func NewAPI(pool *pgxpool.Pool, cfg config.Config, auth config.Auth, logger *slo
 	subjectshttp.Register(mux, subjects, authenticate, logger)
 	experimentshttp.Register(mux, experiments, authenticate, logger)
 	interventionshttp.Register(mux, interventions, authenticate, logger)
+	paradigmshttp.Register(mux, paradigmsapp.New(), authenticate, logger)
 	return API{Handler: mux, BeginDrain: readiness.BeginDrain}, nil
 }
