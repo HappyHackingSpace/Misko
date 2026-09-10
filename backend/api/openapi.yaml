@@ -1,0 +1,44 @@
+openapi: 3.1.0
+info:
+  title: Misko API
+  version: 0.1.0
+  description: Foundation only. Business and authentication endpoints follow in separate issues.
+paths:
+  /api/health:
+    get:
+      operationId: getLiveness
+      summary: Process liveness; independent of PostgreSQL
+      responses:
+        '200':
+          description: Process is accepting HTTP
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Probe'
+  /api/ready:
+    get:
+      operationId: getReadiness
+      summary: PostgreSQL schema is installed and the process is not draining
+      responses:
+        '200':
+          description: Ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Probe'
+        '503':
+          description: Dependency unavailable, schema missing, or process draining
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Probe'
+components:
+  schemas:
+    Probe:
+      type: object
+      additionalProperties: false
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [ok, unavailable]

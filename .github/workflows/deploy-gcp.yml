@@ -32,6 +32,7 @@ permissions:
 
 jobs:
   deploy:
+    if: github.ref == 'refs/heads/main'
     name: Deploy
     runs-on: ubuntu-latest
     environment: production   # <-- onay kapısı: yalnızca required reviewer başlatabilir

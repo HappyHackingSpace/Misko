@@ -1,0 +1,16 @@
+.PHONY: check test integration build
+check:
+	@test -z "$$(gofmt -l cmd internal schema tests)"
+	go vet ./...
+	go test -race ./...
+	go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
+
+test:
+	go test -race ./...
+
+integration:
+	go test -race -tags=integration ./...
+
+build:
+	go build -trimpath -o bin/api ./cmd/api
+	go build -trimpath -o bin/bootstrap ./cmd/bootstrap
