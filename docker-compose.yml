@@ -1,50 +1,42 @@
-name: misko
+# Isolated foundation stack: never reuses the old misko/db-data volume.
+name: misko-new-backend
 
 services:
   db:
-    image: postgres:16-alpine
-    restart: unless-stopped
+    image: postgres:18.6-alpine@sha256:d3e1620b530c944afa6e887d22eb899824da68e19c52024bf98f5220c88a65b2
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-misko}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-misko}
-      POSTGRES_DB: ${POSTGRES_DB:-misko}
-    ports:
-      - "${DB_PORT:-5432}:5432"
+      POSTGRES_USER: misko
+      POSTGRES_PASSWORD: misko_local_only
+      POSTGRES_DB: misko_foundation
     volumes:
-      - db-data:/var/lib/postgresql/data
+      - foundation-db:/var/lib/postgresql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-misko} -d ${POSTGRES_DB:-misko}"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
+      test: ["CMD-SHELL", "pg_isready -U misko -d misko_foundation"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
 
-  backend:
-    build:
-      context: ./backend
-    restart: unless-stopped
+  schema:
+    build: ./backend
+    entrypoint: ["/bootstrap"]
     environment:
-      NODE_ENV: production
-      PORT: 4000
-      DATABASE_URL: postgresql://${POSTGRES_USER:-misko}:${POSTGRES_PASSWORD:-misko}@db:5432/${POSTGRES_DB:-misko}?schema=public
-      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set in production}
-      JWT_TTL: ${JWT_TTL:-7d}
-      CORS_ORIGIN: ${CORS_ORIGIN:-*}
-      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@miskolab.com}
-      LAB_NAME: ${LAB_NAME:-Mişko Laboratuvarı}
+      DATABASE_URL: postgres://misko:misko_local_only@db:5432/misko_foundation?sslmode=disable
     depends_on:
       db:
         condition: service_healthy
-    ports:
-      - "${BACKEND_PORT:-4000}:4000"
+    profiles: [setup]
 
-  frontend:
-    build:
-      context: ./frontend
-    restart: unless-stopped
-    depends_on:
-      - backend
+  backend:
+    build: ./backend
+    environment:
+      DATABASE_URL: postgres://misko:misko_local_only@db:5432/misko_foundation?sslmode=disable
+      HTTP_ADDR: :4000
     ports:
-      - "${FRONTEND_PORT:-8080}:80"
+      - "127.0.0.1:4000:4000"
+    depends_on:
+      db:
+        condition: service_healthy
+    stop_grace_period: 15s
 
 volumes:
-  db-data:
+  foundation-db:

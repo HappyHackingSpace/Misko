@@ -1,39 +1,15 @@
-# syntax=docker/dockerfile:1
+FROM golang:1.27.1-alpine@sha256:cf6fca6641884b8433441b2b0652976f975e1d0fdd26d177eaaf8596087f3125 AS build
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/api ./cmd/api && \
+    CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/bootstrap ./cmd/bootstrap
 
-###############################################
-# 1) Bağımlılıklar + Prisma client (engine'ler dahil)
-###############################################
-FROM node:26-alpine AS deps
-WORKDIR /app
-RUN apk add --no-cache openssl
-COPY package*.json ./
-COPY prisma ./prisma
-COPY prisma.config.ts ./
-# Migration için prisma CLI'ye ihtiyaç var → tüm bağımlılıklar kurulur
-RUN npm ci && npx prisma generate
-
-###############################################
-# 2) Çalışma imajı
-###############################################
-FROM node:26-alpine AS runner
-ENV NODE_ENV=production
-WORKDIR /app
-RUN apk add --no-cache openssl
-
-# Güvenlik: root olmayan kullanıcı
-RUN addgroup -S nodejs && adduser -S nodejs -G nodejs
-
-COPY --from=deps /app/node_modules ./node_modules
-COPY package*.json ./
-COPY prisma ./prisma
-COPY prisma.config.ts ./
-COPY src ./src
-COPY docker-entrypoint.sh ./docker-entrypoint.sh
-RUN sed -i 's/\r$//' ./docker-entrypoint.sh && chmod +x ./docker-entrypoint.sh && chown -R nodejs:nodejs /app
-
-USER nodejs
+FROM scratch
+COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+COPY --from=build /out/api /api
+COPY --from=build /out/bootstrap /bootstrap
+USER 65532:65532
 EXPOSE 4000
-
-# Migration'ları uygula, ardından sunucuyu başlat
-ENTRYPOINT ["./docker-entrypoint.sh"]
-CMD ["node", "src/server.js"]
+ENTRYPOINT ["/api"]
