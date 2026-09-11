@@ -24,7 +24,6 @@ var constraintErrors = map[string]error{
 	"analysis_runs_transition":     domain.ErrStaleAttempt,
 	"analysis_outputs_fenced":      domain.ErrStaleAttempt,
 	"analysis_output_uploads_pkey": application.ErrInvalidOutput,
-	"analysis_events_trial_fkey":   domain.ErrUnknownTrial,
 	"analysis_runs_recording_fkey": application.ErrRecordingNotFound,
 }
 
@@ -283,12 +282,20 @@ func (s *Store) Runs(ctx context.Context, testID string) ([]domain.Run, error) {
 	return toRuns(rows)
 }
 
-func (s *Store) TrialIDs(ctx context.Context, testID string) ([]string, error) {
-	ids, err := s.queries.TrialIDs(ctx, testID)
+func (s *Store) Calibration(ctx context.Context, id string) (domain.CalibrationRef, error) {
+	row, err := s.queries.GetCalibration(ctx, id)
 	if err != nil {
-		return nil, fmt.Errorf("trial ids: %w", err)
+		return domain.CalibrationRef{}, fmt.Errorf("calibration: %w", err)
 	}
-	return ids, nil
+	if len(row.Transform) != 9 {
+		return domain.CalibrationRef{}, fmt.Errorf("calibration %s: transform has %d entries", id, len(row.Transform))
+	}
+	ref := domain.CalibrationRef{
+		ID: row.ID, FrameWidth: int(row.FrameWidth), FrameHeight: int(row.FrameHeight), CropX: int(row.CropX), CropY: int(row.CropY),
+		CropWidth: int(row.CropWidth), CropHeight: int(row.CropHeight), Plane: row.MeasurementPlane,
+	}
+	copy(ref.Transform[:], row.Transform)
+	return ref, nil
 }
 
 func (s *Store) SourceObject(ctx context.Context, assetID string) (string, error) {

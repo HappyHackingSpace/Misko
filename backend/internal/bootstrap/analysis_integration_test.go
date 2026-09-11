@@ -117,7 +117,9 @@ func TestAnalysisOverHTTP(t *testing.T) {
 	run := claim.body["run"].(map[string]any)
 	prefix := claim.body["outputPrefix"].(string)
 	contract := claim.body["contract"].(map[string]any)
-	if run["attempt"] != float64(1) || len(contract["metrics"].([]any)) != 9 {
+	calibration, _ := claim.body["calibration"].(map[string]any)
+	if run["attempt"] != float64(1) || len(contract["metrics"].([]any)) != 9 || len(contract["qc"].([]any)) != 3 ||
+		claim.body["trajectorySchema"] != "misko.trajectory.v1" || calibration == nil || len(calibration["transform"].([]any)) != 9 || calibration["id"] != run["calibrationId"] {
 		t.Fatalf("job: %v", claim.body)
 	}
 	if r := workerCall("POST", "/api/worker/claim", token, map[string]any{}); r.status != 204 {
@@ -131,18 +133,43 @@ func TestAnalysisOverHTTP(t *testing.T) {
 	if output.status != 201 || output.body["objectName"] != prefix+"overlay.mp4" {
 		t.Fatalf("output upload: %v", output)
 	}
-	metrics := []any{}
-	for _, m := range contract["metrics"].([]any) {
-		metrics = append(metrics, map[string]any{"key": m.(map[string]any)["key"], "value": 0})
-	}
-	result := map[string]any{"attempt": 1, "modelVersion": "tracker 1.0", "metrics": metrics,
-		"events":    []any{map[string]any{"type": "in_center", "startUs": 0, "endUs": 1500000, "confidence": 0.9}, map[string]any{"type": "center_entry", "startUs": 0, "endUs": 0, "confidence": 1}},
-		"artifacts": []any{map[string]any{"kind": "ANALYZED_VIDEO", "objectName": prefix + "overlay.mp4"}},
-		"pair":      map[string]any{"analyzedObjectName": prefix + "overlay.mp4", "sourceOffsetUs": 0, "outputOffsetUs": 0, "timeMappingVersion": "identity-v1"}}
-	if r := workerCall("POST", runPath+"/result", token, result); r.status != 409 || r.body["code"] != "analysis.outputNotVerified" {
-		t.Fatalf("result before the output upload: %v", r)
-	}
 	objects.finishUpload(2048, 5)
+
+	// The worker walks 10 cm into the 50 x 40 cm arena's center, then stays still.
+	var ts []int64
+	var xs, ys, confidence []float64
+	var tracked []bool
+	for i := 0; i <= 25; i++ {
+		ts, xs, ys = append(ts, int64(i)*100_000), append(xs, 5+float64(min(i, 10))), append(ys, 20)
+		tracked, confidence = append(tracked, true), append(confidence, 0.95)
+	}
+	trajectory, err := json.Marshal(map[string]any{"schema": "misko.trajectory.v1", "runId": id(run), "attempt": 1, "durationUs": 6_000_000,
+		"samples": map[string]any{"tUs": ts, "xCm": xs, "yCm": ys, "tracked": tracked, "confidence": confidence},
+		"worker":  map[string]any{"algorithm": "test fixture"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	declare := func(contentType string) response {
+		return workerCall("POST", runPath+"/outputs", token, map[string]any{"attempt": 1, "kind": "TRAJECTORY", "fileName": "trajectory.json",
+			"contentType": contentType, "sizeBytes": len(trajectory), "crc32c": domain.FormatCRC32C(6)})
+	}
+	if r := declare("application/vnd.apache.parquet"); r.status != 400 || r.body["code"] != "analysis.invalidOutput" {
+		t.Fatalf("a trajectory the API cannot read: %v", r)
+	}
+	if r := declare("application/json"); r.status != 201 || r.body["objectName"] != prefix+"trajectory.json" {
+		t.Fatalf("trajectory upload: %v", r)
+	}
+	result := map[string]any{"attempt": 1, "modelVersion": "tracker 1.0",
+		"artifacts": []any{map[string]any{"kind": "ANALYZED_VIDEO", "objectName": prefix + "overlay.mp4"}, map[string]any{"kind": "TRAJECTORY", "objectName": prefix + "trajectory.json"}},
+		"pair":      map[string]any{"analyzedObjectName": prefix + "overlay.mp4", "sourceOffsetUs": 0, "outputOffsetUs": 0, "timeMappingVersion": "identity-v1"}}
+	if r := workerCall("POST", runPath+"/result", token, map[string]any{"attempt": 1, "modelVersion": "tracker 1.0", "metrics": []any{},
+		"artifacts": result["artifacts"], "pair": result["pair"]}); r.status != 400 || r.body["code"] != "common.invalidJSON" {
+		t.Fatalf("a worker cannot send metrics: %v", r)
+	}
+	if r := workerCall("POST", runPath+"/result", token, result); r.status != 409 || r.body["code"] != "analysis.outputNotVerified" {
+		t.Fatalf("result before the trajectory upload: %v", r)
+	}
+	objects.finishUploadWith(trajectory, 6, "application/json")
 	if r := workerCall("POST", runPath+"/result", token, result); r.status != 200 || r.body["status"] != "SUCCEEDED" {
 		t.Fatalf("result: %v", r)
 	}
@@ -152,8 +179,13 @@ func TestAnalysisOverHTTP(t *testing.T) {
 
 	detail := c.expect("run detail", c.call("GET", "/api/analysis-runs/"+id(run), tokens["VIEWER"], nil), 200, "").body
 	published := detail["result"].(map[string]any)
-	if detail["status"] != "SUCCEEDED" || len(published["metrics"].([]any)) != 9 || len(published["events"].([]any)) != 2 || published["pair"] == nil {
+	if detail["status"] != "SUCCEEDED" || len(published["metrics"].([]any)) != 9 || len(published["events"].([]any)) != 3 || published["pair"] == nil {
 		t.Fatalf("detail: %v", detail)
+	}
+	for _, m := range published["metrics"].([]any) {
+		if metric := m.(map[string]any); metric["key"] == "distance_cm" && metric["value"] != float64(10) {
+			t.Fatalf("the engine's distance: %v", metric)
+		}
 	}
 	pair := c.expect("video pair", c.call("GET", "/api/analysis-runs/"+id(run)+"/video-pair", tokens["VIEWER"], nil), 200, "").body
 	if !strings.Contains(pair["originalUrl"].(string), "generation="+source["generation"].(string)) || !strings.Contains(pair["analyzedUrl"].(string), "overlay.mp4") {

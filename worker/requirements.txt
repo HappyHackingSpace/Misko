@@ -1,0 +1,4 @@
+av==18.1.0
+google-crc32c==1.8.0
+numpy==2.5.3
+scipy==1.18.1

@@ -4,6 +4,7 @@ package bootstrap
 
 import (
 	"context"
+	"errors"
 	mediaapp "github.com/HappyHackingSpace/Misko/backend/internal/media/application"
 	"github.com/HappyHackingSpace/Misko/backend/internal/media/domain"
 	"github.com/HappyHackingSpace/Misko/backend/internal/platform/config"
@@ -23,7 +24,32 @@ import (
 type fakeObjects struct {
 	mu         sync.Mutex
 	stored     map[string]domain.ObjectAttrs
+	contents   map[string][]byte
 	lastObject string
+}
+
+func (f *fakeObjects) Read(_ context.Context, object string, generation, limit int64) ([]byte, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	attrs, ok := f.stored[object]
+	if !ok || attrs.Generation != generation {
+		return nil, mediaapp.ErrObjectNotFound
+	}
+	if int64(len(f.contents[object])) > limit {
+		return nil, errors.New("object too large")
+	}
+	return f.contents[object], nil
+}
+
+// finishUploadWith stores the bytes of the last signed upload with their real size.
+func (f *fakeObjects) finishUploadWith(data []byte, crc uint32, contentType string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.contents == nil {
+		f.contents = map[string][]byte{}
+	}
+	f.contents[f.lastObject] = data
+	f.stored[f.lastObject] = domain.ObjectAttrs{Generation: 1757592000000000 + int64(len(f.stored)) + 1, Size: int64(len(data)), CRC32C: crc, ContentType: contentType}
 }
 
 func (f *fakeObjects) Bucket() string { return "misko-test-videos" }

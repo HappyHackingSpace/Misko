@@ -17,6 +17,9 @@ const (
 	// analysisLease is how long a claimed run stays with a worker without a heartbeat.
 	analysisLease       = 5 * time.Minute
 	analysisMaxAttempts = 3
+	// analysisMaxTrajectoryBytes caps the trajectory read to compute metrics;
+	// about four hours of 30 fps samples.
+	analysisMaxTrajectoryBytes = 64 << 20
 )
 
 // analysisObjects gives the analysis use cases the video object store.
@@ -43,6 +46,14 @@ func (a analysisObjects) Attrs(ctx context.Context, object string) (analysisapp.
 	return analysisapp.ObjectAttrs(attrs), err
 }
 
+func (a analysisObjects) Read(ctx context.Context, object string, generation, limit int64) ([]byte, error) {
+	data, err := a.objects.Read(ctx, object, generation, limit)
+	if errors.Is(err, mediaapp.ErrObjectNotFound) {
+		return nil, analysisapp.ErrObjectNotFound
+	}
+	return data, err
+}
+
 func newAnalysis(pool *pgxpool.Pool, objects mediaapp.ObjectStore, settings mediaapp.Settings) *analysisapp.Service {
 	var store analysisapp.ObjectStore
 	if objects != nil {
@@ -50,6 +61,7 @@ func newAnalysis(pool *pgxpool.Pool, objects mediaapp.ObjectStore, settings medi
 	}
 	return analysisapp.New(analysispostgres.NewStore(pool), store, analysiscatalog.New(), analysistoken.New(), analysisapp.Settings{
 		Lease: analysisLease, MaxAttempts: analysisMaxAttempts, UploadTTL: settings.UploadTTL, ReadTTL: settings.ReadTTL, MaxOutputBytes: settings.MaxBytes,
+		MaxTrajectoryBytes: analysisMaxTrajectoryBytes,
 	}, time.Now)
 }
 

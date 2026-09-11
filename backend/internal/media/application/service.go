@@ -39,6 +39,10 @@ type ObjectStore interface {
 	ReadURL(ctx context.Context, object string, generation int64, expires time.Time) (string, error)
 	// Attrs returns ErrObjectNotFound when the object does not exist yet.
 	Attrs(ctx context.Context, object string) (domain.ObjectAttrs, error)
+	// Read returns one generation of a small object, such as an analysis
+	// trajectory, of at most limit bytes, or ErrObjectNotFound. Videos are never
+	// read by the API.
+	Read(ctx context.Context, object string, generation, limit int64) ([]byte, error)
 }
 
 type TestRef struct {

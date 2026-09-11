@@ -1,22 +1,12 @@
 package domain
 
 import (
-	"cmp"
 	"errors"
-	"math"
-	"slices"
 	"strings"
 	"unicode/utf8"
 )
 
 var (
-	ErrMissingMetric        = errors.New("every metric of the paradigm version must be reported")
-	ErrUnknownMetric        = errors.New("metric is not defined by the paradigm version")
-	ErrInvalidMetric        = errors.New("a metric needs either a finite value within its range, integral for counts, or a known missing reason")
-	ErrInvalidEvent         = errors.New("events need a type of the paradigm version and a confidence from 0 to 1")
-	ErrEventOutOfRange      = errors.New("intervals need 0 <= start < end <= recording duration and points start = end within it")
-	ErrUnknownTrial         = errors.New("an event references a trial of another test")
-	ErrOverlappingEvents    = errors.New("intervals of the same type must not overlap")
 	ErrInvalidArtifact      = errors.New("artifacts need a known kind and a unique object under the attempt's output prefix")
 	ErrMissingAnalyzedVideo = errors.New("a result needs exactly one analyzed video")
 	ErrInvalidPair          = errors.New("the video pair must name the analyzed video, offset the source by the clip start and have a time mapping version")
@@ -30,8 +20,6 @@ const (
 	Thumbnail     = "THUMBNAIL"
 )
 
-const maxEvents = 100_000
-
 type MetricSpec struct {
 	Key, Unit string
 	Integer   bool
@@ -44,28 +32,30 @@ type EventSpec struct {
 	Kind string
 }
 
-// Contract is what a paradigm version expects from an analysis.
+// Contract is what a paradigm version expects from an analysis. Metrics and
+// events are computed by the metric engine from the trajectory; they are listed
+// so workers can draw and label them.
 type Contract struct {
 	MetricEngineVersion int
 	ResultSchemaVersion int
 	CalibrationRequired bool
-	Metrics             []MetricSpec
-	Events              []EventSpec
-	MissingReasons      []string
+	// TrajectoryAnalyzable is false when the engine needs inputs a trajectory
+	// cannot provide, such as calibrated zone shapes or scored observations.
+	TrajectoryAnalyzable bool
+	Metrics              []MetricSpec
+	Events               []EventSpec
+	MissingReasons       []string
+	QC                   []QCRule
 }
 
-type MetricInput struct {
-	Key           string
-	Value         *float64
-	MissingReason string
-}
-
-// EventInput times are microseconds relative to the recording (clip) start.
-type EventInput struct {
-	Type           string
-	StartUs, EndUs int64
-	Confidence     float64
-	TrialID        string
+// CalibrationRef is the pinned calibration a worker needs to map full-frame
+// pixels to arena centimeters.
+type CalibrationRef struct {
+	ID                                  string
+	FrameWidth, FrameHeight             int
+	CropX, CropY, CropWidth, CropHeight int
+	Plane                               string
+	Transform                           [9]float64
 }
 
 type ArtifactInput struct {
@@ -81,14 +71,14 @@ type PairInput struct {
 	TimeMappingVersion string
 }
 
+// Submission is a worker's result. It carries no metrics or events: the API
+// computes them from the stored trajectory.
 type Submission struct {
 	WorkerID     string
 	Attempt      int
 	ModelVersion string
 	// RecordingDurationUs is required when the clip has no end.
 	RecordingDurationUs int64
-	Metrics             []MetricInput
-	Events              []EventInput
 	Artifacts           []ArtifactInput
 	Pair                PairInput
 }
@@ -109,15 +99,17 @@ type Event struct {
 type Result struct {
 	ModelVersion string
 	DurationUs   int64
-	Metrics      []MetricValue
-	Events       []Event
-	Artifacts    []ArtifactInput
-	Pair         PairInput
+	// TrajectoryObject is the stored trajectory the metrics are computed from.
+	TrajectoryObject string
+	Metrics          []MetricValue
+	Events           []Event
+	Artifacts        []ArtifactInput
+	Pair             PairInput
 }
 
-// Validate checks a submission against the run and the paradigm contract.
-// trialIDs are the trials of the run's test.
-func Validate(r Run, c Contract, s Submission, trialIDs []string) (Result, error) {
+// Validate checks the shape of a submission against its run. Metrics and
+// events are added from the metric engine after the outputs are verified.
+func Validate(r Run, s Submission) (Result, error) {
 	model, err := normalizeModel(s.ModelVersion)
 	if err != nil {
 		return Result{}, err
@@ -133,112 +125,41 @@ func Validate(r Run, c Contract, s Submission, trialIDs []string) (Result, error
 	if duration <= 0 {
 		return Result{}, ErrInvalidDuration
 	}
-	metrics, err := validateMetrics(c, s.Metrics)
+	trajectory, err := validateArtifacts(r, s)
 	if err != nil {
 		return Result{}, err
 	}
-	events, err := validateEvents(c, s.Events, duration, trialIDs)
-	if err != nil {
-		return Result{}, err
-	}
-	if err := validateArtifacts(r, s); err != nil {
-		return Result{}, err
-	}
-	return Result{ModelVersion: model, DurationUs: duration, Metrics: metrics, Events: events, Artifacts: slices.Clone(s.Artifacts), Pair: s.Pair}, nil
+	return Result{ModelVersion: model, DurationUs: duration, TrajectoryObject: trajectory, Artifacts: append([]ArtifactInput(nil), s.Artifacts...), Pair: s.Pair}, nil
 }
 
-func validateMetrics(c Contract, inputs []MetricInput) ([]MetricValue, error) {
-	byKey := map[string]MetricInput{}
-	for _, m := range inputs {
-		if !slices.ContainsFunc(c.Metrics, func(spec MetricSpec) bool { return spec.Key == m.Key }) {
-			return nil, ErrUnknownMetric
-		}
-		if _, seen := byKey[m.Key]; seen {
-			return nil, ErrInvalidMetric
-		}
-		byKey[m.Key] = m
-	}
-	out := make([]MetricValue, 0, len(c.Metrics))
-	for _, spec := range c.Metrics {
-		m, ok := byKey[spec.Key]
-		if !ok {
-			return nil, ErrMissingMetric
-		}
-		switch {
-		case m.Value == nil && !slices.Contains(c.MissingReasons, m.MissingReason):
-			return nil, ErrInvalidMetric
-		case m.Value != nil && m.MissingReason != "":
-			return nil, ErrInvalidMetric
-		case m.Value != nil && (math.IsNaN(*m.Value) || math.IsInf(*m.Value, 0) || *m.Value < spec.Min || *m.Value > spec.Max):
-			return nil, ErrInvalidMetric
-		case m.Value != nil && spec.Integer && *m.Value != math.Trunc(*m.Value):
-			return nil, ErrInvalidMetric
-		}
-		out = append(out, MetricValue{Key: spec.Key, Unit: spec.Unit, Value: m.Value, MissingReason: m.MissingReason})
-	}
-	return out, nil
-}
-
-func validateEvents(c Contract, inputs []EventInput, duration int64, trialIDs []string) ([]Event, error) {
-	if len(inputs) > maxEvents {
-		return nil, ErrInvalidEvent
-	}
-	out := make([]Event, 0, len(inputs))
-	for _, e := range inputs {
-		i := slices.IndexFunc(c.Events, func(spec EventSpec) bool { return spec.Type == e.Type })
-		if i < 0 || math.IsNaN(e.Confidence) || e.Confidence < 0 || e.Confidence > 1 {
-			return nil, ErrInvalidEvent
-		}
-		kind := c.Events[i].Kind
-		switch {
-		case e.StartUs < 0 || e.EndUs > duration:
-			return nil, ErrEventOutOfRange
-		case kind == "POINT" && e.EndUs != e.StartUs:
-			return nil, ErrEventOutOfRange
-		case kind != "POINT" && e.EndUs <= e.StartUs:
-			return nil, ErrEventOutOfRange
-		case e.TrialID != "" && !slices.Contains(trialIDs, e.TrialID):
-			return nil, ErrUnknownTrial
-		}
-		out = append(out, Event{Type: e.Type, Kind: kind, StartUs: e.StartUs, EndUs: e.EndUs, Confidence: e.Confidence, TrialID: e.TrialID})
-	}
-	slices.SortFunc(out, func(a, b Event) int {
-		return cmp.Or(cmp.Compare(a.StartUs, b.StartUs), strings.Compare(a.Type, b.Type), cmp.Compare(a.EndUs, b.EndUs))
-	})
-	lastEnd := map[string]int64{}
-	for _, e := range out {
-		if e.Kind == "POINT" {
-			continue
-		}
-		if end, ok := lastEnd[e.Type]; ok && e.StartUs < end {
-			return nil, ErrOverlappingEvents
-		}
-		lastEnd[e.Type] = e.EndUs
-	}
-	return out, nil
-}
-
-func validateArtifacts(r Run, s Submission) error {
+func validateArtifacts(r Run, s Submission) (string, error) {
 	prefix, names, videos := r.OutputPrefix(), map[string]bool{}, 0
+	var trajectories []string
 	for _, a := range s.Artifacts {
 		if (a.Kind != AnalyzedVideo && a.Kind != Trajectory && a.Kind != Thumbnail) || names[a.ObjectName] ||
 			!strings.HasPrefix(a.ObjectName, prefix) || len(a.ObjectName) == len(prefix) || strings.Contains(a.ObjectName[len(prefix):], "..") {
-			return ErrInvalidArtifact
+			return "", ErrInvalidArtifact
 		}
 		names[a.ObjectName] = true
-		if a.Kind == AnalyzedVideo {
+		switch a.Kind {
+		case AnalyzedVideo:
 			videos++
 			if a.ObjectName != s.Pair.AnalyzedObjectName {
-				return ErrInvalidPair
+				return "", ErrInvalidPair
 			}
+		case Trajectory:
+			trajectories = append(trajectories, a.ObjectName)
 		}
 	}
 	if videos != 1 {
-		return ErrMissingAnalyzedVideo
+		return "", ErrMissingAnalyzedVideo
+	}
+	if len(trajectories) != 1 {
+		return "", ErrMissingTrajectory
 	}
 	version := strings.TrimSpace(s.Pair.TimeMappingVersion)
 	if s.Pair.SourceOffsetUs != r.ClipStartUs || s.Pair.OutputOffsetUs < 0 || version == "" || utf8.RuneCountInString(version) > 60 {
-		return ErrInvalidPair
+		return "", ErrInvalidPair
 	}
-	return nil
+	return trajectories[0], nil
 }

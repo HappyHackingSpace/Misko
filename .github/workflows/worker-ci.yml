@@ -1,0 +1,31 @@
+name: Worker CI
+
+on:
+  push:
+    branches: [new-backend]
+    paths: ['worker/**', '.github/workflows/worker-ci.yml']
+  pull_request:
+    paths: ['worker/**', '.github/workflows/worker-ci.yml']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: worker-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: worker
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-python@v7.0.0
+        with:
+          python-version: '3.14.3'
+      - run: pip install --only-binary=:all: -r requirements-test.txt
+      - run: python -m pytest -q
+      - name: Build container without publishing
+        run: docker build -t misko-worker:ci .

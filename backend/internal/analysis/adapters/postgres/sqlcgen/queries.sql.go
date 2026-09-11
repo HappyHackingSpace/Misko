@@ -518,6 +518,41 @@ func (q *Queries) DisableWorker(ctx context.Context, arg DisableWorkerParams) (D
 	return i, err
 }
 
+const getCalibration = `-- name: GetCalibration :one
+SELECT id, frame_width, frame_height, crop_x, crop_y, crop_width, crop_height, measurement_plane, transform
+FROM misko.calibrations
+WHERE id = $1
+`
+
+type GetCalibrationRow struct {
+	ID               string
+	FrameWidth       int32
+	FrameHeight      int32
+	CropX            int32
+	CropY            int32
+	CropWidth        int32
+	CropHeight       int32
+	MeasurementPlane string
+	Transform        []float64
+}
+
+func (q *Queries) GetCalibration(ctx context.Context, id string) (GetCalibrationRow, error) {
+	row := q.db.QueryRow(ctx, getCalibration, id)
+	var i GetCalibrationRow
+	err := row.Scan(
+		&i.ID,
+		&i.FrameWidth,
+		&i.FrameHeight,
+		&i.CropX,
+		&i.CropY,
+		&i.CropWidth,
+		&i.CropHeight,
+		&i.MeasurementPlane,
+		&i.Transform,
+	)
+	return i, err
+}
+
 const getCandidate = `-- name: GetCandidate :one
 SELECT r.experiment_id, r.test_id, r.id AS recording_id, a.id AS source_asset_id, coalesce(a.generation, 0)::bigint AS source_generation,
        a.crc32c AS source_crc32c, r.clip_start_us, r.clip_end_us, t.paradigm_key, t.paradigm_version,
@@ -1151,30 +1186,6 @@ func (q *Queries) SourceObject(ctx context.Context, id string) (string, error) {
 	var object_name string
 	err := row.Scan(&object_name)
 	return object_name, err
-}
-
-const trialIDs = `-- name: TrialIDs :many
-SELECT id FROM misko.trials WHERE test_id = $1 ORDER BY number
-`
-
-func (q *Queries) TrialIDs(ctx context.Context, testID string) ([]string, error) {
-	rows, err := q.db.Query(ctx, trialIDs, testID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []string
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			return nil, err
-		}
-		items = append(items, id)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
 }
 
 const updateRun = `-- name: UpdateRun :one

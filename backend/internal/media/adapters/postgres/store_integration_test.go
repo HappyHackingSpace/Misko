@@ -55,6 +55,10 @@ func (o *objects) Attrs(_ context.Context, object string) (domain.ObjectAttrs, e
 	return attrs, nil
 }
 
+func (o *objects) Read(context.Context, string, int64, int64) ([]byte, error) {
+	return nil, application.ErrObjectNotFound
+}
+
 func (o *objects) put(object string, size int64, crc uint32) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
