@@ -24,7 +24,7 @@ current release. Do not deploy this branch.
 | Tests, trials and test comments | Implemented |
 | Video uploads to Google Cloud Storage | Implemented, live storage test pending |
 | Per-video calibration | Implemented |
-| Video analysis | Not yet |
+| Analysis runs and worker protocol | Implemented, no vision worker yet |
 | Vue panel on the new API | Not yet |
 
 ## Installation
@@ -331,6 +331,38 @@ to know how camera pixels map to centimeters.
 - `GET /api/tests/{id}/recordings/{recordingId}/calibration-status` shows
   `WAITING_FOR_CALIBRATION` until a valid calibration exists, then `CALIBRATED`.
   Paradigms without video measurements, such as the rotarod, show `NOT_REQUIRED`.
+
+### Video analysis
+
+Tracking runs in separate analysis workers that talk to the API. No worker is
+included yet, so runs stay queued until your laboratory connects one.
+
+- A lab manager registers a worker with
+  `POST /api/analysis/workers`, giving its name, model version and the paradigm
+  versions it supports. The response shows the worker's token only once; store it
+  in the worker's secret configuration. `POST /api/analysis/workers/{id}/disable`
+  revokes it.
+- Start the scheduler next to the API with
+  `docker compose up --build -d backend jobs`. Every `JOB_INTERVAL` (10 seconds by
+  default) it queues one run for each verified video that has a valid calibration
+  (when its paradigm needs one) and a worker that supports its paradigm.
+- A run records exactly what was analyzed: the video version in storage, the clip,
+  the calibration, the paradigm version and the parameters. Nothing about a run
+  changes later.
+- To analyze a video again, for example after a new calibration or with a new
+  worker model, a technician (or a role above) calls
+  `POST /api/tests/{id}/recordings/{recordingId}/analysis-runs`. This creates a new
+  run; earlier results stay.
+- Everyone who is signed in can list runs with `GET /api/tests/{id}/analysis-runs`
+  and open one with `GET /api/analysis-runs/{runId}`, which includes the metrics
+  and events once the run `SUCCEEDED`.
+  `GET /api/analysis-runs/{runId}/video-pair` returns short-lived links to the
+  original video and the analyzed video of that run, with the time offsets needed
+  to play them in sync.
+- A worker that stops responding loses its run after 5 minutes and another worker
+  can take it. A run is tried at most 3 times, then it is `FAILED`. Results from a
+  worker that lost its run are refused, and a result is published only after the
+  API has checked every uploaded file in storage.
 
 ### Errors
 

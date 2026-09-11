@@ -29,6 +29,96 @@ type MiskoAdministration struct {
 	CreatedAt           time.Time
 }
 
+type MiskoAnalysisArtifact struct {
+	RunID        string
+	Attempt      int32
+	ObjectName   string
+	Kind         string
+	Bucket       string
+	Generation   int64
+	SizeBytes    int64
+	Crc32c       int64
+	ContentType  string
+	VideoAssetID *string
+}
+
+type MiskoAnalysisEvent struct {
+	ID         string
+	RunID      string
+	Attempt    int32
+	TestID     string
+	EventType  string
+	Kind       string
+	StartUs    int64
+	EndUs      int64
+	Confidence float32
+	TrialID    *string
+}
+
+type MiskoAnalysisOutputUpload struct {
+	RunID       string
+	Attempt     int32
+	ObjectName  string
+	Kind        string
+	ContentType string
+	SizeBytes   int64
+	Crc32c      int64
+	CreatedAt   time.Time
+}
+
+type MiskoAnalysisRun struct {
+	ID                    string
+	ExperimentID          string
+	TestID                string
+	RecordingID           string
+	SourceAssetID         string
+	SourceGeneration      int64
+	SourceCrc32c          int64
+	ClipStartUs           int64
+	ClipEndUs             *int64
+	CalibrationID         *string
+	ParadigmKey           string
+	ParadigmVersion       int32
+	MetricEngineVersion   int32
+	ResultSchemaVersion   int32
+	EnvironmentRevisionID string
+	ProtocolVersionID     string
+	Parameters            []byte
+	Trigger               string
+	Status                string
+	Attempt               int32
+	MaxAttempts           int32
+	WorkerID              *string
+	LeaseExpiresAt        pgtype.Timestamptz
+	AvailableAt           time.Time
+	ModelVersion          *string
+	FailureReason         *string
+	CreatedBy             *string
+	CreatedAt             time.Time
+	FinishedAt            pgtype.Timestamptz
+}
+
+type MiskoAnalysisVideoPair struct {
+	RunID              string
+	Attempt            int32
+	SourceAssetID      string
+	SourceGeneration   int64
+	AnalyzedAssetID    string
+	SourceOffsetUs     int64
+	OutputOffsetUs     int64
+	TimeMappingVersion string
+}
+
+type MiskoAnalysisWorker struct {
+	ID           string
+	Name         string
+	ModelVersion string
+	TokenSha256  []byte
+	DisabledAt   pgtype.Timestamptz
+	CreatedBy    string
+	CreatedAt    time.Time
+}
+
 type MiskoCalibration struct {
 	ID               string
 	RecordingID      string
@@ -156,6 +246,15 @@ type MiskoLaboratory struct {
 	Timezone  string
 	CreatedAt time.Time
 	UpdatedAt time.Time
+}
+
+type MiskoMetricResult struct {
+	RunID         string
+	Attempt       int32
+	MetricKey     string
+	Unit          string
+	Value         *float64
+	MissingReason *string
 }
 
 type MiskoProtocol struct {
@@ -317,4 +416,10 @@ type MiskoWeightMeasurement struct {
 	MeasuredAt     time.Time
 	RecordedBy     string
 	CreatedAt      time.Time
+}
+
+type MiskoWorkerCapability struct {
+	WorkerID        string
+	ParadigmKey     string
+	ParadigmVersion int32
 }

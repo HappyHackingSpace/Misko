@@ -24,7 +24,7 @@ Bu branch'i canlıya almayın.
 | Testler, denemeler ve test yorumları | Hazır |
 | Google Cloud Storage'a video yükleme | Hazır, gerçek depolama testi bekliyor |
 | Video başına kalibrasyon | Hazır |
-| Video analizi | Henüz yok |
+| Analiz çalıştırmaları ve worker protokolü | Hazır, görüntü işleme worker'ı henüz yok |
 | Yeni API üzerinde Vue paneli | Henüz yok |
 
 ## Kurulum
@@ -333,6 +333,38 @@ piksellerinin santimetreye nasıl karşılık geldiği bilinmelidir.
 - `GET /api/tests/{id}/recordings/{recordingId}/calibration-status`, geçerli bir
   kalibrasyon olana kadar `WAITING_FOR_CALIBRATION`, sonra `CALIBRATED` gösterir.
   Rotarod gibi video ölçümü olmayan paradigmalar `NOT_REQUIRED` gösterir.
+
+### Video analizi
+
+İz takibi, API ile konuşan ayrı analiz worker'larında çalışır. Henüz hazır bir
+worker yoktur; laboratuvarınız bir worker bağlayana kadar çalıştırmalar kuyrukta
+bekler.
+
+- Bir laboratuvar yöneticisi `POST /api/analysis/workers` ile worker'ın adını, model
+  sürümünü ve desteklediği paradigma sürümlerini vererek worker kaydeder. Yanıt
+  worker token'ını yalnızca bir kez gösterir; bunu worker'ın gizli ayarlarında
+  saklayın. `POST /api/analysis/workers/{id}/disable` token'ı iptal eder.
+- Zamanlayıcıyı API'nin yanında `docker compose up --build -d backend jobs` ile
+  başlatın. Her `JOB_INTERVAL` süresinde (varsayılan 10 saniye), doğrulanmış, gerekiyorsa
+  geçerli kalibrasyonu olan ve paradigmasını destekleyen bir worker bulunan her
+  video için bir çalıştırmayı kuyruğa ekler.
+- Bir çalıştırma neyin analiz edildiğini tam olarak kaydeder: depolamadaki video
+  sürümü, kesit, kalibrasyon, paradigma sürümü ve parametreler. Bir çalıştırmanın
+  hiçbir bilgisi sonradan değişmez.
+- Bir videoyu yeniden analiz etmek için (örneğin yeni bir kalibrasyondan sonra veya
+  yeni bir worker modeliyle) bir teknisyen (veya üstündeki bir rol)
+  `POST /api/tests/{id}/recordings/{recordingId}/analysis-runs` çağırır. Bu yeni
+  bir çalıştırma oluşturur; önceki sonuçlar korunur.
+- Giriş yapmış herkes çalıştırmaları `GET /api/tests/{id}/analysis-runs` ile
+  listeleyebilir ve `GET /api/analysis-runs/{runId}` ile açabilir; çalıştırma
+  `SUCCEEDED` olduğunda metrikler ve olaylar da gelir.
+  `GET /api/analysis-runs/{runId}/video-pair`, orijinal videoya ve o çalıştırmanın
+  analiz edilmiş videosuna kısa ömürlü bağlantılar ile ikisini senkron oynatmak için
+  gereken zaman kaymalarını döner.
+- Yanıt vermeyi bırakan bir worker 5 dakika sonra çalıştırmayı kaybeder ve başka
+  bir worker onu alabilir. Bir çalıştırma en fazla 3 kez denenir, sonra `FAILED`
+  olur. Çalıştırmayı kaybetmiş bir worker'ın sonuçları reddedilir ve bir sonuç,
+  API yüklenen her dosyayı depolamada kontrol ettikten sonra yayınlanır.
 
 ### Hatalar
 

@@ -60,5 +60,17 @@ services:
         condition: service_healthy
     stop_grace_period: 15s
 
+  # Queues analysis runs for verified, calibrated recordings and requeues
+  # expired leases. It needs the database only; workers call the API.
+  jobs:
+    build: ./backend
+    entrypoint: ["/jobs"]
+    environment:
+      DATABASE_URL: *database-url
+      JOB_INTERVAL: ${JOB_INTERVAL:-10s}
+    depends_on:
+      db:
+        condition: service_healthy
+
 volumes:
   foundation-db:

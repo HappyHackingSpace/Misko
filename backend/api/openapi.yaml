@@ -1462,6 +1462,258 @@ paths:
                   calibration: {oneOf: [{$ref: '#/components/schemas/Calibration'}, {type: 'null'}]}
         '401': {$ref: '#/components/responses/Problem'}
         '404': {$ref: '#/components/responses/Problem'}
+  /api/analysis/workers:
+    get:
+      operationId: listAnalysisWorkers
+      summary: Registered analysis workers (lab:configure)
+      responses:
+        '200':
+          description: Workers
+          content:
+            application/json:
+              schema: {type: object, required: [data], properties: {data: {type: array, items: {$ref: '#/components/schemas/AnalysisWorker'}}}}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+    post:
+      operationId: registerAnalysisWorker
+      summary: Register an analysis worker; the token is returned once (lab:configure)
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/AnalysisWorkerInput'}}}}
+      responses:
+        '201':
+          description: Registered
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [worker, token]
+                properties:
+                  worker: {$ref: '#/components/schemas/AnalysisWorker'}
+                  token: {type: string, description: 'Shown once; send as "Authorization: Worker TOKEN". Only its SHA-256 hash is stored.'}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/analysis/workers/{id}/disable:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    post:
+      operationId: disableAnalysisWorker
+      summary: Revoke a worker token; its running leases expire normally (lab:configure)
+      responses:
+        '200': {description: Disabled, content: {application/json: {schema: {$ref: '#/components/schemas/AnalysisWorker'}}}}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+  /api/analysis/capabilities:
+    get:
+      operationId: listAnalysisCapabilities
+      summary: Paradigm versions that enabled workers can analyze (*:read)
+      responses:
+        '200':
+          description: Capabilities
+          content:
+            application/json:
+              schema: {type: object, required: [data], properties: {data: {type: array, items: {$ref: '#/components/schemas/AnalysisCapability'}}}}
+        '401': {$ref: '#/components/responses/Problem'}
+  /api/tests/{id}/recordings/{recordingId}/analysis-runs:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+      - {name: recordingId, in: path, required: true, schema: {type: string, format: uuid}}
+    post:
+      operationId: reanalyzeRecording
+      summary: Queue a manual run with the current inputs; earlier runs are kept (test:run)
+      description: Returns analysis.notReady until the video is verified, the latest calibration is VALID when the paradigm requires one, and an enabled worker supports the paradigm version.
+      requestBody: {required: true, content: {application/json: {schema: {type: object, additionalProperties: false}}}}
+      responses:
+        '201': {description: Queued, content: {application/json: {schema: {$ref: '#/components/schemas/AnalysisRun'}}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/tests/{id}/analysis-runs:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      operationId: listAnalysisRuns
+      summary: Analysis runs of a test, oldest first (*:read)
+      responses:
+        '200':
+          description: Runs
+          content:
+            application/json:
+              schema: {type: object, required: [data], properties: {data: {type: array, items: {$ref: '#/components/schemas/AnalysisRun'}}}}
+        '401': {$ref: '#/components/responses/Problem'}
+  /api/analysis-runs/{runId}:
+    parameters:
+      - {name: runId, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      operationId: getAnalysisRun
+      summary: A run with its published result once it succeeded (*:read)
+      responses:
+        '200':
+          description: Run
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/AnalysisRun'
+                  - type: object
+                    required: [result]
+                    properties:
+                      result: {oneOf: [{$ref: '#/components/schemas/AnalysisResult'}, {type: 'null'}]}
+        '401': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+  /api/analysis-runs/{runId}/video-pair:
+    parameters:
+      - {name: runId, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      operationId: getAnalysisVideoPair
+      summary: Signed reads of the pinned original generation and this run's analyzed video (*:read)
+      responses:
+        '200':
+          description: Video pair
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [originalUrl, analyzedUrl, expiresAt, sourceVideoId, sourceGeneration, analyzedVideoId, analyzedGeneration, sourceOffsetUs, outputOffsetUs, timeMappingVersion]
+                properties:
+                  originalUrl: {type: string, format: uri}
+                  analyzedUrl: {type: string, format: uri}
+                  expiresAt: {type: string, format: date-time}
+                  sourceVideoId: {type: string, format: uuid}
+                  sourceGeneration: {type: string, pattern: '^[0-9]+$'}
+                  analyzedVideoId: {type: string, format: uuid}
+                  analyzedGeneration: {type: string, pattern: '^[0-9]+$'}
+                  sourceOffsetUs: {type: integer, format: int64, description: Original video time of analyzed time zero (the clip start)}
+                  outputOffsetUs: {type: integer, format: int64, description: Analyzed video time of analyzed time zero}
+                  timeMappingVersion: {type: string}
+        '401': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+        '503': {$ref: '#/components/responses/Problem'}
+  /api/worker/claim:
+    post:
+      operationId: claimAnalysisRun
+      summary: Lease the oldest available queued run this worker can analyze (worker token)
+      security: [{worker: []}]
+      requestBody: {required: true, content: {application/json: {schema: {type: object, additionalProperties: false}}}}
+      responses:
+        '200':
+          description: Claimed; attempt is the fencing token for every later call
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [run, outputPrefix, contract]
+                properties:
+                  run: {$ref: '#/components/schemas/AnalysisRun'}
+                  outputPrefix: {type: string, description: 'runs/{runId}/attempts/{attempt}/'}
+                  contract: {$ref: '#/components/schemas/AnalysisContract'}
+        '204': {description: No run is available}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '503': {$ref: '#/components/responses/Problem'}
+  /api/worker/runs/{runId}/heartbeat:
+    parameters:
+      - {name: runId, in: path, required: true, schema: {type: string, format: uuid}}
+    post:
+      operationId: heartbeatAnalysisRun
+      summary: Extend the lease of the current attempt (worker token)
+      security: [{worker: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/AnalysisAttempt'}}}}
+      responses:
+        '200': {description: Extended, content: {application/json: {schema: {$ref: '#/components/schemas/AnalysisRun'}}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/worker/runs/{runId}/source-url:
+    parameters:
+      - {name: runId, in: path, required: true, schema: {type: string, format: uuid}}
+    post:
+      operationId: getAnalysisSourceUrl
+      summary: Signed read of the pinned source generation (worker token)
+      security: [{worker: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/AnalysisAttempt'}}}}
+      responses:
+        '200':
+          description: Signed read URL
+          content:
+            application/json:
+              schema: {type: object, required: [url, expiresAt], properties: {url: {type: string, format: uri}, expiresAt: {type: string, format: date-time}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+        '503': {$ref: '#/components/responses/Problem'}
+  /api/worker/runs/{runId}/outputs:
+    parameters:
+      - {name: runId, in: path, required: true, schema: {type: string, format: uuid}}
+    post:
+      operationId: requestAnalysisOutput
+      summary: Declare an output of the current attempt and sign its upload (worker token)
+      security: [{worker: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/AnalysisOutputInput'}}}}
+      responses:
+        '201':
+          description: Declared
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [objectName, upload]
+                properties:
+                  objectName: {type: string}
+                  upload: {$ref: '#/components/schemas/SignedUpload'}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+        '503': {$ref: '#/components/responses/Problem'}
+  /api/worker/runs/{runId}/result:
+    parameters:
+      - {name: runId, in: path, required: true, schema: {type: string, format: uuid}}
+    post:
+      operationId: submitAnalysisResult
+      summary: Validate, verify the outputs in storage and publish the result atomically (worker token)
+      description: Delivering the accepted result again returns the run without publishing anything new.
+      security: [{worker: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/AnalysisResultInput'}}}}
+      responses:
+        '200': {description: Published, content: {application/json: {schema: {$ref: '#/components/schemas/AnalysisRun'}}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+        '503': {$ref: '#/components/responses/Problem'}
+  /api/worker/runs/{runId}/failure:
+    parameters:
+      - {name: runId, in: path, required: true, schema: {type: string, format: uuid}}
+    post:
+      operationId: failAnalysisRun
+      summary: Report a failure of the current attempt (worker token)
+      description: A retryable failure returns the run to the queue while attempts remain; otherwise the run is FAILED.
+      security: [{worker: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [attempt, reason, retryable]
+              properties:
+                attempt: {type: integer, minimum: 1}
+                reason: {type: string, minLength: 1, maxLength: 2000}
+                retryable: {type: boolean}
+      responses:
+        '200': {description: Recorded, content: {application/json: {schema: {$ref: '#/components/schemas/AnalysisRun'}}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
 components:
   parameters:
     ID: {name: id, in: path, required: true, schema: {type: string, format: uuid}}
@@ -1478,6 +1730,11 @@ components:
       scheme: bearer
       bearerFormat: JWT
       description: HS256 token with issuer, audience and expiry; see backend/README.md
+    worker:
+      type: apiKey
+      in: header
+      name: Authorization
+      description: '"Worker TOKEN" with the token returned when the worker was registered; accepted only on /api/worker routes'
   responses:
     Problem:
       description: Error with a stable code
@@ -2287,6 +2544,198 @@ components:
         rejectionReason: {type: [string, 'null'], enum: [EXCESSIVE_CHECK_ERROR, null]}
         createdBy: {type: string, format: uuid}
         createdAt: {type: string, format: date-time}
+    AnalysisCapability:
+      type: object
+      additionalProperties: false
+      required: [paradigmKey, paradigmVersion]
+      properties:
+        paradigmKey: {type: string, pattern: '^[A-Z][A-Z_]{0,39}$'}
+        paradigmVersion: {type: integer, minimum: 1}
+    AnalysisWorkerInput:
+      type: object
+      additionalProperties: false
+      required: [name, modelVersion, capabilities]
+      properties:
+        name: {type: string, minLength: 1, maxLength: 120, description: Unique, case-insensitive}
+        modelVersion: {type: string, minLength: 1, maxLength: 120}
+        capabilities: {type: array, minItems: 1, items: {$ref: '#/components/schemas/AnalysisCapability'}, description: Paradigm versions from the catalog}
+    AnalysisWorker:
+      type: object
+      required: [id, name, modelVersion, capabilities, disabledAt, createdAt]
+      properties:
+        id: {type: string, format: uuid}
+        name: {type: string}
+        modelVersion: {type: string}
+        capabilities: {type: array, items: {$ref: '#/components/schemas/AnalysisCapability'}}
+        disabledAt: {type: [string, 'null'], format: date-time}
+        createdAt: {type: string, format: date-time}
+    AnalysisRun:
+      type: object
+      required: [id, experimentId, testId, recordingId, sourceVideoId, sourceGeneration, sourceCrc32c, clipStartUs, clipEndUs, calibrationId, paradigmKey, paradigmVersion, metricEngineVersion, resultSchemaVersion, environmentRevisionId, protocolVersionId, parameters, trigger, status, attempt, maxAttempts, workerId, leaseExpiresAt, modelVersion, failureReason, createdBy, createdAt, finishedAt]
+      description: Inputs are pinned at creation and never change; reanalysis is a new run
+      properties:
+        id: {type: string, format: uuid}
+        experimentId: {type: string, format: uuid}
+        testId: {type: string, format: uuid}
+        recordingId: {type: string, format: uuid}
+        sourceVideoId: {type: string, format: uuid}
+        sourceGeneration: {type: string, pattern: '^[0-9]+$', description: GCS generation of the analyzed original}
+        sourceCrc32c: {type: string, description: Base64 big-endian CRC32C}
+        clipStartUs: {type: integer, format: int64}
+        clipEndUs: {type: [integer, 'null'], format: int64}
+        calibrationId: {type: [string, 'null'], format: uuid, description: Set only for paradigms that require calibration}
+        paradigmKey: {type: string}
+        paradigmVersion: {type: integer}
+        metricEngineVersion: {type: integer}
+        resultSchemaVersion: {type: integer}
+        environmentRevisionId: {type: string, format: uuid}
+        protocolVersionId: {type: string, format: uuid}
+        parameters: {type: object, additionalProperties: {type: number}, description: Apparatus parameters merged with the step's session parameters}
+        trigger: {type: string, enum: [AUTOMATIC, MANUAL]}
+        status: {type: string, enum: [QUEUED, RUNNING, SUCCEEDED, FAILED]}
+        attempt: {type: integer, minimum: 0, description: Number of claims; the current attempt is the fencing token}
+        maxAttempts: {type: integer}
+        workerId: {type: [string, 'null'], format: uuid}
+        leaseExpiresAt: {type: [string, 'null'], format: date-time}
+        modelVersion: {type: [string, 'null']}
+        failureReason: {type: [string, 'null'], description: 'The worker reason, or LEASE_EXPIRED'}
+        createdBy: {type: [string, 'null'], format: uuid, description: Null for automatic runs}
+        createdAt: {type: string, format: date-time}
+        finishedAt: {type: [string, 'null'], format: date-time}
+    AnalysisContract:
+      type: object
+      required: [metrics, events, missingReasons]
+      properties:
+        metrics:
+          type: array
+          items:
+            type: object
+            required: [key, unit, integer, min, max]
+            properties:
+              key: {type: string}
+              unit: {type: string}
+              integer: {type: boolean}
+              min: {type: number}
+              max: {type: number}
+        events:
+          type: array
+          items: {type: object, required: [type, kind], properties: {type: {type: string}, kind: {type: string, enum: [INTERVAL, POINT]}}}
+        missingReasons: {type: array, items: {type: string}}
+    AnalysisAttempt:
+      type: object
+      additionalProperties: false
+      required: [attempt]
+      properties:
+        attempt: {type: integer, minimum: 1}
+    AnalysisOutputInput:
+      type: object
+      additionalProperties: false
+      required: [attempt, kind, fileName, contentType, sizeBytes, crc32c]
+      properties:
+        attempt: {type: integer, minimum: 1}
+        kind: {type: string, enum: [ANALYZED_VIDEO, TRAJECTORY, THUMBNAIL]}
+        fileName: {type: string, minLength: 1, maxLength: 120, description: 'No "/", "\" or ".."; stored under the attempt prefix'}
+        contentType: {type: string, enum: [video/mp4, video/webm, application/json, application/vnd.apache.parquet, image/jpeg, image/png], description: ANALYZED_VIDEO takes video types, TRAJECTORY JSON or Parquet, THUMBNAIL images}
+        sizeBytes: {type: integer, format: int64, minimum: 1}
+        crc32c: {type: string, description: Base64 big-endian CRC32C}
+    AnalysisResultInput:
+      type: object
+      additionalProperties: false
+      required: [attempt, modelVersion, metrics, events, artifacts, pair]
+      properties:
+        attempt: {type: integer, minimum: 1}
+        modelVersion: {type: string, minLength: 1, maxLength: 120}
+        recordingDurationUs: {type: integer, format: int64, description: Required when the clip has no end; must equal the clip length otherwise}
+        metrics:
+          type: array
+          description: Every contract metric exactly once, with a value in range or a missing reason
+          items:
+            type: object
+            additionalProperties: false
+            required: [key]
+            properties:
+              key: {type: string}
+              value: {type: [number, 'null']}
+              missingReason: {type: string}
+        events:
+          type: array
+          description: Microseconds from the clip start, within the recording; intervals of one type must not overlap
+          items:
+            type: object
+            additionalProperties: false
+            required: [type, startUs, endUs, confidence]
+            properties:
+              type: {type: string}
+              startUs: {type: integer, format: int64}
+              endUs: {type: integer, format: int64}
+              confidence: {type: number, minimum: 0, maximum: 1}
+              trialId: {type: string, format: uuid, description: A trial of the same test}
+        artifacts:
+          type: array
+          description: Declared outputs of this attempt, exactly one ANALYZED_VIDEO
+          items:
+            type: object
+            additionalProperties: false
+            required: [kind, objectName]
+            properties:
+              kind: {type: string, enum: [ANALYZED_VIDEO, TRAJECTORY, THUMBNAIL]}
+              objectName: {type: string}
+        pair:
+          type: object
+          additionalProperties: false
+          required: [analyzedObjectName, sourceOffsetUs, outputOffsetUs, timeMappingVersion]
+          properties:
+            analyzedObjectName: {type: string}
+            sourceOffsetUs: {type: integer, format: int64, description: Must equal the clip start}
+            outputOffsetUs: {type: integer, format: int64, minimum: 0}
+            timeMappingVersion: {type: string, minLength: 1, maxLength: 60}
+    AnalysisResult:
+      type: object
+      required: [metrics, events, artifacts, pair]
+      properties:
+        metrics:
+          type: array
+          items:
+            type: object
+            required: [key, unit, value, missingReason]
+            properties:
+              key: {type: string}
+              unit: {type: string}
+              value: {type: [number, 'null']}
+              missingReason: {type: [string, 'null']}
+        events:
+          type: array
+          items:
+            type: object
+            required: [type, kind, startUs, endUs, confidence, trialId]
+            properties:
+              type: {type: string}
+              kind: {type: string, enum: [INTERVAL, POINT]}
+              startUs: {type: integer, format: int64}
+              endUs: {type: integer, format: int64}
+              confidence: {type: number}
+              trialId: {type: [string, 'null'], format: uuid}
+        artifacts:
+          type: array
+          items:
+            type: object
+            required: [kind, objectName, generation, sizeBytes, contentType]
+            properties:
+              kind: {type: string, enum: [ANALYZED_VIDEO, TRAJECTORY, THUMBNAIL]}
+              objectName: {type: string}
+              generation: {type: string, pattern: '^[0-9]+$'}
+              sizeBytes: {type: integer, format: int64}
+              contentType: {type: string}
+        pair:
+          type: [object, 'null']
+          required: [sourceVideoId, sourceGeneration, analyzedVideoId, sourceOffsetUs, outputOffsetUs, timeMappingVersion]
+          properties:
+            sourceVideoId: {type: string, format: uuid}
+            sourceGeneration: {type: string, pattern: '^[0-9]+$'}
+            analyzedVideoId: {type: string, format: uuid}
+            sourceOffsetUs: {type: integer, format: int64}
+            outputOffsetUs: {type: integer, format: int64}
+            timeMappingVersion: {type: string}
     Probe:
       type: object
       additionalProperties: false
