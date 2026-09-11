@@ -381,6 +381,31 @@ kullanmayın.
   olur. Çalıştırmayı kaybetmiş bir worker'ın sonuçları reddedilir ve bir sonuç,
   API yüklenen her dosyayı depolamada kontrol ettikten sonra yayınlanır.
 
+### Panel
+
+`frontend/` içindeki Vue paneli iş akışını bu API üzerinden yürütür. Giriş yapın,
+bir deney açın ve testlerinden birini seçin.
+
+- Test ekranı kayıtları video durumu ve kalibrasyon durumuyla birlikte listeler;
+  teknisyen (veya üstü bir rol) video yükleyebilir. Dosya tarayıcıdan doğrudan
+  depolamaya gider; yükleme kaldığı yerden devam edebilir. Panel dosyanın sağlama
+  değerini önce hesaplar, böylece API nesneyi depolamadan geri okuyup eşleşmeyeni
+  reddeder. Bir kayıt ancak API bunu yaptıktan sonra doğrulanmış görünür.
+- Testin analiz çalıştırmaları düğme olarak görünür. Ekran, sonuç yayınlamış en
+  yeni çalıştırmayı açar; böylece sonradan başarısız olan bir deneme okunabilir
+  sonucu gizlemez. Kuyruktaki veya çalışan bir iş bunu söyler, başarısız olan ise
+  nedenini gösterir, örneğin kalite kontrol hatası.
+- Yayınlanmış bir çalıştırmada panel metrikleri ve olayları gösterir. Bir olaya
+  tıklamak, örneğin "Merkezde 00:03-00:04", yan panelde tam olarak o aralığı
+  oynatır ve sonunda durur. Orijinal ve analiz edilmiş video yan yana, aynı zaman
+  çizgisinde durur; ikisi de aynı anı gösterir. Olay zamanları klipten ölçülür ve
+  klip videonun başından başlamak zorunda değildir; bu yüzden panel her iki
+  oynatıcıyı da çalıştırmanın video çiftindeki kaydırma değerleriyle öteler.
+- Her olaya klavyeyle erişilebilir: Tab olaylar arasında gezer, Enter seçili
+  olanı oynatır.
+- İzleyici rolü sonuçları okur ama yükleme veya yeniden analiz denetimlerini
+  görmez; API de bu işlemleri reddederdi.
+
 ### Raporlar ve dışa aktarma
 
 Giriş yapmış herkes raporları okuyabilir. Raporlar yalnızca sonuçları okur;

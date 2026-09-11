@@ -26,6 +26,13 @@ date. Builds and CI use pinned versions, not `@latest`.
 | google-crc32c (worker) | 1.8.0 | 2026-09-12 | https://pypi.org/pypi/google-crc32c/json |
 | pytest (worker tests) | 9.1.1 | 2026-09-12 | https://pypi.org/pypi/pytest/json |
 | actions/setup-python | v7.0.0 | 2026-09-12 | https://github.com/actions/setup-python/releases/latest |
+| @playwright/test (browser tests) | 1.63.0 | 2026-09-12 | https://registry.npmjs.org/@playwright/test/latest |
+| node (frontend image) | 26-alpine | 2026-09-12 | `docker buildx imagetools inspect node:26-alpine` (digest pinned in `frontend/Dockerfile`) |
+| nginx (frontend image) | 1.31-alpine | 2026-09-12 | `docker buildx imagetools inspect nginx:1.31-alpine` (digest pinned in `frontend/Dockerfile`) |
+| actions/setup-node | v7.0.0 | 2026-09-12 | https://github.com/actions/setup-node/releases/latest |
+| actions/upload-artifact | v7.0.1 | 2026-09-12 | https://github.com/actions/upload-artifact/releases/latest |
+| docker/setup-buildx-action | v4.3.0 | 2026-09-12 | https://github.com/docker/setup-buildx-action/releases/latest |
+| docker/build-push-action | v7.3.0 | 2026-09-12 | https://github.com/docker/build-push-action/releases/latest |
 
 `go.mod`/`go.sum` record the complete dependency graph. Go's module checksum
 verification remains enabled. Docker pins both release tags and the verified

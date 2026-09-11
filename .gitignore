@@ -219,3 +219,7 @@ __marimo__/
 
 # Claude Code (local settings)
 .claude/
+
+# Playwright browser tests
+frontend/test-results/
+frontend/playwright-report/

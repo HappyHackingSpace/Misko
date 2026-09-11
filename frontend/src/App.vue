@@ -14,16 +14,10 @@ const route = useRoute();
 
 onMounted(() => lab.load());
 
-// Sidebar becomes a slide-in drawer under the mobile breakpoint (see
-// .sidebar/.sidebar-overlay in style.css). Closed by default; close again on
-// every navigation so picking a page also dismisses the drawer.
+// The sidebar becomes a drawer on narrow screens; navigating closes it.
 const sidebarOpen = ref(false);
-function toggleSidebar() {
-  sidebarOpen.value = !sidebarOpen.value;
-}
-function closeSidebar() {
-  sidebarOpen.value = false;
-}
+const toggleSidebar = () => (sidebarOpen.value = !sidebarOpen.value);
+const closeSidebar = () => (sidebarOpen.value = false);
 watch(() => route.fullPath, closeSidebar);
 </script>
 
@@ -50,14 +44,13 @@ watch(() => route.fullPath, closeSidebar);
       <div v-if="sidebarOpen" class="sidebar-overlay" @click="closeSidebar"></div>
       <aside class="sidebar" :class="{ open: sidebarOpen }">
         <nav class="nav">
-          <RouterLink to="/">{{ $t("nav.dashboard") }}</RouterLink>
-          <RouterLink to="/tests">{{ $t("nav.tests") }}</RouterLink>
-          <RouterLink to="/scenarios">{{ $t("nav.scenarios") }}</RouterLink>
+          <RouterLink to="/experiments" data-test="nav-experiments">{{ $t("nav.experiments") }}</RouterLink>
           <RouterLink to="/subjects">{{ $t("nav.subjects") }}</RouterLink>
 
-          <div class="nav-section">{{ $t("nav.settings") }}</div>
+          <div class="nav-section">{{ $t("nav.reference") }}</div>
+          <RouterLink to="/paradigms">{{ $t("nav.paradigms") }}</RouterLink>
           <RouterLink to="/environments">{{ $t("nav.environments") }}</RouterLink>
-          <RouterLink v-if="auth.isAdmin" to="/users">{{ $t("nav.users") }}</RouterLink>
+          <RouterLink v-if="auth.canManageUsers" to="/users">{{ $t("nav.users") }}</RouterLink>
         </nav>
       </aside>
       <main class="main">

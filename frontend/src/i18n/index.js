@@ -1,7 +1,7 @@
 import { createI18n } from "vue-i18n";
 
 // Auto-discover every locale in ./locales/*.js. Adding a new language is just
-// dropping a file there — no other code changes needed.
+// dropping a file there, with no other code changes needed.
 const modules = import.meta.glob("./locales/*.js", { eager: true });
 
 const messages = {};
