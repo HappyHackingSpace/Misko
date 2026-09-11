@@ -37,10 +37,10 @@ const currentLabel = computed(() =>
       </template>
     </template>
     <template v-else-if="isHome">
-      <span class="current">{{ $t("nav.dashboard") }}</span>
+      <span class="current">{{ $t("nav.experiments") }}</span>
     </template>
     <template v-else>
-      <RouterLink to="/">{{ $t("nav.dashboard") }}</RouterLink>
+      <RouterLink to="/experiments">{{ $t("nav.experiments") }}</RouterLink>
       <span class="sep">/</span>
       <span class="current">{{ currentLabel }}</span>
     </template>

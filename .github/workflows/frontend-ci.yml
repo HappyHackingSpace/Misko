@@ -2,22 +2,20 @@ name: Frontend CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, new-backend]
     paths:
       - "frontend/**"
+      - "backend/tests/e2e/**"
       - ".github/workflows/frontend-ci.yml"
   pull_request:
     paths:
       - "frontend/**"
+      - "backend/tests/e2e/**"
       - ".github/workflows/frontend-ci.yml"
 
 concurrency:
   group: frontend-${{ github.ref }}
   cancel-in-progress: true
-
-defaults:
-  run:
-    working-directory: frontend
 
 permissions:
   contents: read
@@ -26,10 +24,13 @@ jobs:
   lint-and-build:
     name: Lint & build
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@v7.0.0
         with:
           node-version: 22
           cache: npm
@@ -45,10 +46,61 @@ jobs:
         run: npm run build
 
       - name: Upload build artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: frontend-dist
           path: frontend/dist
+          retention-days: 7
+
+  browser:
+    name: Browser tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18.6-alpine@sha256:d3e1620b530c944afa6e887d22eb899824da68e19c52024bf98f5220c88a65b2
+        env:
+          POSTGRES_USER: misko
+          POSTGRES_PASSWORD: misko_ci_only
+          POSTGRES_DB: misko_e2e
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U misko -d misko_e2e"
+          --health-interval 2s --health-timeout 3s --health-retries 20
+    env:
+      # The end to end server installs the schema into this database and seeds it.
+      E2E_DATABASE_URL: postgres://misko:misko_ci_only@localhost:5432/misko_e2e?sslmode=disable
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - uses: actions/setup-go@v7.0.0
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Install the browser
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+
+      - name: Browser tests
+        working-directory: frontend
+        run: npx playwright test
+
+      - name: Upload the report on failure
+        if: failure()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: playwright-report
+          path: frontend/playwright-report
           retention-days: 7
 
   docker:
@@ -56,12 +108,12 @@ jobs:
     runs-on: ubuntu-latest
     needs: lint-and-build
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
 
-      - uses: docker/setup-buildx-action@v4
+      - uses: docker/setup-buildx-action@v4.3.0
 
       - name: Build frontend image
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@v7.3.0
         with:
           context: ./frontend
           push: false

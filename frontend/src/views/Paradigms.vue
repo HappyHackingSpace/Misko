@@ -1,70 +1,58 @@
 <script setup>
-import { computed, watch } from "vue";
-import { useI18n } from "vue-i18n";
-import DataTable from "../components/DataTable.vue";
-import LabTabs from "../components/LabTabs.vue";
-import { useDataTable } from "../composables/useDataTable.js";
+// The published paradigm catalog. The API returns the whole list at once, and
+// says which versions a worker can actually analyze.
+import { onMounted, ref } from "vue";
+import { api } from "../api/client.js";
 
-const { t, locale } = useI18n();
+const paradigms = ref([]);
+const error = ref("");
 
-const table = useDataTable("/paradigms", {
-  defaultSort: { field: "name", order: "asc" },
-  extraParams: () => ({ lang: locale.value }),
+onMounted(async () => {
+  try {
+    paradigms.value = (await api("/paradigms")).data || [];
+  } catch (e) {
+    error.value = e.message;
+  }
 });
-
-const columns = computed(() => [
-  { key: "name", label: t("common.name"), sortable: true },
-  {
-    key: "category", label: t("paradigms.category"), sortable: true,
-    exportValue: (row) => t("paradigms.categories." + row.category),
-  },
-  { key: "metricCount", label: t("paradigms.metricsShort"), sortable: true },
-]);
-
-// Re-fetch with localized labels when the language changes.
-watch(locale, () => table.reload());
 </script>
 
 <template>
-  <div class="lab-head">
-    <span class="lab-head-side"></span>
-    <LabTabs />
-    <span class="lab-head-side"></span>
+  <div class="head">
+    <h1>{{ $t("paradigms.title") }}</h1>
   </div>
-  <p class="muted" style="margin-top:0">{{ $t("paradigms.intro") }}</p>
+  <p class="err" v-if="error">{{ error }}</p>
 
   <div class="card">
-    <DataTable
-      :columns="columns"
-      :rows="table.state.rows"
-      :total="table.state.total"
-      :page="table.state.page"
-      :page-size="table.state.pageSize"
-      :sort="table.state.sort"
-      :search="table.state.search"
-      :loading="table.state.loading"
-      row-key="key"
-      export-name="paradigms"
-      :entity-label="$t('paradigms.title')"
-      @page="table.setPage"
-      @page-size="table.setPageSize"
-      @sort="table.setSort"
-      @search="table.setSearch"
-    >
-      <template #cell-name="{ row }">
-        <RouterLink class="link" :to="`/paradigms/${row.key}`">{{ row.name }}</RouterLink>
-      </template>
-      <template #cell-category="{ row }">{{ $t("paradigms.categories." + row.category) }}</template>
-      <template #cell-metricCount="{ row }">
-        <span class="pill">{{ row.metricCount }} {{ $t("paradigms.metricsShort") }}</span>
-      </template>
-    </DataTable>
+    <div class="table-scroll">
+      <table class="rows">
+        <thead>
+          <tr>
+            <th>{{ $t("paradigms.key") }}</th>
+            <th>{{ $t("common.name") }}</th>
+            <th>{{ $t("paradigms.versions") }}</th>
+            <th>{{ $t("paradigms.automated") }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="paradigm in paradigms" :key="paradigm.key">
+            <td>
+              <RouterLink class="link" :to="`/paradigms/${paradigm.key}`">{{ paradigm.key }}</RouterLink>
+            </td>
+            <td>{{ paradigm.name }}</td>
+            <td class="muted">{{ paradigm.versions.join(", ") }}</td>
+            <td class="muted">{{ paradigm.automatedAnalysis ? $t("common.yes") : $t("common.no") }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
   </div>
 </template>
 
 <style scoped>
-.lab-head { display: flex; align-items: center; margin-bottom: 12px; flex-wrap: wrap; justify-content: center; }
-.lab-head-side { flex: 1; }
-.link { color: var(--accent); cursor: pointer; font-weight: 600; text-decoration: none; }
+.head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.rows { width: 100%; border-collapse: collapse; }
+.rows th { text-align: left; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; padding: 6px 8px; }
+.rows td { padding: 6px 8px; border-top: 1px solid var(--line); }
+.link { color: var(--accent); font-weight: 600; text-decoration: none; }
 .link:hover { text-decoration: underline; }
 </style>

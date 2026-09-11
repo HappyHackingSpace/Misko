@@ -45,14 +45,14 @@ async function submit() {
 
       <form @submit.prevent="submit">
         <div class="field">
-          <label>{{ $t("login.email") }}</label>
-          <input v-model="email" type="email" required />
+          <label for="login-email">{{ $t("login.email") }}</label>
+          <input id="login-email" v-model="email" type="email" autocomplete="username" required />
         </div>
         <div class="field">
-          <label>{{ $t("login.password") }}</label>
-          <input v-model="password" type="password" required />
+          <label for="login-password">{{ $t("login.password") }}</label>
+          <input id="login-password" v-model="password" type="password" autocomplete="current-password" required />
         </div>
-        <button class="primary" style="width:100%" :disabled="busy">
+        <button class="primary" style="width:100%" data-test="sign-in" :disabled="busy">
           {{ busy ? $t("common.loading") : $t("login.signIn") }}
         </button>
       </form>

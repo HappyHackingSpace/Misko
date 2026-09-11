@@ -1,224 +1,157 @@
 <script setup>
-import { ref, computed, onMounted, onUnmounted, watch } from "vue";
-import { useRoute, useRouter } from "vue-router";
+// One published paradigm version: the parameters it takes, the zones it knows,
+// and the metrics, events and quality rules the engine produces. Definitions
+// come from the API and are shown as written, because they are the scientific
+// contract.
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import { useRoute } from "vue-router";
 import { useI18n } from "vue-i18n";
-import { api } from "../api.js";
+import { api } from "../api/client.js";
 import { useBreadcrumb } from "../stores/breadcrumb.js";
 
-const { locale, te, t } = useI18n();
+const { t } = useI18n();
 const route = useRoute();
-const router = useRouter();
 const crumb = useBreadcrumb();
 
-const selected = ref(null);
-const err = ref("");
-const tab = ref("apparatus");
+const summary = ref(null);
+const manifest = ref(null);
+const version = ref(null);
+const error = ref("");
+const tab = ref("parameters");
 
-// The backend localizes free-text scientific labels via ?lang; the frontend
-// only keeps a UI dictionary that translates the fixed enums (zone type/role,
-// species). When an enum translation is missing it falls back to the raw key.
-function tEnum(ns, value) {
-  const key = `paradigms.${ns}.${value}`;
-  return te(key) ? t(key) : value;
-}
-// Localize a parameter enum value (N/E/S/W, opaque/clear, fixed_speed, ...).
-function tVal(value) {
-  const key = `paramValues.${value}`;
-  return te(key) ? t(key) : value;
-}
-function speciesLabel(list) {
-  return (list || []).map((s) => tEnum("species", s)).join(", ");
-}
-
-// Tabs are derived from the loaded spec: apparatus and metrics always exist;
-// zones and qc only show when they carry data.
 const tabs = computed(() => {
-  if (!selected.value) return [];
-  const s = selected.value;
-  const out = [{ key: "apparatus", label: t("paradigms.apparatusParams") }];
-  if (s.zones.length) out.push({ key: "zones", label: t("paradigms.zones") });
-  out.push({ key: "metrics", label: t("paradigms.metrics") });
-  if (s.eventTypes && s.eventTypes.length) out.push({ key: "events", label: t("paradigms.events") });
-  if (s.qc.length) out.push({ key: "qc", label: t("paradigms.qc") });
-  return out;
+  if (!manifest.value) return [];
+  const list = [{ key: "parameters", label: t("paradigms.apparatusParams") }];
+  if (manifest.value.zones?.length) list.push({ key: "zones", label: t("paradigms.zones") });
+  list.push({ key: "metrics", label: t("paradigms.metrics") });
+  if (manifest.value.events?.length) list.push({ key: "events", label: t("paradigms.events") });
+  if (manifest.value.qc?.length) list.push({ key: "qc", label: t("paradigms.qc") });
+  return list;
 });
 
-// Keep the active tab valid if the current one disappears after a reload.
 watch(tabs, (list) => {
-  if (list.length && !list.some((x) => x.key === tab.value)) tab.value = list[0].key;
+  if (list.length && !list.some((entry) => entry.key === tab.value)) tab.value = list[0].key;
 });
 
-// Write the "Dashboard / Paradigms / <name>" trail into the breadcrumb store.
-function syncCrumb() {
-  crumb.set([
-    { label: t("nav.dashboard"), to: "/" },
-    { label: t("paradigms.title"), to: "/paradigms" },
-    { label: selected.value?.name || route.params.key },
-  ]);
-}
+const parameters = computed(() => [
+  ...(manifest.value?.apparatusParameters || []).map((p) => ({ ...p, scope: t("paradigms.apparatus") })),
+  ...(manifest.value?.sessionParameters || []).map((p) => ({ ...p, scope: t("paradigms.session") })),
+]);
 
 async function load() {
-  err.value = "";
-  selected.value = null;
+  error.value = "";
   try {
-    selected.value = await api(`/paradigms/${route.params.key}?lang=${locale.value}`);
-    syncCrumb();
+    summary.value = await api(`/paradigms/${route.params.key}`);
+    version.value = Number(route.query.version) || summary.value.latestVersion;
+    manifest.value = await api(`/paradigms/${route.params.key}/versions/${version.value}`);
+    crumb.set([
+      { label: t("paradigms.title"), to: "/paradigms" },
+      { label: manifest.value.name },
+    ]);
   } catch (e) {
-    err.value = e.message;
+    error.value = e.message;
   }
 }
-
-// A paradigm is a template; users create named environment instances from it.
-function createEnvironment() {
-  router.push(`/environments/new?paradigm=${route.params.key}`);
-}
-
-// Re-fetch backend-localized labels when the language changes (breadcrumb too).
-watch(locale, load);
-// Reload if the :key changes while staying on the same component instance.
-watch(() => route.params.key, load);
 
 onMounted(load);
 onUnmounted(() => crumb.clear());
 </script>
 
 <template>
-  <p class="err" v-if="err">{{ err }}</p>
+  <p class="err" v-if="error">{{ error }}</p>
 
-  <div class="detail" v-if="selected">
-    <!-- Identity + metadata -->
+  <div class="detail" v-if="manifest">
     <div class="card">
-      <div class="detail-head">
-        <h2 style="margin-top:0">{{ selected.name }} <span class="muted">({{ selected.key }})</span></h2>
-        <div class="head-actions">
-          <button @click="router.push('/paradigms')">{{ $t("common.back") }}</button>
-          <button class="primary" @click="createEnvironment">{{ $t("paradigms.createEnvironment") }}</button>
-        </div>
-      </div>
+      <h2 style="margin-top:0">
+        {{ manifest.name }} <span class="muted">{{ manifest.key }} v{{ manifest.version }}</span>
+      </h2>
       <p class="muted">
-        {{ $t("paradigms.category") }}: {{ $t("paradigms.categories." + selected.category) }}
-        · {{ $t("paradigms.schemaVersion") }} {{ selected.schemaVersion }}
-        · {{ speciesLabel(selected.species) }}
+        {{ $t("paradigms.metricEngine") }} {{ manifest.metricEngineVersion }} ·
+        {{ $t("paradigms.automated") }}: {{ manifest.automatedAnalysis ? $t("common.yes") : $t("common.no") }}
       </p>
-      <div class="chips">
-        <span class="pill" v-for="tt in selected.trialTypes" :key="tt.key">{{ tt.label }}</span>
+    </div>
+
+    <div class="card">
+      <div class="tabs">
+        <button v-for="entry in tabs" :key="entry.key" class="tab" :class="{ active: tab === entry.key }" @click="tab = entry.key">
+          {{ entry.label }}
+        </button>
       </div>
-    </div>
 
-    <!-- Tab strip for the rest of the contract -->
-    <div class="tabs">
-      <button
-        v-for="tb in tabs"
-        :key="tb.key"
-        class="tab"
-        :class="{ active: tab === tb.key }"
-        @click="tab = tb.key"
-      >
-        {{ tb.label }}
-      </button>
-    </div>
-
-    <!-- Apparatus parameters (read-only template; values are chosen per environment) -->
-    <div class="card" v-show="tab === 'apparatus'">
-      <div class="table-scroll">
-        <table>
-          <thead><tr><th>{{ $t("paradigms.field") }}</th><th>{{ $t("paradigms.unit") }}</th><th>{{ $t("paradigms.range") }}</th><th>{{ $t("paradigms.default") }}</th></tr></thead>
+      <div class="table-scroll" v-show="tab === 'parameters'">
+        <table class="rows">
+          <thead>
+            <tr><th>{{ $t("common.name") }}</th><th>{{ $t("paradigms.unit") }}</th><th>{{ $t("paradigms.range") }}</th><th>{{ $t("paradigms.default") }}</th></tr>
+          </thead>
           <tbody>
-            <tr v-for="f in selected.apparatusParameters" :key="f.key">
-              <td>{{ f.label }} <span class="muted">{{ f.key }}</span></td>
-              <td><span class="pill">{{ f.unit }}</span></td>
-              <td class="muted">{{ f.min != null ? f.min + " - " + f.max : (f.options ? f.options.map(tVal).join(" / ") : "-") }}</td>
-              <td>{{ f.default != null ? tVal(f.default) : "-" }}</td>
+            <tr v-for="parameter in parameters" :key="parameter.key">
+              <td>{{ parameter.label }} <span class="muted">{{ parameter.scope }}</span></td>
+              <td class="muted">{{ parameter.unit }}</td>
+              <td class="muted">{{ parameter.min }} - {{ parameter.max }}</td>
+              <td class="muted">{{ parameter.default }}</td>
             </tr>
           </tbody>
         </table>
       </div>
-    </div>
 
-    <!-- Zones -->
-    <div class="card" v-show="tab === 'zones'" v-if="selected.zones.length">
-      <div class="table-scroll">
-        <table>
-          <thead><tr><th>{{ $t("common.name") }}</th><th>{{ $t("paradigms.zoneType") }}</th><th>{{ $t("paradigms.zoneRole") }}</th><th>{{ $t("paradigms.required") }}</th></tr></thead>
+      <div class="table-scroll" v-show="tab === 'zones'">
+        <table class="rows">
+          <thead><tr><th>{{ $t("paradigms.zone") }}</th><th>{{ $t("paradigms.geometry") }}</th></tr></thead>
           <tbody>
-            <tr v-for="z in selected.zones" :key="z.key">
-              <td>{{ z.label }} <span class="muted">{{ z.key }}</span></td>
-              <td class="muted">{{ tEnum("zoneTypes", z.type) }}</td>
-              <td><span class="pill">{{ tEnum("zoneRoles", z.role) }}</span></td>
-              <td>{{ z.required ? "✓" : "" }}</td>
+            <tr v-for="zone in manifest.zones" :key="zone.key">
+              <td>{{ zone.key }} <span class="muted">{{ zone.role }}</span></td>
+              <td class="muted">{{ zone.geometry }}</td>
             </tr>
           </tbody>
         </table>
       </div>
-    </div>
 
-    <!-- Metrics -->
-    <div class="card" v-show="tab === 'metrics'">
-      <div class="table-scroll">
-        <table>
-          <thead><tr><th>{{ $t("paradigms.metric") }}</th><th>{{ $t("paradigms.unit") }}</th><th>{{ $t("paradigms.required") }}</th><th>{{ $t("common.description") }}</th></tr></thead>
+      <div class="table-scroll" v-show="tab === 'metrics'">
+        <table class="rows">
+          <thead><tr><th>{{ $t("common.name") }}</th><th>{{ $t("paradigms.unit") }}</th><th>{{ $t("paradigms.definition") }}</th></tr></thead>
           <tbody>
-            <tr v-for="m in selected.metrics" :key="m.key">
-              <td>{{ m.label }} <span class="muted">{{ m.key }}<template v-if="m.templated">.*</template></span></td>
-              <td><span class="pill">{{ m.unit }}</span></td>
-              <td>{{ m.required ? "✓" : "" }}</td>
-              <td class="muted">{{ m.definition }}</td>
+            <tr v-for="metric in manifest.metrics" :key="metric.key">
+              <td>{{ metric.label }} <span class="muted">{{ metric.key }}</span></td>
+              <td class="muted">{{ metric.unit }}</td>
+              <td class="muted">{{ metric.definition }}</td>
             </tr>
           </tbody>
         </table>
       </div>
-    </div>
 
-    <!-- Event types + CV detection contract -->
-    <div class="card" v-show="tab === 'events'" v-if="selected.eventTypes && selected.eventTypes.length">
-      <p class="muted" style="margin-top:0">{{ $t("paradigms.eventsIntro") }}</p>
-      <div class="table-scroll">
-        <table>
-          <thead><tr><th>{{ $t("paradigms.event") }}</th><th>{{ $t("paradigms.payload") }}</th><th>{{ $t("paradigms.detection") }}</th></tr></thead>
+      <div class="table-scroll" v-show="tab === 'events'">
+        <table class="rows">
+          <thead><tr><th>{{ $t("paradigms.event") }}</th><th>{{ $t("paradigms.definition") }}</th></tr></thead>
           <tbody>
-            <tr v-for="et in selected.eventTypes" :key="et.type">
-              <td>{{ et.label }} <span class="muted">{{ et.type }}</span></td>
-              <td class="muted">{{ Object.keys(et.payload || {}).join(", ") || "-" }}</td>
-              <td>
-                <span class="pill" :class="et.detect?.kind === 'custom' ? 'pill-warn' : ''">{{ et.detect?.kind || "manual" }}</span>
-              </td>
+            <tr v-for="event in manifest.events" :key="event.type">
+              <td>{{ event.type }} <span class="muted">{{ event.kind }}</span></td>
+              <td class="muted">{{ event.definition }}</td>
             </tr>
           </tbody>
         </table>
       </div>
-    </div>
 
-    <!-- QC requirements -->
-    <div class="card" v-show="tab === 'qc'" v-if="selected.qc.length">
-      <ul class="rules">
-        <li v-for="q in selected.qc" :key="q.key">
-          <code>{{ q.key }} {{ q.operator }} {{ q.value }}</code>
-        </li>
-      </ul>
+      <div class="table-scroll" v-show="tab === 'qc'">
+        <table class="rows">
+          <thead><tr><th>{{ $t("paradigms.rule") }}</th><th>{{ $t("paradigms.limit") }}</th></tr></thead>
+          <tbody>
+            <tr v-for="rule in manifest.qc" :key="rule.key">
+              <td>{{ rule.key }}</td>
+              <td class="muted">{{ rule.operator }} {{ rule.value }} {{ rule.unit }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </div>
   </div>
 </template>
 
 <style scoped>
 .detail { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
-.detail-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-.detail-head h2 { margin: 0; }
-.head-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.chips { display: flex; flex-wrap: wrap; gap: 6px; }
-.tabs { display: flex; flex-wrap: wrap; gap: 6px; border-bottom: 1px solid var(--line); }
-.tab {
-  background: transparent; border: 1px solid transparent; border-bottom: none;
-  border-radius: 10px 10px 0 0; padding: 8px 14px; cursor: pointer; color: var(--muted);
-  margin-bottom: -1px;
-}
-.tab:hover { color: var(--text); }
-.tab.active {
-  color: var(--text); background: var(--panel);
-  border-color: var(--line); border-bottom-color: var(--panel);
-}
-.rules { margin: 0; padding-left: 18px; }
-.rules li { margin: 4px 0; }
-.rules code { background: var(--active-bg); padding: 2px 6px; border-radius: 6px; }
-.pill-warn { color: #ffb454; border-color: #ffb454; }
-h3 { margin: 0 0 8px; }
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 16px; }
+.tab { background: transparent; border: none; border-bottom: 2px solid transparent; border-radius: 0; padding: 8px 14px; color: var(--muted); font-size: 13px; margin-bottom: -1px; }
+.tab.active { color: var(--txt); border-bottom-color: var(--accent, #4cc2ff); font-weight: 600; }
+.rows { width: 100%; border-collapse: collapse; }
+.rows th { text-align: left; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; padding: 6px 8px; }
+.rows td { padding: 6px 8px; border-top: 1px solid var(--line); vertical-align: top; }
 </style>

@@ -1,91 +1,54 @@
 <script setup>
-import { ref, computed, onMounted, watch } from "vue";
-import { useI18n } from "vue-i18n";
-import { api } from "../api.js";
-import DataTable from "../components/DataTable.vue";
-import LabTabs from "../components/LabTabs.vue";
-import { useDataTable } from "../composables/useDataTable.js";
+// Apparatus and their measurement revisions, read only: a revision is created
+// with the protocol that uses it.
+import { onMounted, ref } from "vue";
+import { api } from "../api/client.js";
 
-const { locale, t } = useI18n();
+const environments = ref([]);
+const error = ref("");
 
-const paradigms = ref([]); // paradigm summaries for label lookup
-const err = ref("");
-
-const table = useDataTable("/environments", { defaultSort: { field: "createdAt", order: "desc" } });
-
-const columns = computed(() => [
-  { key: "name", label: t("common.name"), sortable: true },
-  {
-    key: "paradigmKey", label: t("environments.paradigm"), sortable: true,
-    exportValue: (row) => paradigmName(row.paradigmKey),
-  },
-  { key: "notes", label: t("common.notes"), cellClass: "muted" },
-]);
-
-function paradigmName(key) {
-  const p = paradigms.value.find((x) => x.key === key);
-  return p ? p.name : key;
-}
-
-async function loadParadigms() {
-  err.value = "";
+onMounted(async () => {
   try {
-    const res = await api(`/paradigms?all=true&lang=${locale.value}`);
-    paradigms.value = res.data;
+    environments.value = (await api("/environments")).data || [];
   } catch (e) {
-    err.value = e.message;
+    error.value = e.message;
   }
-}
-
-// Re-fetch localized paradigm labels when the language changes.
-watch(locale, loadParadigms);
-onMounted(loadParadigms);
+});
 </script>
 
 <template>
-  <div class="lab-head">
-    <span class="lab-head-side"></span>
-    <LabTabs />
-    <span class="lab-head-side right">
-      <button class="primary" @click="$router.push('/environments/new')">{{ $t("common.create") }}</button>
-    </span>
+  <div class="head">
+    <h1>{{ $t("environments.title") }}</h1>
   </div>
-  <p class="muted" style="margin-top:0">{{ $t("environments.intro") }}</p>
-  <p class="err" v-if="err">{{ err }}</p>
+  <p class="err" v-if="error">{{ error }}</p>
 
   <div class="card">
-    <DataTable
-      :columns="columns"
-      :rows="table.state.rows"
-      :total="table.state.total"
-      :page="table.state.page"
-      :page-size="table.state.pageSize"
-      :sort="table.state.sort"
-      :search="table.state.search"
-      :loading="table.state.loading"
-      export-name="environments"
-      :entity-label="$t('environments.title')"
-      :empty-hint="$t('datatable.emptyHint')"
-      @page="table.setPage"
-      @page-size="table.setPageSize"
-      @sort="table.setSort"
-      @search="table.setSearch"
-    >
-      <template #cell-name="{ row }"><RouterLink class="link" :to="`/environments/${row.id}`">{{ row.name }}</RouterLink></template>
-      <template #cell-paradigmKey="{ row }"><span class="pill">{{ paradigmName(row.paradigmKey) }}</span></template>
-    </DataTable>
+    <div class="table-scroll">
+      <table class="rows">
+        <thead>
+          <tr>
+            <th>{{ $t("common.name") }}</th>
+            <th>{{ $t("environments.paradigm") }}</th>
+            <th>{{ $t("environments.latestRevision") }}</th>
+            <th>{{ $t("common.notes") }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="environment in environments" :key="environment.id">
+            <td>{{ environment.name }}</td>
+            <td class="muted">{{ environment.paradigmKey }}</td>
+            <td class="muted">{{ environment.latestRevision }}</td>
+            <td class="muted">{{ environment.notes }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
   </div>
 </template>
 
 <style scoped>
-.lab-head { display: flex; align-items: center; margin-bottom: 12px; gap: 12px; flex-wrap: wrap; }
-.lab-head-side { flex: 1; }
-.lab-head-side.right { display: flex; justify-content: flex-end; }
-@media (max-width: 520px) {
-  .lab-head { justify-content: center; }
-  .lab-head-side { flex-basis: 100%; order: 2; }
-  .lab-head-side.right { justify-content: center; }
-}
-.link { color: var(--accent); cursor: pointer; font-weight: 600; text-decoration: none; }
-.link:hover { text-decoration: underline; }
+.head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.rows { width: 100%; border-collapse: collapse; }
+.rows th { text-align: left; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; padding: 6px 8px; }
+.rows td { padding: 6px 8px; border-top: 1px solid var(--line); }
 </style>

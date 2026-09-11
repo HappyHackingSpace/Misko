@@ -381,6 +381,32 @@ annotated recording.
   worker that lost its run are refused, and a result is published only after the
   API has checked every uploaded file in storage.
 
+### The panel
+
+The Vue panel in `frontend/` runs the workflow against this API. Sign in, open
+an experiment and pick one of its tests.
+
+- A test screen lists its recordings with the video status and whether the
+  recording is calibrated, and lets a technician (or a role above) upload a
+  video. The file goes straight from the browser to storage, in a resumable
+  upload that continues where it left off; the panel checksums the file first,
+  so the API can read the object back and refuse anything that does not match.
+  A recording only reads as verified once the API has done that.
+- Analysis runs of the test appear as buttons. The screen opens the newest run
+  that published a result, so a later failed attempt never hides a readable one.
+  A queued or running job says so, and a failed one shows its reason, for example
+  a quality control failure.
+- For a published run the panel shows the metrics and the events. Clicking an
+  event, for example "In center 00:03-00:04", plays exactly that stretch in the
+  side panel and stops at its end. The original and the analyzed video sit side
+  by side on the same timeline, so both show the same moment. Event times are
+  measured from the clip, which need not start where the video starts, so the
+  panel shifts both players by the offsets the run's video pair reports.
+- Every event is reachable with the keyboard: Tab moves between them and Enter
+  plays the selected one.
+- A viewer reads results but sees no upload or reanalysis controls, the same way
+  the API would refuse those actions.
+
 ### Reports and exports
 
 Everyone who is signed in can read reports. They only read results; nothing in a
