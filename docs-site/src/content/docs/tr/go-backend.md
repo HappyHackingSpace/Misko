@@ -22,7 +22,8 @@ Bu branch'i canlıya almayın.
 | On bir paradigmanın metrik tanımlarıyla paradigma kataloğu | Hazır |
 | Ölçüm revizyonlarıyla ortamlar ve deney test protokolleri | Hazır |
 | Testler, denemeler ve test yorumları | Hazır |
-| Video yükleme, kalibrasyon ve video analizi | Henüz yok |
+| Google Cloud Storage'a video yükleme | Hazır, gerçek depolama testi bekliyor |
+| Kalibrasyon ve video analizi | Henüz yok |
 | Yeni API üzerinde Vue paneli | Henüz yok |
 
 ## Kurulum
@@ -292,6 +293,25 @@ Görüntüleyiciler dahil giriş yapmış herkes bir teste yorum yazabilir. Yaln
 kendi yorumlarınızı düzenleyebilirsiniz. Laboratuvar yöneticileri ve süper
 yöneticiler her yorumu silebilir. Her kullanıcı dakikada en fazla 20 yorum
 yazabilir veya düzenleyebilir.
+
+### Videolar
+
+Videolar özel bir Google Cloud Storage bucket'ında saklanır. Bir yönetici
+`GCS_BUCKET` (ve workload identity kullanılıyorsa `GCS_SIGNER_EMAIL`) ayarlayana
+kadar video uç noktaları `media.storageNotConfigured` koduyla 503 döner. Bucket,
+CORS ve izin kurulumu için `backend/README.md` dosyasına bakın.
+
+- Teknisyenler ve üstündeki roller `POST /api/tests/{id}/recordings` ile yüklemeyi
+  başlatır; dosya adını, türünü (MP4, MOV veya WebM), boyutunu ve CRC32C
+  sağlamasını verir. Yanıt imzalı bir istek içerir; tarayıcı dosyayı bununla
+  doğrudan depolamaya yükler.
+- Yükleme bitince aynı kişi (veya bir laboratuvar yöneticisi ya da süper yönetici)
+  `POST /api/tests/{id}/recordings/{recordingId}/finalize` çağırır. Sunucu saklanan
+  dosyayı kontrol eder. Eşleşmeyen dosya, `CHECKSUM_MISMATCH` gibi bir nedenle
+  `REJECTED` olarak işaretlenir.
+- Giriş yapmış herkes doğrulanmış bir video için
+  `GET /api/tests/{id}/recordings/{recordingId}/read-url` ile kısa ömürlü bir
+  bağlantı alabilir. Oynatıcılar bu bağlantıda ileri geri sarabilir.
 
 ### Hatalar
 

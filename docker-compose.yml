@@ -50,6 +50,9 @@ services:
       DATABASE_URL: *database-url
       HTTP_ADDR: :4000
       JWT_SECRET: ${JWT_SECRET:-local-development-only-signing-secret}
+      # Video routes return 503 until a private bucket is configured.
+      GCS_BUCKET: ${GCS_BUCKET:-}
+      GCS_SIGNER_EMAIL: ${GCS_SIGNER_EMAIL:-}
     ports:
       - "127.0.0.1:4000:4000"
     depends_on:

@@ -1346,6 +1346,75 @@ paths:
         '401': {$ref: '#/components/responses/Problem'}
         '403': {$ref: '#/components/responses/Problem'}
         '404': {$ref: '#/components/responses/Problem'}
+  /api/tests/{id}/recordings:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      operationId: listRecordings
+      summary: Recordings of a test with their video status (*:read)
+      responses:
+        '200':
+          description: Recordings
+          content:
+            application/json:
+              schema: {type: object, required: [data], properties: {data: {type: array, items: {$ref: '#/components/schemas/Recording'}}}}
+        '401': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+    post:
+      operationId: startRecordingUpload
+      summary: Declare an original video and get a signed request that starts a resumable upload straight to Cloud Storage (test:run)
+      description: Send upload.method to upload.url with upload.headers to get the resumable session URI from Cloud Storage, upload the file to it, then call finalize. The signed request is returned once and never stored.
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/RecordingUploadInput'}}}}
+      responses:
+        '201':
+          description: Upload started
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [recording, upload]
+                properties:
+                  recording: {$ref: '#/components/schemas/Recording'}
+                  upload: {$ref: '#/components/schemas/SignedUpload'}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+        '503': {$ref: '#/components/responses/Problem'}
+  /api/tests/{id}/recordings/{recordingId}/finalize:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+      - {name: recordingId, in: path, required: true, schema: {type: string, format: uuid}}
+    post:
+      operationId: finalizeRecordingUpload
+      summary: Verify the stored object and record the result (test:run; the uploader, LAB_MANAGER or SUPERADMIN)
+      description: Size, CRC32C and content type are compared with the declaration. A mismatch stores status REJECTED with a reason. Finalizing again returns the stored result.
+      requestBody: {required: true, content: {application/json: {schema: {type: object, additionalProperties: false}}}}
+      responses:
+        '200': {description: Verified or rejected, content: {application/json: {schema: {$ref: '#/components/schemas/Recording'}}}}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+        '503': {$ref: '#/components/responses/Problem'}
+  /api/tests/{id}/recordings/{recordingId}/read-url:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+      - {name: recordingId, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      operationId: getRecordingReadUrl
+      summary: A short-lived signed URL for the verified video generation (*:read); supports HTTP range requests
+      responses:
+        '200':
+          description: Signed read URL
+          content:
+            application/json:
+              schema: {type: object, required: [url, expiresAt], properties: {url: {type: string, format: uri}, expiresAt: {type: string, format: date-time}}}
+        '401': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+        '503': {$ref: '#/components/responses/Problem'}
 components:
   parameters:
     ID: {name: id, in: path, required: true, schema: {type: string, format: uuid}}
@@ -2064,6 +2133,55 @@ components:
       required: [body]
       properties:
         body: {type: string, minLength: 1, maxLength: 2000, description: Control characters other than tab and line breaks are removed before the length check}
+    Video:
+      type: object
+      required: [id, kind, contentType, fileName, sizeBytes, crc32c, status, generation, rejectionReason, verifiedAt, createdBy, createdAt]
+      description: A video object in private Cloud Storage. Verified videos never change.
+      properties:
+        id: {type: string, format: uuid}
+        kind: {type: string, enum: [ORIGINAL, ANALYZED]}
+        contentType: {type: string, enum: [video/mp4, video/quicktime, video/webm]}
+        fileName: {type: [string, 'null']}
+        sizeBytes: {type: integer, format: int64}
+        crc32c: {type: string, description: Base64 of the big-endian CRC32C}
+        status: {type: string, enum: [PENDING, VERIFIED, REJECTED]}
+        generation: {type: [string, 'null'], description: Cloud Storage object generation as a decimal string}
+        rejectionReason: {type: [string, 'null'], enum: [OVERSIZED, SIZE_MISMATCH, CHECKSUM_MISMATCH, CONTENT_TYPE_MISMATCH, null]}
+        verifiedAt: {type: [string, 'null'], format: date-time}
+        createdBy: {type: string, format: uuid}
+        createdAt: {type: string, format: date-time}
+    Recording:
+      type: object
+      required: [id, experimentId, testId, clipStartUs, clipEndUs, video, createdBy, createdAt]
+      properties:
+        id: {type: string, format: uuid}
+        experimentId: {type: string, format: uuid}
+        testId: {type: string, format: uuid}
+        clipStartUs: {type: integer, format: int64, minimum: 0, description: Microseconds from the start of the video}
+        clipEndUs: {type: [integer, 'null'], format: int64, description: Null runs to the end of the video}
+        video: {$ref: '#/components/schemas/Video'}
+        createdBy: {type: string, format: uuid}
+        createdAt: {type: string, format: date-time}
+    RecordingUploadInput:
+      type: object
+      additionalProperties: false
+      required: [fileName, contentType, sizeBytes, crc32c]
+      properties:
+        fileName: {type: string, minLength: 1, maxLength: 255}
+        contentType: {type: string, enum: [video/mp4, video/quicktime, video/webm]}
+        sizeBytes: {type: integer, format: int64, minimum: 1, description: At most VIDEO_MAX_BYTES}
+        crc32c: {type: string, description: Base64 of the big-endian CRC32C of the whole file}
+        clipStartUs: {type: integer, format: int64, minimum: 0, default: 0}
+        clipEndUs: {type: integer, format: int64}
+    SignedUpload:
+      type: object
+      required: [method, url, headers, expiresAt]
+      description: A signed request that starts a resumable upload; it fails if the object already exists
+      properties:
+        method: {type: string, enum: [POST]}
+        url: {type: string, format: uri}
+        headers: {type: object, additionalProperties: {type: string}}
+        expiresAt: {type: string, format: date-time}
     Probe:
       type: object
       additionalProperties: false

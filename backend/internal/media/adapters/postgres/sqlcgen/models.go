@@ -103,7 +103,7 @@ type MiskoGroupAssignment struct {
 	EnrollmentID string
 	GroupID      string
 	ValidFrom    time.Time
-	ValidTo      pgtype.Timestamptz
+	ValidTo      *time.Time
 	CreatedAt    time.Time
 }
 
@@ -212,9 +212,9 @@ type MiskoTest struct {
 	PlannedTrials         int32
 	Status                string
 	ScheduledAt           time.Time
-	StartedAt             pgtype.Timestamptz
-	CompletedAt           pgtype.Timestamptz
-	CancelledAt           pgtype.Timestamptz
+	StartedAt             *time.Time
+	CompletedAt           *time.Time
+	CancelledAt           *time.Time
 	CancelReason          *string
 	Notes                 *string
 	CreatedBy             string
@@ -249,7 +249,7 @@ type MiskoTrial struct {
 	Repetition int32
 	Attempt    int32
 	StartedAt  time.Time
-	EndedAt    pgtype.Timestamptz
+	EndedAt    *time.Time
 	Notes      *string
 	RecordedBy string
 	CreatedAt  time.Time
@@ -278,7 +278,7 @@ type MiskoVideoAsset struct {
 	Status          string
 	Generation      *int64
 	RejectionReason *string
-	VerifiedAt      pgtype.Timestamptz
+	VerifiedAt      *time.Time
 	CreatedBy       string
 	CreatedAt       time.Time
 }

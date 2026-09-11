@@ -24,9 +24,14 @@ func run() int {
 		logger.Error("configuration rejected", "error", err)
 		return 1
 	}
+	storage, err := config.LoadStorage(os.Getenv)
+	if err != nil {
+		logger.Error("configuration rejected", "error", err)
+		return 1
+	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	if err := bootstrap.Run(ctx, cfg, auth, logger); err != nil {
+	if err := bootstrap.Run(ctx, cfg, auth, storage, logger); err != nil {
 		logger.Error("server stopped", "error", err)
 		return 1
 	}
