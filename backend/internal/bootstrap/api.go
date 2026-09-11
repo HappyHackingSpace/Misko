@@ -3,6 +3,7 @@ package bootstrap
 import (
 	"context"
 	"errors"
+	analysishttp "github.com/HappyHackingSpace/Misko/backend/internal/analysis/adapters/http"
 	calibrationcatalog "github.com/HappyHackingSpace/Misko/backend/internal/calibration/adapters/catalog"
 	calibrationhttp "github.com/HappyHackingSpace/Misko/backend/internal/calibration/adapters/http"
 	calibrationpostgres "github.com/HappyHackingSpace/Misko/backend/internal/calibration/adapters/postgres"
@@ -94,6 +95,8 @@ func Run(ctx context.Context, cfg config.Config, auth config.Auth, storage confi
 type API struct {
 	Handler    http.Handler
 	BeginDrain func()
+	// AnalysisTick runs one analysis scheduler tick; cmd/jobs runs it periodically.
+	AnalysisTick func(context.Context) error
 }
 
 type options struct {
@@ -133,6 +136,7 @@ func NewAPI(pool *pgxpool.Pool, cfg config.Config, auth config.Auth, logger *slo
 	tests := testsapp.New(testspostgres.NewStore(pool), ratelimit.New(20, time.Minute, time.Now), time.Now)
 	media := mediaapp.New(mediapostgres.NewStore(pool), o.objects, o.mediaSettings, time.Now)
 	calibration := calibrationapp.New(calibrationpostgres.NewStore(pool), calibrationcatalog.New(), time.Now)
+	analysis := newAnalysis(pool, o.objects, o.mediaSettings)
 	readiness := healthapp.New(healthpostgres.New(pool), cfg.ProbeTimeout)
 
 	mux := http.NewServeMux()
@@ -151,5 +155,10 @@ func NewAPI(pool *pgxpool.Pool, cfg config.Config, auth config.Auth, logger *slo
 	testshttp.Register(mux, tests, authenticate, logger)
 	mediahttp.Register(mux, media, authenticate, logger)
 	calibrationhttp.Register(mux, calibration, authenticate, logger)
-	return API{Handler: mux, BeginDrain: readiness.BeginDrain}, nil
+	analysishttp.Register(mux, analysis, authenticate, logger)
+	tick := func(ctx context.Context) error {
+		_, err := analysis.Tick(ctx)
+		return err
+	}
+	return API{Handler: mux, BeginDrain: readiness.BeginDrain, AnalysisTick: tick}, nil
 }

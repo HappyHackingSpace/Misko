@@ -14,14 +14,16 @@ Integration branch `new-backend`. The rebuild is incomplete; do not release it.
 | [#131](https://github.com/HappyHackingSpace/Misko/issues/131) | Tests of enrolled subjects on protocol steps, their lifecycle, appended trials and test comments |
 | [#132](https://github.com/HappyHackingSpace/Misko/issues/132) | Video assets and test recordings in private Google Cloud Storage: signed resumable uploads, server-side verification, pinned read URLs (live GCS smoke test pending) |
 | [#133](https://github.com/HappyHackingSpace/Misko/issues/133) | Versioned per-video calibration: normalized DLT homography from FIT points, independent CHECK validation, correction chains and the waiting-for-calibration status |
+| [#134](https://github.com/HappyHackingSpace/Misko/issues/134) | Analysis workers, pinned analysis runs with leases and fencing attempts, the scheduler process, verified output publication and the original/analyzed video pair |
 
-Video analysis is a separate following issue. The Vue application is not wired to this API yet; its old
+No computer vision worker ships with this repository yet. The Vue application is not wired to this API yet; its old
 business routes return 404. There is no legacy API adapter or data migration.
 
 ## Layout and boundaries
 
 - `cmd/api`: process entry, signals, exit status.
 - `cmd/bootstrap`: `schema` installs the SQL schema into an empty database; `setup` creates the laboratory and first administrator.
+- `cmd/jobs`: the analysis scheduler loop; it serves no HTTP.
 - `internal/bootstrap`: composition root; constructor wiring of concrete adapters.
 - `internal/access/domain`: the shared RBAC kernel (roles, permission matrix, authenticated actor).
 - `internal/identity`: users, passwords, tokens and user administration.
@@ -35,6 +37,7 @@ business routes return 404. There is no legacy API adapter or data migration.
 - `internal/tests`: tests of enrolled subjects, their trials and comments.
 - `internal/media`: video assets and test recordings; `adapters/gcs` is the only package that imports the Cloud Storage client.
 - `internal/calibration`: per-video pixel-to-centimeter calibrations and the status that gates analysis.
+- `internal/analysis`: analysis workers, runs, leases, result validation and publication of metrics, events, artifacts and video pairs.
 - `internal/health`: readiness use case and probes.
 - `internal/platform`: configuration, HTTP server lifecycle, JSON helpers, PostgreSQL transaction and error helpers, the in-memory rate limiter and the integration-test database helper. No business rules.
 - `schema`: embedded SQL files, applied in lexical order in one transaction; never run by the API.
@@ -435,8 +438,83 @@ observation-only paradigms such as ROTAROD report `NOT_REQUIRED`.
   first calibration, and a unique `supersedes_id` keeps one linear chain.
 - `GET .../calibration-status` returns `WAITING_FOR_CALIBRATION` until the video
   is verified and its latest calibration is `VALID`, then `CALIBRATED` with that
-  calibration. Analysis runs (#134) will reference the calibration id, so older
-  runs keep their inputs after a correction.
+  calibration. Analysis runs reference the calibration id, so older runs keep
+  their inputs after a correction.
+
+## Analysis runs
+
+Computer vision runs outside the API in analysis workers. The API schedules runs,
+leases them to workers, validates what they return and publishes it; it never
+reads video bytes. No worker ships with this repository yet.
+
+Workers are service identities, not users:
+
+- `POST /api/analysis/workers` (`lab:configure`) registers a name, model version
+  and capabilities (paradigm key and version from the catalog). The response
+  shows the token (`mw_...`) once; only its SHA-256 hash is stored.
+  `GET /api/analysis/workers` lists workers and
+  `POST /api/analysis/workers/{id}/disable` revokes a token; its running lease
+  then expires normally. `GET /api/analysis/capabilities` (`*:read`) lists what
+  enabled workers can analyze.
+- Worker routes under `/api/worker` accept only `Authorization: Worker TOKEN`.
+  A user bearer token there returns 401 `worker.unauthenticated`, and a worker
+  token on a user route returns 401 `auth.unauthenticated`.
+
+A run pins its inputs when it is created: test, recording, source video and its
+GCS generation and CRC32C, clip range, calibration (only for paradigms that
+require one), paradigm version with its metric engine and result schema
+versions, environment revision, protocol version and the merged apparatus and
+session parameters. The inputs never change; reanalysis is a new run.
+
+- `cmd/jobs` ticks every `JOB_INTERVAL`. A tick first returns runs whose lease
+  expired to the queue, or fails them with `LEASE_EXPIRED` after the last
+  attempt, then creates one `AUTOMATIC` run for every recording whose video is
+  `VERIFIED`, whose latest calibration is `VALID` when the paradigm requires it,
+  and whose paradigm version an enabled worker supports. A partial unique index on
+  recording, source generation, paradigm version and calibration makes concurrent
+  ticks create each automatic run once; a new calibration creates a new run.
+- `POST /api/tests/{id}/recordings/{recordingId}/analysis-runs` (`test:run`)
+  queues a `MANUAL` run with the current inputs, or returns 409
+  `analysis.notReady`. Earlier runs and their results stay unchanged.
+- `POST /api/worker/claim` leases the oldest available queued run the worker can
+  analyze (`FOR UPDATE SKIP LOCKED`), increments `attempt` and returns the run,
+  its output prefix `runs/{runId}/attempts/{attempt}/` and the result contract
+  (metrics with unit, integer flag and range, event types, missing reasons). With
+  nothing to do it returns 204. A lease lasts 5 minutes;
+  `.../runs/{runId}/heartbeat` extends it. A run has 3 attempts.
+- The attempt is a fencing token. Heartbeat, `source-url`, `outputs`, `result`
+  and `failure` take the attempt and return 409 `analysis.staleAttempt` unless the
+  caller holds the current lease. Database triggers accept result rows only for
+  the current attempt of a `RUNNING` run, move the status and attempt only
+  forward, and keep finished runs and published rows unchanged.
+- `.../source-url` signs a read of the pinned source generation. `.../outputs`
+  records an output of the attempt (`ANALYZED_VIDEO` as MP4 or WebM, `TRAJECTORY`
+  as JSON or Parquet, `THUMBNAIL` as JPEG or PNG) with size and CRC32C, and signs
+  a resumable upload that cannot overwrite an existing object.
+- `.../result` sends every contract metric (a finite value in range, or a
+  missing reason), events in microseconds from the clip start, the output
+  objects and the video pair. The API rejects unknown or missing metrics, events
+  outside the recording or overlapping events of one type, trials of other tests,
+  outputs outside the attempt prefix, anything but exactly one analyzed video,
+  and a pair whose source offset is not the clip start. It then reads every
+  output object from GCS and requires the declared size, CRC32C and content type
+  (`analysis.outputNotVerified` otherwise, and nothing is published). Metrics,
+  events, artifacts, the analyzed video asset and the pair are written with the
+  `SUCCEEDED` status in one transaction; a deferred trigger refuses success
+  without the pair. Delivering the accepted result again returns the run.
+- `.../failure` records a reason. A retryable failure returns the run to the
+  queue while attempts remain; otherwise the run is `FAILED`.
+
+Users read the results with `*:read`: `GET /api/tests/{id}/analysis-runs`,
+`GET /api/analysis-runs/{runId}` (with the published result when it succeeded)
+and `GET /api/analysis-runs/{runId}/video-pair`, which signs reads of the pinned
+original generation and that run's own analyzed video, with the time offsets and
+mapping version for synchronized playback.
+
+The integration tests cover concurrent schedulers and claims, lease expiry and a
+late attempt, missing and corrupt outputs, duplicate delivery, reanalysis next to
+earlier results and the database triggers, with a fake object store. They do not
+prove real GCS behavior or any tracking accuracy.
 
 ## Local container run
 
@@ -446,9 +524,11 @@ From the repository root:
 docker compose up -d db
 docker compose --profile setup run --rm schema
 docker compose --profile setup run --rm setup
-docker compose up --build -d backend
+docker compose up --build -d backend jobs
 curl --fail http://127.0.0.1:4000/api/ready
 ```
+
+`jobs` runs the analysis scheduler against the same database.
 
 `setup` prints the administrator email and generated password once to your
 terminal; change the password after signing in. When stdout is not a terminal
@@ -479,6 +559,7 @@ below (see `.env.example`), then from `backend/`:
 go run ./cmd/bootstrap schema
 go run ./cmd/bootstrap setup
 go run ./cmd/api
+go run ./cmd/jobs
 ```
 
 | Variable | Default | Used by | Meaning |
@@ -494,6 +575,7 @@ go run ./cmd/api
 | `ADMIN_EMAIL` | required | setup | First administrator |
 | `LAB_NAME` | required | setup | Laboratory name |
 | `LAB_TIMEZONE` | `UTC` | setup | IANA time zone |
+| `JOB_INTERVAL` | `10s` | jobs | Time between analysis scheduler ticks, at least 1s |
 
 The processes do not load `.env` files or change the schema on startup.
 Configuration errors never echo the database URL or signing secret. Shutdown

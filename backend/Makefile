@@ -21,3 +21,4 @@ generate:
 build:
 	go build -trimpath -o bin/api ./cmd/api
 	go build -trimpath -o bin/bootstrap ./cmd/bootstrap
+	go build -trimpath -o bin/jobs ./cmd/jobs
