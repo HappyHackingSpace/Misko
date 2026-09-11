@@ -15,7 +15,7 @@ const module = "github.com/HappyHackingSpace/Misko/backend"
 // Explicit pure-library allowlist: importing net/http or database/sql is not
 // acceptable merely because it belongs to the standard library.
 var pure = map[string]bool{
-	"bytes": true, "cmp": true, "encoding/json": true, "errors": true, "fmt": true,
+	"bytes": true, "cmp": true, "encoding/base64": true, "encoding/binary": true, "encoding/json": true, "errors": true, "fmt": true,
 	"maps": true, "math": true, "math/bits": true, "regexp": true, "slices": true,
 	"sort": true, "strconv": true, "strings": true, "time": true, "unicode": true, "unicode/utf8": true,
 }

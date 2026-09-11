@@ -12,6 +12,8 @@ func TestLayerPolicy(t *testing.T) {
 		allowed          bool
 	}{
 		{"internal/subjects/domain/subject.go", "time", true},
+		{"internal/media/domain/media.go", "encoding/base64", true},
+		{"internal/media/domain/media.go", "hash/crc32", false},
 		{"internal/subjects/domain/subject.go", "net/http", false},
 		{"internal/subjects/domain/subject.go", "database/sql", false},
 		{"internal/subjects/domain/subject.go", module + "/internal/subjects/application", false},

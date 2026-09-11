@@ -231,6 +231,17 @@ type MiskoTestComment struct {
 	UpdatedAt time.Time
 }
 
+type MiskoTestRecording struct {
+	ID           string
+	ExperimentID string
+	TestID       string
+	VideoAssetID string
+	ClipStartUs  int64
+	ClipEndUs    *int64
+	CreatedBy    string
+	CreatedAt    time.Time
+}
+
 type MiskoTrial struct {
 	ID         string
 	TestID     string
@@ -253,6 +264,23 @@ type MiskoUser struct {
 	SessionVersion int32
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
+}
+
+type MiskoVideoAsset struct {
+	ID              string
+	Kind            string
+	Bucket          string
+	ObjectName      string
+	ContentType     string
+	FileName        *string
+	SizeBytes       int64
+	Crc32c          int64
+	Status          string
+	Generation      *int64
+	RejectionReason *string
+	VerifiedAt      pgtype.Timestamptz
+	CreatedBy       string
+	CreatedAt       time.Time
 }
 
 type MiskoWeightMeasurement struct {

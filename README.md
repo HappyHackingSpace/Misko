@@ -4,7 +4,7 @@
 > [backend/README.md](backend/README.md) for the currently implemented endpoints,
 > setup and tests. The previous feature list and Node/Prisma commands below are
 > historical and do not describe this branch. Authentication, user management and
-> RBAC (#125), subjects and experiments (#126) interventions (#127) and the paradigm catalog with all eleven metric engines (#128, #129), environments and protocols (#130), tests, trials and comments (#131) exist in the Go API; the Vue
+> RBAC (#125), subjects and experiments (#126) interventions (#127) and the paradigm catalog with all eleven metric engines (#128, #129), environments and protocols (#130), tests, trials and comments (#131) and GCS video uploads (#132) exist in the Go API; the Vue
 > business UI and video workflow are not implemented yet. No release or deployment should be made before the
 > [rebuild epic](https://github.com/HappyHackingSpace/Misko/issues/123) is complete.
 

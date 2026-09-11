@@ -22,7 +22,8 @@ current release. Do not deploy this branch.
 | Paradigm catalog with metric definitions for eleven paradigms | Implemented |
 | Environments with measurement revisions and experiment test protocols | Implemented |
 | Tests, trials and test comments | Implemented |
-| Video uploads, calibration and video analysis | Not yet |
+| Video uploads to Google Cloud Storage | Implemented, live storage test pending |
+| Calibration and video analysis | Not yet |
 | Vue panel on the new API | Not yet |
 
 ## Installation
@@ -291,6 +292,24 @@ decides the paradigm, the environment and how many trials are planned.
 Everyone who is signed in, including viewers, can comment on a test. You can edit
 only your own comments. Lab managers and super admins can delete any comment.
 Each user can post or edit up to 20 comments per minute.
+
+### Videos
+
+Videos are stored in a private Google Cloud Storage bucket. Until an
+administrator sets `GCS_BUCKET` (and, with workload identity, `GCS_SIGNER_EMAIL`),
+video routes answer 503 with `media.storageNotConfigured`. See
+`backend/README.md` for the bucket, CORS and permission setup.
+
+- Technicians and the roles above them start an upload with
+  `POST /api/tests/{id}/recordings`, giving the file name, type (MP4, MOV or
+  WebM), size and CRC32C checksum. The response contains a signed request; the
+  browser uses it to upload the file directly to storage.
+- After the upload, the same person (or a lab manager or super admin) calls
+  `POST /api/tests/{id}/recordings/{recordingId}/finalize`. The server checks the
+  stored file. A file that does not match is marked `REJECTED` with the reason,
+  such as `CHECKSUM_MISMATCH`.
+- Everyone who is signed in can get a short-lived link to a verified video with
+  `GET /api/tests/{id}/recordings/{recordingId}/read-url`. Players can seek in it.
 
 ### Errors
 

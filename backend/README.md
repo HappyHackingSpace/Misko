@@ -12,8 +12,9 @@ Integration branch `new-backend`. The rebuild is incomplete; do not release it.
 | [#129](https://github.com/HappyHackingSpace/Misko/issues/129) | The other ten paradigm contracts and metric engines, calibrated zones, scored events and pinned manifests |
 | [#130](https://github.com/HappyHackingSpace/Misko/issues/130) | Environments with immutable measurement revisions and experiment test protocols with immutable versions |
 | [#131](https://github.com/HappyHackingSpace/Misko/issues/131) | Tests of enrolled subjects on protocol steps, their lifecycle, appended trials and test comments |
+| [#132](https://github.com/HappyHackingSpace/Misko/issues/132) | Video assets and test recordings in private Google Cloud Storage: signed resumable uploads, server-side verification, pinned read URLs (live GCS smoke test pending) |
 
-GCS uploads, calibration and video analysis are separate following issues. The Vue application is not wired to this API yet; its old
+Calibration and video analysis are separate following issues. The Vue application is not wired to this API yet; its old
 business routes return 404. There is no legacy API adapter or data migration.
 
 ## Layout and boundaries
@@ -31,6 +32,7 @@ business routes return 404. There is no legacy API adapter or data migration.
 - `internal/environments`: physical apparatus and their immutable measurement revisions.
 - `internal/protocols`: test protocols of an experiment with immutable versions of ordered paradigm steps.
 - `internal/tests`: tests of enrolled subjects, their trials and comments.
+- `internal/media`: video assets and test recordings; `adapters/gcs` is the only package that imports the Cloud Storage client.
 - `internal/health`: readiness use case and probes.
 - `internal/platform`: configuration, HTTP server lifecycle, JSON helpers, PostgreSQL transaction and error helpers, the in-memory rate limiter and the integration-test database helper. No business rules.
 - `schema`: embedded SQL files, applied in lexical order in one transaction; never run by the API.
@@ -90,6 +92,9 @@ The five roles and their permissions are static code, not database rows.
 | `GET, POST /api/tests/{id}/comments` | Any signed-in user |
 | `PATCH /api/tests/{id}/comments/{commentId}` | The comment's author |
 | `DELETE /api/tests/{id}/comments/{commentId}` | The comment's author, SUPERADMIN or LAB_MANAGER |
+| `GET /api/tests/{id}/recordings`, `GET /api/tests/{id}/recordings/{recordingId}/read-url` | `*:read` |
+| `POST /api/tests/{id}/recordings` | `test:run` |
+| `POST /api/tests/{id}/recordings/{recordingId}/finalize` | `test:run`, and the uploader, SUPERADMIN or LAB_MANAGER |
 
 Use cases check the actor and permission themselves; HTTP handlers only translate.
 Rules enforced by tests:
@@ -336,6 +341,66 @@ author, SUPERADMIN or LAB_MANAGER deletes. A comment id is accepted only under
 its own test. One user may create or edit at most 20 comments per minute
 (`comment.rateLimited`, 429); the counter lives in the API process, so each
 instance counts separately.
+
+## Video storage
+
+Original videos go straight from the browser to a private Google Cloud Storage
+bucket; the API never proxies video bytes and never stores signed URLs or upload
+session URIs.
+
+1. `POST /api/tests/{id}/recordings` declares file name, content type
+   (`video/mp4`, `video/quicktime` or `video/webm`), size, base64 CRC32C and the
+   clip range, and stores a `PENDING` video with a new object name
+   `tests/{testId}/originals/{videoId}`. The response carries a V4-signed `POST`
+   with `x-goog-resumable: start` and `x-goog-if-generation-match: 0`, so the
+   upload cannot overwrite an existing object. The client sends it, uploads to
+   the returned session URI and keeps that URI to itself.
+2. `POST .../recordings/{recordingId}/finalize` (the uploader, LAB_MANAGER or
+   SUPERADMIN) reads the object's attributes from GCS first and only then locks
+   the database row. A missing object returns `media.uploadIncomplete`; a size,
+   CRC32C, content type or maximum-size mismatch stores `REJECTED` with a reason
+   and nothing is deleted. A match stores `VERIFIED` with the object generation.
+   Finalizing again returns the stored result, and a trigger keeps verified and
+   rejected videos unchanged.
+3. `GET .../recordings/{recordingId}/read-url` signs a `GET` for the verified
+   generation, valid for `READ_URL_TTL`. GCS serves HTTP range requests on it, so
+   players can seek.
+
+Media metadata such as duration, codec and time base is not probed yet; analysis
+workers read it later.
+
+Required GCP configuration, supplied by the operator; the API creates or deletes
+no cloud resources:
+
+- A private bucket with uniform bucket-level access and public access
+  prevention, for example
+  `gcloud storage buckets create gs://BUCKET --location=REGION --uniform-bucket-level-access --public-access-prevention`.
+- A CORS policy for the UI origin:
+  `gcloud storage buckets update gs://BUCKET --cors-file=cors.json` with
+  `[{"origin":["https://UI_ORIGIN"],"method":["GET","HEAD","POST","PUT","OPTIONS"],"responseHeader":["Content-Type","Content-Range","Range","Location","ETag","x-goog-resumable"],"maxAgeSeconds":3600}]`.
+- Application Default Credentials for the API (workload identity on GCP; no
+  service account JSON in the repository). The identity needs object create and
+  get permissions on the bucket, for example `roles/storage.objectUser`. When the
+  credentials cannot sign (workload identity), set `GCS_SIGNER_EMAIL` to a service
+  account that grants the API `roles/iam.serviceAccountTokenCreator` so URLs are
+  signed through the IAM Credentials API.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `GCS_BUCKET` | empty | Bucket name; empty makes video routes return 503 `media.storageNotConfigured` |
+| `GCS_SIGNER_EMAIL` | empty | Service account used to sign URLs through IAM |
+| `VIDEO_MAX_BYTES` | 21474836480 | Largest accepted video, 1 MiB to 5 TiB |
+| `UPLOAD_URL_TTL` | 1h | Validity of the signed upload start, 1m to 168h |
+| `READ_URL_TTL` | 15m | Validity of read URLs, 1m to 12h |
+
+The unit and integration tests use a fake object store and an offline signer;
+they do not prove real GCS behavior. The live smoke test uploads a 3 MiB object
+under `smoke/` with a resumable session, checks CRC32C, the overwrite
+precondition, a range read, CORS and URL expiry, and deletes nothing:
+
+```sh
+GCS_LIVE_BUCKET=BUCKET GCS_LIVE_ORIGIN=https://UI_ORIGIN go test -tags=gcslive -run TestLive ./internal/media/adapters/gcs/
+```
 
 ## Local container run
 

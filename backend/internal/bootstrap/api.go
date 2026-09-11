@@ -24,6 +24,10 @@ import (
 	laboratoryhttp "github.com/HappyHackingSpace/Misko/backend/internal/laboratory/adapters/http"
 	laboratorypostgres "github.com/HappyHackingSpace/Misko/backend/internal/laboratory/adapters/postgres"
 	laboratoryapp "github.com/HappyHackingSpace/Misko/backend/internal/laboratory/application"
+	mediagcs "github.com/HappyHackingSpace/Misko/backend/internal/media/adapters/gcs"
+	mediahttp "github.com/HappyHackingSpace/Misko/backend/internal/media/adapters/http"
+	mediapostgres "github.com/HappyHackingSpace/Misko/backend/internal/media/adapters/postgres"
+	mediaapp "github.com/HappyHackingSpace/Misko/backend/internal/media/application"
 	paradigmshttp "github.com/HappyHackingSpace/Misko/backend/internal/paradigms/adapters/http"
 	paradigmsapp "github.com/HappyHackingSpace/Misko/backend/internal/paradigms/application"
 	"github.com/HappyHackingSpace/Misko/backend/internal/platform/config"
@@ -47,7 +51,7 @@ import (
 )
 
 // Run is the composition root. Readiness, rather than liveness, depends on PostgreSQL.
-func Run(ctx context.Context, cfg config.Config, auth config.Auth, logger *slog.Logger) error {
+func Run(ctx context.Context, cfg config.Config, auth config.Auth, storage config.Storage, logger *slog.Logger) error {
 	poolCfg, err := pgxpool.ParseConfig(cfg.DatabaseURL)
 	if err != nil {
 		return errors.New("invalid PostgreSQL connection configuration")
@@ -59,7 +63,18 @@ func Run(ctx context.Context, cfg config.Config, auth config.Auth, logger *slog.
 		return errors.New("could not initialize PostgreSQL pool")
 	}
 	defer pool.Close()
-	api, err := NewAPI(pool, cfg, auth, logger)
+	var options []Option
+	if storage.Enabled() {
+		objects, err := mediagcs.New(ctx, storage.Bucket, storage.SignerEmail)
+		if err != nil {
+			return errors.New("could not initialize Cloud Storage client")
+		}
+		defer objects.Close()
+		options = append(options, WithStorage(objects, mediaapp.Settings{MaxBytes: storage.MaxVideoBytes, UploadTTL: storage.UploadURLTTL, ReadTTL: storage.ReadURLTTL}))
+	} else {
+		logger.Warn("GCS_BUCKET is not set; video upload and read routes return 503")
+	}
+	api, err := NewAPI(pool, cfg, auth, logger, options...)
 	if err != nil {
 		return err
 	}
@@ -77,8 +92,24 @@ type API struct {
 	BeginDrain func()
 }
 
+type options struct {
+	objects       mediaapp.ObjectStore
+	mediaSettings mediaapp.Settings
+}
+
+type Option func(*options)
+
+// WithStorage enables video routes with an object store.
+func WithStorage(objects mediaapp.ObjectStore, settings mediaapp.Settings) Option {
+	return func(o *options) { o.objects, o.mediaSettings = objects, settings }
+}
+
 // NewAPI wires concrete adapters into use cases and mounts every HTTP route.
-func NewAPI(pool *pgxpool.Pool, cfg config.Config, auth config.Auth, logger *slog.Logger) (API, error) {
+func NewAPI(pool *pgxpool.Pool, cfg config.Config, auth config.Auth, logger *slog.Logger, opts ...Option) (API, error) {
+	var o options
+	for _, opt := range opts {
+		opt(&o)
+	}
 	tokens, err := token.NewJWT(auth.JWTSecret, auth.JWTIssuer, auth.JWTAudience, auth.TokenTTL, time.Now)
 	if err != nil {
 		return API{}, err
@@ -96,6 +127,7 @@ func NewAPI(pool *pgxpool.Pool, cfg config.Config, auth config.Auth, logger *slo
 	protocols := protocolsapp.New(protocolspostgres.NewStore(pool), protocolscatalog.New())
 	// One user may create or edit at most 20 comments per minute on this instance.
 	tests := testsapp.New(testspostgres.NewStore(pool), ratelimit.New(20, time.Minute, time.Now), time.Now)
+	media := mediaapp.New(mediapostgres.NewStore(pool), o.objects, o.mediaSettings, time.Now)
 	readiness := healthapp.New(healthpostgres.New(pool), cfg.ProbeTimeout)
 
 	mux := http.NewServeMux()
@@ -112,5 +144,6 @@ func NewAPI(pool *pgxpool.Pool, cfg config.Config, auth config.Auth, logger *slo
 	environmentshttp.Register(mux, environments, authenticate, logger)
 	protocolshttp.Register(mux, protocols, authenticate, logger)
 	testshttp.Register(mux, tests, authenticate, logger)
+	mediahttp.Register(mux, media, authenticate, logger)
 	return API{Handler: mux, BeginDrain: readiness.BeginDrain}, nil
 }

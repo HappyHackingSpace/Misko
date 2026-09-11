@@ -16,13 +16,16 @@ date. Builds and CI use pinned versions, not `@latest`.
 | actions/setup-go | v7.0.0 | 2026-09-10 | https://github.com/actions/setup-go/releases/latest |
 | actions/checkout | v7.0.1 | 2026-09-10 | https://github.com/actions/checkout/releases/latest |
 | PostgreSQL | 18.6-alpine | 2026-09-10 | https://www.postgresql.org/versions.json |
+| cloud.google.com/go/storage | v1.67.1 | 2026-09-11 | https://proxy.golang.org/cloud.google.com/go/storage/@latest |
+| google.golang.org/api (indirect) | v0.287.1 | 2026-09-11 | resolved by `go get cloud.google.com/go/storage@v1.67.1` |
+| google.golang.org/grpc (indirect) | v1.82.1 | 2026-09-11 | resolved by `go get cloud.google.com/go/storage@v1.67.1` |
 
 `go.mod`/`go.sum` record the complete dependency graph. Go's module checksum
 verification remains enabled. Docker pins both release tags and the verified
 Go/PostgreSQL manifest digests. Tools run through `go run module@version` in the
 Makefile, so their versions are pinned without a separate install step; sqlc
 needs cgo and a C compiler. Standard `net/http`, `slog`, `testing`, `httptest`,
-`go vet` and `gofmt` are used without extra frameworks. No unused GCS or CV
+`go vet` and `gofmt` are used without extra frameworks. The GCS client arrived with #132; no unused CV
 packages are preinstalled; each owning issue resolves and pins its then-current
 stable dependencies with tests. The schema uses `uuidv7()`, which requires
 PostgreSQL 18 or later, and the trusted `btree_gist` contrib extension shipped
