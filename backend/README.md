@@ -13,8 +13,9 @@ Integration branch `new-backend`. The rebuild is incomplete; do not release it.
 | [#130](https://github.com/HappyHackingSpace/Misko/issues/130) | Environments with immutable measurement revisions and experiment test protocols with immutable versions |
 | [#131](https://github.com/HappyHackingSpace/Misko/issues/131) | Tests of enrolled subjects on protocol steps, their lifecycle, appended trials and test comments |
 | [#132](https://github.com/HappyHackingSpace/Misko/issues/132) | Video assets and test recordings in private Google Cloud Storage: signed resumable uploads, server-side verification, pinned read URLs (live GCS smoke test pending) |
+| [#133](https://github.com/HappyHackingSpace/Misko/issues/133) | Versioned per-video calibration: normalized DLT homography from FIT points, independent CHECK validation, correction chains and the waiting-for-calibration status |
 
-Calibration and video analysis are separate following issues. The Vue application is not wired to this API yet; its old
+Video analysis is a separate following issue. The Vue application is not wired to this API yet; its old
 business routes return 404. There is no legacy API adapter or data migration.
 
 ## Layout and boundaries
@@ -33,6 +34,7 @@ business routes return 404. There is no legacy API adapter or data migration.
 - `internal/protocols`: test protocols of an experiment with immutable versions of ordered paradigm steps.
 - `internal/tests`: tests of enrolled subjects, their trials and comments.
 - `internal/media`: video assets and test recordings; `adapters/gcs` is the only package that imports the Cloud Storage client.
+- `internal/calibration`: per-video pixel-to-centimeter calibrations and the status that gates analysis.
 - `internal/health`: readiness use case and probes.
 - `internal/platform`: configuration, HTTP server lifecycle, JSON helpers, PostgreSQL transaction and error helpers, the in-memory rate limiter and the integration-test database helper. No business rules.
 - `schema`: embedded SQL files, applied in lexical order in one transaction; never run by the API.
@@ -95,6 +97,8 @@ The five roles and their permissions are static code, not database rows.
 | `GET /api/tests/{id}/recordings`, `GET /api/tests/{id}/recordings/{recordingId}/read-url` | `*:read` |
 | `POST /api/tests/{id}/recordings` | `test:run` |
 | `POST /api/tests/{id}/recordings/{recordingId}/finalize` | `test:run`, and the uploader, SUPERADMIN or LAB_MANAGER |
+| `GET /api/tests/{id}/recordings/{recordingId}/calibrations`, `GET .../calibration-status` | `*:read` |
+| `POST /api/tests/{id}/recordings/{recordingId}/calibrations` | `test:run` |
 
 Use cases check the actor and permission themselves; HTTP handlers only translate.
 Rules enforced by tests:
@@ -401,6 +405,38 @@ precondition, a range read, CORS and URL expiry, and deletes nothing:
 ```sh
 GCS_LIVE_BUCKET=BUCKET GCS_LIVE_ORIGIN=https://UI_ORIGIN go test -tags=gcslive -run TestLive ./internal/media/adapters/gcs/
 ```
+
+## Calibration
+
+Physical metrics need a validated calibration of the video. Paradigms whose QC
+contract has `max_calibration_error_cm` (the trajectory paradigms) require one;
+observation-only paradigms such as ROTAROD report `NOT_REQUIRED`.
+
+- `POST /api/tests/{id}/recordings/{recordingId}/calibrations` (`test:run`) takes
+  the camera id, frame size, crop, the video time of the reference frame, the
+  measurement plane (`ARENA_FLOOR`, `WATER_SURFACE`, `APPARATUS_TOP`), 4 to 100
+  FIT points and 3 to 100 CHECK points, each a full-frame pixel with plane
+  coordinates in centimeters.
+- The transform is a homography fitted with the normalized direct linear
+  transform: both point sets are centered and scaled, the 8 unknowns are solved by
+  least squares with partial pivoting, and a negligible pivot (collinear or
+  repeated points) is rejected as `calibration.degenerateFit`. The algorithm
+  version `homography-dlt-normalized-v1` is stored with the result.
+- Points must lie inside the crop, the crop inside the frame, CHECK points at
+  least 1 pixel away from every FIT point, and, for paradigms whose zones come
+  from parameters (OPEN_FIELD, LIGHT_DARK, MWM), plane coordinates inside the
+  environment revision's geometry plus the tolerance.
+- The stored calibration is `VALID` when the largest CHECK error is within the
+  paradigm's `max_calibration_error_cm`, otherwise `REJECTED` with
+  `EXCESSIVE_CHECK_ERROR`. FIT error alone never validates a calibration.
+- Calibrations are immutable. A correction names `supersedesId`, which must be
+  the recording's latest calibration, and keeps the camera id and frame size;
+  the crop may change. The recording row is locked, a unique index allows one
+  first calibration, and a unique `supersedes_id` keeps one linear chain.
+- `GET .../calibration-status` returns `WAITING_FOR_CALIBRATION` until the video
+  is verified and its latest calibration is `VALID`, then `CALIBRATED` with that
+  calibration. Analysis runs (#134) will reference the calibration id, so older
+  runs keep their inputs after a correction.
 
 ## Local container run
 

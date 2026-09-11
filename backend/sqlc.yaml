@@ -116,3 +116,18 @@ sql:
             go_type:
               type: time.Time
               pointer: true
+  - engine: postgresql
+    schema: schema
+    queries: internal/calibration/adapters/postgres/queries.sql
+    gen:
+      go:
+        package: sqlcgen
+        out: internal/calibration/adapters/postgres/sqlcgen
+        sql_package: pgx/v5
+        emit_pointers_for_null_types: true
+        overrides:
+          - db_type: uuid
+            nullable: true
+            go_type:
+              type: string
+              pointer: true

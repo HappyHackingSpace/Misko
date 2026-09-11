@@ -3,6 +3,10 @@ package bootstrap
 import (
 	"context"
 	"errors"
+	calibrationcatalog "github.com/HappyHackingSpace/Misko/backend/internal/calibration/adapters/catalog"
+	calibrationhttp "github.com/HappyHackingSpace/Misko/backend/internal/calibration/adapters/http"
+	calibrationpostgres "github.com/HappyHackingSpace/Misko/backend/internal/calibration/adapters/postgres"
+	calibrationapp "github.com/HappyHackingSpace/Misko/backend/internal/calibration/application"
 	environmentscatalog "github.com/HappyHackingSpace/Misko/backend/internal/environments/adapters/catalog"
 	environmentshttp "github.com/HappyHackingSpace/Misko/backend/internal/environments/adapters/http"
 	environmentspostgres "github.com/HappyHackingSpace/Misko/backend/internal/environments/adapters/postgres"
@@ -128,6 +132,7 @@ func NewAPI(pool *pgxpool.Pool, cfg config.Config, auth config.Auth, logger *slo
 	// One user may create or edit at most 20 comments per minute on this instance.
 	tests := testsapp.New(testspostgres.NewStore(pool), ratelimit.New(20, time.Minute, time.Now), time.Now)
 	media := mediaapp.New(mediapostgres.NewStore(pool), o.objects, o.mediaSettings, time.Now)
+	calibration := calibrationapp.New(calibrationpostgres.NewStore(pool), calibrationcatalog.New(), time.Now)
 	readiness := healthapp.New(healthpostgres.New(pool), cfg.ProbeTimeout)
 
 	mux := http.NewServeMux()
@@ -145,5 +150,6 @@ func NewAPI(pool *pgxpool.Pool, cfg config.Config, auth config.Auth, logger *slo
 	protocolshttp.Register(mux, protocols, authenticate, logger)
 	testshttp.Register(mux, tests, authenticate, logger)
 	mediahttp.Register(mux, media, authenticate, logger)
+	calibrationhttp.Register(mux, calibration, authenticate, logger)
 	return API{Handler: mux, BeginDrain: readiness.BeginDrain}, nil
 }

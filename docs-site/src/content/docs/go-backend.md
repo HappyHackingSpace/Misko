@@ -23,7 +23,8 @@ current release. Do not deploy this branch.
 | Environments with measurement revisions and experiment test protocols | Implemented |
 | Tests, trials and test comments | Implemented |
 | Video uploads to Google Cloud Storage | Implemented, live storage test pending |
-| Calibration and video analysis | Not yet |
+| Per-video calibration | Implemented |
+| Video analysis | Not yet |
 | Vue panel on the new API | Not yet |
 
 ## Installation
@@ -310,6 +311,26 @@ video routes answer 503 with `media.storageNotConfigured`. See
   such as `CHECKSUM_MISMATCH`.
 - Everyone who is signed in can get a short-lived link to a verified video with
   `GET /api/tests/{id}/recordings/{recordingId}/read-url`. Players can seek in it.
+
+### Calibration
+
+Before a video can be turned into distances and times in zones, the system needs
+to know how camera pixels map to centimeters.
+
+- After the video is verified, a technician (or a role above) opens a frame where
+  the arena is visible and marks points: at least 4 FIT points and at least 3
+  separate CHECK points, each with its pixel position and its real position in
+  centimeters. Send them with
+  `POST /api/tests/{id}/recordings/{recordingId}/calibrations`.
+- The FIT points define the mapping and the CHECK points test it. If a CHECK point
+  is off by more than the paradigm allows (2 cm for the trajectory paradigms),
+  the calibration is stored as `REJECTED`.
+- To fix a calibration, send a new one with `supersedesId` set to the latest
+  calibration. The camera and frame size must stay the same. Earlier
+  calibrations are kept.
+- `GET /api/tests/{id}/recordings/{recordingId}/calibration-status` shows
+  `WAITING_FOR_CALIBRATION` until a valid calibration exists, then `CALIBRATED`.
+  Paradigms without video measurements, such as the rotarod, show `NOT_REQUIRED`.
 
 ### Errors
 

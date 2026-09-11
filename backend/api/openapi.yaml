@@ -1415,6 +1415,53 @@ paths:
         '404': {$ref: '#/components/responses/Problem'}
         '409': {$ref: '#/components/responses/Problem'}
         '503': {$ref: '#/components/responses/Problem'}
+  /api/tests/{id}/recordings/{recordingId}/calibrations:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+      - {name: recordingId, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      operationId: listCalibrations
+      summary: Calibrations of a recording, oldest first (*:read)
+      responses:
+        '200':
+          description: Calibrations
+          content:
+            application/json:
+              schema: {type: object, required: [data], properties: {data: {type: array, items: {$ref: '#/components/schemas/Calibration'}}}}
+        '401': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+    post:
+      operationId: createCalibration
+      summary: Fit a pixel-to-centimeter transform from FIT points and validate it with independent CHECK points (test:run)
+      description: The result is VALID, or REJECTED with EXCESSIVE_CHECK_ERROR when CHECK points deviate more than the paradigm's max_calibration_error_cm. A correction must supersede the latest calibration and use the same camera and frame size.
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CalibrationInput'}}}}
+      responses:
+        '201': {description: Stored, content: {application/json: {schema: {$ref: '#/components/schemas/Calibration'}}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/tests/{id}/recordings/{recordingId}/calibration-status:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+      - {name: recordingId, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      operationId: getCalibrationStatus
+      summary: Whether the recording can be analyzed into physical metrics (*:read)
+      responses:
+        '200':
+          description: Calibration status
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, calibration]
+                properties:
+                  status: {type: string, enum: [NOT_REQUIRED, WAITING_FOR_CALIBRATION, CALIBRATED], description: WAITING_FOR_CALIBRATION until the video is verified and its latest calibration is VALID}
+                  calibration: {oneOf: [{$ref: '#/components/schemas/Calibration'}, {type: 'null'}]}
+        '401': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
 components:
   parameters:
     ID: {name: id, in: path, required: true, schema: {type: string, format: uuid}}
@@ -2182,6 +2229,64 @@ components:
         url: {type: string, format: uri}
         headers: {type: object, additionalProperties: {type: string}}
         expiresAt: {type: string, format: date-time}
+    CalibrationPoint:
+      type: object
+      additionalProperties: false
+      required: [pixelX, pixelY, worldX, worldY]
+      properties:
+        pixelX: {type: number, description: Full-frame pixel column}
+        pixelY: {type: number, description: Full-frame pixel row}
+        worldX: {type: number, description: Centimeters on the measurement plane}
+        worldY: {type: number}
+    CalibrationCrop:
+      type: object
+      additionalProperties: false
+      required: [x, y, width, height]
+      properties:
+        x: {type: integer, minimum: 0}
+        y: {type: integer, minimum: 0}
+        width: {type: integer, minimum: 1}
+        height: {type: integer, minimum: 1}
+    CalibrationInput:
+      type: object
+      additionalProperties: false
+      required: [cameraId, frameWidth, frameHeight, crop, referenceFrameUs, measurementPlane, fitPoints, checkPoints]
+      properties:
+        cameraId: {type: string, minLength: 1, maxLength: 120}
+        frameWidth: {type: integer, minimum: 1, maximum: 16384}
+        frameHeight: {type: integer, minimum: 1, maximum: 16384}
+        crop: {$ref: '#/components/schemas/CalibrationCrop'}
+        referenceFrameUs: {type: integer, format: int64, minimum: 0, description: Video time of the frame the points were read from}
+        measurementPlane: {type: string, enum: [ARENA_FLOOR, WATER_SURFACE, APPARATUS_TOP]}
+        fitPoints: {type: array, minItems: 4, maxItems: 100, items: {$ref: '#/components/schemas/CalibrationPoint'}, description: Inside the crop, no three on a line; inside the environment when the paradigm derives its zones from parameters}
+        checkPoints: {type: array, minItems: 3, maxItems: 100, items: {$ref: '#/components/schemas/CalibrationPoint'}, description: Independent of the FIT points (at least 1 pixel away)}
+        supersedesId: {type: string, format: uuid, description: The latest calibration of the recording; required for corrections}
+    Calibration:
+      type: object
+      required: [id, recordingId, supersedesId, cameraId, frameWidth, frameHeight, crop, referenceFrameUs, measurementPlane, fitPoints, checkPoints, transform, fitRmsErrorCm, checkRmsErrorCm, checkMaxErrorCm, toleranceCm, algorithmVersion, status, rejectionReason, createdBy, createdAt]
+      description: Immutable; analysis runs reference a fixed calibration
+      properties:
+        id: {type: string, format: uuid}
+        recordingId: {type: string, format: uuid}
+        supersedesId: {type: [string, 'null'], format: uuid}
+        cameraId: {type: string}
+        frameWidth: {type: integer}
+        frameHeight: {type: integer}
+        crop: {$ref: '#/components/schemas/CalibrationCrop'}
+        referenceFrameUs: {type: integer, format: int64}
+        measurementPlane: {type: string, enum: [ARENA_FLOOR, WATER_SURFACE, APPARATUS_TOP]}
+        fitPoints: {type: array, items: {$ref: '#/components/schemas/CalibrationPoint'}}
+        checkPoints: {type: array, items: {$ref: '#/components/schemas/CalibrationPoint'}}
+        transform: {type: array, minItems: 9, maxItems: 9, items: {type: number}, description: Row-major 3x3 homography from pixels to centimeters, normalized so the last entry is 1}
+        fitRmsErrorCm: {type: number}
+        checkRmsErrorCm: {type: number}
+        checkMaxErrorCm: {type: number}
+        toleranceCm: {type: number, description: The paradigm's max_calibration_error_cm}
+        algorithmVersion: {type: string}
+        status: {type: string, enum: [VALID, REJECTED]}
+        rejectionReason: {type: [string, 'null'], enum: [EXCESSIVE_CHECK_ERROR, null]}
+        createdBy: {type: string, format: uuid}
+        createdAt: {type: string, format: date-time}
     Probe:
       type: object
       additionalProperties: false

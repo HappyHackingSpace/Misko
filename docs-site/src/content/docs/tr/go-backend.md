@@ -23,7 +23,8 @@ Bu branch'i canlıya almayın.
 | Ölçüm revizyonlarıyla ortamlar ve deney test protokolleri | Hazır |
 | Testler, denemeler ve test yorumları | Hazır |
 | Google Cloud Storage'a video yükleme | Hazır, gerçek depolama testi bekliyor |
-| Kalibrasyon ve video analizi | Henüz yok |
+| Video başına kalibrasyon | Hazır |
+| Video analizi | Henüz yok |
 | Yeni API üzerinde Vue paneli | Henüz yok |
 
 ## Kurulum
@@ -312,6 +313,26 @@ CORS ve izin kurulumu için `backend/README.md` dosyasına bakın.
 - Giriş yapmış herkes doğrulanmış bir video için
   `GET /api/tests/{id}/recordings/{recordingId}/read-url` ile kısa ömürlü bir
   bağlantı alabilir. Oynatıcılar bu bağlantıda ileri geri sarabilir.
+
+### Kalibrasyon
+
+Bir videodan mesafe ve bölgelerde geçen süre hesaplanabilmesi için kamera
+piksellerinin santimetreye nasıl karşılık geldiği bilinmelidir.
+
+- Video doğrulandıktan sonra bir teknisyen (veya üstündeki bir rol) düzeneğin
+  göründüğü bir kareyi açıp noktaları işaretler: en az 4 FIT noktası ve bunlardan
+  ayrı en az 3 CHECK noktası; her biri piksel konumu ve santimetre cinsinden gerçek
+  konumuyla. Noktaları
+  `POST /api/tests/{id}/recordings/{recordingId}/calibrations` ile gönderin.
+- FIT noktaları dönüşümü belirler, CHECK noktaları ise onu sınar. Bir CHECK noktası
+  paradigmanın izin verdiğinden (iz izleme paradigmalarında 2 cm) fazla saparsa
+  kalibrasyon `REJECTED` olarak saklanır.
+- Bir kalibrasyonu düzeltmek için `supersedesId` alanı en son kalibrasyonu gösteren
+  yeni bir kalibrasyon gönderin. Kamera ve kare boyutu aynı kalmalıdır. Önceki
+  kalibrasyonlar saklanır.
+- `GET /api/tests/{id}/recordings/{recordingId}/calibration-status`, geçerli bir
+  kalibrasyon olana kadar `WAITING_FOR_CALIBRATION`, sonra `CALIBRATED` gösterir.
+  Rotarod gibi video ölçümü olmayan paradigmalar `NOT_REQUIRED` gösterir.
 
 ### Hatalar
 
