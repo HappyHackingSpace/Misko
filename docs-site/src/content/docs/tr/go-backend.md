@@ -25,6 +25,7 @@ Bu branch'i canlıya almayın.
 | Google Cloud Storage'a video yükleme | Hazır, gerçek depolama testi bekliyor |
 | Video başına kalibrasyon | Hazır |
 | Analiz çalıştırmaları ve worker protokolü | Hazır, görüntü işleme worker'ı henüz yok |
+| Raporlar, CSV/JSON dışa aktarma ve grup karşılaştırmaları | Hazır |
 | Yeni API üzerinde Vue paneli | Henüz yok |
 
 ## Kurulum
@@ -365,6 +366,32 @@ bekler.
   bir worker onu alabilir. Bir çalıştırma en fazla 3 kez denenir, sonra `FAILED`
   olur. Çalıştırmayı kaybetmiş bir worker'ın sonuçları reddedilir ve bir sonuç,
   API yüklenen her dosyayı depolamada kontrol ettikten sonra yayınlanır.
+
+### Raporlar ve dışa aktarma
+
+Giriş yapmış herkes raporları okuyabilir. Raporlar yalnızca sonuçları okur;
+araştırma kayıtlarında hiçbir şeyi değiştirmez.
+
+- `GET /api/reports/metrics`, metrik sonuçlarını nereden geldikleriyle listeler:
+  testin deneyi, deneği, grubu ve aşaması, test, ortam, video ve model ile metrik
+  motoru sürümleriyle analiz çalıştırması. Deney, denek, grup, aşama, test, ortam,
+  video, çalıştırma, hastalık modeli, madde, paradigma, metrik motoru sürümü veya
+  metrik anahtarına göre filtreleyin ve satırlarda `page` ile `pageSize` kullanarak
+  gezinin.
+- Varsayılan olarak her test bir kez sayılır: yalnızca en yeni başarılı
+  çalıştırması kullanılır (metrik motoru sürümü başına). Eski çalıştırmaları da
+  görmek için `selection=all` ekleyin.
+- Worker'ın ölçemediği bir sonuç nedeniyle birlikte boş kalır. Hiçbir zaman sıfır
+  olarak gösterilmez.
+- `GET /api/reports/events`, olayları ait oldukları denemeyle listeler.
+- Eşleşen tüm satırları CSV olarak, `format=json` ile de JSON olarak indirmek için
+  iki rapordan birine `/export` ekleyin (`/api/reports/metrics/export`). Bir dışa
+  aktarma en fazla 100.000 satır içerir; daha fazlası için filtreleri daraltın.
+- `GET /api/reports/metric-summary?experimentId=...&metricKey=...` bir deneyin
+  gruplarını karşılaştırır. Her hayvan, testlerinin ortalamasıyla bir kez sayılır;
+  böylece tekrarlanan testler hayvan sayısını şişirmez. Sonuçlar farklı paradigma
+  veya metrik motoru sürümlerinden geliyorsa API bunları karıştırmayı reddeder ve
+  hangi sürümleri seçmeniz gerektiğini söyler.
 
 ### Hatalar
 

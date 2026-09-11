@@ -1714,6 +1714,150 @@ paths:
         '401': {$ref: '#/components/responses/Problem'}
         '404': {$ref: '#/components/responses/Problem'}
         '409': {$ref: '#/components/responses/Problem'}
+  /api/reports/metrics:
+    get:
+      operationId: reportMetrics
+      summary: Published metric results with subject, test and run provenance (*:read)
+      description: Every filter is optional. selection=latest (default) keeps the newest succeeded run of each test per metric engine version, so reanalysis never counts a test twice; a runId reports that run even when it is superseded. Missing results keep a null value and their reason.
+      parameters:
+        - {name: experimentId, in: query, schema: {type: string, format: uuid}}
+        - {name: subjectId, in: query, schema: {type: string, format: uuid}}
+        - {name: groupId, in: query, schema: {type: string, format: uuid}, description: The group stored on the test}
+        - {name: phaseId, in: query, schema: {type: string, format: uuid}}
+        - {name: testId, in: query, schema: {type: string, format: uuid}}
+        - {name: environmentId, in: query, schema: {type: string, format: uuid}}
+        - {name: videoId, in: query, schema: {type: string, format: uuid}, description: Source video of the run}
+        - {name: runId, in: query, schema: {type: string, format: uuid}}
+        - {name: diseaseModelId, in: query, schema: {type: string, format: uuid}, description: Subjects with any recorded condition of this model}
+        - {name: substanceId, in: query, schema: {type: string, format: uuid}, description: Subjects that received the substance in the test's experiment}
+        - {name: paradigmKey, in: query, schema: {type: string, pattern: '^[A-Z][A-Z_]{0,39}$'}}
+        - {name: paradigmVersion, in: query, schema: {type: integer, minimum: 1}}
+        - {name: metricEngineVersion, in: query, schema: {type: integer, minimum: 1}}
+        - {name: selection, in: query, schema: {type: string, enum: [latest, all], default: latest}}
+        - {name: metricKey, in: query, schema: {type: string, pattern: '^[a-z][a-z0-9_]{0,79}$'}}
+        - {name: sort, in: query, schema: {type: string, enum: [scheduledAt, subjectCode, experimentCode, metricKey, value, runFinishedAt], default: scheduledAt}}
+        - {name: order, in: query, schema: {type: string, enum: [asc, desc], default: asc}}
+        - {name: page, in: query, schema: {type: integer, minimum: 1, default: 1}}
+        - {name: pageSize, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 20}, description: Values above 100 are capped}
+      responses:
+        '200':
+          description: Page of metric rows
+          content:
+            application/json:
+              schema: {type: object, required: [data, total, page, pageSize], properties: {data: {type: array, items: {$ref: '#/components/schemas/MetricReportRow'}}, total: {type: integer}, page: {type: integer}, pageSize: {type: integer}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+  /api/reports/metrics/export:
+    get:
+      operationId: exportMetricReport
+      summary: Every matching metric row as CSV or JSON, in the report order (*:read)
+      description: At most 100,000 rows; larger exports return report.exportTooLarge. CSV text cells starting with =, +, -, @, tab or carriage return are prefixed with an apostrophe.
+      parameters:
+        - {name: experimentId, in: query, schema: {type: string, format: uuid}}
+        - {name: subjectId, in: query, schema: {type: string, format: uuid}}
+        - {name: groupId, in: query, schema: {type: string, format: uuid}}
+        - {name: phaseId, in: query, schema: {type: string, format: uuid}}
+        - {name: testId, in: query, schema: {type: string, format: uuid}}
+        - {name: environmentId, in: query, schema: {type: string, format: uuid}}
+        - {name: videoId, in: query, schema: {type: string, format: uuid}}
+        - {name: runId, in: query, schema: {type: string, format: uuid}}
+        - {name: diseaseModelId, in: query, schema: {type: string, format: uuid}}
+        - {name: substanceId, in: query, schema: {type: string, format: uuid}}
+        - {name: paradigmKey, in: query, schema: {type: string}}
+        - {name: paradigmVersion, in: query, schema: {type: integer, minimum: 1}}
+        - {name: metricEngineVersion, in: query, schema: {type: integer, minimum: 1}}
+        - {name: selection, in: query, schema: {type: string, enum: [latest, all], default: latest}}
+        - {name: metricKey, in: query, schema: {type: string}}
+        - {name: sort, in: query, schema: {type: string, enum: [scheduledAt, subjectCode, experimentCode, metricKey, value, runFinishedAt], default: scheduledAt}}
+        - {name: order, in: query, schema: {type: string, enum: [asc, desc], default: asc}}
+        - {name: format, in: query, schema: {type: string, enum: [csv, json], default: csv}}
+      responses:
+        '200':
+          description: Export; CSV columns are the MetricReportRow properties in schema order
+          content:
+            text/csv: {schema: {type: string}}
+            application/json:
+              schema: {type: object, required: [data], properties: {data: {type: array, items: {$ref: '#/components/schemas/MetricReportRow'}}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+  /api/reports/events:
+    get:
+      operationId: reportEvents
+      summary: Published events with trial, test and run provenance (*:read)
+      parameters:
+        - {name: experimentId, in: query, schema: {type: string, format: uuid}}
+        - {name: subjectId, in: query, schema: {type: string, format: uuid}}
+        - {name: groupId, in: query, schema: {type: string, format: uuid}}
+        - {name: phaseId, in: query, schema: {type: string, format: uuid}}
+        - {name: testId, in: query, schema: {type: string, format: uuid}}
+        - {name: environmentId, in: query, schema: {type: string, format: uuid}}
+        - {name: videoId, in: query, schema: {type: string, format: uuid}}
+        - {name: runId, in: query, schema: {type: string, format: uuid}}
+        - {name: diseaseModelId, in: query, schema: {type: string, format: uuid}}
+        - {name: substanceId, in: query, schema: {type: string, format: uuid}}
+        - {name: paradigmKey, in: query, schema: {type: string}}
+        - {name: paradigmVersion, in: query, schema: {type: integer, minimum: 1}}
+        - {name: metricEngineVersion, in: query, schema: {type: integer, minimum: 1}}
+        - {name: selection, in: query, schema: {type: string, enum: [latest, all], default: latest}}
+        - {name: eventType, in: query, schema: {type: string, pattern: '^[a-z][a-z0-9_]{0,79}$'}}
+        - {name: sort, in: query, schema: {type: string, enum: [scheduledAt, subjectCode, eventType], default: scheduledAt}}
+        - {name: order, in: query, schema: {type: string, enum: [asc, desc], default: asc}}
+        - {name: page, in: query, schema: {type: integer, minimum: 1, default: 1}}
+        - {name: pageSize, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 20}}
+      responses:
+        '200':
+          description: Page of event rows
+          content:
+            application/json:
+              schema: {type: object, required: [data, total, page, pageSize], properties: {data: {type: array, items: {$ref: '#/components/schemas/EventReportRow'}}, total: {type: integer}, page: {type: integer}, pageSize: {type: integer}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+  /api/reports/events/export:
+    get:
+      operationId: exportEventReport
+      summary: Every matching event row as CSV or JSON (*:read)
+      description: Same filters and sorts as /api/reports/events, plus format; at most 100,000 rows.
+      parameters:
+        - {name: experimentId, in: query, schema: {type: string, format: uuid}}
+        - {name: testId, in: query, schema: {type: string, format: uuid}}
+        - {name: runId, in: query, schema: {type: string, format: uuid}}
+        - {name: eventType, in: query, schema: {type: string}}
+        - {name: selection, in: query, schema: {type: string, enum: [latest, all], default: latest}}
+        - {name: format, in: query, schema: {type: string, enum: [csv, json], default: csv}}
+      responses:
+        '200':
+          description: Export; CSV columns are the EventReportRow properties in schema order
+          content:
+            text/csv: {schema: {type: string}}
+            application/json:
+              schema: {type: object, required: [data], properties: {data: {type: array, items: {$ref: '#/components/schemas/EventReportRow'}}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+  /api/reports/metric-summary:
+    get:
+      operationId: summarizeMetric
+      summary: Compare the groups of one experiment on one metric (*:read)
+      description: >-
+        Uses the latest run of each test. Each subject contributes one value, the
+        mean of its tests, because repeated tests and trials of one animal are not
+        independent; n is the number of subjects with a value. Missing results are
+        counted per reason and never treated as zero. Results of different
+        paradigm versions, metric engine versions or units return 409
+        report.incompatibleVersions listing them; add paradigmVersion and
+        metricEngineVersion. Accepts the metric report filters except runId and selection.
+      parameters:
+        - {name: experimentId, in: query, required: true, schema: {type: string, format: uuid}}
+        - {name: metricKey, in: query, required: true, schema: {type: string}}
+        - {name: paradigmKey, in: query, schema: {type: string}}
+        - {name: paradigmVersion, in: query, schema: {type: integer, minimum: 1}}
+        - {name: metricEngineVersion, in: query, schema: {type: integer, minimum: 1}}
+        - {name: phaseId, in: query, schema: {type: string, format: uuid}}
+        - {name: environmentId, in: query, schema: {type: string, format: uuid}}
+      responses:
+        '200': {description: Group summary, content: {application/json: {schema: {$ref: '#/components/schemas/MetricSummary'}}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
 components:
   parameters:
     ID: {name: id, in: path, required: true, schema: {type: string, format: uuid}}
@@ -2736,6 +2880,100 @@ components:
             sourceOffsetUs: {type: integer, format: int64}
             outputOffsetUs: {type: integer, format: int64}
             timeMappingVersion: {type: string}
+    ReportProvenance:
+      type: object
+      required: [runId, latest, trigger, modelVersion, metricEngineVersion, resultSchemaVersion, calibrationId, recordingId, sourceVideoId, runFinishedAt, testId, testStatus, scheduledAt, trialCount, experimentId, experimentCode, subjectId, subjectCode, species, sex, phaseId, phaseName, groupId, groupName, groupRole, paradigmKey, paradigmVersion, environmentId, environmentName, environmentRevision]
+      properties:
+        runId: {type: string, format: uuid}
+        latest: {type: boolean, description: The newest succeeded run of its test for this metric engine version}
+        trigger: {type: string, enum: [AUTOMATIC, MANUAL]}
+        modelVersion: {type: [string, 'null']}
+        metricEngineVersion: {type: integer}
+        resultSchemaVersion: {type: integer}
+        calibrationId: {type: [string, 'null'], format: uuid}
+        recordingId: {type: string, format: uuid}
+        sourceVideoId: {type: string, format: uuid}
+        runFinishedAt: {type: string, format: date-time}
+        testId: {type: string, format: uuid}
+        testStatus: {type: string, enum: [PLANNED, IN_PROGRESS, COMPLETED, CANCELLED]}
+        scheduledAt: {type: string, format: date-time}
+        trialCount: {type: integer}
+        experimentId: {type: string, format: uuid}
+        experimentCode: {type: string}
+        subjectId: {type: string, format: uuid}
+        subjectCode: {type: string}
+        species: {type: string}
+        sex: {type: string}
+        phaseId: {type: [string, 'null'], format: uuid}
+        phaseName: {type: [string, 'null']}
+        groupId: {type: [string, 'null'], format: uuid, description: The group stored on the test}
+        groupName: {type: [string, 'null']}
+        groupRole: {type: [string, 'null'], enum: [CONTROL, TREATMENT, null]}
+        paradigmKey: {type: string}
+        paradigmVersion: {type: integer}
+        environmentId: {type: string, format: uuid}
+        environmentName: {type: string}
+        environmentRevision: {type: integer}
+    MetricReportRow:
+      allOf:
+        - $ref: '#/components/schemas/ReportProvenance'
+        - type: object
+          required: [metricKey, unit, value, missingReason]
+          properties:
+            metricKey: {type: string}
+            unit: {type: string}
+            value: {type: [number, 'null'], description: Null exactly when missingReason is set; never zero for a missing result}
+            missingReason: {type: [string, 'null']}
+    EventReportRow:
+      allOf:
+        - $ref: '#/components/schemas/ReportProvenance'
+        - type: object
+          required: [eventId, eventType, kind, startUs, endUs, confidence, trialId, trialNumber, trialRepetition, trialAttempt]
+          properties:
+            eventId: {type: string, format: uuid}
+            eventType: {type: string}
+            kind: {type: string, enum: [INTERVAL, POINT]}
+            startUs: {type: integer, format: int64}
+            endUs: {type: integer, format: int64}
+            confidence: {type: number}
+            trialId: {type: [string, 'null'], format: uuid}
+            trialNumber: {type: [integer, 'null']}
+            trialRepetition: {type: [integer, 'null']}
+            trialAttempt: {type: [integer, 'null']}
+    MetricSummary:
+      type: object
+      required: [metricKey, version, groups]
+      properties:
+        metricKey: {type: string}
+        version:
+          oneOf:
+            - type: 'null'
+            - type: object
+              required: [paradigmKey, paradigmVersion, metricEngineVersion, unit]
+              properties:
+                paradigmKey: {type: string}
+                paradigmVersion: {type: integer}
+                metricEngineVersion: {type: integer}
+                unit: {type: string}
+        groups:
+          type: array
+          description: Control groups first, then treatment groups by name, then tests without a group
+          items:
+            type: object
+            required: [groupId, groupName, groupRole, tests, subjects, missingSubjects, missingReasons, mean, sd, sem, min, max]
+            properties:
+              groupId: {type: [string, 'null'], format: uuid}
+              groupName: {type: [string, 'null']}
+              groupRole: {type: [string, 'null']}
+              tests: {type: integer}
+              subjects: {type: integer, description: Subjects with at least one value; the n of the statistics}
+              missingSubjects: {type: integer, description: Subjects whose every result is missing}
+              missingReasons: {type: object, additionalProperties: {type: integer}, description: Tests per missing reason}
+              mean: {type: [number, 'null']}
+              sd: {type: [number, 'null'], description: Sample standard deviation of subject values; null below two subjects}
+              sem: {type: [number, 'null']}
+              min: {type: [number, 'null']}
+              max: {type: [number, 'null']}
     Probe:
       type: object
       additionalProperties: false

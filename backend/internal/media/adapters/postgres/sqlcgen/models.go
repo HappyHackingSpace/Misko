@@ -290,6 +290,47 @@ type MiskoProtocolVersion struct {
 	CreatedAt    time.Time
 }
 
+type MiskoReportRun struct {
+	ID                  string
+	ExperimentID        string
+	TestID              string
+	RecordingID         string
+	SourceAssetID       string
+	CalibrationID       pgtype.UUID
+	ParadigmKey         string
+	ParadigmVersion     int32
+	MetricEngineVersion int32
+	ResultSchemaVersion int32
+	Trigger             string
+	ModelVersion        *string
+	FinishedAt          *time.Time
+	Latest              bool
+}
+
+type MiskoReportTest struct {
+	TestID                string
+	ExperimentID          string
+	ExperimentCode        string
+	SubjectID             string
+	SubjectCode           string
+	Species               string
+	Sex                   string
+	PhaseID               pgtype.UUID
+	PhaseName             *string
+	GroupID               pgtype.UUID
+	GroupName             *string
+	GroupRole             *string
+	ParadigmKey           string
+	ParadigmVersion       int32
+	EnvironmentRevisionID string
+	EnvironmentID         string
+	EnvironmentName       string
+	EnvironmentRevision   int32
+	TestStatus            string
+	ScheduledAt           time.Time
+	TrialCount            int64
+}
+
 type MiskoSubject struct {
 	ID        string
 	Code      string

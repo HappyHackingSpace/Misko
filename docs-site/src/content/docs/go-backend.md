@@ -25,6 +25,7 @@ current release. Do not deploy this branch.
 | Video uploads to Google Cloud Storage | Implemented, live storage test pending |
 | Per-video calibration | Implemented |
 | Analysis runs and worker protocol | Implemented, no vision worker yet |
+| Reports, CSV/JSON exports and group comparisons | Implemented |
 | Vue panel on the new API | Not yet |
 
 ## Installation
@@ -363,6 +364,31 @@ included yet, so runs stay queued until your laboratory connects one.
   can take it. A run is tried at most 3 times, then it is `FAILED`. Results from a
   worker that lost its run are refused, and a result is published only after the
   API has checked every uploaded file in storage.
+
+### Reports and exports
+
+Everyone who is signed in can read reports. They only read results; nothing in a
+report changes research records.
+
+- `GET /api/reports/metrics` lists metric results with where they came from: the
+  experiment, subject, group and phase of the test, the test, the environment,
+  the video and the analysis run with its model and metric engine versions.
+  Filter by experiment, subject, group, phase, test, environment, video, run,
+  disease model, substance, paradigm, metric engine version or metric key, and
+  page through the rows with `page` and `pageSize`.
+- By default each test counts once: only its newest successful run is used (per
+  metric engine version). Add `selection=all` to see older runs as well.
+- A result the worker could not measure stays empty with its reason. It is never
+  shown as zero.
+- `GET /api/reports/events` lists events with the trial they belong to.
+- Add `/export` to either report (`/api/reports/metrics/export`) to download every
+  matching row as CSV, or as JSON with `format=json`. An export holds up to
+  100,000 rows; narrow the filters for more.
+- `GET /api/reports/metric-summary?experimentId=...&metricKey=...` compares the
+  groups of an experiment. Every animal counts once, with the average of its
+  tests, so repeated tests do not inflate the number of animals. If the results
+  come from different paradigm or metric engine versions, the API refuses to mix
+  them and tells you which versions to choose.
 
 ### Errors
 
