@@ -21,7 +21,8 @@ current release. Do not deploy this branch.
 | Disease models, substances, intervention plans and administrations | Implemented |
 | Paradigm catalog with metric definitions for eleven paradigms | Implemented |
 | Environments with measurement revisions and experiment test protocols | Implemented |
-| Tests, video uploads and video analysis | Not yet |
+| Tests, trials and test comments | Implemented |
+| Video uploads, calibration and video analysis | Not yet |
 | Vue panel on the new API | Not yet |
 
 ## Installation
@@ -269,6 +270,27 @@ an elevated plus maze.
   `POST /api/experiments/{id}/protocols/{protocolId}/versions`. Stored versions
   never change, and a new environment revision does not change a version that
   uses an earlier revision.
+
+### Tests, trials and comments
+
+A test is one session of an enrolled subject on one step of a protocol. The step
+decides the paradigm, the environment and how many trials are planned.
+
+- Researchers, lab managers and super admins plan tests with
+  `POST /api/experiments/{id}/tests`: choose the enrollment, optionally the phase,
+  the protocol version, the step and the scheduled time. The subject and its
+  group at that time are filled in for you.
+- Technicians and the roles above them run tests: `POST /api/tests/{id}/start`,
+  then record each trial with `POST /api/tests/{id}/trials`, then
+  `POST /api/tests/{id}/complete`. If a trial has to be repeated, record the same
+  repetition again; it gets the next attempt number and the earlier trial is kept.
+- A test that has not been completed can be cancelled with a reason. A test cannot
+  start if the subject moved to another group after it was planned; cancel it and
+  plan a new one.
+
+Everyone who is signed in, including viewers, can comment on a test. You can edit
+only your own comments. Lab managers and super admins can delete any comment.
+Each user can post or edit up to 20 comments per minute.
 
 ### Errors
 

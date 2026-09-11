@@ -1184,6 +1184,168 @@ paths:
         '200': {description: Version, content: {application/json: {schema: {$ref: '#/components/schemas/ProtocolVersion'}}}}
         '401': {$ref: '#/components/responses/Problem'}
         '404': {$ref: '#/components/responses/Problem'}
+  /api/experiments/{id}/tests:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      operationId: listTests
+      summary: Tests of this experiment by scheduled time (*:read)
+      parameters:
+        - {name: subjectId, in: query, schema: {type: string, format: uuid}}
+        - {name: phaseId, in: query, schema: {type: string, format: uuid}}
+        - {name: status, in: query, schema: {$ref: '#/components/schemas/TestStatus'}}
+        - {name: paradigmKey, in: query, schema: {$ref: '#/components/schemas/ConstantKey'}}
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: Tests
+          content:
+            application/json:
+              schema: {type: object, required: [data, total, page, pageSize], properties: {data: {type: array, items: {$ref: '#/components/schemas/Test'}}, total: {type: integer}, page: {type: integer}, pageSize: {type: integer}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+    post:
+      operationId: createTest
+      summary: Plan a test of an enrolled subject on one protocol step (test:write)
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/TestInput'}}}}
+      responses:
+        '201': {description: Created, content: {application/json: {schema: {$ref: '#/components/schemas/Test'}}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+  /api/tests/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      operationId: getTest
+      summary: A test with its trials (*:read)
+      responses:
+        '200':
+          description: Test
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Test'
+                  - {type: object, required: [trials], properties: {trials: {type: array, items: {$ref: '#/components/schemas/Trial'}}}}
+        '401': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+  /api/tests/{id}/start:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    post:
+      operationId: startTest
+      summary: Start a planned test (test:run); the subject's group at the start must be the planned group
+      requestBody: {required: true, content: {application/json: {schema: {type: object, additionalProperties: false, properties: {startedAt: {type: string, format: date-time, description: Defaults to now}}}}}}
+      responses:
+        '200': {description: Started, content: {application/json: {schema: {$ref: '#/components/schemas/Test'}}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/tests/{id}/complete:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    post:
+      operationId: completeTest
+      summary: Complete a test in progress that has at least one trial (test:run)
+      requestBody: {required: true, content: {application/json: {schema: {type: object, additionalProperties: false, properties: {completedAt: {type: string, format: date-time, description: Defaults to now}}}}}}
+      responses:
+        '200': {description: Completed, content: {application/json: {schema: {$ref: '#/components/schemas/Test'}}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/tests/{id}/cancel:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    post:
+      operationId: cancelTest
+      summary: Cancel a planned test or one in progress (test:write); recorded trials are kept
+      requestBody: {required: true, content: {application/json: {schema: {type: object, additionalProperties: false, required: [reason], properties: {reason: {type: string, minLength: 1, maxLength: 2000}}}}}}
+      responses:
+        '200': {description: Cancelled, content: {application/json: {schema: {$ref: '#/components/schemas/Test'}}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/tests/{id}/trials:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      operationId: listTrials
+      summary: Trials of a test in recording order (*:read)
+      responses:
+        '200':
+          description: Trials
+          content:
+            application/json:
+              schema: {type: object, required: [data], properties: {data: {type: array, items: {$ref: '#/components/schemas/Trial'}}}}
+        '401': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+    post:
+      operationId: recordTrial
+      summary: Append a trial to a test in progress (test:run); repeating a repetition adds an attempt
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/TrialInput'}}}}
+      responses:
+        '201': {description: Recorded, content: {application/json: {schema: {$ref: '#/components/schemas/Trial'}}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/tests/{id}/comments:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      operationId: listTestComments
+      summary: Comments on a test, oldest first (any signed-in user)
+      responses:
+        '200':
+          description: Comments
+          content:
+            application/json:
+              schema: {type: object, required: [data], properties: {data: {type: array, items: {$ref: '#/components/schemas/Comment'}}}}
+        '401': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+    post:
+      operationId: createTestComment
+      summary: Comment on a test (any signed-in user, at most 20 comment changes per minute)
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CommentInput'}}}}
+      responses:
+        '201': {description: Created, content: {application/json: {schema: {$ref: '#/components/schemas/Comment'}}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '429': {$ref: '#/components/responses/Problem'}
+  /api/tests/{id}/comments/{commentId}:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+      - {name: commentId, in: path, required: true, schema: {type: string, format: uuid}}
+    patch:
+      operationId: updateTestComment
+      summary: Edit your own comment (author only; counts toward the comment limit)
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CommentInput'}}}}
+      responses:
+        '200': {description: Updated, content: {application/json: {schema: {$ref: '#/components/schemas/Comment'}}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '429': {$ref: '#/components/responses/Problem'}
+    delete:
+      operationId: deleteTestComment
+      summary: Delete a comment (its author, SUPERADMIN or LAB_MANAGER)
+      responses:
+        '204': {description: Deleted}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
 components:
   parameters:
     ID: {name: id, in: path, required: true, schema: {type: string, format: uuid}}
@@ -1821,6 +1983,87 @@ components:
       properties:
         name: {type: string, minLength: 1, maxLength: 120}
         description: {type: string, maxLength: 5000}
+    TestStatus: {type: string, enum: [PLANNED, IN_PROGRESS, COMPLETED, CANCELLED]}
+    Test:
+      type: object
+      required: [id, experimentId, enrollmentId, subjectId, phaseId, groupId, protocolVersionId, stepPosition, paradigmKey, paradigmVersion, environmentRevisionId, plannedTrials, status, scheduledAt, startedAt, completedAt, cancelledAt, cancelReason, notes, createdBy, createdAt, updatedAt]
+      description: One session of a subject on one protocol step. Context fields never change; status is the session's own lifecycle, separate from analysis.
+      properties:
+        id: {type: string, format: uuid}
+        experimentId: {type: string, format: uuid}
+        enrollmentId: {type: string, format: uuid}
+        subjectId: {type: string, format: uuid}
+        phaseId: {type: [string, 'null'], format: uuid}
+        groupId: {type: [string, 'null'], format: uuid, description: The subject's group at the scheduled time}
+        protocolVersionId: {type: string, format: uuid}
+        stepPosition: {type: integer, minimum: 1}
+        paradigmKey: {$ref: '#/components/schemas/ConstantKey'}
+        paradigmVersion: {type: integer, minimum: 1}
+        environmentRevisionId: {type: string, format: uuid}
+        plannedTrials: {type: integer, minimum: 1}
+        status: {$ref: '#/components/schemas/TestStatus'}
+        scheduledAt: {type: string, format: date-time}
+        startedAt: {type: [string, 'null'], format: date-time}
+        completedAt: {type: [string, 'null'], format: date-time}
+        cancelledAt: {type: [string, 'null'], format: date-time}
+        cancelReason: {type: [string, 'null']}
+        notes: {type: [string, 'null']}
+        createdBy: {type: string, format: uuid}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+    TestInput:
+      type: object
+      additionalProperties: false
+      required: [enrollmentId, protocolVersionId, stepPosition, scheduledAt]
+      properties:
+        enrollmentId: {type: string, format: uuid, description: An enrollment of this experiment; the subject comes from it}
+        phaseId: {type: string, format: uuid}
+        protocolVersionId: {type: string, format: uuid, description: A protocol version of this experiment}
+        stepPosition: {type: integer, minimum: 1}
+        scheduledAt: {type: string, format: date-time, description: Not before the enrollment}
+        notes: {type: string, maxLength: 2000}
+    Trial:
+      type: object
+      required: [id, testId, number, repetition, attempt, startedAt, endedAt, notes, recordedBy, createdAt]
+      description: Immutable; a repeated repetition is a new attempt
+      properties:
+        id: {type: string, format: uuid}
+        testId: {type: string, format: uuid}
+        number: {type: integer, minimum: 1, description: Recording order within the test}
+        repetition: {type: integer, minimum: 1}
+        attempt: {type: integer, minimum: 1}
+        startedAt: {type: string, format: date-time}
+        endedAt: {type: [string, 'null'], format: date-time}
+        notes: {type: [string, 'null']}
+        recordedBy: {type: string, format: uuid}
+        createdAt: {type: string, format: date-time}
+    TrialInput:
+      type: object
+      additionalProperties: false
+      required: [repetition, startedAt]
+      properties:
+        repetition: {type: integer, minimum: 1, description: At most the planned trials of the step}
+        startedAt: {type: string, format: date-time, description: Not before the test started}
+        endedAt: {type: string, format: date-time, description: After startedAt}
+        notes: {type: string, maxLength: 2000}
+    Comment:
+      type: object
+      required: [id, testId, authorId, authorName, body, edited, createdAt, updatedAt]
+      properties:
+        id: {type: string, format: uuid}
+        testId: {type: string, format: uuid}
+        authorId: {type: string, format: uuid}
+        authorName: {type: [string, 'null'], description: Null once the author's account is deleted}
+        body: {type: string, description: Plain text; render it escaped}
+        edited: {type: boolean}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+    CommentInput:
+      type: object
+      additionalProperties: false
+      required: [body]
+      properties:
+        body: {type: string, minLength: 1, maxLength: 2000, description: Control characters other than tab and line breaks are removed before the length check}
     Probe:
       type: object
       additionalProperties: false

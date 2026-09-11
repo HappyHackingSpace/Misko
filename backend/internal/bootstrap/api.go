@@ -28,6 +28,7 @@ import (
 	paradigmsapp "github.com/HappyHackingSpace/Misko/backend/internal/paradigms/application"
 	"github.com/HappyHackingSpace/Misko/backend/internal/platform/config"
 	"github.com/HappyHackingSpace/Misko/backend/internal/platform/httpserver"
+	"github.com/HappyHackingSpace/Misko/backend/internal/platform/ratelimit"
 	protocolscatalog "github.com/HappyHackingSpace/Misko/backend/internal/protocols/adapters/catalog"
 	protocolshttp "github.com/HappyHackingSpace/Misko/backend/internal/protocols/adapters/http"
 	protocolspostgres "github.com/HappyHackingSpace/Misko/backend/internal/protocols/adapters/postgres"
@@ -35,6 +36,9 @@ import (
 	subjectshttp "github.com/HappyHackingSpace/Misko/backend/internal/subjects/adapters/http"
 	subjectspostgres "github.com/HappyHackingSpace/Misko/backend/internal/subjects/adapters/postgres"
 	subjectsapp "github.com/HappyHackingSpace/Misko/backend/internal/subjects/application"
+	testshttp "github.com/HappyHackingSpace/Misko/backend/internal/tests/adapters/http"
+	testspostgres "github.com/HappyHackingSpace/Misko/backend/internal/tests/adapters/postgres"
+	testsapp "github.com/HappyHackingSpace/Misko/backend/internal/tests/application"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"log/slog"
 	"net"
@@ -90,6 +94,8 @@ func NewAPI(pool *pgxpool.Pool, cfg config.Config, auth config.Auth, logger *slo
 	interventions := interventionsapp.New(interventionspostgres.NewStore(pool), time.Now)
 	environments := environmentsapp.New(environmentspostgres.NewStore(pool), environmentscatalog.New())
 	protocols := protocolsapp.New(protocolspostgres.NewStore(pool), protocolscatalog.New())
+	// One user may create or edit at most 20 comments per minute on this instance.
+	tests := testsapp.New(testspostgres.NewStore(pool), ratelimit.New(20, time.Minute, time.Now), time.Now)
 	readiness := healthapp.New(healthpostgres.New(pool), cfg.ProbeTimeout)
 
 	mux := http.NewServeMux()
@@ -105,5 +111,6 @@ func NewAPI(pool *pgxpool.Pool, cfg config.Config, auth config.Auth, logger *slo
 	paradigmshttp.Register(mux, paradigmsapp.New(), authenticate, logger)
 	environmentshttp.Register(mux, environments, authenticate, logger)
 	protocolshttp.Register(mux, protocols, authenticate, logger)
+	testshttp.Register(mux, tests, authenticate, logger)
 	return API{Handler: mux, BeginDrain: readiness.BeginDrain}, nil
 }
