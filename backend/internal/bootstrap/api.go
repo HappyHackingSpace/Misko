@@ -42,6 +42,9 @@ import (
 	protocolshttp "github.com/HappyHackingSpace/Misko/backend/internal/protocols/adapters/http"
 	protocolspostgres "github.com/HappyHackingSpace/Misko/backend/internal/protocols/adapters/postgres"
 	protocolsapp "github.com/HappyHackingSpace/Misko/backend/internal/protocols/application"
+	reportshttp "github.com/HappyHackingSpace/Misko/backend/internal/reports/adapters/http"
+	reportspostgres "github.com/HappyHackingSpace/Misko/backend/internal/reports/adapters/postgres"
+	reportsapp "github.com/HappyHackingSpace/Misko/backend/internal/reports/application"
 	subjectshttp "github.com/HappyHackingSpace/Misko/backend/internal/subjects/adapters/http"
 	subjectspostgres "github.com/HappyHackingSpace/Misko/backend/internal/subjects/adapters/postgres"
 	subjectsapp "github.com/HappyHackingSpace/Misko/backend/internal/subjects/application"
@@ -91,6 +94,9 @@ func Run(ctx context.Context, cfg config.Config, auth config.Auth, storage confi
 	logger.Info("HTTP server listening", "address", listener.Addr().String())
 	return httpserver.Serve(ctx, listener, server, cfg.ShutdownTimeout, api.BeginDrain)
 }
+
+// reportExportLimit caps rows read by one export or summary request.
+const reportExportLimit = 100_000
 
 type API struct {
 	Handler    http.Handler
@@ -156,6 +162,7 @@ func NewAPI(pool *pgxpool.Pool, cfg config.Config, auth config.Auth, logger *slo
 	mediahttp.Register(mux, media, authenticate, logger)
 	calibrationhttp.Register(mux, calibration, authenticate, logger)
 	analysishttp.Register(mux, analysis, authenticate, logger)
+	reportshttp.Register(mux, reportsapp.New(reportspostgres.NewStore(pool), reportExportLimit), authenticate, logger)
 	tick := func(ctx context.Context) error {
 		_, err := analysis.Tick(ctx)
 		return err
