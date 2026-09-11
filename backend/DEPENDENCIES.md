@@ -19,6 +19,13 @@ date. Builds and CI use pinned versions, not `@latest`.
 | cloud.google.com/go/storage | v1.67.1 | 2026-09-11 | https://proxy.golang.org/cloud.google.com/go/storage/@latest |
 | google.golang.org/api (indirect) | v0.287.1 | 2026-09-11 | resolved by `go get cloud.google.com/go/storage@v1.67.1` |
 | google.golang.org/grpc (indirect) | v1.82.1 | 2026-09-11 | resolved by `go get cloud.google.com/go/storage@v1.67.1` |
+| Python (worker) | 3.14.3 | 2026-09-12 | https://hub.docker.com/_/python (`python:3.14.3-slim` digest pinned in `worker/Dockerfile`) |
+| PyAV (worker) | 18.1.0 | 2026-09-12 | https://pypi.org/pypi/av/json |
+| numpy (worker) | 2.5.3 | 2026-09-12 | https://pypi.org/pypi/numpy/json |
+| scipy (worker) | 1.18.1 | 2026-09-12 | https://pypi.org/pypi/scipy/json |
+| google-crc32c (worker) | 1.8.0 | 2026-09-12 | https://pypi.org/pypi/google-crc32c/json |
+| pytest (worker tests) | 9.1.1 | 2026-09-12 | https://pypi.org/pypi/pytest/json |
+| actions/setup-python | v7.0.0 | 2026-09-12 | https://github.com/actions/setup-python/releases/latest |
 
 `go.mod`/`go.sum` record the complete dependency graph. Go's module checksum
 verification remains enabled. Docker pins both release tags and the verified

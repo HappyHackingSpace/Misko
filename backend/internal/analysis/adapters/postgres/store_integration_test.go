@@ -4,6 +4,7 @@ package postgres_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	access "github.com/HappyHackingSpace/Misko/backend/internal/access/domain"
@@ -16,6 +17,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"math"
 	"strings"
 	"sync"
 	"testing"
@@ -40,9 +42,10 @@ func (c *clock) advance(d time.Duration) { c.mu.Lock(); c.now = c.now.Add(d); c.
 
 // objects is an in-memory object store; it is not evidence of GCS behavior.
 type objects struct {
-	mu     sync.Mutex
-	stored map[string]application.ObjectAttrs
-	gen    int64
+	mu       sync.Mutex
+	stored   map[string]application.ObjectAttrs
+	contents map[string][]byte
+	gen      int64
 }
 
 func (o *objects) Bucket() string { return "misko-test-videos" }
@@ -64,11 +67,29 @@ func (o *objects) Attrs(_ context.Context, object string) (application.ObjectAtt
 	return application.ObjectAttrs{}, application.ErrObjectNotFound
 }
 
+func (o *objects) Read(_ context.Context, object string, generation, limit int64) ([]byte, error) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	a, ok := o.stored[object]
+	if !ok || a.Generation != generation {
+		return nil, application.ErrObjectNotFound
+	}
+	if int64(len(o.contents[object])) > limit {
+		return nil, errors.New("object too large")
+	}
+	return o.contents[object], nil
+}
+
 func (o *objects) put(object string, size int64, crc uint32, contentType string) {
+	o.putData(object, nil, size, crc, contentType)
+}
+
+func (o *objects) putData(object string, data []byte, size int64, crc uint32, contentType string) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	o.gen++
 	o.stored[object] = application.ObjectAttrs{Generation: 1_757_600_000_000_000 + o.gen, Size: size, CRC32C: crc, ContentType: contentType}
+	o.contents[object] = data
 }
 
 type fixture struct {
@@ -96,9 +117,9 @@ func id(t *testing.T, q interface {
 // without calibration, plus a second test.
 func newFixture(t *testing.T) *fixture {
 	pool := pgtest.Database(t)
-	f := &fixture{t: t, pool: pool, clock: &clock{now: time.Now().UTC().Truncate(time.Second)}, objects: &objects{stored: map[string]application.ObjectAttrs{}}}
+	f := &fixture{t: t, pool: pool, clock: &clock{now: time.Now().UTC().Truncate(time.Second)}, objects: &objects{stored: map[string]application.ObjectAttrs{}, contents: map[string][]byte{}}}
 	f.s = application.New(postgres.NewStore(pool), f.objects, catalog.New(), token.New(),
-		application.Settings{Lease: time.Minute, MaxAttempts: 2, UploadTTL: time.Hour, ReadTTL: time.Minute, MaxOutputBytes: 1 << 30}, f.clock.Now)
+		application.Settings{Lease: time.Minute, MaxAttempts: 2, UploadTTL: time.Hour, ReadTTL: time.Minute, MaxOutputBytes: 1 << 30, MaxTrajectoryBytes: 1 << 20}, f.clock.Now)
 	exp := id(t, pool, "INSERT INTO misko.experiments (code, title) VALUES ('E1', 'Study') RETURNING id")
 	subject := id(t, pool, "INSERT INTO misko.subjects (code, species, sex) VALUES ('S1', 'MOUSE', 'MALE') RETURNING id")
 	enrollment := id(t, pool, "INSERT INTO misko.enrollments (experiment_id, subject_id, enrolled_at) VALUES ($1, $2, now() - interval '3 days') RETURNING id", exp, subject)
@@ -175,45 +196,66 @@ func (f *fixture) worker(name string) (domain.Worker, string) {
 	return registered.Worker, registered.Token
 }
 
-// submission reports every OPEN_FIELD metric, three events and two outputs.
-func (f *fixture) submission(run domain.Run, distance float64, trialID string) domain.Submission {
-	contract, err := catalog.New().Contract("OPEN_FIELD", 1)
-	if err != nil {
-		f.t.Fatal(err)
-	}
-	s := domain.Submission{Attempt: run.Attempt, ModelVersion: "tracker 1.0",
-		Events: []domain.EventInput{
-			{Type: "in_center", StartUs: 500_000, EndUs: 2_500_000, Confidence: 0.9, TrialID: trialID},
-			{Type: "immobile", StartUs: 1_000_000, EndUs: 1_500_000, Confidence: 0.7},
-			{Type: "center_entry", StartUs: 500_000, EndUs: 500_000, Confidence: 1},
-		},
+// submission names an analyzed video and a trajectory; the API computes the metrics.
+func (f *fixture) submission(run domain.Run) domain.Submission {
+	return domain.Submission{Attempt: run.Attempt, ModelVersion: "tracker 1.0",
 		Artifacts: []domain.ArtifactInput{{Kind: domain.AnalyzedVideo, ObjectName: run.OutputPrefix() + "overlay.mp4"}, {Kind: domain.Trajectory, ObjectName: run.OutputPrefix() + "trajectory.json"}},
 		Pair:      domain.PairInput{AnalyzedObjectName: run.OutputPrefix() + "overlay.mp4", SourceOffsetUs: 1_000_000, TimeMappingVersion: "identity-v1"},
 	}
-	for _, m := range contract.Metrics {
-		v := 0.0
-		switch m.Key {
-		case "distance_cm":
-			v = distance
-		case "center_time_ratio":
-			s.Metrics = append(s.Metrics, domain.MetricInput{Key: m.Key, MissingReason: "ZERO_DENOMINATOR"})
-			continue
-		}
-		s.Metrics = append(s.Metrics, domain.MetricInput{Key: m.Key, Value: &v})
-	}
-	return s
 }
 
-func (f *fixture) requestOutputs(w domain.Worker, run domain.Run) {
+// trajectory walks along y = 25 cm from x = 5 cm, one centimeter per 0.1 s, for
+// distance centimeters (entering the 12.5 to 37.5 cm center at x = 13), then
+// stays still for 1.5 s. lostEvery > 0 marks every lostEvery-th sample lost.
+func (f *fixture) trajectory(run domain.Run, distance, lostEvery int) []byte {
+	f.t.Helper()
+	var ts []int64
+	var xs, ys []*float64
+	var tracked []bool
+	var confidence []float64
+	add := func(i int, x float64) {
+		ts = append(ts, int64(i)*100_000)
+		lost := lostEvery > 0 && i%lostEvery == lostEvery-1
+		if lost {
+			xs, ys, tracked, confidence = append(xs, nil), append(ys, nil), append(tracked, false), append(confidence, 0)
+			return
+		}
+		y := 25.0
+		xs, ys, tracked, confidence = append(xs, &x), append(ys, &y), append(tracked, true), append(confidence, 0.9)
+	}
+	for i := 0; i <= distance; i++ {
+		add(i, 5+float64(i))
+	}
+	for i := distance + 1; i <= distance+15; i++ {
+		add(i, 5+float64(distance))
+	}
+	data, err := json.Marshal(map[string]any{
+		"schema": domain.TrajectorySchema, "runId": run.ID, "attempt": run.Attempt, "durationUs": 8_000_000,
+		"samples": map[string]any{"tUs": ts, "xCm": xs, "yCm": ys, "tracked": tracked, "confidence": confidence},
+	})
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	return data
+}
+
+// requestOutputs declares the overlay and the given trajectory for the run's attempt.
+func (f *fixture) requestOutputs(w domain.Worker, run domain.Run, trajectory []byte) {
 	f.t.Helper()
 	for _, o := range []application.OutputRequest{
 		{Attempt: run.Attempt, Kind: domain.AnalyzedVideo, FileName: "overlay.mp4", ContentType: "video/mp4", SizeBytes: 4096, CRC32C: 7},
-		{Attempt: run.Attempt, Kind: domain.Trajectory, FileName: "trajectory.json", ContentType: "application/json", SizeBytes: 100, CRC32C: 8},
+		{Attempt: run.Attempt, Kind: domain.Trajectory, FileName: "trajectory.json", ContentType: "application/json", SizeBytes: int64(len(trajectory)), CRC32C: 8},
 	} {
 		if _, _, err := f.s.RequestOutput(ctx, w, run.ID, o); err != nil {
 			f.t.Fatal(err)
 		}
 	}
+}
+
+// store uploads the overlay and the trajectory as declared.
+func (f *fixture) store(run domain.Run, trajectory []byte) {
+	f.objects.put(run.OutputPrefix()+"overlay.mp4", 4096, 7, "video/mp4")
+	f.objects.putData(run.OutputPrefix()+"trajectory.json", trajectory, int64(len(trajectory)), 8, "application/json")
 }
 
 func TestSchedulingLeasesAndPublication(t *testing.T) {
@@ -293,58 +335,86 @@ func TestSchedulingLeasesAndPublication(t *testing.T) {
 	if _, _, err := f.s.RequestOutput(ctx, holder, run.ID, application.OutputRequest{Attempt: 1, Kind: domain.AnalyzedVideo, FileName: "late.mp4", ContentType: "video/mp4", SizeBytes: 1, CRC32C: 1}); !errors.Is(err, domain.ErrStaleAttempt) {
 		t.Fatalf("late attempt requests output: %v", err)
 	}
-	if _, err := f.s.Submit(ctx, holder, run.ID, f.submission(first, 10, f.trial)); !errors.Is(err, domain.ErrStaleAttempt) {
+	if _, err := f.s.Submit(ctx, holder, run.ID, f.submission(first)); !errors.Is(err, domain.ErrStaleAttempt) {
 		t.Fatalf("late attempt submits: %v", err)
 	}
+	if calibration := job.Calibration; calibration == nil || calibration.ID != run.CalibrationID || calibration.FrameWidth != 1920 || calibration.Transform != [9]float64{1, 0, 0, 0, 1, 0, 0, 0, 1} {
+		t.Fatalf("the job must carry the pinned calibration: %+v", job.Calibration)
+	}
 
-	f.requestOutputs(other, run)
+	good := f.trajectory(run, 10, 0)
+	size := int64(len(good))
+	f.requestOutputs(other, run, good)
 	f.objects.put(run.OutputPrefix()+"overlay.mp4", 4096, 7, "video/mp4")
-	if _, err := f.s.Submit(ctx, other, run.ID, f.submission(run, 10, f.trial)); !errors.Is(err, application.ErrOutputNotVerified) {
+	if _, err := f.s.Submit(ctx, other, run.ID, f.submission(run)); !errors.Is(err, application.ErrOutputNotVerified) {
 		t.Fatalf("missing trajectory: %v", err)
 	}
 	for name, stored := range map[string]application.ObjectAttrs{
-		"corrupt":            {Size: 100, CRC32C: 9, ContentType: "application/json"},
-		"truncated":          {Size: 99, CRC32C: 8, ContentType: "application/json"},
-		"wrong content type": {Size: 100, CRC32C: 8, ContentType: "application/octet-stream"},
+		"corrupt":            {Size: size, CRC32C: 9, ContentType: "application/json"},
+		"truncated":          {Size: size - 1, CRC32C: 8, ContentType: "application/json"},
+		"wrong content type": {Size: size, CRC32C: 8, ContentType: "application/octet-stream"},
 	} {
-		f.objects.put(run.OutputPrefix()+"trajectory.json", stored.Size, stored.CRC32C, stored.ContentType)
-		if _, err := f.s.Submit(ctx, other, run.ID, f.submission(run, 10, f.trial)); !errors.Is(err, application.ErrOutputNotVerified) {
+		f.objects.putData(run.OutputPrefix()+"trajectory.json", good, stored.Size, stored.CRC32C, stored.ContentType)
+		if _, err := f.s.Submit(ctx, other, run.ID, f.submission(run)); !errors.Is(err, application.ErrOutputNotVerified) {
 			t.Fatalf("%s trajectory: %v", name, err)
 		}
+	}
+	// A verified object whose content belongs to the crashed attempt is refused.
+	f.objects.putData(run.OutputPrefix()+"trajectory.json", f.trajectory(first, 10, 0), size, 8, "application/json")
+	if _, err := f.s.Submit(ctx, other, run.ID, f.submission(run)); !errors.Is(err, domain.ErrInvalidTrajectory) {
+		t.Fatalf("trajectory of the previous attempt: %v", err)
 	}
 	for _, table := range []string{"metric_results", "analysis_events", "analysis_artifacts", "analysis_video_pairs"} {
 		if n := f.count(table, run.ID); n != 0 {
 			t.Fatalf("%s has %d rows after a rejected submission", table, n)
 		}
 	}
-	f.objects.put(run.OutputPrefix()+"trajectory.json", 100, 8, "application/json")
-	undeclared := f.submission(run, 10, f.trial)
+	f.store(run, good)
+	undeclared := f.submission(run)
 	undeclared.Artifacts = append(undeclared.Artifacts, domain.ArtifactInput{Kind: domain.Thumbnail, ObjectName: run.OutputPrefix() + "thumb.png"})
 	f.objects.put(run.OutputPrefix()+"thumb.png", 4096, 7, "image/png")
 	if _, err := f.s.Submit(ctx, other, run.ID, undeclared); !errors.Is(err, application.ErrUnknownOutput) {
 		t.Fatalf("output uploaded without being declared: %v", err)
 	}
-	done, err := f.s.Submit(ctx, other, run.ID, f.submission(run, 10, f.trial))
+	done, err := f.s.Submit(ctx, other, run.ID, f.submission(run))
 	if err != nil || done.Status != domain.Succeeded || done.ModelVersion != "tracker 1.0" {
 		t.Fatalf("publish: %+v %v", done, err)
 	}
 
 	// Duplicate delivery of the accepted attempt publishes nothing new.
-	again, err := f.s.Submit(ctx, other, run.ID, f.submission(run, 99, f.trial))
+	again, err := f.s.Submit(ctx, other, run.ID, f.submission(run))
 	if err != nil || again.Status != domain.Succeeded {
 		t.Fatalf("duplicate delivery: %+v %v", again, err)
 	}
 	detail, err := f.s.RunDetail(ctx, viewer, run.ID)
-	if err != nil || detail.Published == nil || len(detail.Published.Metrics) != 9 || len(detail.Published.Events) != 3 || len(detail.Published.Artifacts) != 2 ||
+	if err != nil || detail.Published == nil || len(detail.Published.Metrics) != 9 || len(detail.Published.Artifacts) != 2 ||
 		detail.Published.Pair == nil || detail.Published.Pair.SourceGeneration != 42 || detail.Published.Pair.SourceOffsetUs != 1_000_000 {
 		t.Fatalf("published result: %+v %v", detail.Published, err)
 	}
+	// The Go engine computed these from the stored samples: 25 counted 0.1 s
+	// intervals, entering the center at 0.8 s and standing still from 1.0 s.
+	metrics := map[string]domain.MetricValue{}
 	for _, m := range detail.Published.Metrics {
-		if m.Key == "distance_cm" && (m.Value == nil || *m.Value != 10) {
-			t.Fatalf("a duplicate delivery changed the result: %+v", m)
+		metrics[m.Key] = m
+	}
+	for key, want := range map[string]float64{"distance_cm": 10, "duration_s": 2.5, "center_time_s": 1.7, "center_entries_count": 1, "immobility_s": 1.5} {
+		if m := metrics[key]; m.Value == nil || math.Abs(*m.Value-want) > 1e-9 {
+			t.Errorf("%s: %+v want %v", key, m, want)
 		}
-		if m.Key == "center_time_ratio" && (m.Value != nil || m.MissingReason != "ZERO_DENOMINATOR") {
-			t.Fatalf("missing metric stored as a value: %+v", m)
+	}
+	wantEvents := []domain.Event{
+		{Type: "center_entry", Kind: "POINT", StartUs: 800_000, EndUs: 800_000},
+		{Type: "in_center", Kind: "INTERVAL", StartUs: 800_000, EndUs: 2_500_000},
+		{Type: "immobile", Kind: "INTERVAL", StartUs: 1_000_000, EndUs: 2_500_000},
+	}
+	if len(detail.Published.Events) != len(wantEvents) {
+		t.Fatalf("events: %+v", detail.Published.Events)
+	}
+	for i, e := range detail.Published.Events {
+		confidence := e.Confidence
+		e.Confidence = 0
+		if e != wantEvents[i] || math.Abs(confidence-0.9) > 1e-6 {
+			t.Errorf("event %d: %+v confidence %v want %+v", i, e, confidence, wantEvents[i])
 		}
 	}
 	links, err := f.s.VideoPair(ctx, viewer, run.ID)
@@ -407,7 +477,25 @@ func TestReanalysisFailuresAndValidation(t *testing.T) {
 		t.Fatalf("attempts exhausted: %+v %v", failed, err)
 	}
 
-	succeed := func(distance float64) domain.Run {
+	// A trajectory that loses half of its samples fails QC: the run fails and nothing is published.
+	if _, err := f.s.Reanalyze(ctx, technician, f.test, f.calibrated); err != nil {
+		t.Fatal(err)
+	}
+	job, _ = f.s.Claim(ctx, w)
+	lossy := f.trajectory(job.Run, 10, 2)
+	f.requestOutputs(w, job.Run, lossy)
+	f.store(job.Run, lossy)
+	failed, err := f.s.Submit(ctx, w, job.Run.ID, f.submission(job.Run))
+	if err != nil || failed.Status != domain.Failed || !strings.HasPrefix(failed.FailureReason, "QC_FAILED: max_lost_frame_ratio") ||
+		f.count("metric_results", job.Run.ID) != 0 || f.count("analysis_video_pairs", job.Run.ID) != 0 {
+		t.Fatalf("QC failure: %+v %v", failed, err)
+	}
+	var stored string
+	if err := f.pool.QueryRow(ctx, "SELECT status || ' ' || failure_reason FROM misko.analysis_runs WHERE id = $1", job.Run.ID).Scan(&stored); err != nil || !strings.HasPrefix(stored, "FAILED QC_FAILED") {
+		t.Fatalf("stored QC failure: %q %v", stored, err)
+	}
+
+	succeed := func(distance int) domain.Run {
 		t.Helper()
 		if _, err := f.s.Reanalyze(ctx, technician, f.test, f.calibrated); err != nil {
 			t.Fatal(err)
@@ -417,24 +505,15 @@ func TestReanalysisFailuresAndValidation(t *testing.T) {
 			t.Fatal(err)
 		}
 		run := job.Run
-		for name, tc := range map[string]struct {
-			mutate func(*domain.Submission)
-			want   error
-		}{
-			"trial of another test":        {func(s *domain.Submission) { s.Events[0].TrialID = f.otherTest }, domain.ErrUnknownTrial},
-			"event past the clip":          {func(s *domain.Submission) { s.Events[1].EndUs = 8_000_001 }, domain.ErrEventOutOfRange},
-			"pair without the clip offset": {func(s *domain.Submission) { s.Pair.SourceOffsetUs = 0 }, domain.ErrInvalidPair},
-		} {
-			s := f.submission(run, distance, f.trial)
-			tc.mutate(&s)
-			if _, err := f.s.Submit(ctx, w, run.ID, s); !errors.Is(err, tc.want) {
-				t.Errorf("%s: err=%v want %v", name, err, tc.want)
-			}
+		shifted := f.submission(run)
+		shifted.Pair.SourceOffsetUs = 0
+		if _, err := f.s.Submit(ctx, w, run.ID, shifted); !errors.Is(err, domain.ErrInvalidPair) {
+			t.Errorf("pair without the clip offset: %v", err)
 		}
-		f.requestOutputs(w, run)
-		f.objects.put(run.OutputPrefix()+"overlay.mp4", 4096, 7, "video/mp4")
-		f.objects.put(run.OutputPrefix()+"trajectory.json", 100, 8, "application/json")
-		done, err := f.s.Submit(ctx, w, run.ID, f.submission(run, distance, f.trial))
+		trajectory := f.trajectory(run, distance, 0)
+		f.requestOutputs(w, run, trajectory)
+		f.store(run, trajectory)
+		done, err := f.s.Submit(ctx, w, run.ID, f.submission(run))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -463,7 +542,7 @@ func TestReanalysisFailuresAndValidation(t *testing.T) {
 		t.Fatalf("each run pairs its own output with the same original: %+v %+v", a.Pair, b.Pair)
 	}
 	runs, _ := f.s.Runs(ctx, viewer, f.test)
-	if len(runs) != 3 {
+	if len(runs) != 4 {
 		t.Fatalf("runs: %d", len(runs))
 	}
 }

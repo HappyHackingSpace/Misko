@@ -201,6 +201,11 @@ func (f *fakeObjects) ReadURL(_ context.Context, object string, generation int64
 	return "signed-read:" + object + "#" + strings.TrimSpace(itoa(generation)), nil
 }
 
+func (f *fakeObjects) Read(context.Context, string, int64, int64) ([]byte, error) {
+	f.calls = append(f.calls, "Read")
+	return nil, ErrObjectNotFound
+}
+
 func (f *fakeObjects) Attrs(context.Context, string) (domain.ObjectAttrs, error) {
 	f.calls = append(f.calls, "Attrs")
 	if f.attrs == nil {

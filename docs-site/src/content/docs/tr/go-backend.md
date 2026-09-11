@@ -337,9 +337,23 @@ piksellerinin santimetreye nasıl karşılık geldiği bilinmelidir.
 
 ### Video analizi
 
-İz takibi, API ile konuşan ayrı analiz worker'larında çalışır. Henüz hazır bir
-worker yoktur; laboratuvarınız bir worker bağlayana kadar çalıştırmalar kuyrukta
-bekler.
+İz takibi, API ile konuşan ayrı analiz worker'larında çalışır. Sabit kamerayla
+kaydedilmiş, tek denekli açık alan videoları için ilk worker `worker/`
+klasöründedir. Şimdiye kadar yalnızca sentetik videolarla test edilmiştir; elle
+işaretlenmiş gerçek bir kayıtla doğrulanana kadar sonuçlarını araştırmada
+kullanmayın.
+
+- Worker her karede hayvanı bulur, konumunu videonun kalibrasyonuyla santimetreye
+  çevirir ve konumları (trajectory) ile yolu ve merkez bölgesini gösteren işaretli
+  bir videoyu yükler.
+- Mişko her metriği ve olayı, paradigma kataloğunun tarif ettiği hesaplarla,
+  yüklenen trajectory'den kendisi hesaplar. Worker kendi sayılarını gönderemez.
+- Çok fazla kare kaybolursa (açık alanda %10'dan fazla) veya takip güveni çok
+  düşükse çalıştırma `QC_FAILED` nedeniyle `FAILED` olur ve hiçbir şey
+  yayınlanmaz.
+- Çalıştırmak için `OPEN_FIELD` sürüm 1 için bir worker kaydedin, sonra
+  `MISKO_WORKER_TOKEN` ayarlıyken başlatın; örneğin
+  `docker compose --profile worker up -d worker`.
 
 - Bir laboratuvar yöneticisi `POST /api/analysis/workers` ile worker'ın adını, model
   sürümünü ve desteklediği paradigma sürümlerini vererek worker kaydeder. Yanıt

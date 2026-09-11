@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"github.com/HappyHackingSpace/Misko/backend/internal/media/application"
 	"github.com/HappyHackingSpace/Misko/backend/internal/media/domain"
+	"io"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -74,6 +75,27 @@ func (s *Store) Attrs(ctx context.Context, object string) (domain.ObjectAttrs, e
 		return domain.ObjectAttrs{}, fmt.Errorf("read object attributes: %w", err)
 	}
 	return domain.ObjectAttrs{Generation: attrs.Generation, Size: attrs.Size, CRC32C: attrs.CRC32C, ContentType: attrs.ContentType}, nil
+}
+
+// Read downloads one generation of a small object, such as a trajectory. An
+// object larger than limit is an error, so a large file never fills memory.
+func (s *Store) Read(ctx context.Context, object string, generation, limit int64) ([]byte, error) {
+	reader, err := s.client.Bucket(s.bucket).Object(object).Generation(generation).NewReader(ctx)
+	if errors.Is(err, storage.ErrObjectNotExist) {
+		return nil, application.ErrObjectNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("open object: %w", err)
+	}
+	defer reader.Close()
+	data, err := io.ReadAll(io.LimitReader(reader, limit+1))
+	if err != nil {
+		return nil, fmt.Errorf("read object: %w", err)
+	}
+	if int64(len(data)) > limit {
+		return nil, fmt.Errorf("object exceeds %d bytes", limit)
+	}
+	return data, nil
 }
 
 func (s *Store) options(method string, expires time.Time) *storage.SignedURLOptions {

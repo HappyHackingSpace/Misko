@@ -109,3 +109,29 @@ func TestAttrsReadsGenerationSizeAndChecksum(t *testing.T) {
 		t.Fatalf("missing object: %v", err)
 	}
 }
+
+func TestReadDownloadsOneGenerationWithinTheLimit(t *testing.T) {
+	var paths []string
+	s := newTestStore(t, func(w http.ResponseWriter, r *http.Request) {
+		paths = append(paths, r.URL.String())
+		switch {
+		case strings.Contains(r.URL.Path, "missing"):
+			http.NotFound(w, r)
+		case strings.Contains(r.URL.Path, "trajectory.json") && r.URL.Query().Get("generation") == "42":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"schema":"misko.trajectory.v1"}`))
+		default:
+			http.Error(w, "unexpected request", http.StatusBadRequest)
+		}
+	})
+	data, err := s.Read(context.Background(), "runs/r1/attempts/1/trajectory.json", 42, 1024)
+	if err != nil || string(data) != `{"schema":"misko.trajectory.v1"}` {
+		t.Fatalf("read: %q %v (requests %v)", data, err, paths)
+	}
+	if _, err := s.Read(context.Background(), "runs/r1/attempts/1/trajectory.json", 42, 8); err == nil {
+		t.Fatal("an object above the limit was returned")
+	}
+	if _, err := s.Read(context.Background(), "runs/r1/attempts/1/missing.json", 42, 1024); !errors.Is(err, application.ErrObjectNotFound) {
+		t.Fatalf("missing object: %v", err)
+	}
+}

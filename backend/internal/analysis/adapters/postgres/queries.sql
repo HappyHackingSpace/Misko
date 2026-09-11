@@ -139,8 +139,10 @@ SELECT * FROM misko.analysis_runs WHERE id = @id FOR UPDATE;
 -- name: ListRuns :many
 SELECT * FROM misko.analysis_runs WHERE test_id = @test_id ORDER BY created_at DESC, id DESC;
 
--- name: TrialIDs :many
-SELECT id FROM misko.trials WHERE test_id = @test_id ORDER BY number;
+-- name: GetCalibration :one
+SELECT id, frame_width, frame_height, crop_x, crop_y, crop_width, crop_height, measurement_plane, transform
+FROM misko.calibrations
+WHERE id = @id;
 
 -- name: SourceObject :one
 SELECT object_name FROM misko.video_assets WHERE id = @id;

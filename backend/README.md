@@ -446,13 +446,19 @@ observation-only paradigms such as ROTAROD report `NOT_REQUIRED`.
 ## Analysis runs
 
 Computer vision runs outside the API in analysis workers. The API schedules runs,
-leases them to workers, validates what they return and publishes it; it never
-reads video bytes. No worker ships with this repository yet.
+leases them to workers, verifies what they upload and publishes it; it never
+reads video bytes. Workers measure positions only: the Go metric engine computes
+every published metric and event from the stored trajectory. The first worker,
+for single-subject Open Field video and tested only on synthetic video so far,
+is in [`worker/`](../worker/README.md).
 
 Workers are service identities, not users:
 
 - `POST /api/analysis/workers` (`lab:configure`) registers a name, model version
-  and capabilities (paradigm key and version from the catalog). The response
+  and capabilities (paradigm key and version from the catalog). A capability must
+  be computable from a trajectory alone: versions that need scored observations
+  or calibrated zone shapes return `worker.unknownCapability`, because catalog
+  presence is not analysis support. The response
   shows the token (`mw_...`) once; only its SHA-256 hash is stored.
   `GET /api/analysis/workers` lists workers and
   `POST /api/analysis/workers/{id}/disable` revokes a token; its running lease
@@ -480,8 +486,10 @@ session parameters. The inputs never change; reanalysis is a new run.
   `analysis.notReady`. Earlier runs and their results stay unchanged.
 - `POST /api/worker/claim` leases the oldest available queued run the worker can
   analyze (`FOR UPDATE SKIP LOCKED`), increments `attempt` and returns the run,
-  its output prefix `runs/{runId}/attempts/{attempt}/` and the result contract
-  (metrics with unit, integer flag and range, event types, missing reasons). With
+  its output prefix `runs/{runId}/attempts/{attempt}/`, the trajectory schema
+  `misko.trajectory.v1`, the contract (the metrics, event types, missing reasons
+  and QC rules the engine will apply) and the pinned calibration (frame size, crop,
+  plane and the pixel to centimeter homography, or null). With
   nothing to do it returns 204. A lease lasts 5 minutes;
   `.../runs/{runId}/heartbeat` extends it. A run has 3 attempts.
 - The attempt is a fencing token. Heartbeat, `source-url`, `outputs`, `result`
@@ -491,19 +499,29 @@ session parameters. The inputs never change; reanalysis is a new run.
   forward, and keep finished runs and published rows unchanged.
 - `.../source-url` signs a read of the pinned source generation. `.../outputs`
   records an output of the attempt (`ANALYZED_VIDEO` as MP4 or WebM, `TRAJECTORY`
-  as JSON or Parquet, `THUMBNAIL` as JPEG or PNG) with size and CRC32C, and signs
-  a resumable upload that cannot overwrite an existing object.
-- `.../result` sends every contract metric (a finite value in range, or a
-  missing reason), events in microseconds from the clip start, the output
-  objects and the video pair. The API rejects unknown or missing metrics, events
-  outside the recording or overlapping events of one type, trials of other tests,
-  outputs outside the attempt prefix, anything but exactly one analyzed video,
-  and a pair whose source offset is not the clip start. It then reads every
-  output object from GCS and requires the declared size, CRC32C and content type
-  (`analysis.outputNotVerified` otherwise, and nothing is published). Metrics,
-  events, artifacts, the analyzed video asset and the pair are written with the
-  `SUCCEEDED` status in one transaction; a deferred trigger refuses success
-  without the pair. Delivering the accepted result again returns the run.
+  as `misko.trajectory.v1` JSON, `THUMBNAIL` as JPEG or PNG) with size and CRC32C,
+  and signs a resumable upload that cannot overwrite an existing object.
+- `.../result` names the output objects and the video pair, and the recording
+  duration when the clip has no end; metrics and events are not accepted. The API
+  rejects outputs outside the attempt prefix, anything but exactly one analyzed
+  video and one trajectory, and a pair whose source offset is not the clip start.
+  It then reads every output object's attributes from GCS and requires the
+  declared size, CRC32C and content type (`analysis.outputNotVerified` otherwise).
+- It reads the verified trajectory generation (at most 64 MiB) and requires the
+  run id, attempt and recording duration, equal-length `tUs`, `xCm`, `yCm`,
+  `tracked` and `confidence` arrays, strictly increasing times within the
+  recording, confidences from 0 to 1 and coordinates for tracked samples
+  (`analysis.invalidTrajectory`). QC rules the trajectory can measure are
+  applied: `max_lost_frame_ratio` against untracked samples and
+  `min_tracking_confidence` against the mean confidence of tracked samples. A
+  failure marks the run `FAILED` with a `QC_FAILED` reason, without retry, and
+  publishes nothing.
+- The Go metric engine then computes the metrics and events from the samples
+  with the run's pinned parameters and duration; an event's confidence is the
+  mean confidence of the tracked samples it covers. Metrics, events, artifacts,
+  the analyzed video asset and the pair are written with the `SUCCEEDED` status
+  in one transaction; a deferred trigger refuses success without the pair.
+  Delivering the accepted result again returns the run.
 - `.../failure` records a reason. A retryable failure returns the run to the
   queue while attempts remain; otherwise the run is `FAILED`.
 

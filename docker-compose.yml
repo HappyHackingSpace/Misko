@@ -72,5 +72,16 @@ services:
       db:
         condition: service_healthy
 
+  # Open Field analysis worker; start it with --profile worker after registering
+  # a worker and setting MISKO_WORKER_TOKEN. It needs GCS for sources and outputs.
+  worker:
+    build: ./worker
+    profiles: [worker]
+    environment:
+      MISKO_API_URL: http://backend:4000
+      MISKO_WORKER_TOKEN: ${MISKO_WORKER_TOKEN:-}
+    depends_on:
+      - backend
+
 volumes:
   foundation-db:

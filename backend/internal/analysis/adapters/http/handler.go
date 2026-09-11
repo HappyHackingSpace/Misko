@@ -38,13 +38,8 @@ var failures = []httpjson.Failure{
 	{Err: domain.ErrNotClaimable, Status: http.StatusConflict, Code: "analysis.notClaimable"},
 	{Err: domain.ErrInvalidReason, Status: http.StatusBadRequest, Code: "analysis.invalidReason"},
 	{Err: domain.ErrInvalidModelVersion, Status: http.StatusBadRequest, Code: "analysis.invalidModelVersion"},
-	{Err: domain.ErrMissingMetric, Status: http.StatusBadRequest, Code: "analysis.missingMetric"},
-	{Err: domain.ErrUnknownMetric, Status: http.StatusBadRequest, Code: "analysis.unknownMetric"},
-	{Err: domain.ErrInvalidMetric, Status: http.StatusBadRequest, Code: "analysis.invalidMetric"},
-	{Err: domain.ErrInvalidEvent, Status: http.StatusBadRequest, Code: "analysis.invalidEvent"},
-	{Err: domain.ErrEventOutOfRange, Status: http.StatusBadRequest, Code: "analysis.eventOutOfRange"},
-	{Err: domain.ErrUnknownTrial, Status: http.StatusBadRequest, Code: "analysis.unknownTrial"},
-	{Err: domain.ErrOverlappingEvents, Status: http.StatusBadRequest, Code: "analysis.overlappingEvents"},
+	{Err: domain.ErrInvalidTrajectory, Status: http.StatusBadRequest, Code: "analysis.invalidTrajectory"},
+	{Err: domain.ErrMissingTrajectory, Status: http.StatusBadRequest, Code: "analysis.missingTrajectory"},
 	{Err: domain.ErrInvalidArtifact, Status: http.StatusBadRequest, Code: "analysis.invalidArtifact"},
 	{Err: domain.ErrMissingAnalyzedVideo, Status: http.StatusBadRequest, Code: "analysis.missingAnalyzedVideo"},
 	{Err: domain.ErrInvalidPair, Status: http.StatusBadRequest, Code: "analysis.invalidPair"},
@@ -200,18 +195,28 @@ func (h handler) claim(w http.ResponseWriter, r *http.Request, worker domain.Wor
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	contract := contractJSON{MissingReasons: job.Contract.MissingReasons, Metrics: []metricSpecJSON{}, Events: []eventSpecJSON{}}
+	contract := contractJSON{MissingReasons: job.Contract.MissingReasons, Metrics: []metricSpecJSON{}, Events: []eventSpecJSON{}, QC: []qcJSON{}}
 	for _, m := range job.Contract.Metrics {
 		contract.Metrics = append(contract.Metrics, metricSpecJSON{m.Key, m.Unit, m.Integer, m.Min, m.Max})
 	}
 	for _, e := range job.Contract.Events {
 		contract.Events = append(contract.Events, eventSpecJSON{e.Type, e.Kind})
 	}
+	for _, q := range job.Contract.QC {
+		contract.QC = append(contract.QC, qcJSON(q))
+	}
+	var calibration *calibrationJSON
+	if c := job.Calibration; c != nil {
+		calibration = &calibrationJSON{ID: c.ID, FrameWidth: c.FrameWidth, FrameHeight: c.FrameHeight,
+			Crop: cropJSON{c.CropX, c.CropY, c.CropWidth, c.CropHeight}, MeasurementPlane: c.Plane, Transform: c.Transform}
+	}
 	h.respond(w, r, http.StatusOK, struct {
-		Run          runJSON      `json:"run"`
-		OutputPrefix string       `json:"outputPrefix"`
-		Contract     contractJSON `json:"contract"`
-	}{toRun(job.Run), job.Run.OutputPrefix(), contract}, err)
+		Run              runJSON          `json:"run"`
+		OutputPrefix     string           `json:"outputPrefix"`
+		TrajectorySchema string           `json:"trajectorySchema"`
+		Contract         contractJSON     `json:"contract"`
+		Calibration      *calibrationJSON `json:"calibration"`
+	}{toRun(job.Run), job.Run.OutputPrefix(), domain.TrajectorySchema, contract, calibration}, err)
 }
 
 func (h handler) heartbeat(w http.ResponseWriter, r *http.Request, worker domain.Worker) {
@@ -276,19 +281,7 @@ func (h handler) submit(w http.ResponseWriter, r *http.Request, worker domain.Wo
 		Attempt             int    `json:"attempt"`
 		ModelVersion        string `json:"modelVersion"`
 		RecordingDurationUs int64  `json:"recordingDurationUs"`
-		Metrics             []struct {
-			Key           string   `json:"key"`
-			Value         *float64 `json:"value"`
-			MissingReason string   `json:"missingReason"`
-		} `json:"metrics"`
-		Events []struct {
-			Type       string  `json:"type"`
-			StartUs    int64   `json:"startUs"`
-			EndUs      int64   `json:"endUs"`
-			Confidence float64 `json:"confidence"`
-			TrialID    string  `json:"trialId"`
-		} `json:"events"`
-		Artifacts []struct {
+		Artifacts           []struct {
 			Kind       string `json:"kind"`
 			ObjectName string `json:"objectName"`
 		} `json:"artifacts"`
@@ -303,12 +296,6 @@ func (h handler) submit(w http.ResponseWriter, r *http.Request, worker domain.Wo
 		return
 	}
 	sub := domain.Submission{Attempt: body.Attempt, ModelVersion: body.ModelVersion, RecordingDurationUs: body.RecordingDurationUs, Pair: domain.PairInput(body.Pair)}
-	for _, m := range body.Metrics {
-		sub.Metrics = append(sub.Metrics, domain.MetricInput(m))
-	}
-	for _, e := range body.Events {
-		sub.Events = append(sub.Events, domain.EventInput(e))
-	}
 	for _, a := range body.Artifacts {
 		sub.Artifacts = append(sub.Artifacts, domain.ArtifactInput(a))
 	}
@@ -496,10 +483,34 @@ type eventSpecJSON struct {
 	Kind string `json:"kind"`
 }
 
+type qcJSON struct {
+	Key      string  `json:"key"`
+	Operator string  `json:"operator"`
+	Value    float64 `json:"value"`
+}
+
+// contractJSON lists what the engine will compute; workers send trajectories, not metrics.
 type contractJSON struct {
 	Metrics        []metricSpecJSON `json:"metrics"`
 	Events         []eventSpecJSON  `json:"events"`
 	MissingReasons []string         `json:"missingReasons"`
+	QC             []qcJSON         `json:"qc"`
+}
+
+type cropJSON struct {
+	X      int `json:"x"`
+	Y      int `json:"y"`
+	Width  int `json:"width"`
+	Height int `json:"height"`
+}
+
+type calibrationJSON struct {
+	ID               string     `json:"id"`
+	FrameWidth       int        `json:"frameWidth"`
+	FrameHeight      int        `json:"frameHeight"`
+	Crop             cropJSON   `json:"crop"`
+	MeasurementPlane string     `json:"measurementPlane"`
+	Transform        [9]float64 `json:"transform"`
 }
 
 func mapSlice[T, U any](items []T, convert func(T) U) []U {

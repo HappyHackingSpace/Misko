@@ -17,7 +17,7 @@ var (
 	ErrWorkerUnauthenticated = errors.New("worker authentication required")
 	ErrWorkerNotFound        = errors.New("worker not found")
 	ErrWorkerNameTaken       = errors.New("worker name is already in use")
-	ErrUnknownCapability     = errors.New("capability names a paradigm version outside the catalog")
+	ErrUnknownCapability     = errors.New("capability names a paradigm version outside the catalog or one that cannot be computed from a trajectory")
 	ErrRunNotFound           = errors.New("analysis run not found")
 	ErrRecordingNotFound     = errors.New("recording not found on this test")
 	ErrNotReady              = errors.New("the recording needs a verified video, a valid calibration when the paradigm requires one and an active worker capability")
@@ -51,12 +51,18 @@ type ObjectStore interface {
 	ReadURL(ctx context.Context, object string, generation int64, expires time.Time) (string, error)
 	// Attrs returns ErrObjectNotFound when the object does not exist.
 	Attrs(ctx context.Context, object string) (ObjectAttrs, error)
+	// Read returns one object generation of at most limit bytes, or
+	// ErrObjectNotFound.
+	Read(ctx context.Context, object string, generation, limit int64) ([]byte, error)
 }
 
-// Catalog reads paradigm contracts.
+// Catalog reads paradigm contracts and runs the metric engine.
 type Catalog interface {
 	// Contract returns ErrUnknownCapability for versions outside the catalog.
 	Contract(key string, version int) (domain.Contract, error)
+	// Evaluate computes metrics and events from a trajectory with pinned
+	// parameters; samples the engine rejects are domain.ErrInvalidTrajectory.
+	Evaluate(key string, version int, parameters map[string]float64, t domain.Track, durationUs int64) (domain.Computed, error)
 }
 
 // Tokens issues worker tokens and hashes them for storage and lookup.
@@ -139,7 +145,7 @@ type Store interface {
 	Run(ctx context.Context, id string) (domain.Run, error)
 	LockRun(ctx context.Context, id string) (domain.Run, error)
 	Runs(ctx context.Context, testID string) ([]domain.Run, error)
-	TrialIDs(ctx context.Context, testID string) ([]string, error)
+	Calibration(ctx context.Context, id string) (domain.CalibrationRef, error)
 	SourceObject(ctx context.Context, assetID string) (string, error)
 	CreateOutputUpload(ctx context.Context, u OutputUpload) error
 	OutputUploads(ctx context.Context, runID string, attempt int) ([]OutputUpload, error)
@@ -153,6 +159,8 @@ type Settings struct {
 	MaxAttempts        int
 	UploadTTL, ReadTTL time.Duration
 	MaxOutputBytes     int64
+	// MaxTrajectoryBytes caps the trajectory the API reads into memory.
+	MaxTrajectoryBytes int64
 }
 
 type Service struct {
@@ -191,7 +199,9 @@ func (s *Service) RegisterWorker(ctx context.Context, actor access.Actor, in Wor
 		return Registered{}, err
 	}
 	for _, c := range w.Capabilities {
-		if _, err := s.catalog.Contract(c.ParadigmKey, c.ParadigmVersion); err != nil {
+		// Catalog presence is not analysis support: a worker may only claim
+		// versions whose metrics the engine can compute from its trajectory.
+		if contract, err := s.catalog.Contract(c.ParadigmKey, c.ParadigmVersion); err != nil || !contract.TrajectoryAnalyzable {
 			return Registered{}, fmt.Errorf("%w: %s v%d", ErrUnknownCapability, c.ParadigmKey, c.ParadigmVersion)
 		}
 	}
@@ -351,10 +361,12 @@ func (s *Service) Reanalyze(ctx context.Context, actor access.Actor, testID, rec
 	return s.store.CreateRun(ctx, run)
 }
 
-// Job is a claimed run with the contract the worker must satisfy.
+// Job is a claimed run with its contract and, when the paradigm needs one, the
+// pinned calibration that maps pixels to arena centimeters.
 type Job struct {
-	Run      domain.Run
-	Contract domain.Contract
+	Run         domain.Run
+	Contract    domain.Contract
+	Calibration *domain.CalibrationRef
 }
 
 // Claim leases the oldest queued run the worker can analyze.
@@ -376,8 +388,17 @@ func (s *Service) Claim(ctx context.Context, w domain.Worker) (Job, error) {
 		if job.Run, err = tx.UpdateRun(ctx, claimed); err != nil {
 			return err
 		}
-		job.Contract, err = s.catalog.Contract(claimed.ParadigmKey, claimed.ParadigmVersion)
-		return err
+		if job.Contract, err = s.catalog.Contract(claimed.ParadigmKey, claimed.ParadigmVersion); err != nil {
+			return err
+		}
+		if claimed.CalibrationID != "" {
+			calibration, err := tx.Calibration(ctx, claimed.CalibrationID)
+			if err != nil {
+				return err
+			}
+			job.Calibration = &calibration
+		}
+		return nil
 	})
 	if err != nil {
 		return Job{}, err
@@ -447,7 +468,7 @@ func (s *Service) RequestOutput(ctx context.Context, w domain.Worker, runID stri
 	}
 	name := strings.TrimSpace(req.FileName)
 	video := req.Kind == domain.AnalyzedVideo && (req.ContentType == "video/mp4" || req.ContentType == "video/webm")
-	data := (req.Kind == domain.Trajectory && (req.ContentType == "application/json" || req.ContentType == "application/vnd.apache.parquet")) ||
+	data := (req.Kind == domain.Trajectory && req.ContentType == domain.TrajectoryContentType) ||
 		(req.Kind == domain.Thumbnail && (req.ContentType == "image/jpeg" || req.ContentType == "image/png"))
 	if (!video && !data) || req.SizeBytes < 1 || req.SizeBytes > s.settings.MaxOutputBytes ||
 		name == "" || len(name) > 120 || strings.ContainsAny(name, `/\`) || strings.Contains(name, "..") {
@@ -479,15 +500,7 @@ func (s *Service) Submit(ctx context.Context, w domain.Worker, runID string, sub
 	if err := run.CheckLease(w.ID, sub.Attempt); err != nil {
 		return domain.Run{}, err
 	}
-	contract, err := s.catalog.Contract(run.ParadigmKey, run.ParadigmVersion)
-	if err != nil {
-		return domain.Run{}, err
-	}
-	trials, err := s.store.TrialIDs(ctx, run.TestID)
-	if err != nil {
-		return domain.Run{}, err
-	}
-	result, err := domain.Validate(run, contract, sub, trials)
+	result, err := domain.Validate(run, sub)
 	if err != nil {
 		return domain.Run{}, err
 	}
@@ -514,6 +527,22 @@ func (s *Service) Submit(ctx context.Context, w domain.Worker, runID string, sub
 		}
 		outputs = append(outputs, VerifiedOutput{OutputUpload: u, Bucket: s.objects.Bucket(), Generation: attrs.Generation})
 	}
+	track, err := s.readTrajectory(ctx, run, result, outputs)
+	if err != nil {
+		return domain.Run{}, err
+	}
+	contract, err := s.catalog.Contract(run.ParadigmKey, run.ParadigmVersion)
+	if err != nil {
+		return domain.Run{}, err
+	}
+	if reason := domain.CheckQC(contract.QC, track); reason != "" {
+		return s.Fail(ctx, w, runID, sub.Attempt, reason, false)
+	}
+	computed, err := s.catalog.Evaluate(run.ParadigmKey, run.ParadigmVersion, run.Parameters, track, result.DurationUs)
+	if err != nil {
+		return domain.Run{}, err
+	}
+	result.Metrics, result.Events = computed.Metrics, track.Events(computed)
 	now := s.clock()
 	var out domain.Run
 	err = s.store.Transaction(ctx, func(tx Store) error {
@@ -539,6 +568,31 @@ func (s *Service) Submit(ctx context.Context, w domain.Worker, runID string, sub
 		return domain.Run{}, err
 	}
 	return out, nil
+}
+
+// readTrajectory reads the verified trajectory generation. The published
+// metrics are computed from exactly these bytes.
+func (s *Service) readTrajectory(ctx context.Context, run domain.Run, result domain.Result, outputs []VerifiedOutput) (domain.Track, error) {
+	for _, o := range outputs {
+		if o.ObjectName != result.TrajectoryObject {
+			continue
+		}
+		if o.ContentType != domain.TrajectoryContentType {
+			return domain.Track{}, domain.ErrMissingTrajectory
+		}
+		if o.SizeBytes > s.settings.MaxTrajectoryBytes {
+			return domain.Track{}, fmt.Errorf("%w: %d bytes exceed %d", domain.ErrInvalidTrajectory, o.SizeBytes, s.settings.MaxTrajectoryBytes)
+		}
+		data, err := s.objects.Read(ctx, o.ObjectName, o.Generation, s.settings.MaxTrajectoryBytes)
+		if errors.Is(err, ErrObjectNotFound) {
+			return domain.Track{}, ErrOutputNotVerified
+		}
+		if err != nil {
+			return domain.Track{}, err
+		}
+		return domain.ParseTrajectory(data, run, result.DurationUs)
+	}
+	return domain.Track{}, domain.ErrMissingTrajectory
 }
 
 func indexUpload(uploads []OutputUpload, a domain.ArtifactInput) int {

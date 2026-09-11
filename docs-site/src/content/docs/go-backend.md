@@ -335,8 +335,24 @@ to know how camera pixels map to centimeters.
 
 ### Video analysis
 
-Tracking runs in separate analysis workers that talk to the API. No worker is
-included yet, so runs stay queued until your laboratory connects one.
+Tracking runs in separate analysis workers that talk to the API. The first
+worker, for recorded single-subject Open Field video from a fixed camera, is in
+the `worker/` folder. It has only been tested on synthetic video so far; do not
+use its results for research until it has been checked against a manually
+annotated recording.
+
+- The worker finds the animal in every frame, converts its position to
+  centimeters with the video's calibration, and uploads the positions (the
+  trajectory) and an annotated video that shows the path and the center zone.
+- Misko computes every metric and event from the uploaded trajectory with the
+  same calculations the paradigm catalog describes. A worker cannot send its own
+  numbers.
+- If too many frames are lost (more than 10% for the open field) or the tracking
+  confidence is too low, the run is marked `FAILED` with a `QC_FAILED` reason and
+  nothing is published.
+- To run it, register a worker for `OPEN_FIELD` version 1, then start it with
+  `MISKO_WORKER_TOKEN` set, for example
+  `docker compose --profile worker up -d worker`.
 
 - A lab manager registers a worker with
   `POST /api/analysis/workers`, giving its name, model version and the paradigm

@@ -1477,6 +1477,7 @@ paths:
     post:
       operationId: registerAnalysisWorker
       summary: Register an analysis worker; the token is returned once (lab:configure)
+      description: Capabilities must name paradigm versions whose metrics the engine can compute from a trajectory alone, without scored observations or calibrated zone shapes; others return worker.unknownCapability.
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/AnalysisWorkerInput'}}}}
       responses:
         '201':
@@ -1606,11 +1607,25 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [run, outputPrefix, contract]
+                required: [run, outputPrefix, trajectorySchema, contract, calibration]
                 properties:
                   run: {$ref: '#/components/schemas/AnalysisRun'}
                   outputPrefix: {type: string, description: 'runs/{runId}/attempts/{attempt}/'}
+                  trajectorySchema: {type: string, enum: [misko.trajectory.v1], description: The trajectory format the result must upload}
                   contract: {$ref: '#/components/schemas/AnalysisContract'}
+                  calibration:
+                    description: The run's pinned calibration, or null for paradigms without one
+                    oneOf:
+                      - type: 'null'
+                      - type: object
+                        required: [id, frameWidth, frameHeight, crop, measurementPlane, transform]
+                        properties:
+                          id: {type: string, format: uuid}
+                          frameWidth: {type: integer}
+                          frameHeight: {type: integer}
+                          crop: {$ref: '#/components/schemas/CalibrationCrop'}
+                          measurementPlane: {type: string, enum: [ARENA_FLOOR, WATER_SURFACE, APPARATUS_TOP]}
+                          transform: {type: array, minItems: 9, maxItems: 9, items: {type: number}, description: Row-major homography from full-frame pixels (top-left corner at 0,0) to arena centimeters}
         '204': {description: No run is available}
         '400': {$ref: '#/components/responses/Problem'}
         '401': {$ref: '#/components/responses/Problem'}
@@ -1677,8 +1692,14 @@ paths:
       - {name: runId, in: path, required: true, schema: {type: string, format: uuid}}
     post:
       operationId: submitAnalysisResult
-      summary: Validate, verify the outputs in storage and publish the result atomically (worker token)
-      description: Delivering the accepted result again returns the run without publishing anything new.
+      summary: Verify the outputs, compute metrics and events from the trajectory and publish them atomically (worker token)
+      description: >-
+        The API reads the verified TRAJECTORY object (misko.trajectory.v1 JSON, at most 64 MiB), checks it
+        belongs to this run, attempt and recording duration, applies the paradigm's measurable QC rules
+        (max_lost_frame_ratio against untracked samples, min_tracking_confidence against the mean confidence
+        of tracked samples) and runs the Go metric engine with the run's pinned parameters. A trajectory that
+        fails QC fails the run without retry and returns the FAILED run with a QC_FAILED reason. Delivering
+        the accepted result again returns the run without publishing anything new.
       security: [{worker: []}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/AnalysisResultInput'}}}}
       responses:
@@ -2748,8 +2769,12 @@ components:
         finishedAt: {type: [string, 'null'], format: date-time}
     AnalysisContract:
       type: object
-      required: [metrics, events, missingReasons]
+      required: [metrics, events, missingReasons, qc]
+      description: What the metric engine will compute from the trajectory; workers send no metrics or events
       properties:
+        qc:
+          type: array
+          items: {type: object, required: [key, operator, value], properties: {key: {type: string}, operator: {type: string, enum: ['>=', '<=']}, value: {type: number}}}
         metrics:
           type: array
           items:
@@ -2779,44 +2804,21 @@ components:
         attempt: {type: integer, minimum: 1}
         kind: {type: string, enum: [ANALYZED_VIDEO, TRAJECTORY, THUMBNAIL]}
         fileName: {type: string, minLength: 1, maxLength: 120, description: 'No "/", "\" or ".."; stored under the attempt prefix'}
-        contentType: {type: string, enum: [video/mp4, video/webm, application/json, application/vnd.apache.parquet, image/jpeg, image/png], description: ANALYZED_VIDEO takes video types, TRAJECTORY JSON or Parquet, THUMBNAIL images}
+        contentType: {type: string, enum: [video/mp4, video/webm, application/json, image/jpeg, image/png], description: ANALYZED_VIDEO takes video types, TRAJECTORY application/json (misko.trajectory.v1), THUMBNAIL images}
         sizeBytes: {type: integer, format: int64, minimum: 1}
         crc32c: {type: string, description: Base64 big-endian CRC32C}
     AnalysisResultInput:
       type: object
       additionalProperties: false
-      required: [attempt, modelVersion, metrics, events, artifacts, pair]
+      required: [attempt, modelVersion, artifacts, pair]
+      description: Metrics and events are not accepted; the API computes them from the TRAJECTORY artifact.
       properties:
         attempt: {type: integer, minimum: 1}
         modelVersion: {type: string, minLength: 1, maxLength: 120}
-        recordingDurationUs: {type: integer, format: int64, description: Required when the clip has no end; must equal the clip length otherwise}
-        metrics:
-          type: array
-          description: Every contract metric exactly once, with a value in range or a missing reason
-          items:
-            type: object
-            additionalProperties: false
-            required: [key]
-            properties:
-              key: {type: string}
-              value: {type: [number, 'null']}
-              missingReason: {type: string}
-        events:
-          type: array
-          description: Microseconds from the clip start, within the recording; intervals of one type must not overlap
-          items:
-            type: object
-            additionalProperties: false
-            required: [type, startUs, endUs, confidence]
-            properties:
-              type: {type: string}
-              startUs: {type: integer, format: int64}
-              endUs: {type: integer, format: int64}
-              confidence: {type: number, minimum: 0, maximum: 1}
-              trialId: {type: string, format: uuid, description: A trial of the same test}
+        recordingDurationUs: {type: integer, format: int64, description: Required when the clip has no end; must equal the clip length otherwise and the trajectory's durationUs}
         artifacts:
           type: array
-          description: Declared outputs of this attempt, exactly one ANALYZED_VIDEO
+          description: Declared outputs of this attempt, exactly one ANALYZED_VIDEO and exactly one TRAJECTORY
           items:
             type: object
             additionalProperties: false
