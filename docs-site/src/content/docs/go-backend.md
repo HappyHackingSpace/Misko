@@ -20,6 +20,7 @@ current release. Do not deploy this branch.
 | Subjects, experiments, phases, groups and enrollments | Implemented |
 | Disease models, substances, intervention plans and administrations | Implemented |
 | Paradigm catalog with metric definitions for eleven paradigms | Implemented |
+| Environments with measurement revisions and experiment test protocols | Implemented |
 | Tests, video uploads and video analysis | Not yet |
 | Vue panel on the new API | Not yet |
 
@@ -237,6 +238,37 @@ is reported as missing with a reason, never as zero. For example, a probe trial
 without an escape reports `EVENT_NOT_OBSERVED`, and a Y maze trial with fewer
 than three arm entries reports `INSUFFICIENT_ENTRIES`. A published version never
 changes; a changed definition is published as a new version.
+
+### Environments and protocols
+
+An environment is one physical apparatus, such as a particular water tank, set up
+for one paradigm. Researchers, lab managers and super admins can create and
+revise environments and protocols; every signed-in user can read them.
+
+- `POST /api/environments` creates an environment with its first revision. Give
+  every apparatus measurement of the paradigm version, for example the tank and
+  platform sizes for `MWM`. Values outside the allowed ranges, or inconsistent
+  values such as a platform outside the tank, are rejected.
+- When the apparatus changes, add a revision with
+  `POST /api/environments/{id}/revisions`. Earlier revisions never change and
+  cannot be deleted. You can still rename an environment or edit its notes.
+
+A protocol describes how an experiment tests its subjects. It belongs to one
+experiment and can combine paradigms, for example an open field test followed by
+an elevated plus maze.
+
+- `POST /api/experiments/{id}/protocols` creates a protocol with its first
+  version. Each step gives its position, the paradigm and its version, an
+  environment revision of that paradigm, the trial type, the number of trials,
+  the pause between trials in seconds and any session parameters.
+- Number the steps from 1 without gaps. An environment of another paradigm, a
+  trial type the paradigm does not define and session values out of range are
+  rejected. Session parameters you leave out get the paradigm defaults, and the
+  stored version shows them.
+- To change a protocol, add a version with
+  `POST /api/experiments/{id}/protocols/{protocolId}/versions`. Stored versions
+  never change, and a new environment revision does not change a version that
+  uses an earlier revision.
 
 ### Errors
 

@@ -3,6 +3,10 @@ package bootstrap
 import (
 	"context"
 	"errors"
+	environmentscatalog "github.com/HappyHackingSpace/Misko/backend/internal/environments/adapters/catalog"
+	environmentshttp "github.com/HappyHackingSpace/Misko/backend/internal/environments/adapters/http"
+	environmentspostgres "github.com/HappyHackingSpace/Misko/backend/internal/environments/adapters/postgres"
+	environmentsapp "github.com/HappyHackingSpace/Misko/backend/internal/environments/application"
 	experimentshttp "github.com/HappyHackingSpace/Misko/backend/internal/experiments/adapters/http"
 	experimentspostgres "github.com/HappyHackingSpace/Misko/backend/internal/experiments/adapters/postgres"
 	experimentsapp "github.com/HappyHackingSpace/Misko/backend/internal/experiments/application"
@@ -24,6 +28,10 @@ import (
 	paradigmsapp "github.com/HappyHackingSpace/Misko/backend/internal/paradigms/application"
 	"github.com/HappyHackingSpace/Misko/backend/internal/platform/config"
 	"github.com/HappyHackingSpace/Misko/backend/internal/platform/httpserver"
+	protocolscatalog "github.com/HappyHackingSpace/Misko/backend/internal/protocols/adapters/catalog"
+	protocolshttp "github.com/HappyHackingSpace/Misko/backend/internal/protocols/adapters/http"
+	protocolspostgres "github.com/HappyHackingSpace/Misko/backend/internal/protocols/adapters/postgres"
+	protocolsapp "github.com/HappyHackingSpace/Misko/backend/internal/protocols/application"
 	subjectshttp "github.com/HappyHackingSpace/Misko/backend/internal/subjects/adapters/http"
 	subjectspostgres "github.com/HappyHackingSpace/Misko/backend/internal/subjects/adapters/postgres"
 	subjectsapp "github.com/HappyHackingSpace/Misko/backend/internal/subjects/application"
@@ -80,6 +88,8 @@ func NewAPI(pool *pgxpool.Pool, cfg config.Config, auth config.Auth, logger *slo
 	subjects := subjectsapp.New(subjectspostgres.NewStore(pool), time.Now)
 	experiments := experimentsapp.New(experimentspostgres.NewStore(pool))
 	interventions := interventionsapp.New(interventionspostgres.NewStore(pool), time.Now)
+	environments := environmentsapp.New(environmentspostgres.NewStore(pool), environmentscatalog.New())
+	protocols := protocolsapp.New(protocolspostgres.NewStore(pool), protocolscatalog.New())
 	readiness := healthapp.New(healthpostgres.New(pool), cfg.ProbeTimeout)
 
 	mux := http.NewServeMux()
@@ -93,5 +103,7 @@ func NewAPI(pool *pgxpool.Pool, cfg config.Config, auth config.Auth, logger *slo
 	experimentshttp.Register(mux, experiments, authenticate, logger)
 	interventionshttp.Register(mux, interventions, authenticate, logger)
 	paradigmshttp.Register(mux, paradigmsapp.New(), authenticate, logger)
+	environmentshttp.Register(mux, environments, authenticate, logger)
+	protocolshttp.Register(mux, protocols, authenticate, logger)
 	return API{Handler: mux, BeginDrain: readiness.BeginDrain}, nil
 }

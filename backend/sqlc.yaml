@@ -63,3 +63,21 @@ sql:
         out: internal/laboratory/adapters/postgres/sqlcgen
         sql_package: pgx/v5
         emit_pointers_for_null_types: true
+  - engine: postgresql
+    schema: schema
+    queries: internal/environments/adapters/postgres/queries.sql
+    gen:
+      go:
+        package: sqlcgen
+        out: internal/environments/adapters/postgres/sqlcgen
+        sql_package: pgx/v5
+        emit_pointers_for_null_types: true
+  - engine: postgresql
+    schema: schema
+    queries: internal/protocols/adapters/postgres/queries.sql
+    gen:
+      go:
+        package: sqlcgen
+        out: internal/protocols/adapters/postgres/sqlcgen
+        sql_package: pgx/v5
+        emit_pointers_for_null_types: true

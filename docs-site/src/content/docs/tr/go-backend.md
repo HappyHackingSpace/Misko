@@ -20,6 +20,7 @@ Bu branch'i canlıya almayın.
 | Denekler, deneyler, aşamalar, gruplar ve katılımlar | Hazır |
 | Hastalık modelleri, maddeler, müdahale planları ve uygulamalar | Hazır |
 | On bir paradigmanın metrik tanımlarıyla paradigma kataloğu | Hazır |
+| Ölçüm revizyonlarıyla ortamlar ve deney test protokolleri | Hazır |
 | Testler, video yükleme ve video analizi | Henüz yok |
 | Yeni API üzerinde Vue paneli | Henüz yok |
 
@@ -238,6 +239,37 @@ nedeniyle birlikte eksik olarak raporlanır. Örneğin kaçışın olmadığı b
 denemesi `EVENT_NOT_OBSERVED`, üçten az kol girişi olan bir Y labirenti denemesi
 `INSUFFICIENT_ENTRIES` bildirir. Yayımlanmış bir sürüm asla değişmez; değişen
 bir tanım yeni bir sürüm olarak yayımlanır.
+
+### Ortamlar ve protokoller
+
+Ortam, tek bir paradigma için kurulmuş fiziksel bir düzenektir; örneğin belirli
+bir su tankı. Araştırmacılar, laboratuvar yöneticileri ve süper yöneticiler ortam
+ve protokol oluşturup güncelleyebilir; giriş yapmış her kullanıcı bunları okuyabilir.
+
+- `POST /api/environments` bir ortamı ilk revizyonuyla birlikte oluşturur.
+  Paradigma sürümünün tüm düzenek ölçülerini verin; örneğin `MWM` için tank ve
+  platform boyutları. İzin verilen aralık dışındaki değerler veya tank dışında
+  kalan bir platform gibi tutarsız değerler reddedilir.
+- Düzenek değiştiğinde `POST /api/environments/{id}/revisions` ile yeni bir
+  revizyon ekleyin. Önceki revizyonlar asla değişmez ve silinemez. Ortamın adını
+  ve notlarını yine de düzenleyebilirsiniz.
+
+Protokol, bir deneyin deneklerini nasıl test ettiğini tanımlar. Tek bir deneye
+aittir ve birden fazla paradigmayı birleştirebilir; örneğin açık alan testinin
+ardından yükseltilmiş artı labirent.
+
+- `POST /api/experiments/{id}/protocols` bir protokolü ilk sürümüyle birlikte
+  oluşturur. Her adım; sırasını, paradigmayı ve sürümünü, o paradigma için
+  kurulmuş bir ortam revizyonunu, deneme türünü, deneme sayısını, denemeler
+  arasındaki bekleme süresini saniye olarak ve varsa oturum parametrelerini verir.
+- Adımları boşluk bırakmadan 1'den başlayarak numaralandırın. Başka bir
+  paradigmanın ortamı, paradigmanın tanımlamadığı bir deneme türü ve aralık
+  dışındaki oturum değerleri reddedilir. Vermediğiniz oturum parametreleri
+  paradigmanın varsayılanlarını alır ve kaydedilen sürüm bunları gösterir.
+- Bir protokolü değiştirmek için
+  `POST /api/experiments/{id}/protocols/{protocolId}/versions` ile yeni bir sürüm
+  ekleyin. Kaydedilmiş sürümler asla değişmez; yeni bir ortam revizyonu, önceki
+  bir revizyonu kullanan sürümü değiştirmez.
 
 ### Hatalar
 
