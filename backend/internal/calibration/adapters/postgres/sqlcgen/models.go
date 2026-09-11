@@ -17,8 +17,8 @@ type MiskoAdministration struct {
 	SubjectID           string
 	SubstanceID         string
 	SubstanceName       string
-	PlanID              pgtype.UUID
-	WeightMeasurementID pgtype.UUID
+	PlanID              *string
+	WeightMeasurementID *string
 	BodyMilligrams      *int64
 	AmountMicro         int64
 	Unit                string
@@ -32,7 +32,7 @@ type MiskoAdministration struct {
 type MiskoCalibration struct {
 	ID               string
 	RecordingID      string
-	SupersedesID     pgtype.UUID
+	SupersedesID     *string
 	CameraID         string
 	FrameWidth       int32
 	FrameHeight      int32
@@ -138,7 +138,7 @@ type MiskoInterventionPlan struct {
 	ID           string
 	ExperimentID string
 	GroupID      string
-	PhaseID      pgtype.UUID
+	PhaseID      *string
 	SubstanceID  string
 	AmountMicro  int64
 	Unit         string
@@ -208,7 +208,7 @@ type MiskoSubjectCondition struct {
 	SubjectID        string
 	DiseaseModelID   string
 	DiseaseModelName string
-	EnrollmentID     pgtype.UUID
+	EnrollmentID     *string
 	Status           string
 	ObservedAt       time.Time
 	Notes            *string
@@ -229,8 +229,8 @@ type MiskoTest struct {
 	ExperimentID          string
 	EnrollmentID          string
 	SubjectID             string
-	PhaseID               pgtype.UUID
-	GroupID               pgtype.UUID
+	PhaseID               *string
+	GroupID               *string
 	ProtocolVersionID     string
 	StepPosition          int32
 	ParadigmKey           string

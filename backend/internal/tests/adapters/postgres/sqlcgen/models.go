@@ -29,6 +29,33 @@ type MiskoAdministration struct {
 	CreatedAt           time.Time
 }
 
+type MiskoCalibration struct {
+	ID               string
+	RecordingID      string
+	SupersedesID     *string
+	CameraID         string
+	FrameWidth       int32
+	FrameHeight      int32
+	CropX            int32
+	CropY            int32
+	CropWidth        int32
+	CropHeight       int32
+	ReferenceFrameUs int64
+	MeasurementPlane string
+	FitPoints        []byte
+	CheckPoints      []byte
+	Transform        []float64
+	FitRmsErrorCm    float64
+	CheckRmsErrorCm  float64
+	CheckMaxErrorCm  float64
+	ToleranceCm      float64
+	AlgorithmVersion string
+	Status           string
+	RejectionReason  *string
+	CreatedBy        string
+	CreatedAt        time.Time
+}
+
 type MiskoDiseaseModel struct {
 	ID          string
 	Name        string
