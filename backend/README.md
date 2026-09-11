@@ -11,8 +11,9 @@ Integration branch `new-backend`. The rebuild is incomplete; do not release it.
 | [#128](https://github.com/HappyHackingSpace/Misko/issues/128) | Read-only versioned paradigm catalog and the OPEN_FIELD metric engine |
 | [#129](https://github.com/HappyHackingSpace/Misko/issues/129) | The other ten paradigm contracts and metric engines, calibrated zones, scored events and pinned manifests |
 | [#130](https://github.com/HappyHackingSpace/Misko/issues/130) | Environments with immutable measurement revisions and experiment test protocols with immutable versions |
+| [#131](https://github.com/HappyHackingSpace/Misko/issues/131) | Tests of enrolled subjects on protocol steps, their lifecycle, appended trials and test comments |
 
-Tests, GCS uploads and video analysis are separate following issues. The Vue application is not wired to this API yet; its old
+GCS uploads, calibration and video analysis are separate following issues. The Vue application is not wired to this API yet; its old
 business routes return 404. There is no legacy API adapter or data migration.
 
 ## Layout and boundaries
@@ -29,8 +30,9 @@ business routes return 404. There is no legacy API adapter or data migration.
 - `internal/paradigms`: the hardcoded, versioned paradigm catalog and pure metric engine.
 - `internal/environments`: physical apparatus and their immutable measurement revisions.
 - `internal/protocols`: test protocols of an experiment with immutable versions of ordered paradigm steps.
+- `internal/tests`: tests of enrolled subjects, their trials and comments.
 - `internal/health`: readiness use case and probes.
-- `internal/platform`: configuration, HTTP server lifecycle, JSON helpers, PostgreSQL transaction and error helpers, and the integration-test database helper. No business rules.
+- `internal/platform`: configuration, HTTP server lifecycle, JSON helpers, PostgreSQL transaction and error helpers, the in-memory rate limiter and the integration-test database helper. No business rules.
 - `schema`: embedded SQL files, applied in lexical order in one transaction; never run by the API.
 - `sqlc.yaml`, `internal/*/adapters/postgres/queries.sql`: SQL sources for the generated `sqlcgen` packages. Do not edit generated code; run `make generate`.
 - `tests/architecture`: source import checks with positive and negative policy fixtures.
@@ -82,6 +84,12 @@ The five roles and their permissions are static code, not database rows.
 | `POST /api/subjects/{id}/conditions`, `POST /api/experiments/{id}/enrollments/{enrollmentId}/administrations` | `test:run` |
 | `GET /api/environments`, `GET /api/environments/{id}`, its `revisions` and `revisions/{number}`; `GET /api/experiments/{id}/protocols`, `protocols/{protocolId}`, its `versions` and `versions/{number}` | `*:read` |
 | `POST, PATCH` environments; `POST` environment revisions; `POST, PATCH` protocols; `POST` protocol versions | `apparatus:write` |
+| `GET /api/experiments/{id}/tests`, `GET /api/tests/{id}`, `GET /api/tests/{id}/trials` | `*:read` |
+| `POST /api/experiments/{id}/tests`, `POST /api/tests/{id}/cancel` | `test:write` |
+| `POST /api/tests/{id}/start`, `POST /api/tests/{id}/complete`, `POST /api/tests/{id}/trials` | `test:run` |
+| `GET, POST /api/tests/{id}/comments` | Any signed-in user |
+| `PATCH /api/tests/{id}/comments/{commentId}` | The comment's author |
+| `DELETE /api/tests/{id}/comments/{commentId}` | The comment's author, SUPERADMIN or LAB_MANAGER |
 
 Use cases check the actor and permission themselves; HTTP handlers only translate.
 Rules enforced by tests:
@@ -293,6 +301,41 @@ ordered list of 1 to 50 steps, and the steps may use different paradigms.
   fixed protocol version and, through its steps, fixed environment revisions.
 - Protocol routes are scoped to their experiment, so another experiment's
   protocol id returns 404.
+
+## Tests, trials and comments
+
+A test is one session of an enrolled subject on one step of a protocol version
+in the same experiment. The step fixes the paradigm, its version, the
+environment revision and the planned number of trials.
+
+- `POST /api/experiments/{id}/tests` takes an enrollment, an optional phase, a
+  protocol version, a step position and the scheduled time. The subject comes
+  from the enrollment and the group is the one assigned at the scheduled time.
+  An enrollment, phase or protocol version of another experiment, a missing step
+  or a time before the enrollment is rejected, and composite foreign keys
+  enforce the same combinations in the schema.
+- Status moves only forward: `PLANNED` to `IN_PROGRESS` (start) or `CANCELLED`,
+  and `IN_PROGRESS` to `COMPLETED` or `CANCELLED`. Transitions lock the test row,
+  so concurrent requests get one success and `test.invalidTransition` (409) for
+  the rest. A trigger rejects other status changes, edits of the context columns
+  and deletes.
+- Starting locks the enrollment and requires the subject's group at the start
+  time to equal the planned group; otherwise the API returns `test.groupChanged`
+  and the test should be cancelled and planned again.
+- Trials are appended while a test is in progress. `repetition` runs from 1 to
+  the planned trials; recording a repetition again adds the next `attempt` and
+  never replaces an earlier trial. Trials are immutable, and completing a test
+  needs at least one trial and a time after its start and every trial.
+- Test status is the session's lifecycle only. Analysis runs get their own
+  status in a later issue.
+
+Comments belong to a test and are plain text of 1 to 2000 characters; control
+characters other than tab and line breaks are removed. Every signed-in role,
+including VIEWER, can read and write comments. Only the author edits, and the
+author, SUPERADMIN or LAB_MANAGER deletes. A comment id is accepted only under
+its own test. One user may create or edit at most 20 comments per minute
+(`comment.rateLimited`, 429); the counter lives in the API process, so each
+instance counts separately.
 
 ## Local container run
 

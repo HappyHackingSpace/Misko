@@ -21,7 +21,8 @@ Bu branch'i canlıya almayın.
 | Hastalık modelleri, maddeler, müdahale planları ve uygulamalar | Hazır |
 | On bir paradigmanın metrik tanımlarıyla paradigma kataloğu | Hazır |
 | Ölçüm revizyonlarıyla ortamlar ve deney test protokolleri | Hazır |
-| Testler, video yükleme ve video analizi | Henüz yok |
+| Testler, denemeler ve test yorumları | Hazır |
+| Video yükleme, kalibrasyon ve video analizi | Henüz yok |
 | Yeni API üzerinde Vue paneli | Henüz yok |
 
 ## Kurulum
@@ -270,6 +271,27 @@ ardından yükseltilmiş artı labirent.
   `POST /api/experiments/{id}/protocols/{protocolId}/versions` ile yeni bir sürüm
   ekleyin. Kaydedilmiş sürümler asla değişmez; yeni bir ortam revizyonu, önceki
   bir revizyonu kullanan sürümü değiştirmez.
+
+### Testler, denemeler ve yorumlar
+
+Test, katılımı olan bir deneğin bir protokol adımındaki tek oturumudur. Adım;
+paradigmayı, ortamı ve kaç deneme planlandığını belirler.
+
+- Araştırmacılar, laboratuvar yöneticileri ve süper yöneticiler testleri
+  `POST /api/experiments/{id}/tests` ile planlar: katılımı, isteğe bağlı olarak
+  aşamayı, protokol sürümünü, adımı ve planlanan zamanı seçin. Denek ve o
+  zamandaki grubu otomatik doldurulur.
+- Teknisyenler ve üstündeki roller testleri yürütür: `POST /api/tests/{id}/start`,
+  ardından her denemeyi `POST /api/tests/{id}/trials` ile kaydedin ve sonunda
+  `POST /api/tests/{id}/complete` çağırın. Bir deneme tekrarlanırsa aynı tekrar
+  numarasını yeniden kaydedin; sonraki deneme sayısını alır ve önceki kayıt korunur.
+- Tamamlanmamış bir test gerekçe yazılarak iptal edilebilir. Denek planlamadan
+  sonra başka bir gruba geçtiyse test başlatılamaz; testi iptal edip yeniden planlayın.
+
+Görüntüleyiciler dahil giriş yapmış herkes bir teste yorum yazabilir. Yalnızca
+kendi yorumlarınızı düzenleyebilirsiniz. Laboratuvar yöneticileri ve süper
+yöneticiler her yorumu silebilir. Her kullanıcı dakikada en fazla 20 yorum
+yazabilir veya düzenleyebilir.
 
 ### Hatalar
 

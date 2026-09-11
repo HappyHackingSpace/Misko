@@ -197,6 +197,53 @@ type MiskoSubstance struct {
 	UpdatedAt   time.Time
 }
 
+type MiskoTest struct {
+	ID                    string
+	ExperimentID          string
+	EnrollmentID          string
+	SubjectID             string
+	PhaseID               pgtype.UUID
+	GroupID               pgtype.UUID
+	ProtocolVersionID     string
+	StepPosition          int32
+	ParadigmKey           string
+	ParadigmVersion       int32
+	EnvironmentRevisionID string
+	PlannedTrials         int32
+	Status                string
+	ScheduledAt           time.Time
+	StartedAt             pgtype.Timestamptz
+	CompletedAt           pgtype.Timestamptz
+	CancelledAt           pgtype.Timestamptz
+	CancelReason          *string
+	Notes                 *string
+	CreatedBy             string
+	CreatedAt             time.Time
+	UpdatedAt             time.Time
+}
+
+type MiskoTestComment struct {
+	ID        string
+	TestID    string
+	AuthorID  string
+	Body      string
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+type MiskoTrial struct {
+	ID         string
+	TestID     string
+	Number     int32
+	Repetition int32
+	Attempt    int32
+	StartedAt  time.Time
+	EndedAt    pgtype.Timestamptz
+	Notes      *string
+	RecordedBy string
+	CreatedAt  time.Time
+}
+
 type MiskoUser struct {
 	ID             string
 	Email          string
