@@ -23,8 +23,9 @@ test("a failed run says why and publishes no result", async ({ page, request }) 
   await signIn(page, data.adminEmail, data.adminPassword);
   await page.goto(`/tests/${data.testId}`);
 
-  // Both recordings of this test have a run: one succeeded, one failed quality control.
-  await expect(page.getByTestId("run")).toHaveCount(2);
+  // The test has three runs: the first analysis, a reanalysis of the same
+  // recording, and a second recording whose analysis failed quality control.
+  await expect(page.getByTestId("run")).toHaveCount(3);
   await page.locator(`[data-run-id="${data.failedRunId}"]`).click();
 
   const failure = page.getByTestId("run-failure");

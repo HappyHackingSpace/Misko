@@ -41,6 +41,9 @@ func main() { os.Exit(run()) }
 func run() int {
 	addr := flag.String("addr", "127.0.0.1:4010", "listen address")
 	fixtures := flag.String("fixtures", "../frontend/tests/fixtures", "directory with analyzed.mp4 and trajectory.json")
+	// Signed reads last an hour by default. The browser test for an expiring
+	// URL runs its own server with a short one instead of waiting.
+	readTTL := flag.Duration("read-ttl", time.Hour, "how long a signed read URL stays valid")
 	flag.Parse()
 	logger := slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
 
@@ -74,7 +77,7 @@ func run() int {
 	store := &diskStore{base: "http://" + *addr, objects: map[string]storedObject{}, sessions: map[string]*session{}}
 	api, err := bootstrap.NewAPI(pool, config.Config{ProbeTimeout: 2 * time.Second},
 		config.Auth{JWTSecret: []byte(strings.Repeat("e2e-signing-secret", 2)), JWTIssuer: "misko", JWTAudience: "misko-api", TokenTTL: 12 * time.Hour, BcryptCost: bcrypt.MinCost},
-		logger, bootstrap.WithStorage(store, mediaapp.Settings{MaxBytes: 1 << 30, UploadTTL: time.Hour, ReadTTL: time.Hour}))
+		logger, bootstrap.WithStorage(store, mediaapp.Settings{MaxBytes: 1 << 30, UploadTTL: time.Hour, ReadTTL: *readTTL}))
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "wiring failed:", err)
 		return 1
@@ -143,8 +146,12 @@ func (s *diskStore) UploadURL(_ context.Context, object, contentType string, exp
 	}, nil
 }
 
-func (s *diskStore) ReadURL(_ context.Context, object string, generation int64, _ time.Time) (string, error) {
-	return s.base + "/e2e/storage/object?object=" + url.QueryEscape(object) + "&generation=" + strconv.FormatInt(generation, 10), nil
+// ReadURL signs a read that stops working after `expires`, the way a signed
+// bucket URL does, so the panel's refresh path can be driven from a test.
+func (s *diskStore) ReadURL(_ context.Context, object string, generation int64, expires time.Time) (string, error) {
+	return s.base + "/e2e/storage/object?object=" + url.QueryEscape(object) +
+		"&generation=" + strconv.FormatInt(generation, 10) +
+		"&expires=" + strconv.FormatInt(expires.UnixMilli(), 10), nil
 }
 
 func (s *diskStore) Attrs(_ context.Context, object string) (mediadomain.ObjectAttrs, error) {
@@ -224,11 +231,25 @@ func (s *diskStore) routes(mux *http.ServeMux) {
 	})
 	mux.HandleFunc("GET /e2e/storage/object", func(w http.ResponseWriter, r *http.Request) {
 		cors(w)
+		query := r.URL.Query()
+		// A signed read stops working once it expires, and it names one
+		// generation: a bucket refuses both, and so does this.
+		if raw := query.Get("expires"); raw != "" {
+			at, err := strconv.ParseInt(raw, 10, 64)
+			if err != nil || time.Now().After(time.UnixMilli(at)) {
+				http.Error(w, "the signed read expired", http.StatusForbidden)
+				return
+			}
+		}
 		s.mu.Lock()
-		stored, ok := s.objects[r.URL.Query().Get("object")]
+		stored, ok := s.objects[query.Get("object")]
 		s.mu.Unlock()
 		if !ok {
 			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+		if raw := query.Get("generation"); raw != "" && raw != strconv.FormatInt(stored.generation, 10) {
+			http.Error(w, "the object moved on to another generation", http.StatusNotFound)
 			return
 		}
 		w.Header().Set("Content-Type", stored.contentType)
@@ -475,18 +496,77 @@ func seedAnalyzedTest(ctx context.Context, api bootstrap.API, store *diskStore, 
 	}); err != nil {
 		return nil, err
 	}
+	secondRunID, err := seedSecondRun(ctx, api, store, c, worker, testID, recordingID, overlay, trajectory)
+	if err != nil {
+		return nil, err
+	}
 	failedRunID, err := seedFailedRun(ctx, api, store, c, worker, testID, overlay, trajectory)
 	if err != nil {
 		return nil, err
 	}
 	return map[string]any{
 		"experimentId": experimentID, "experimentCode": "E2E", "subjectCode": "E2E-1",
-		"testId": testID, "recordingId": recordingID, "runId": runID, "failedRunId": failedRunID,
+		"testId": testID, "recordingId": recordingID, "runId": runID, "secondRunId": secondRunID, "failedRunId": failedRunID,
 		"viewerEmail": "viewer@e2e.local", "viewerPassword": viewerPassword,
 	}, nil
 }
 
 const viewerPassword = "Viewer-password-1"
+
+// seedSecondRun reanalyzes the recording that already has a published result,
+// so the test has two runs whose pairs can both be opened. The analyzed video
+// of this run is its own object, which is how the panel is caught showing the
+// video of the run the laboratory is no longer looking at.
+func seedSecondRun(ctx context.Context, api bootstrap.API, store *diskStore, c, worker *caller, testID, recordingID string, overlay, trajectory []byte) (string, error) {
+	if _, err := c.do(http.MethodPost, "/api/tests/"+testID+"/recordings/"+recordingID+"/analysis-runs", map[string]any{}); err != nil {
+		return "", err
+	}
+	if err := api.AnalysisTick(ctx); err != nil {
+		return "", err
+	}
+	job, err := worker.do(http.MethodPost, "/api/worker/claim", map[string]any{})
+	if err != nil {
+		return "", err
+	}
+	run := nested(job, "run")
+	runID, attempt := text(run, "id"), int(run["attempt"].(float64))
+	prefix := text(job, "outputPrefix")
+
+	patched, err := clipTo(trajectory, runID, attempt, clipStartUs, 4_000_000)
+	if err != nil {
+		return "", err
+	}
+	for _, output := range []struct {
+		kind, name, contentType string
+		data                    []byte
+	}{
+		{"ANALYZED_VIDEO", "reanalysis.mp4", "video/mp4", overlay},
+		{"TRAJECTORY", "trajectory.json", "application/json", patched},
+	} {
+		if _, err := worker.do(http.MethodPost, "/api/worker/runs/"+runID+"/outputs", map[string]any{
+			"attempt": attempt, "kind": output.kind, "fileName": output.name, "contentType": output.contentType,
+			"sizeBytes": len(output.data), "crc32c": mediadomain.FormatCRC32C(crc32c(output.data)),
+		}); err != nil {
+			return "", err
+		}
+		store.put(prefix+output.name, output.data, output.contentType)
+	}
+	result, err := worker.do(http.MethodPost, "/api/worker/runs/"+runID+"/result", map[string]any{
+		"attempt": attempt, "modelVersion": "misko-open-field-bgsub 1.0.0",
+		"artifacts": []any{
+			map[string]any{"kind": "ANALYZED_VIDEO", "objectName": prefix + "reanalysis.mp4"},
+			map[string]any{"kind": "TRAJECTORY", "objectName": prefix + "trajectory.json"},
+		},
+		"pair": map[string]any{"analyzedObjectName": prefix + "reanalysis.mp4", "sourceOffsetUs": clipStartUs, "outputOffsetUs": clipStartUs, "timeMappingVersion": "identity-v1"},
+	})
+	if err != nil {
+		return "", err
+	}
+	if text(result, "status") != "SUCCEEDED" {
+		return "", fmt.Errorf("the reanalysis run is %s", text(result, "status"))
+	}
+	return runID, nil
+}
 
 // seedFailedRun analyzes a second recording of the same test with a trajectory
 // that lost half of its samples, which the API refuses on quality control.

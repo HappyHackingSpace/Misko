@@ -9,7 +9,7 @@
 //
 // Signed URLs expire. When one does, the panel fetches a new pair and restores
 // the position it was at, so a refresh does not send the viewer back to zero.
-import { computed, onBeforeUnmount, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
 import { analysis } from "../api/endpoints.js";
 
 const props = defineProps({
@@ -25,18 +25,23 @@ const analyzed = ref(null);
 const loading = ref(false);
 const showAnalyzed = ref(true);
 let stopAt = null;
+// Where the reader last was, in analyzed video time. A player whose source
+// fails resets itself to zero before it reports the error, so by then its own
+// position is gone; this is what a refreshed pair is restored to.
+let lastPosition = 0;
 
 const sourceOffset = computed(() => (pair.value?.sourceOffsetUs ?? 0) / 1_000_000);
 const outputOffset = computed(() => (pair.value?.outputOffsetUs ?? 0) / 1_000_000);
 
 async function loadPair(keepPosition = false) {
-  const position = keepPosition ? analyzed.value?.currentTime : null;
+  const position = keepPosition ? lastPosition : null;
   loading.value = true;
   try {
     pair.value = await analysis.videoPair(props.runId);
     if (position != null) {
-      // Restore after the new sources have loaded their metadata.
-      await Promise.resolve();
+      // Wait for the new sources to be on the elements. Before that the players
+      // still hold the old ones, and a position set now would be thrown away.
+      await nextTick();
       restore(position);
     }
   } catch (error) {
@@ -49,9 +54,12 @@ async function loadPair(keepPosition = false) {
 function restore(position) {
   for (const video of [original.value, analyzed.value]) {
     if (!video) continue;
+    // The new source reports its duration on loadedmetadata, and only then does
+    // a position stick. Seeking a player that is still loading is ignored, so
+    // the position is applied again once the metadata is in.
     const apply = () => (video.currentTime = position);
     if (video.readyState >= 1) apply();
-    else video.addEventListener("loadedmetadata", apply, { once: true });
+    video.addEventListener("loadedmetadata", apply, { once: true });
   }
 }
 
@@ -67,11 +75,20 @@ async function onMediaError() {
 function seek(recordingUs) {
   const recordingSeconds = recordingUs / 1_000_000;
   if (original.value) original.value.currentTime = sourceOffset.value + recordingSeconds;
-  if (analyzed.value) analyzed.value.currentTime = outputOffset.value + recordingSeconds;
+  lastPosition = outputOffset.value + recordingSeconds;
+  if (analyzed.value) analyzed.value.currentTime = lastPosition;
+}
+
+// Remembers where the reader is. A player that has lost its source reports zero,
+// which is why the position is kept here rather than read back when it is needed.
+function rememberPosition() {
+  if (analyzed.value && analyzed.value.readyState > 0) lastPosition = analyzed.value.currentTime;
 }
 
 function onTimeUpdate() {
-  if (stopAt == null || !analyzed.value) return;
+  if (!analyzed.value) return;
+  rememberPosition();
+  if (stopAt == null) return;
   if (analyzed.value.currentTime >= stopAt - 0.001) {
     stopAt = null;
     analyzed.value.pause();
@@ -97,7 +114,16 @@ async function playEvent(event) {
   }
 }
 
-watch(() => props.runId, () => loadPair(), { immediate: true });
+watch(
+  () => props.runId,
+  () => {
+    // Another run is another pair of videos: nothing of the last one carries over.
+    stopAt = null;
+    lastPosition = 0;
+    loadPair();
+  },
+  { immediate: true },
+);
 watch(() => props.play, (event) => playEvent(event));
 onBeforeUnmount(() => {
   stopAt = null;
@@ -140,6 +166,7 @@ defineExpose({ playEvent, seek });
           playsinline
           muted
           @timeupdate="onTimeUpdate"
+          @seeked="rememberPosition"
           @error="onMediaError"
         ></video>
         <figcaption>{{ $t("analysis.analyzed") }}</figcaption>

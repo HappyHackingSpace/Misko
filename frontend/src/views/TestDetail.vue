@@ -181,6 +181,7 @@ onUnmounted(() => crumb.clear());
           :class="{ active: run.id === selectedRunId }"
           data-test="run"
           :data-run-id="run.id"
+          :data-selected="run.id === selectedRunId"
           @click="selectRun(run.id)"
         >
           <span>{{ $t(`analysis.${run.trigger}`) }}</span>
