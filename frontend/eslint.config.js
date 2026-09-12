@@ -3,9 +3,9 @@ import globals from "globals";
 import pluginVue from "eslint-plugin-vue";
 
 export default [
-  { ignores: ["node_modules/**", "dist/**"] },
+  { ignores: ["node_modules/**", "dist/**", "playwright-report/**", "test-results/**"] },
   js.configs.recommended,
-  // Doğruluk kuralları (biçimlendirmeyi Prettier yönetir)
+  // Correctness rules only; Prettier owns formatting.
   ...pluginVue.configs["flat/essential"],
   {
     languageOptions: {
@@ -16,5 +16,10 @@ export default [
     rules: {
       "vue/multi-word-component-names": "off",
     },
+  },
+  // Build configuration and browser tests run in Node, not in the page.
+  {
+    files: ["*.config.js", "tests/**/*.js"],
+    languageOptions: { globals: { ...globals.node } },
   },
 ];

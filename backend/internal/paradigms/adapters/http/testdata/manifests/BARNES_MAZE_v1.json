@@ -1,0 +1,193 @@
+{
+  "key": "BARNES_MAZE",
+  "name": "Barnes maze",
+  "category": "LEARNING_MEMORY",
+  "species": [
+    "MOUSE",
+    "RAT"
+  ],
+  "trialTypes": [
+    "ACQUISITION",
+    "PROBE"
+  ],
+  "version": 1,
+  "metricEngineVersion": 1,
+  "resultSchemaVersion": 1,
+  "automatedAnalysis": false,
+  "apparatusParameters": [
+    {
+      "key": "platform_diameter_cm",
+      "label": "Platform diameter, used to review calibrated zones",
+      "unit": "cm",
+      "valueType": "number",
+      "min": 60,
+      "max": 150,
+      "default": 92
+    },
+    {
+      "key": "hole_count",
+      "label": "Number of holes, used to review calibrated zones",
+      "unit": "count",
+      "valueType": "integer",
+      "min": 12,
+      "max": 40,
+      "default": 20
+    }
+  ],
+  "sessionParameters": [
+    {
+      "key": "max_sample_gap_s",
+      "label": "Longest gap between samples that still counts as tracked",
+      "unit": "s",
+      "valueType": "number",
+      "min": 0.01,
+      "max": 5,
+      "default": 0.5
+    }
+  ],
+  "zones": [
+    {
+      "key": "target_hole",
+      "role": "TARGET",
+      "geometry": "The escape hole.",
+      "calibrated": true,
+      "required": true
+    },
+    {
+      "key": "holes",
+      "role": "ERROR",
+      "geometry": "Every other hole, one shape per hole.",
+      "calibrated": true,
+      "required": true
+    }
+  ],
+  "inputEvents": [],
+  "events": [
+    {
+      "type": "in_target_hole",
+      "kind": "INTERVAL",
+      "labels": [],
+      "single": false,
+      "definition": "Contiguous counted intervals whose earlier sample is in target_hole."
+    },
+    {
+      "type": "target_hole_entry",
+      "kind": "POINT",
+      "labels": [],
+      "single": false,
+      "definition": "Later sample time of a counted interval entering target_hole."
+    },
+    {
+      "type": "hole_error",
+      "kind": "POINT",
+      "labels": [],
+      "single": false,
+      "definition": "Later sample time of a counted interval entering a non-target hole."
+    }
+  ],
+  "metrics": [
+    {
+      "key": "duration_s",
+      "label": "Analyzed duration",
+      "unit": "s",
+      "valueType": "number",
+      "definition": "Samples and calibrated zone shapes use the same coordinates in centimeters; zones are evaluated independently and include their boundary. A counted interval is a pair of consecutive tracked samples with 0 \u003c dt \u003c= max_sample_gap_s.",
+      "formula": "sum(dt over counted intervals)",
+      "missingWhen": "Missing (NO_VALID_INTERVALS) when there is no counted interval.",
+      "inputs": [
+        "samples",
+        "max_sample_gap_s"
+      ],
+      "min": 0,
+      "max": 86400,
+      "tolerance": 0.000001
+    },
+    {
+      "key": "distance_cm",
+      "label": "Distance traveled",
+      "unit": "cm",
+      "valueType": "number",
+      "definition": "Path length over counted intervals.",
+      "formula": "sum(hypot(dx, dy))",
+      "missingWhen": "Missing (NO_VALID_INTERVALS) when there is no counted interval.",
+      "inputs": [
+        "samples",
+        "max_sample_gap_s"
+      ],
+      "min": 0,
+      "max": 1000000,
+      "tolerance": 0.000001
+    },
+    {
+      "key": "primary_latency_s",
+      "label": "Primary latency",
+      "unit": "s",
+      "valueType": "number",
+      "definition": "Time of the first tracked sample inside the zone, from the trial start. The zone is target_hole.",
+      "formula": "first tracked sample time in target_hole",
+      "missingWhen": "Missing (EVENT_NOT_OBSERVED) when no tracked sample is inside the zone; missing (NO_VALID_INTERVALS) without counted intervals.",
+      "inputs": [
+        "samples",
+        "max_sample_gap_s",
+        "calibrated target_hole and holes zones"
+      ],
+      "min": 0,
+      "max": 86400,
+      "tolerance": 0.000001
+    },
+    {
+      "key": "primary_errors_count",
+      "label": "Primary errors",
+      "unit": "count",
+      "valueType": "integer",
+      "definition": "Entries into non-target holes before the primary latency. Each hole is a separate zone, so re-entering a hole counts again. An entry is a counted interval whose earlier sample is outside the zone and whose later sample is inside.",
+      "formula": "count(hole entries before primary_latency_s)",
+      "missingWhen": "Missing (EVENT_NOT_OBSERVED) when the target is never reached; missing (NO_VALID_INTERVALS) without counted intervals.",
+      "inputs": [
+        "samples",
+        "max_sample_gap_s",
+        "calibrated target_hole and holes zones"
+      ],
+      "min": 0,
+      "max": 1000000,
+      "tolerance": 1e-9
+    },
+    {
+      "key": "total_errors_count",
+      "label": "Total errors",
+      "unit": "count",
+      "valueType": "integer",
+      "definition": "Entries into non-target holes over the whole trial.",
+      "formula": "count(hole entries)",
+      "missingWhen": "Missing (NO_VALID_INTERVALS) when there is no counted interval.",
+      "inputs": [
+        "samples",
+        "max_sample_gap_s",
+        "calibrated target_hole and holes zones"
+      ],
+      "min": 0,
+      "max": 1000000,
+      "tolerance": 1e-9
+    }
+  ],
+  "qc": [
+    {
+      "key": "min_tracking_confidence",
+      "operator": "\u003e=",
+      "value": 0.7,
+      "unit": "ratio"
+    },
+    {
+      "key": "max_lost_frame_ratio",
+      "operator": "\u003c=",
+      "value": 0.1,
+      "unit": "ratio"
+    },
+    {
+      "key": "max_calibration_error_cm",
+      "operator": "\u003c=",
+      "value": 2,
+      "unit": "cm"
+    }
+  ]
+}

@@ -1,9 +1,10 @@
 version: 2
 
 updates:
-  # ── Backend (npm) ──────────────────────────────────────────────
-  - package-ecosystem: npm
+  # ── Backend (Go) ──────────────────────────────────────────────
+  - package-ecosystem: gomod
     directory: /backend
+    target-branch: new-backend
     schedule:
       interval: weekly
     open-pull-requests-limit: 10

@@ -1,0 +1,10 @@
+[project]
+name = "misko-worker"
+version = "1.0.0"
+description = "Misko analysis worker for single-subject Open Field video"
+requires-python = ">=3.14"
+license = "MIT"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

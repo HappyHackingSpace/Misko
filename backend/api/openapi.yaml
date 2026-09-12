@@ -1,0 +1,3013 @@
+openapi: 3.1.0
+info:
+  title: Misko API
+  version: 0.2.0
+  description: >-
+    Health, authentication, user management and the laboratory singleton.
+    Every error response carries a stable `code` and an English `error` message.
+    401 means missing, invalid, expired or revoked credentials; 403 means the
+    current role lacks the permission. Roles are read from the database on every
+    request, never from the token.
+security:
+  - bearer: []
+paths:
+  /api/health:
+    get:
+      operationId: getLiveness
+      summary: Process liveness; independent of PostgreSQL
+      security: []
+      responses:
+        '200':
+          description: Process is accepting HTTP
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Probe'
+  /api/ready:
+    get:
+      operationId: getReadiness
+      summary: PostgreSQL schema is installed and the process is not draining
+      security: []
+      responses:
+        '200':
+          description: Ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Probe'
+        '503':
+          description: Dependency unavailable, schema missing, or process draining
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Probe'
+  /api/meta:
+    get:
+      operationId: getMeta
+      summary: Public branding for the sign-in screen
+      security: []
+      responses:
+        '200':
+          description: Application and laboratory name; labName is null before setup
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [appName, labName]
+                properties:
+                  appName: {type: string}
+                  labName: {type: [string, 'null']}
+  /api/auth/login:
+    post:
+      operationId: login
+      summary: Exchange email and password for a bearer token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [email, password]
+              properties:
+                email: {type: string}
+                password: {type: string}
+      responses:
+        '200':
+          $ref: '#/components/responses/Session'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          description: auth.invalidCredentials; unknown accounts and wrong passwords are indistinguishable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/auth/me:
+    get:
+      operationId: getCurrentUser
+      summary: Current user and the permissions of their current role
+      responses:
+        '200':
+          description: Current user
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [user, permissions]
+                properties:
+                  user:
+                    $ref: '#/components/schemas/User'
+                  permissions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Permission'
+        '401':
+          $ref: '#/components/responses/Problem'
+  /api/auth/password:
+    post:
+      operationId: changeOwnPassword
+      summary: Change the caller's password; all earlier tokens are revoked
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [currentPassword, newPassword]
+              properties:
+                currentPassword: {type: string}
+                newPassword:
+                  $ref: '#/components/schemas/NewPassword'
+      responses:
+        '200':
+          $ref: '#/components/responses/Session'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Problem'
+  /api/users:
+    get:
+      operationId: listUsers
+      summary: List users (user:manage)
+      parameters:
+        - {name: search, in: query, schema: {type: string, maxLength: 100}, description: Case-insensitive match on name or email}
+        - {name: role, in: query, schema: {$ref: '#/components/schemas/Role'}}
+        - {name: sort, in: query, schema: {type: string, enum: [name, email, role, createdAt], default: createdAt}}
+        - {name: order, in: query, schema: {type: string, enum: [asc, desc]}, description: Defaults to desc for createdAt and asc otherwise}
+        - {name: page, in: query, schema: {type: integer, minimum: 1, default: 1}}
+        - {name: pageSize, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 10}, description: Values above 100 are capped}
+      responses:
+        '200':
+          description: One page of users, ordered with id as a stable tie-breaker
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [data, total, page, pageSize]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/User'
+                  total: {type: integer}
+                  page: {type: integer}
+                  pageSize: {type: integer}
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+    post:
+      operationId: createUser
+      summary: Create a user (user:manage); there is no public signup
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [email, name, role]
+              properties:
+                email: {type: string, maxLength: 254}
+                name: {type: string, minLength: 1, maxLength: 120}
+                role:
+                  $ref: '#/components/schemas/Role'
+                password:
+                  $ref: '#/components/schemas/NewPassword'
+      responses:
+        '201':
+          description: Created; generatedPassword is present only when no password was supplied
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [user]
+                properties:
+                  user:
+                    $ref: '#/components/schemas/User'
+                  generatedPassword: {type: string}
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+  /api/users/{id}:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      operationId: getUser
+      summary: Get a user (user:manage)
+      responses:
+        '200':
+          $ref: '#/components/responses/User'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+    patch:
+      operationId: updateUser
+      summary: Rename a user or change their role (user:manage)
+      description: The last SUPERADMIN or LAB_MANAGER cannot be demoted to an unprivileged role (409 user.lastPrivileged).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              minProperties: 1
+              properties:
+                name: {type: string, minLength: 1, maxLength: 120}
+                role:
+                  $ref: '#/components/schemas/Role'
+      responses:
+        '200':
+          $ref: '#/components/responses/User'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+    delete:
+      operationId: deleteUser
+      summary: Delete a user (user:manage)
+      description: Users cannot delete themselves (400 user.cannotDeleteSelf) and the last privileged user remains (409 user.lastPrivileged).
+      responses:
+        '204':
+          description: Deleted; the user's tokens stop authenticating immediately
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+  /api/users/{id}/reset-password:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+    post:
+      operationId: resetUserPassword
+      summary: Set another user's password and revoke their tokens (user:manage)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                password:
+                  $ref: '#/components/schemas/NewPassword'
+      responses:
+        '200':
+          description: generatedPassword is present only when no password was supplied
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                properties:
+                  generatedPassword: {type: string}
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+  /api/lab:
+    get:
+      operationId: getLaboratory
+      summary: The laboratory singleton (*:read)
+      responses:
+        '200':
+          $ref: '#/components/responses/Laboratory'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+    patch:
+      operationId: updateLaboratory
+      summary: Update laboratory fields (lab:configure); an empty code clears it
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              minProperties: 1
+              properties:
+                name: {type: string, minLength: 1, maxLength: 120}
+                code: {type: string, pattern: '^[A-Za-z0-9._-]{0,32}$'}
+                timezone: {type: string, description: IANA time zone name}
+      responses:
+        '200':
+          $ref: '#/components/responses/Laboratory'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+  /api/subjects:
+    get:
+      operationId: listSubjects
+      summary: List subjects (*:read)
+      parameters:
+        - {name: search, in: query, schema: {type: string, maxLength: 100}, description: Case-insensitive match on code or strain}
+        - {name: species, in: query, schema: {$ref: '#/components/schemas/Species'}}
+        - {name: sex, in: query, schema: {$ref: '#/components/schemas/Sex'}}
+        - {name: sort, in: query, schema: {type: string, enum: [code, species, sex, birthDate, createdAt], default: createdAt}}
+        - {name: order, in: query, schema: {type: string, enum: [asc, desc]}, description: Defaults to desc for createdAt and asc otherwise}
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: One page of subjects, ordered with id as a stable tie-breaker
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, total, page, pageSize]
+                properties:
+                  data: {type: array, items: {$ref: '#/components/schemas/Subject'}}
+                  total: {type: integer}
+                  page: {type: integer}
+                  pageSize: {type: integer}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+    post:
+      operationId: createSubject
+      summary: Create a subject (subject:write)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/SubjectInput'}
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Subject'}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/subjects/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      operationId: getSubject
+      summary: Get a subject (*:read)
+      responses:
+        '200':
+          description: Subject
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Subject'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+    patch:
+      operationId: updateSubject
+      summary: Update provided subject fields (subject:write)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/SubjectPatch'}
+      responses:
+        '200':
+          description: Updated subject
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Subject'}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+    delete:
+      operationId: deleteSubject
+      summary: Delete a subject that is not enrolled (subject:write)
+      responses:
+        '204': {description: Deleted}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/subjects/{id}/enrollments:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      operationId: listSubjectEnrollments
+      summary: Every enrollment of a subject across experiments, newest first (*:read)
+      responses:
+        '200':
+          description: Enrollments; empty for an unknown subject
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: {type: array, items: {$ref: '#/components/schemas/Enrollment'}}
+        '401': {$ref: '#/components/responses/Problem'}
+  /api/experiments:
+    get:
+      operationId: listExperiments
+      summary: List experiments (*:read)
+      parameters:
+        - {name: search, in: query, schema: {type: string, maxLength: 100}, description: Case-insensitive match on code or title}
+        - {name: sort, in: query, schema: {type: string, enum: [code, title, createdAt], default: createdAt}}
+        - {name: order, in: query, schema: {type: string, enum: [asc, desc]}, description: Defaults to desc for createdAt and asc otherwise}
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: One page of experiments
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, total, page, pageSize]
+                properties:
+                  data: {type: array, items: {$ref: '#/components/schemas/Experiment'}}
+                  total: {type: integer}
+                  page: {type: integer}
+                  pageSize: {type: integer}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+    post:
+      operationId: createExperiment
+      summary: Create an experiment (study:write)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ExperimentInput'}
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Experiment'}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/experiments/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      operationId: getExperiment
+      summary: Experiment with its control requirement status (*:read)
+      responses:
+        '200':
+          description: Experiment
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ExperimentDetail'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+    patch:
+      operationId: updateExperiment
+      summary: Update provided experiment fields (study:write)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ExperimentPatch'}
+      responses:
+        '200':
+          description: Updated experiment
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Experiment'}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/experiments/{id}/phases:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      operationId: listPhases
+      summary: Measurement phases ordered by position (*:read)
+      responses:
+        '200':
+          description: Phases
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: {type: array, items: {$ref: '#/components/schemas/Phase'}}
+        '401': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+    post:
+      operationId: createPhase
+      summary: Add a measurement phase (study:write)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/PhaseInput'}
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Phase'}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/experiments/{id}/phases/{phaseId}:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+      - {name: phaseId, in: path, required: true, schema: {type: string, format: uuid}}
+    patch:
+      operationId: updatePhase
+      summary: Update a phase of this experiment (study:write); other experiments' phases are 404
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/PhasePatch'}
+      responses:
+        '200':
+          description: Updated phase
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Phase'}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+    delete:
+      operationId: deletePhase
+      summary: Delete a phase of this experiment (study:write)
+      responses:
+        '204': {description: Deleted}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+  /api/experiments/{id}/groups:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      operationId: listGroups
+      summary: Groups with target size and subjects assigned now (*:read)
+      responses:
+        '200':
+          description: Groups ordered by name
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: {type: array, items: {$ref: '#/components/schemas/GroupSize'}}
+        '401': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+    post:
+      operationId: createGroup
+      summary: Add a group (study:write)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/GroupInput'}
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Group'}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/experiments/{id}/groups/{groupId}:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+      - {name: groupId, in: path, required: true, schema: {type: string, format: uuid}}
+    patch:
+      operationId: updateGroup
+      summary: Update a group of this experiment (study:write); other experiments' groups are 404
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/GroupPatch'}
+      responses:
+        '200':
+          description: Updated group
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Group'}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+    delete:
+      operationId: deleteGroup
+      summary: Delete a group without assignments (study:write)
+      responses:
+        '204': {description: Deleted}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/experiments/{id}/enrollments:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      operationId: listEnrollments
+      summary: List enrollments of this experiment (*:read)
+      parameters:
+        - {name: subjectId, in: query, schema: {type: string, format: uuid}}
+        - {name: groupId, in: query, schema: {type: string, format: uuid}, description: Group assigned now}
+        - {name: order, in: query, schema: {type: string, enum: [asc, desc], default: desc}, description: By enrolledAt}
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: One page of enrollments
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, total, page, pageSize]
+                properties:
+                  data: {type: array, items: {$ref: '#/components/schemas/Enrollment'}}
+                  total: {type: integer}
+                  page: {type: integer}
+                  pageSize: {type: integer}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+    post:
+      operationId: enrollSubject
+      summary: Enroll a subject, optionally into an initial group (study:write)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/EnrollmentInput'}
+      responses:
+        '201':
+          description: Enrolled
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Enrollment'}
+        '400':
+          description: enrollment.subjectNotFound, assignment.groupNotInExperiment, common.invalidTime or validation errors
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/experiments/{id}/enrollments/{enrollmentId}:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+      - {name: enrollmentId, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      operationId: getEnrollment
+      summary: Enrollment with its full assignment history (*:read)
+      responses:
+        '200':
+          description: Enrollment
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/EnrollmentDetail'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+  /api/experiments/{id}/enrollments/{enrollmentId}/assignments:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+      - {name: enrollmentId, in: path, required: true, schema: {type: string, format: uuid}}
+    post:
+      operationId: assignGroup
+      summary: Move an enrolled subject to a group from effectiveFrom (study:write)
+      description: >-
+        The open assignment is closed at effectiveFrom and kept as history.
+        409 assignment.alreadyInGroup, assignment.outOfOrder or assignment.overlap;
+        400 assignment.groupNotInExperiment or assignment.beforeEnrollment.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/AssignmentInput'}
+      responses:
+        '201':
+          description: New assignment
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Assignment'}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/disease-models:
+    get:
+      operationId: listDiseaseModels
+      summary: Disease models ordered by name (*:read)
+      responses:
+        '200': {description: Disease models, content: {application/json: {schema: {$ref: '#/components/schemas/CatalogList'}}}}
+        '401': {$ref: '#/components/responses/Problem'}
+    post:
+      operationId: createDiseaseModel
+      summary: Create a disease model (study:write)
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CatalogInput'}}}}
+      responses:
+        '201': {description: Created, content: {application/json: {schema: {$ref: '#/components/schemas/CatalogEntry'}}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/disease-models/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    patch:
+      operationId: updateDiseaseModel
+      summary: Update a disease model (study:write); recorded conditions keep their original name
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CatalogPatch'}}}}
+      responses:
+        '200': {description: Updated, content: {application/json: {schema: {$ref: '#/components/schemas/CatalogEntry'}}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/substances:
+    get:
+      operationId: listSubstances
+      summary: Substances ordered by name (*:read)
+      responses:
+        '200': {description: Substances, content: {application/json: {schema: {$ref: '#/components/schemas/CatalogList'}}}}
+        '401': {$ref: '#/components/responses/Problem'}
+    post:
+      operationId: createSubstance
+      summary: Create a substance (study:write)
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CatalogInput'}}}}
+      responses:
+        '201': {description: Created, content: {application/json: {schema: {$ref: '#/components/schemas/CatalogEntry'}}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/substances/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    patch:
+      operationId: updateSubstance
+      summary: Update a substance (study:write); recorded administrations keep their original name
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CatalogPatch'}}}}
+      responses:
+        '200': {description: Updated, content: {application/json: {schema: {$ref: '#/components/schemas/CatalogEntry'}}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/experiments/{id}/intervention-plans:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      operationId: listInterventionPlans
+      summary: Intervention plans of this experiment (*:read)
+      responses:
+        '200':
+          description: Plans in creation order
+          content:
+            application/json:
+              schema: {type: object, required: [data], properties: {data: {type: array, items: {$ref: '#/components/schemas/InterventionPlan'}}}}
+        '401': {$ref: '#/components/responses/Problem'}
+    post:
+      operationId: createInterventionPlan
+      summary: Plan what a group should receive (study:write); records no administration
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/InterventionPlanInput'}}}}
+      responses:
+        '201': {description: Created, content: {application/json: {schema: {$ref: '#/components/schemas/InterventionPlan'}}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+  /api/experiments/{id}/intervention-plans/{planId}:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+      - {name: planId, in: path, required: true, schema: {type: string, format: uuid}}
+    patch:
+      operationId: updateInterventionPlan
+      summary: Update a plan (study:write); recorded administrations are unchanged
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/InterventionPlanPatch'}}}}
+      responses:
+        '200': {description: Updated, content: {application/json: {schema: {$ref: '#/components/schemas/InterventionPlan'}}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+  /api/subjects/{id}/weights:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      operationId: listWeights
+      summary: Body weights of a subject, newest first (*:read)
+      responses:
+        '200':
+          description: Weights
+          content:
+            application/json:
+              schema: {type: object, required: [data], properties: {data: {type: array, items: {$ref: '#/components/schemas/WeightMeasurement'}}}}
+        '401': {$ref: '#/components/responses/Problem'}
+    post:
+      operationId: recordWeight
+      summary: Record a body weight (weight:write)
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/WeightInput'}}}}
+      responses:
+        '201': {description: Recorded, content: {application/json: {schema: {$ref: '#/components/schemas/WeightMeasurement'}}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+  /api/subjects/{id}/conditions:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      operationId: listSubjectConditions
+      summary: Condition history (newest first) and current status per disease model (*:read)
+      parameters:
+        - {name: diseaseModelId, in: query, schema: {type: string, format: uuid}}
+      responses:
+        '200':
+          description: History and current conditions
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [history, current]
+                properties:
+                  history: {type: array, items: {$ref: '#/components/schemas/SubjectCondition'}}
+                  current: {type: array, items: {$ref: '#/components/schemas/SubjectCondition'}}
+        '401': {$ref: '#/components/responses/Problem'}
+    post:
+      operationId: recordCondition
+      summary: Record a condition observation (test:run); induction and confirmation are separate records
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/SubjectConditionInput'}}}}
+      responses:
+        '201': {description: Recorded, content: {application/json: {schema: {$ref: '#/components/schemas/SubjectCondition'}}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+  /api/conditions:
+    get:
+      operationId: listConditions
+      summary: Condition observations across subjects (*:read)
+      parameters:
+        - {name: diseaseModelId, in: query, schema: {type: string, format: uuid}}
+        - {name: status, in: query, schema: {$ref: '#/components/schemas/ConditionStatus'}}
+        - {name: current, in: query, schema: {type: boolean, default: false}, description: Only the latest observation per subject and disease model}
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: One page of observations, newest first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, total, page, pageSize]
+                properties:
+                  data: {type: array, items: {$ref: '#/components/schemas/SubjectCondition'}}
+                  total: {type: integer}
+                  page: {type: integer}
+                  pageSize: {type: integer}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+  /api/experiments/{id}/enrollments/{enrollmentId}/administrations:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+      - {name: enrollmentId, in: path, required: true, schema: {type: string, format: uuid}}
+    post:
+      operationId: recordAdministration
+      summary: Record an actual administration for an enrollment (test:run)
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/AdministrationInput'}}}}
+      responses:
+        '201': {description: Recorded, content: {application/json: {schema: {$ref: '#/components/schemas/Administration'}}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+  /api/subjects/{id}/administrations:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      operationId: listSubjectAdministrations
+      summary: Administration history of a subject, newest first (*:read)
+      parameters:
+        - $ref: '#/components/parameters/SubstanceFilter'
+        - $ref: '#/components/parameters/ExperimentFilter'
+        - $ref: '#/components/parameters/From'
+        - $ref: '#/components/parameters/To'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200': {description: One page of administrations, content: {application/json: {schema: {$ref: '#/components/schemas/AdministrationPage'}}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+  /api/administrations:
+    get:
+      operationId: listAdministrations
+      summary: Administrations across subjects, newest first (*:read)
+      parameters:
+        - $ref: '#/components/parameters/SubstanceFilter'
+        - $ref: '#/components/parameters/ExperimentFilter'
+        - $ref: '#/components/parameters/From'
+        - $ref: '#/components/parameters/To'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200': {description: One page of administrations, content: {application/json: {schema: {$ref: '#/components/schemas/AdministrationPage'}}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+  /api/paradigms:
+    get:
+      operationId: listParadigms
+      summary: Paradigms with their published versions (*:read); the catalog is read-only
+      responses:
+        '200':
+          description: Paradigms ordered by key
+          content:
+            application/json:
+              schema: {type: object, required: [data], properties: {data: {type: array, items: {$ref: '#/components/schemas/ParadigmSummary'}}}}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+  /api/paradigms/{key}:
+    parameters:
+      - $ref: '#/components/parameters/ParadigmKey'
+    get:
+      operationId: getLatestParadigm
+      summary: Manifest of the latest published version (*:read)
+      responses:
+        '200': {description: Manifest, content: {application/json: {schema: {$ref: '#/components/schemas/ParadigmManifest'}}}}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+  /api/paradigms/{key}/versions/{version}:
+    parameters:
+      - $ref: '#/components/parameters/ParadigmKey'
+      - {name: version, in: path, required: true, schema: {type: integer, minimum: 1}}
+    get:
+      operationId: getParadigmVersion
+      summary: Manifest of one published version, as consumed by analysis workers (*:read)
+      responses:
+        '200': {description: Manifest, content: {application/json: {schema: {$ref: '#/components/schemas/ParadigmManifest'}}}}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+  /api/environments:
+    get:
+      operationId: listEnvironments
+      summary: Environments ordered by name (*:read)
+      parameters:
+        - {name: paradigmKey, in: query, schema: {type: string, pattern: '^[A-Z][A-Z_]{0,39}$'}, description: Only environments of this paradigm}
+      responses:
+        '200':
+          description: Environments
+          content:
+            application/json:
+              schema: {type: object, required: [data], properties: {data: {type: array, items: {$ref: '#/components/schemas/Environment'}}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+    post:
+      operationId: createEnvironment
+      summary: Create an environment with its first revision (apparatus:write)
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/EnvironmentInput'}}}}
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [environment, revision]
+                properties:
+                  environment: {$ref: '#/components/schemas/Environment'}
+                  revision: {$ref: '#/components/schemas/EnvironmentRevision'}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/environments/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      operationId: getEnvironment
+      summary: One environment (*:read)
+      responses:
+        '200': {description: Environment, content: {application/json: {schema: {$ref: '#/components/schemas/Environment'}}}}
+        '401': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+    patch:
+      operationId: updateEnvironment
+      summary: Rename an environment or edit its notes (apparatus:write); measurements change only through revisions
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/EnvironmentPatch'}}}}
+      responses:
+        '200': {description: Updated, content: {application/json: {schema: {$ref: '#/components/schemas/Environment'}}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/environments/{id}/revisions:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      operationId: listEnvironmentRevisions
+      summary: Revisions of an environment, oldest first (*:read)
+      responses:
+        '200':
+          description: Revisions
+          content:
+            application/json:
+              schema: {type: object, required: [data], properties: {data: {type: array, items: {$ref: '#/components/schemas/EnvironmentRevision'}}}}
+        '401': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+    post:
+      operationId: createEnvironmentRevision
+      summary: Store new measurements as the next revision (apparatus:write); earlier revisions never change
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/EnvironmentRevisionInput'}}}}
+      responses:
+        '201': {description: Created, content: {application/json: {schema: {$ref: '#/components/schemas/EnvironmentRevision'}}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+  /api/environments/{id}/revisions/{number}:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+      - {name: number, in: path, required: true, schema: {type: integer, minimum: 1}}
+    get:
+      operationId: getEnvironmentRevision
+      summary: One revision by number (*:read)
+      responses:
+        '200': {description: Revision, content: {application/json: {schema: {$ref: '#/components/schemas/EnvironmentRevision'}}}}
+        '401': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+  /api/experiments/{id}/protocols:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      operationId: listProtocols
+      summary: Protocols of this experiment ordered by name (*:read)
+      responses:
+        '200':
+          description: Protocols
+          content:
+            application/json:
+              schema: {type: object, required: [data], properties: {data: {type: array, items: {$ref: '#/components/schemas/Protocol'}}}}
+        '401': {$ref: '#/components/responses/Problem'}
+    post:
+      operationId: createProtocol
+      summary: Create a protocol with its first version (apparatus:write)
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ProtocolInput'}}}}
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [protocol, version]
+                properties:
+                  protocol: {$ref: '#/components/schemas/Protocol'}
+                  version: {$ref: '#/components/schemas/ProtocolVersion'}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/experiments/{id}/protocols/{protocolId}:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+      - {name: protocolId, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      operationId: getProtocol
+      summary: One protocol of this experiment (*:read)
+      responses:
+        '200': {description: Protocol, content: {application/json: {schema: {$ref: '#/components/schemas/Protocol'}}}}
+        '401': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+    patch:
+      operationId: updateProtocol
+      summary: Rename a protocol or edit its description (apparatus:write); steps change only through versions
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ProtocolPatch'}}}}
+      responses:
+        '200': {description: Updated, content: {application/json: {schema: {$ref: '#/components/schemas/Protocol'}}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/experiments/{id}/protocols/{protocolId}/versions:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+      - {name: protocolId, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      operationId: listProtocolVersions
+      summary: Versions of a protocol with their steps, oldest first (*:read)
+      responses:
+        '200':
+          description: Versions
+          content:
+            application/json:
+              schema: {type: object, required: [data], properties: {data: {type: array, items: {$ref: '#/components/schemas/ProtocolVersion'}}}}
+        '401': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+    post:
+      operationId: createProtocolVersion
+      summary: Store the next version (apparatus:write); earlier versions never change
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ProtocolVersionInput'}}}}
+      responses:
+        '201': {description: Created, content: {application/json: {schema: {$ref: '#/components/schemas/ProtocolVersion'}}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+  /api/experiments/{id}/protocols/{protocolId}/versions/{number}:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+      - {name: protocolId, in: path, required: true, schema: {type: string, format: uuid}}
+      - {name: number, in: path, required: true, schema: {type: integer, minimum: 1}}
+    get:
+      operationId: getProtocolVersion
+      summary: One version with its steps (*:read)
+      responses:
+        '200': {description: Version, content: {application/json: {schema: {$ref: '#/components/schemas/ProtocolVersion'}}}}
+        '401': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+  /api/experiments/{id}/tests:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      operationId: listTests
+      summary: Tests of this experiment by scheduled time (*:read)
+      parameters:
+        - {name: subjectId, in: query, schema: {type: string, format: uuid}}
+        - {name: phaseId, in: query, schema: {type: string, format: uuid}}
+        - {name: status, in: query, schema: {$ref: '#/components/schemas/TestStatus'}}
+        - {name: paradigmKey, in: query, schema: {$ref: '#/components/schemas/ConstantKey'}}
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: Tests
+          content:
+            application/json:
+              schema: {type: object, required: [data, total, page, pageSize], properties: {data: {type: array, items: {$ref: '#/components/schemas/Test'}}, total: {type: integer}, page: {type: integer}, pageSize: {type: integer}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+    post:
+      operationId: createTest
+      summary: Plan a test of an enrolled subject on one protocol step (test:write)
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/TestInput'}}}}
+      responses:
+        '201': {description: Created, content: {application/json: {schema: {$ref: '#/components/schemas/Test'}}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+  /api/tests/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      operationId: getTest
+      summary: A test with its trials (*:read)
+      responses:
+        '200':
+          description: Test
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Test'
+                  - {type: object, required: [trials], properties: {trials: {type: array, items: {$ref: '#/components/schemas/Trial'}}}}
+        '401': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+  /api/tests/{id}/start:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    post:
+      operationId: startTest
+      summary: Start a planned test (test:run); the subject's group at the start must be the planned group
+      requestBody: {required: true, content: {application/json: {schema: {type: object, additionalProperties: false, properties: {startedAt: {type: string, format: date-time, description: Defaults to now}}}}}}
+      responses:
+        '200': {description: Started, content: {application/json: {schema: {$ref: '#/components/schemas/Test'}}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/tests/{id}/complete:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    post:
+      operationId: completeTest
+      summary: Complete a test in progress that has at least one trial (test:run)
+      requestBody: {required: true, content: {application/json: {schema: {type: object, additionalProperties: false, properties: {completedAt: {type: string, format: date-time, description: Defaults to now}}}}}}
+      responses:
+        '200': {description: Completed, content: {application/json: {schema: {$ref: '#/components/schemas/Test'}}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/tests/{id}/cancel:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    post:
+      operationId: cancelTest
+      summary: Cancel a planned test or one in progress (test:write); recorded trials are kept
+      requestBody: {required: true, content: {application/json: {schema: {type: object, additionalProperties: false, required: [reason], properties: {reason: {type: string, minLength: 1, maxLength: 2000}}}}}}
+      responses:
+        '200': {description: Cancelled, content: {application/json: {schema: {$ref: '#/components/schemas/Test'}}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/tests/{id}/trials:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      operationId: listTrials
+      summary: Trials of a test in recording order (*:read)
+      responses:
+        '200':
+          description: Trials
+          content:
+            application/json:
+              schema: {type: object, required: [data], properties: {data: {type: array, items: {$ref: '#/components/schemas/Trial'}}}}
+        '401': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+    post:
+      operationId: recordTrial
+      summary: Append a trial to a test in progress (test:run); repeating a repetition adds an attempt
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/TrialInput'}}}}
+      responses:
+        '201': {description: Recorded, content: {application/json: {schema: {$ref: '#/components/schemas/Trial'}}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/tests/{id}/comments:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      operationId: listTestComments
+      summary: Comments on a test, oldest first (any signed-in user)
+      responses:
+        '200':
+          description: Comments
+          content:
+            application/json:
+              schema: {type: object, required: [data], properties: {data: {type: array, items: {$ref: '#/components/schemas/Comment'}}}}
+        '401': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+    post:
+      operationId: createTestComment
+      summary: Comment on a test (any signed-in user, at most 20 comment changes per minute)
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CommentInput'}}}}
+      responses:
+        '201': {description: Created, content: {application/json: {schema: {$ref: '#/components/schemas/Comment'}}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '429': {$ref: '#/components/responses/Problem'}
+  /api/tests/{id}/comments/{commentId}:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+      - {name: commentId, in: path, required: true, schema: {type: string, format: uuid}}
+    patch:
+      operationId: updateTestComment
+      summary: Edit your own comment (author only; counts toward the comment limit)
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CommentInput'}}}}
+      responses:
+        '200': {description: Updated, content: {application/json: {schema: {$ref: '#/components/schemas/Comment'}}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '429': {$ref: '#/components/responses/Problem'}
+    delete:
+      operationId: deleteTestComment
+      summary: Delete a comment (its author, SUPERADMIN or LAB_MANAGER)
+      responses:
+        '204': {description: Deleted}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+  /api/tests/{id}/recordings:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      operationId: listRecordings
+      summary: Recordings of a test with their video status (*:read)
+      responses:
+        '200':
+          description: Recordings
+          content:
+            application/json:
+              schema: {type: object, required: [data], properties: {data: {type: array, items: {$ref: '#/components/schemas/Recording'}}}}
+        '401': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+    post:
+      operationId: startRecordingUpload
+      summary: Declare an original video and get a signed request that starts a resumable upload straight to Cloud Storage (test:run)
+      description: Send upload.method to upload.url with upload.headers to get the resumable session URI from Cloud Storage, upload the file to it, then call finalize. The signed request is returned once and never stored.
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/RecordingUploadInput'}}}}
+      responses:
+        '201':
+          description: Upload started
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [recording, upload]
+                properties:
+                  recording: {$ref: '#/components/schemas/Recording'}
+                  upload: {$ref: '#/components/schemas/SignedUpload'}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+        '503': {$ref: '#/components/responses/Problem'}
+  /api/tests/{id}/recordings/{recordingId}/finalize:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+      - {name: recordingId, in: path, required: true, schema: {type: string, format: uuid}}
+    post:
+      operationId: finalizeRecordingUpload
+      summary: Verify the stored object and record the result (test:run; the uploader, LAB_MANAGER or SUPERADMIN)
+      description: Size, CRC32C and content type are compared with the declaration. A mismatch stores status REJECTED with a reason. Finalizing again returns the stored result.
+      requestBody: {required: true, content: {application/json: {schema: {type: object, additionalProperties: false}}}}
+      responses:
+        '200': {description: Verified or rejected, content: {application/json: {schema: {$ref: '#/components/schemas/Recording'}}}}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+        '503': {$ref: '#/components/responses/Problem'}
+  /api/tests/{id}/recordings/{recordingId}/read-url:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+      - {name: recordingId, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      operationId: getRecordingReadUrl
+      summary: A short-lived signed URL for the verified video generation (*:read); supports HTTP range requests
+      responses:
+        '200':
+          description: Signed read URL
+          content:
+            application/json:
+              schema: {type: object, required: [url, expiresAt], properties: {url: {type: string, format: uri}, expiresAt: {type: string, format: date-time}}}
+        '401': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+        '503': {$ref: '#/components/responses/Problem'}
+  /api/tests/{id}/recordings/{recordingId}/calibrations:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+      - {name: recordingId, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      operationId: listCalibrations
+      summary: Calibrations of a recording, oldest first (*:read)
+      responses:
+        '200':
+          description: Calibrations
+          content:
+            application/json:
+              schema: {type: object, required: [data], properties: {data: {type: array, items: {$ref: '#/components/schemas/Calibration'}}}}
+        '401': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+    post:
+      operationId: createCalibration
+      summary: Fit a pixel-to-centimeter transform from FIT points and validate it with independent CHECK points (test:run)
+      description: The result is VALID, or REJECTED with EXCESSIVE_CHECK_ERROR when CHECK points deviate more than the paradigm's max_calibration_error_cm. A correction must supersede the latest calibration and use the same camera and frame size.
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CalibrationInput'}}}}
+      responses:
+        '201': {description: Stored, content: {application/json: {schema: {$ref: '#/components/schemas/Calibration'}}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/tests/{id}/recordings/{recordingId}/calibration-status:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+      - {name: recordingId, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      operationId: getCalibrationStatus
+      summary: Whether the recording can be analyzed into physical metrics (*:read)
+      responses:
+        '200':
+          description: Calibration status
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, calibration]
+                properties:
+                  status: {type: string, enum: [NOT_REQUIRED, WAITING_FOR_CALIBRATION, CALIBRATED], description: WAITING_FOR_CALIBRATION until the video is verified and its latest calibration is VALID}
+                  calibration: {oneOf: [{$ref: '#/components/schemas/Calibration'}, {type: 'null'}]}
+        '401': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+  /api/analysis/workers:
+    get:
+      operationId: listAnalysisWorkers
+      summary: Registered analysis workers (lab:configure)
+      responses:
+        '200':
+          description: Workers
+          content:
+            application/json:
+              schema: {type: object, required: [data], properties: {data: {type: array, items: {$ref: '#/components/schemas/AnalysisWorker'}}}}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+    post:
+      operationId: registerAnalysisWorker
+      summary: Register an analysis worker; the token is returned once (lab:configure)
+      description: Capabilities must name paradigm versions whose metrics the engine can compute from a trajectory alone, without scored observations or calibrated zone shapes; others return worker.unknownCapability.
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/AnalysisWorkerInput'}}}}
+      responses:
+        '201':
+          description: Registered
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [worker, token]
+                properties:
+                  worker: {$ref: '#/components/schemas/AnalysisWorker'}
+                  token: {type: string, description: 'Shown once; send as "Authorization: Worker TOKEN". Only its SHA-256 hash is stored.'}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/analysis/workers/{id}/disable:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    post:
+      operationId: disableAnalysisWorker
+      summary: Revoke a worker token; its running leases expire normally (lab:configure)
+      responses:
+        '200': {description: Disabled, content: {application/json: {schema: {$ref: '#/components/schemas/AnalysisWorker'}}}}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+  /api/analysis/capabilities:
+    get:
+      operationId: listAnalysisCapabilities
+      summary: Paradigm versions that enabled workers can analyze (*:read)
+      responses:
+        '200':
+          description: Capabilities
+          content:
+            application/json:
+              schema: {type: object, required: [data], properties: {data: {type: array, items: {$ref: '#/components/schemas/AnalysisCapability'}}}}
+        '401': {$ref: '#/components/responses/Problem'}
+  /api/tests/{id}/recordings/{recordingId}/analysis-runs:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+      - {name: recordingId, in: path, required: true, schema: {type: string, format: uuid}}
+    post:
+      operationId: reanalyzeRecording
+      summary: Queue a manual run with the current inputs; earlier runs are kept (test:run)
+      description: Returns analysis.notReady until the video is verified, the latest calibration is VALID when the paradigm requires one, and an enabled worker supports the paradigm version.
+      requestBody: {required: true, content: {application/json: {schema: {type: object, additionalProperties: false}}}}
+      responses:
+        '201': {description: Queued, content: {application/json: {schema: {$ref: '#/components/schemas/AnalysisRun'}}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/tests/{id}/analysis-runs:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      operationId: listAnalysisRuns
+      summary: Analysis runs of a test, oldest first (*:read)
+      responses:
+        '200':
+          description: Runs
+          content:
+            application/json:
+              schema: {type: object, required: [data], properties: {data: {type: array, items: {$ref: '#/components/schemas/AnalysisRun'}}}}
+        '401': {$ref: '#/components/responses/Problem'}
+  /api/analysis-runs/{runId}:
+    parameters:
+      - {name: runId, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      operationId: getAnalysisRun
+      summary: A run with its published result once it succeeded (*:read)
+      responses:
+        '200':
+          description: Run
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/AnalysisRun'
+                  - type: object
+                    required: [result]
+                    properties:
+                      result: {oneOf: [{$ref: '#/components/schemas/AnalysisResult'}, {type: 'null'}]}
+        '401': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+  /api/analysis-runs/{runId}/video-pair:
+    parameters:
+      - {name: runId, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      operationId: getAnalysisVideoPair
+      summary: Signed reads of the pinned original generation and this run's analyzed video (*:read)
+      responses:
+        '200':
+          description: Video pair
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [originalUrl, analyzedUrl, expiresAt, sourceVideoId, sourceGeneration, analyzedVideoId, analyzedGeneration, sourceOffsetUs, outputOffsetUs, timeMappingVersion]
+                properties:
+                  originalUrl: {type: string, format: uri}
+                  analyzedUrl: {type: string, format: uri}
+                  expiresAt: {type: string, format: date-time}
+                  sourceVideoId: {type: string, format: uuid}
+                  sourceGeneration: {type: string, pattern: '^[0-9]+$'}
+                  analyzedVideoId: {type: string, format: uuid}
+                  analyzedGeneration: {type: string, pattern: '^[0-9]+$'}
+                  sourceOffsetUs: {type: integer, format: int64, description: Original video time of analyzed time zero (the clip start)}
+                  outputOffsetUs: {type: integer, format: int64, description: Analyzed video time of analyzed time zero}
+                  timeMappingVersion: {type: string}
+        '401': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+        '503': {$ref: '#/components/responses/Problem'}
+  /api/worker/claim:
+    post:
+      operationId: claimAnalysisRun
+      summary: Lease the oldest available queued run this worker can analyze (worker token)
+      security: [{worker: []}]
+      requestBody: {required: true, content: {application/json: {schema: {type: object, additionalProperties: false}}}}
+      responses:
+        '200':
+          description: Claimed; attempt is the fencing token for every later call
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [run, outputPrefix, trajectorySchema, contract, calibration]
+                properties:
+                  run: {$ref: '#/components/schemas/AnalysisRun'}
+                  outputPrefix: {type: string, description: 'runs/{runId}/attempts/{attempt}/'}
+                  trajectorySchema: {type: string, enum: [misko.trajectory.v1], description: The trajectory format the result must upload}
+                  contract: {$ref: '#/components/schemas/AnalysisContract'}
+                  calibration:
+                    description: The run's pinned calibration, or null for paradigms without one
+                    oneOf:
+                      - type: 'null'
+                      - type: object
+                        required: [id, frameWidth, frameHeight, crop, measurementPlane, transform]
+                        properties:
+                          id: {type: string, format: uuid}
+                          frameWidth: {type: integer}
+                          frameHeight: {type: integer}
+                          crop: {$ref: '#/components/schemas/CalibrationCrop'}
+                          measurementPlane: {type: string, enum: [ARENA_FLOOR, WATER_SURFACE, APPARATUS_TOP]}
+                          transform: {type: array, minItems: 9, maxItems: 9, items: {type: number}, description: Row-major homography from full-frame pixels (top-left corner at 0,0) to arena centimeters}
+        '204': {description: No run is available}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '503': {$ref: '#/components/responses/Problem'}
+  /api/worker/runs/{runId}/heartbeat:
+    parameters:
+      - {name: runId, in: path, required: true, schema: {type: string, format: uuid}}
+    post:
+      operationId: heartbeatAnalysisRun
+      summary: Extend the lease of the current attempt (worker token)
+      security: [{worker: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/AnalysisAttempt'}}}}
+      responses:
+        '200': {description: Extended, content: {application/json: {schema: {$ref: '#/components/schemas/AnalysisRun'}}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/worker/runs/{runId}/source-url:
+    parameters:
+      - {name: runId, in: path, required: true, schema: {type: string, format: uuid}}
+    post:
+      operationId: getAnalysisSourceUrl
+      summary: Signed read of the pinned source generation (worker token)
+      security: [{worker: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/AnalysisAttempt'}}}}
+      responses:
+        '200':
+          description: Signed read URL
+          content:
+            application/json:
+              schema: {type: object, required: [url, expiresAt], properties: {url: {type: string, format: uri}, expiresAt: {type: string, format: date-time}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+        '503': {$ref: '#/components/responses/Problem'}
+  /api/worker/runs/{runId}/outputs:
+    parameters:
+      - {name: runId, in: path, required: true, schema: {type: string, format: uuid}}
+    post:
+      operationId: requestAnalysisOutput
+      summary: Declare an output of the current attempt and sign its upload (worker token)
+      security: [{worker: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/AnalysisOutputInput'}}}}
+      responses:
+        '201':
+          description: Declared
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [objectName, upload]
+                properties:
+                  objectName: {type: string}
+                  upload: {$ref: '#/components/schemas/SignedUpload'}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+        '503': {$ref: '#/components/responses/Problem'}
+  /api/worker/runs/{runId}/result:
+    parameters:
+      - {name: runId, in: path, required: true, schema: {type: string, format: uuid}}
+    post:
+      operationId: submitAnalysisResult
+      summary: Verify the outputs, compute metrics and events from the trajectory and publish them atomically (worker token)
+      description: >-
+        The API reads the verified TRAJECTORY object (misko.trajectory.v1 JSON, at most 64 MiB), checks it
+        belongs to this run, attempt and recording duration, applies the paradigm's measurable QC rules
+        (max_lost_frame_ratio against untracked samples, min_tracking_confidence against the mean confidence
+        of tracked samples) and runs the Go metric engine with the run's pinned parameters. A trajectory that
+        fails QC fails the run without retry and returns the FAILED run with a QC_FAILED reason. Delivering
+        the accepted result again returns the run without publishing anything new.
+      security: [{worker: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/AnalysisResultInput'}}}}
+      responses:
+        '200': {description: Published, content: {application/json: {schema: {$ref: '#/components/schemas/AnalysisRun'}}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+        '503': {$ref: '#/components/responses/Problem'}
+  /api/worker/runs/{runId}/failure:
+    parameters:
+      - {name: runId, in: path, required: true, schema: {type: string, format: uuid}}
+    post:
+      operationId: failAnalysisRun
+      summary: Report a failure of the current attempt (worker token)
+      description: A retryable failure returns the run to the queue while attempts remain; otherwise the run is FAILED.
+      security: [{worker: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [attempt, reason, retryable]
+              properties:
+                attempt: {type: integer, minimum: 1}
+                reason: {type: string, minLength: 1, maxLength: 2000}
+                retryable: {type: boolean}
+      responses:
+        '200': {description: Recorded, content: {application/json: {schema: {$ref: '#/components/schemas/AnalysisRun'}}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/reports/metrics:
+    get:
+      operationId: reportMetrics
+      summary: Published metric results with subject, test and run provenance (*:read)
+      description: Every filter is optional. selection=latest (default) keeps the newest succeeded run of each test per metric engine version, so reanalysis never counts a test twice; a runId reports that run even when it is superseded. Missing results keep a null value and their reason.
+      parameters:
+        - {name: experimentId, in: query, schema: {type: string, format: uuid}}
+        - {name: subjectId, in: query, schema: {type: string, format: uuid}}
+        - {name: groupId, in: query, schema: {type: string, format: uuid}, description: The group stored on the test}
+        - {name: phaseId, in: query, schema: {type: string, format: uuid}}
+        - {name: testId, in: query, schema: {type: string, format: uuid}}
+        - {name: environmentId, in: query, schema: {type: string, format: uuid}}
+        - {name: videoId, in: query, schema: {type: string, format: uuid}, description: Source video of the run}
+        - {name: runId, in: query, schema: {type: string, format: uuid}}
+        - {name: diseaseModelId, in: query, schema: {type: string, format: uuid}, description: Subjects with any recorded condition of this model}
+        - {name: substanceId, in: query, schema: {type: string, format: uuid}, description: Subjects that received the substance in the test's experiment}
+        - {name: paradigmKey, in: query, schema: {type: string, pattern: '^[A-Z][A-Z_]{0,39}$'}}
+        - {name: paradigmVersion, in: query, schema: {type: integer, minimum: 1}}
+        - {name: metricEngineVersion, in: query, schema: {type: integer, minimum: 1}}
+        - {name: selection, in: query, schema: {type: string, enum: [latest, all], default: latest}}
+        - {name: metricKey, in: query, schema: {type: string, pattern: '^[a-z][a-z0-9_]{0,79}$'}}
+        - {name: sort, in: query, schema: {type: string, enum: [scheduledAt, subjectCode, experimentCode, metricKey, value, runFinishedAt], default: scheduledAt}}
+        - {name: order, in: query, schema: {type: string, enum: [asc, desc], default: asc}}
+        - {name: page, in: query, schema: {type: integer, minimum: 1, default: 1}}
+        - {name: pageSize, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 20}, description: Values above 100 are capped}
+      responses:
+        '200':
+          description: Page of metric rows
+          content:
+            application/json:
+              schema: {type: object, required: [data, total, page, pageSize], properties: {data: {type: array, items: {$ref: '#/components/schemas/MetricReportRow'}}, total: {type: integer}, page: {type: integer}, pageSize: {type: integer}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+  /api/reports/metrics/export:
+    get:
+      operationId: exportMetricReport
+      summary: Every matching metric row as CSV or JSON, in the report order (*:read)
+      description: At most 100,000 rows; larger exports return report.exportTooLarge. CSV text cells starting with =, +, -, @, tab or carriage return are prefixed with an apostrophe.
+      parameters:
+        - {name: experimentId, in: query, schema: {type: string, format: uuid}}
+        - {name: subjectId, in: query, schema: {type: string, format: uuid}}
+        - {name: groupId, in: query, schema: {type: string, format: uuid}}
+        - {name: phaseId, in: query, schema: {type: string, format: uuid}}
+        - {name: testId, in: query, schema: {type: string, format: uuid}}
+        - {name: environmentId, in: query, schema: {type: string, format: uuid}}
+        - {name: videoId, in: query, schema: {type: string, format: uuid}}
+        - {name: runId, in: query, schema: {type: string, format: uuid}}
+        - {name: diseaseModelId, in: query, schema: {type: string, format: uuid}}
+        - {name: substanceId, in: query, schema: {type: string, format: uuid}}
+        - {name: paradigmKey, in: query, schema: {type: string}}
+        - {name: paradigmVersion, in: query, schema: {type: integer, minimum: 1}}
+        - {name: metricEngineVersion, in: query, schema: {type: integer, minimum: 1}}
+        - {name: selection, in: query, schema: {type: string, enum: [latest, all], default: latest}}
+        - {name: metricKey, in: query, schema: {type: string}}
+        - {name: sort, in: query, schema: {type: string, enum: [scheduledAt, subjectCode, experimentCode, metricKey, value, runFinishedAt], default: scheduledAt}}
+        - {name: order, in: query, schema: {type: string, enum: [asc, desc], default: asc}}
+        - {name: format, in: query, schema: {type: string, enum: [csv, json], default: csv}}
+      responses:
+        '200':
+          description: Export; CSV columns are the MetricReportRow properties in schema order
+          content:
+            text/csv: {schema: {type: string}}
+            application/json:
+              schema: {type: object, required: [data], properties: {data: {type: array, items: {$ref: '#/components/schemas/MetricReportRow'}}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+  /api/reports/events:
+    get:
+      operationId: reportEvents
+      summary: Published events with trial, test and run provenance (*:read)
+      parameters:
+        - {name: experimentId, in: query, schema: {type: string, format: uuid}}
+        - {name: subjectId, in: query, schema: {type: string, format: uuid}}
+        - {name: groupId, in: query, schema: {type: string, format: uuid}}
+        - {name: phaseId, in: query, schema: {type: string, format: uuid}}
+        - {name: testId, in: query, schema: {type: string, format: uuid}}
+        - {name: environmentId, in: query, schema: {type: string, format: uuid}}
+        - {name: videoId, in: query, schema: {type: string, format: uuid}}
+        - {name: runId, in: query, schema: {type: string, format: uuid}}
+        - {name: diseaseModelId, in: query, schema: {type: string, format: uuid}}
+        - {name: substanceId, in: query, schema: {type: string, format: uuid}}
+        - {name: paradigmKey, in: query, schema: {type: string}}
+        - {name: paradigmVersion, in: query, schema: {type: integer, minimum: 1}}
+        - {name: metricEngineVersion, in: query, schema: {type: integer, minimum: 1}}
+        - {name: selection, in: query, schema: {type: string, enum: [latest, all], default: latest}}
+        - {name: eventType, in: query, schema: {type: string, pattern: '^[a-z][a-z0-9_]{0,79}$'}}
+        - {name: sort, in: query, schema: {type: string, enum: [scheduledAt, subjectCode, eventType], default: scheduledAt}}
+        - {name: order, in: query, schema: {type: string, enum: [asc, desc], default: asc}}
+        - {name: page, in: query, schema: {type: integer, minimum: 1, default: 1}}
+        - {name: pageSize, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 20}}
+      responses:
+        '200':
+          description: Page of event rows
+          content:
+            application/json:
+              schema: {type: object, required: [data, total, page, pageSize], properties: {data: {type: array, items: {$ref: '#/components/schemas/EventReportRow'}}, total: {type: integer}, page: {type: integer}, pageSize: {type: integer}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+  /api/reports/events/export:
+    get:
+      operationId: exportEventReport
+      summary: Every matching event row as CSV or JSON (*:read)
+      description: Same filters and sorts as /api/reports/events, plus format; at most 100,000 rows.
+      parameters:
+        - {name: experimentId, in: query, schema: {type: string, format: uuid}}
+        - {name: testId, in: query, schema: {type: string, format: uuid}}
+        - {name: runId, in: query, schema: {type: string, format: uuid}}
+        - {name: eventType, in: query, schema: {type: string}}
+        - {name: selection, in: query, schema: {type: string, enum: [latest, all], default: latest}}
+        - {name: format, in: query, schema: {type: string, enum: [csv, json], default: csv}}
+      responses:
+        '200':
+          description: Export; CSV columns are the EventReportRow properties in schema order
+          content:
+            text/csv: {schema: {type: string}}
+            application/json:
+              schema: {type: object, required: [data], properties: {data: {type: array, items: {$ref: '#/components/schemas/EventReportRow'}}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+  /api/reports/metric-summary:
+    get:
+      operationId: summarizeMetric
+      summary: Compare the groups of one experiment on one metric (*:read)
+      description: >-
+        Uses the latest run of each test. Each subject contributes one value, the
+        mean of its tests, because repeated tests and trials of one animal are not
+        independent; n is the number of subjects with a value. Missing results are
+        counted per reason and never treated as zero. Results of different
+        paradigm versions, metric engine versions or units return 409
+        report.incompatibleVersions listing them; add paradigmVersion and
+        metricEngineVersion. Accepts the metric report filters except runId and selection.
+      parameters:
+        - {name: experimentId, in: query, required: true, schema: {type: string, format: uuid}}
+        - {name: metricKey, in: query, required: true, schema: {type: string}}
+        - {name: paradigmKey, in: query, schema: {type: string}}
+        - {name: paradigmVersion, in: query, schema: {type: integer, minimum: 1}}
+        - {name: metricEngineVersion, in: query, schema: {type: integer, minimum: 1}}
+        - {name: phaseId, in: query, schema: {type: string, format: uuid}}
+        - {name: environmentId, in: query, schema: {type: string, format: uuid}}
+      responses:
+        '200': {description: Group summary, content: {application/json: {schema: {$ref: '#/components/schemas/MetricSummary'}}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+components:
+  parameters:
+    ID: {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+    Page: {name: page, in: query, schema: {type: integer, minimum: 1, default: 1}}
+    PageSize: {name: pageSize, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 10}, description: Values above 100 are capped}
+    SubstanceFilter: {name: substanceId, in: query, schema: {type: string, format: uuid}}
+    ExperimentFilter: {name: experimentId, in: query, schema: {type: string, format: uuid}}
+    From: {name: from, in: query, schema: {type: string, format: date-time}, description: Inclusive lower bound on administeredAt}
+    To: {name: to, in: query, schema: {type: string, format: date-time}, description: Exclusive upper bound on administeredAt}
+    ParadigmKey: {name: key, in: path, required: true, schema: {type: string, pattern: '^[A-Z_]+$'}, example: OPEN_FIELD}
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: HS256 token with issuer, audience and expiry; see backend/README.md
+    worker:
+      type: apiKey
+      in: header
+      name: Authorization
+      description: '"Worker TOKEN" with the token returned when the worker was registered; accepted only on /api/worker routes'
+  responses:
+    Problem:
+      description: Error with a stable code
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Session:
+      description: Bearer token and the signed-in user
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: false
+            required: [token, tokenType, expiresAt, user]
+            properties:
+              token: {type: string}
+              tokenType: {type: string, enum: [Bearer]}
+              expiresAt: {type: string, format: date-time}
+              user:
+                $ref: '#/components/schemas/User'
+    User:
+      description: User
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/User'
+    Laboratory:
+      description: Laboratory
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: false
+            required: [name, code, timezone, createdAt, updatedAt]
+            properties:
+              name: {type: string}
+              code: {type: [string, 'null']}
+              timezone: {type: string}
+              createdAt: {type: string, format: date-time}
+              updatedAt: {type: string, format: date-time}
+  schemas:
+    Species: {type: string, enum: [MOUSE, RAT]}
+    Sex: {type: string, enum: [FEMALE, MALE, UNKNOWN]}
+    GroupRole: {type: string, enum: [CONTROL, TREATMENT]}
+    Code:
+      type: string
+      pattern: '^[A-Za-z0-9._/-]{1,64}$'
+      description: Unique ignoring case
+    Subject:
+      type: object
+      required: [id, code, species, sex, strain, birthDate, notes, createdAt, updatedAt]
+      properties:
+        id: {type: string, format: uuid}
+        code: {$ref: '#/components/schemas/Code'}
+        species: {$ref: '#/components/schemas/Species'}
+        sex: {$ref: '#/components/schemas/Sex'}
+        strain: {type: [string, 'null'], maxLength: 120}
+        birthDate: {type: [string, 'null'], format: date}
+        notes: {type: [string, 'null'], maxLength: 2000}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+    SubjectInput:
+      type: object
+      additionalProperties: false
+      required: [code, species, sex]
+      properties:
+        code: {$ref: '#/components/schemas/Code'}
+        species: {$ref: '#/components/schemas/Species'}
+        sex: {$ref: '#/components/schemas/Sex'}
+        strain: {type: string, maxLength: 120}
+        birthDate: {type: string, format: date, description: Not later than one day after the current UTC date}
+        notes: {type: string, maxLength: 2000}
+    SubjectPatch:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      description: Omitted fields are unchanged; an empty strain, birthDate or notes clears it
+      properties:
+        code: {$ref: '#/components/schemas/Code'}
+        species: {$ref: '#/components/schemas/Species'}
+        sex: {$ref: '#/components/schemas/Sex'}
+        strain: {type: string, maxLength: 120}
+        birthDate: {type: string, description: YYYY-MM-DD or empty}
+        notes: {type: string, maxLength: 2000}
+    Experiment:
+      type: object
+      required: [id, code, title, description, requiresControl, createdAt, updatedAt]
+      properties:
+        id: {type: string, format: uuid}
+        code: {$ref: '#/components/schemas/Code'}
+        title: {type: string, minLength: 1, maxLength: 200}
+        description: {type: [string, 'null'], maxLength: 5000}
+        requiresControl: {type: boolean}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+    ExperimentDetail:
+      allOf:
+        - $ref: '#/components/schemas/Experiment'
+        - type: object
+          required: [controlRequirementMet]
+          properties:
+            controlRequirementMet: {type: boolean, description: True unless a control group is required and none exists}
+    ExperimentInput:
+      type: object
+      additionalProperties: false
+      required: [code, title]
+      properties:
+        code: {$ref: '#/components/schemas/Code'}
+        title: {type: string, minLength: 1, maxLength: 200}
+        description: {type: string, maxLength: 5000}
+        requiresControl: {type: boolean, default: false}
+    ExperimentPatch:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      description: Omitted fields are unchanged; an empty description clears it
+      properties:
+        code: {$ref: '#/components/schemas/Code'}
+        title: {type: string, minLength: 1, maxLength: 200}
+        description: {type: string, maxLength: 5000}
+        requiresControl: {type: boolean}
+    Phase:
+      type: object
+      required: [id, experimentId, name, position, description, createdAt, updatedAt]
+      properties:
+        id: {type: string, format: uuid}
+        experimentId: {type: string, format: uuid}
+        name: {type: string, description: Unique within the experiment ignoring case}
+        position: {type: integer, minimum: 1, maximum: 1000, description: Unique within the experiment}
+        description: {type: [string, 'null']}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+    PhaseInput:
+      type: object
+      additionalProperties: false
+      required: [name, position]
+      properties:
+        name: {type: string, minLength: 1, maxLength: 120}
+        position: {type: integer, minimum: 1, maximum: 1000}
+        description: {type: string, maxLength: 5000}
+    PhasePatch:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        name: {type: string, minLength: 1, maxLength: 120}
+        position: {type: integer, minimum: 1, maximum: 1000}
+        description: {type: string, maxLength: 5000}
+    Group:
+      type: object
+      required: [id, experimentId, name, role, targetSize, description, createdAt, updatedAt]
+      properties:
+        id: {type: string, format: uuid}
+        experimentId: {type: string, format: uuid}
+        name: {type: string, description: Unique within the experiment ignoring case}
+        role: {$ref: '#/components/schemas/GroupRole'}
+        targetSize: {type: [integer, 'null'], minimum: 1}
+        description: {type: [string, 'null']}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+    GroupSize:
+      allOf:
+        - $ref: '#/components/schemas/Group'
+        - type: object
+          required: [activeSubjects]
+          properties:
+            activeSubjects: {type: integer, description: Assignments active at the database clock}
+    GroupInput:
+      type: object
+      additionalProperties: false
+      required: [name, role]
+      properties:
+        name: {type: string, minLength: 1, maxLength: 120}
+        role: {$ref: '#/components/schemas/GroupRole'}
+        targetSize: {type: integer, minimum: 0, maximum: 100000, description: 0 means no target}
+        description: {type: string, maxLength: 5000}
+    GroupPatch:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      description: Omitted fields are unchanged; targetSize 0 removes the target
+      properties:
+        name: {type: string, minLength: 1, maxLength: 120}
+        role: {$ref: '#/components/schemas/GroupRole'}
+        targetSize: {type: integer, minimum: 0, maximum: 100000}
+        description: {type: string, maxLength: 5000}
+    Enrollment:
+      type: object
+      required: [id, experimentId, subjectId, enrolledAt, currentGroupId, createdAt]
+      properties:
+        id: {type: string, format: uuid}
+        experimentId: {type: string, format: uuid}
+        subjectId: {type: string, format: uuid}
+        enrolledAt: {type: string, format: date-time}
+        currentGroupId: {type: [string, 'null'], format: uuid, description: Group assigned now}
+        createdAt: {type: string, format: date-time}
+    EnrollmentDetail:
+      allOf:
+        - $ref: '#/components/schemas/Enrollment'
+        - type: object
+          required: [assignments]
+          properties:
+            assignments: {type: array, items: {$ref: '#/components/schemas/Assignment'}, description: Oldest first}
+    EnrollmentInput:
+      type: object
+      additionalProperties: false
+      required: [subjectId, enrolledAt]
+      properties:
+        subjectId: {type: string, format: uuid}
+        enrolledAt: {type: string, format: date-time}
+        groupId: {type: string, format: uuid, description: Initial group starting at enrolledAt}
+    Assignment:
+      type: object
+      required: [id, groupId, validFrom, validTo, createdAt]
+      properties:
+        id: {type: string, format: uuid}
+        groupId: {type: string, format: uuid}
+        validFrom: {type: string, format: date-time}
+        validTo: {type: [string, 'null'], format: date-time, description: Exclusive end; null while open}
+        createdAt: {type: string, format: date-time}
+    AssignmentInput:
+      type: object
+      additionalProperties: false
+      required: [groupId, effectiveFrom]
+      properties:
+        groupId: {type: string, format: uuid}
+        effectiveFrom: {type: string, format: date-time}
+    CatalogEntry:
+      type: object
+      required: [id, name, description, createdAt, updatedAt]
+      properties:
+        id: {type: string, format: uuid}
+        name: {type: string, description: Unique ignoring case}
+        description: {type: [string, 'null']}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+    CatalogList:
+      type: object
+      required: [data]
+      properties:
+        data: {type: array, items: {$ref: '#/components/schemas/CatalogEntry'}}
+    CatalogInput:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name: {type: string, minLength: 1, maxLength: 120}
+        description: {type: string, maxLength: 5000}
+    CatalogPatch:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        name: {type: string, minLength: 1, maxLength: 120}
+        description: {type: string, maxLength: 5000, description: Empty clears it}
+    Amount:
+      type: string
+      pattern: '^[0-9]{1,9}(\.[0-9]{1,6})?$'
+      description: Positive decimal, stored exactly
+    DoseUnit:
+      type: string
+      enum: [mg, ug, g, mL, uL, IU, mg/kg, ug/kg, IU/kg]
+    AdministrationRoute:
+      type: string
+      enum: [ORAL, INTRAPERITONEAL, SUBCUTANEOUS, INTRAVENOUS, INTRAMUSCULAR, INTRANASAL, INTRACEREBROVENTRICULAR, TOPICAL, INHALATION]
+    Dose:
+      type: object
+      required: [amount, unit]
+      properties:
+        amount: {$ref: '#/components/schemas/Amount'}
+        unit: {$ref: '#/components/schemas/DoseUnit'}
+    InterventionPlan:
+      type: object
+      required: [id, experimentId, groupId, phaseId, substanceId, dose, route, schedule, notes, createdAt, updatedAt]
+      properties:
+        id: {type: string, format: uuid}
+        experimentId: {type: string, format: uuid}
+        groupId: {type: string, format: uuid}
+        phaseId: {type: [string, 'null'], format: uuid}
+        substanceId: {type: string, format: uuid}
+        dose: {$ref: '#/components/schemas/Dose'}
+        route: {$ref: '#/components/schemas/AdministrationRoute'}
+        schedule: {type: string}
+        notes: {type: [string, 'null']}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+    InterventionPlanInput:
+      type: object
+      additionalProperties: false
+      required: [groupId, substanceId, amount, unit, route, schedule]
+      properties:
+        groupId: {type: string, format: uuid}
+        phaseId: {type: string, format: uuid}
+        substanceId: {type: string, format: uuid}
+        amount: {$ref: '#/components/schemas/Amount'}
+        unit: {$ref: '#/components/schemas/DoseUnit'}
+        route: {$ref: '#/components/schemas/AdministrationRoute'}
+        schedule: {type: string, minLength: 1, maxLength: 500}
+        notes: {type: string, maxLength: 2000}
+    InterventionPlanPatch:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      description: amount and unit must be sent together
+      properties:
+        amount: {$ref: '#/components/schemas/Amount'}
+        unit: {$ref: '#/components/schemas/DoseUnit'}
+        route: {$ref: '#/components/schemas/AdministrationRoute'}
+        schedule: {type: string, minLength: 1, maxLength: 500}
+        notes: {type: string, maxLength: 2000}
+    WeightMeasurement:
+      type: object
+      required: [id, subjectId, grams, measuredAt, recordedBy, createdAt]
+      properties:
+        id: {type: string, format: uuid}
+        subjectId: {type: string, format: uuid}
+        grams: {type: string, description: Up to 3 decimals}
+        measuredAt: {type: string, format: date-time}
+        recordedBy: {type: string, format: uuid}
+        createdAt: {type: string, format: date-time}
+    WeightInput:
+      type: object
+      additionalProperties: false
+      required: [grams, measuredAt]
+      properties:
+        grams: {type: string, pattern: '^[0-9]{1,4}(\.[0-9]{1,3})?$', description: Between 0.001 and 5000}
+        measuredAt: {type: string, format: date-time, description: Not in the future}
+    ConditionStatus:
+      type: string
+      enum: [INDUCED, CONFIRMED, NOT_CONFIRMED, RESOLVED]
+    SubjectCondition:
+      type: object
+      required: [id, subjectId, diseaseModelId, diseaseModelName, enrollmentId, status, observedAt, notes, recordedBy, createdAt]
+      properties:
+        id: {type: string, format: uuid}
+        subjectId: {type: string, format: uuid}
+        diseaseModelId: {type: string, format: uuid}
+        diseaseModelName: {type: string, description: Name when the observation was recorded}
+        enrollmentId: {type: [string, 'null'], format: uuid}
+        status: {$ref: '#/components/schemas/ConditionStatus'}
+        observedAt: {type: string, format: date-time}
+        notes: {type: [string, 'null']}
+        recordedBy: {type: string, format: uuid}
+        createdAt: {type: string, format: date-time}
+    SubjectConditionInput:
+      type: object
+      additionalProperties: false
+      required: [diseaseModelId, status, observedAt]
+      properties:
+        diseaseModelId: {type: string, format: uuid}
+        status: {$ref: '#/components/schemas/ConditionStatus'}
+        observedAt: {type: string, format: date-time, description: Not in the future}
+        enrollmentId: {type: string, format: uuid, description: Must belong to the same subject}
+        notes: {type: string, maxLength: 2000}
+    Administration:
+      type: object
+      required: [id, experimentId, enrollmentId, subjectId, substanceId, substanceName, planId, weightMeasurementId, bodyWeightGrams, dose, absoluteDose, route, administeredAt, notes, recordedBy, createdAt]
+      properties:
+        id: {type: string, format: uuid}
+        experimentId: {type: string, format: uuid}
+        enrollmentId: {type: string, format: uuid}
+        subjectId: {type: string, format: uuid}
+        substanceId: {type: string, format: uuid}
+        substanceName: {type: string, description: Name when the administration was recorded}
+        planId: {type: [string, 'null'], format: uuid}
+        weightMeasurementId: {type: [string, 'null'], format: uuid}
+        bodyWeightGrams: {type: [string, 'null'], description: Weight used for a per-kilogram dose}
+        dose: {$ref: '#/components/schemas/Dose'}
+        absoluteDose:
+          description: Dose multiplied by body mass for per-kilogram units, rounded half up to 6 decimals; equal to dose otherwise
+          oneOf:
+            - $ref: '#/components/schemas/Dose'
+            - type: 'null'
+        route: {$ref: '#/components/schemas/AdministrationRoute'}
+        administeredAt: {type: string, format: date-time}
+        notes: {type: [string, 'null']}
+        recordedBy: {type: string, format: uuid}
+        createdAt: {type: string, format: date-time}
+    AdministrationInput:
+      type: object
+      additionalProperties: false
+      required: [substanceId, amount, unit, route, administeredAt]
+      properties:
+        substanceId: {type: string, format: uuid}
+        planId: {type: string, format: uuid, description: Same experiment and substance; the subject must be in the plan's group at administeredAt}
+        weightMeasurementId: {type: string, format: uuid, description: Required for per-kilogram units; same subject, measured within the 7 days before}
+        amount: {$ref: '#/components/schemas/Amount'}
+        unit: {$ref: '#/components/schemas/DoseUnit'}
+        route: {$ref: '#/components/schemas/AdministrationRoute'}
+        administeredAt: {type: string, format: date-time, description: Not before enrollment and not in the future}
+        notes: {type: string, maxLength: 2000}
+    AdministrationPage:
+      type: object
+      required: [data, total, page, pageSize]
+      properties:
+        data: {type: array, items: {$ref: '#/components/schemas/Administration'}}
+        total: {type: integer}
+        page: {type: integer}
+        pageSize: {type: integer}
+    ParadigmSummary:
+      type: object
+      required: [key, name, category, species, versions, latestVersion, automatedAnalysis]
+      properties:
+        key: {type: string}
+        name: {type: string}
+        category: {type: string, enum: [LEARNING_MEMORY, ANXIETY, MOTOR, SOCIAL]}
+        species: {type: array, items: {type: string}}
+        versions: {type: array, items: {type: integer}}
+        latestVersion: {type: integer}
+        automatedAnalysis: {type: boolean, description: Whether a real analysis worker supports this paradigm; catalog presence alone does not}
+    ParadigmParameter:
+      type: object
+      required: [key, label, unit, valueType, min, max, default]
+      properties:
+        key: {type: string}
+        label: {type: string}
+        unit: {type: string, enum: [cm, cm_s, s, count, ratio, rpm, boolean]}
+        valueType: {type: string, enum: [number, integer], description: Integer parameters accept whole numbers only; booleans are 0 or 1}
+        min: {type: number}
+        max: {type: number}
+        default: {type: number}
+    ParadigmMetric:
+      type: object
+      required: [key, label, unit, valueType, definition, formula, missingWhen, inputs, min, max, tolerance]
+      properties:
+        key: {type: string}
+        label: {type: string}
+        unit: {type: string, enum: [cm, cm_s, s, count, ratio, rpm, boolean]}
+        valueType: {type: string, enum: [number, integer]}
+        definition: {type: string}
+        formula: {type: string}
+        missingWhen: {type: string, description: When the metric is reported missing instead of a value}
+        inputs: {type: array, items: {type: string}}
+        min: {type: number}
+        max: {type: number}
+        tolerance: {type: number, description: Absolute tolerance in the metric unit}
+    ParadigmEvent:
+      type: object
+      required: [type, kind, labels, single, definition]
+      properties:
+        type: {type: string}
+        kind: {type: string, enum: [INTERVAL, POINT]}
+        labels: {type: array, items: {type: string}, description: Allowed labels; empty when the event takes no label}
+        single: {type: boolean, description: The event may occur at most once per trial}
+        definition: {type: string}
+    ParadigmManifest:
+      type: object
+      required: [key, name, category, species, trialTypes, version, metricEngineVersion, resultSchemaVersion, automatedAnalysis, apparatusParameters, sessionParameters, zones, inputEvents, events, metrics, qc]
+      properties:
+        key: {type: string}
+        name: {type: string}
+        category: {type: string}
+        species: {type: array, items: {type: string}}
+        trialTypes: {type: array, items: {type: string}}
+        version: {type: integer, description: ParadigmVersion; a published version never changes}
+        metricEngineVersion: {type: integer}
+        resultSchemaVersion: {type: integer}
+        automatedAnalysis: {type: boolean}
+        apparatusParameters: {type: array, items: {$ref: '#/components/schemas/ParadigmParameter'}}
+        sessionParameters: {type: array, items: {$ref: '#/components/schemas/ParadigmParameter'}}
+        zones:
+          type: array
+          items:
+            type: object
+            required: [key, role, geometry, calibrated, required]
+            properties:
+              key: {type: string}
+              role: {type: string}
+              geometry: {type: string}
+              calibrated: {type: boolean, description: Shapes come with the analysis input (per-video calibration) instead of being derived from parameters}
+              required: {type: boolean}
+        inputEvents:
+          type: array
+          description: Scored observations the metric engine consumes
+          items: {$ref: '#/components/schemas/ParadigmEvent'}
+        events:
+          type: array
+          description: Intervals and points the metric engine derives
+          items: {$ref: '#/components/schemas/ParadigmEvent'}
+        metrics: {type: array, items: {$ref: '#/components/schemas/ParadigmMetric'}}
+        qc:
+          type: array
+          items: {type: object, required: [key, operator, value, unit], properties: {key: {type: string}, operator: {type: string}, value: {type: number}, unit: {type: string}}}
+    ParameterValues:
+      type: object
+      additionalProperties: {type: number}
+      description: Parameter values by key, in the units of the paradigm manifest
+    ConstantKey: {type: string, pattern: '^[A-Z][A-Z_]{0,39}$'}
+    Environment:
+      type: object
+      required: [id, name, paradigmKey, notes, latestRevision, createdAt, updatedAt]
+      properties:
+        id: {type: string, format: uuid}
+        name: {type: string}
+        paradigmKey: {$ref: '#/components/schemas/ConstantKey'}
+        notes: {type: [string, 'null']}
+        latestRevision: {type: integer, minimum: 1}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+    EnvironmentRevision:
+      type: object
+      required: [id, environmentId, number, paradigmKey, paradigmVersion, apparatus, notes, createdBy, createdAt]
+      description: Immutable measurements validated against one paradigm version
+      properties:
+        id: {type: string, format: uuid}
+        environmentId: {type: string, format: uuid}
+        number: {type: integer, minimum: 1}
+        paradigmKey: {$ref: '#/components/schemas/ConstantKey'}
+        paradigmVersion: {type: integer, minimum: 1}
+        apparatus: {$ref: '#/components/schemas/ParameterValues'}
+        notes: {type: [string, 'null']}
+        createdBy: {type: string, format: uuid}
+        createdAt: {type: string, format: date-time}
+    EnvironmentRevisionInput:
+      type: object
+      additionalProperties: false
+      required: [paradigmVersion, apparatus]
+      properties:
+        paradigmVersion: {type: integer, minimum: 1}
+        apparatus:
+          allOf: [{$ref: '#/components/schemas/ParameterValues'}]
+          description: Every apparatus parameter of the paradigm version, within range and consistent; no measurement is defaulted
+        notes: {type: string, maxLength: 2000}
+    EnvironmentInput:
+      type: object
+      additionalProperties: false
+      required: [name, paradigmKey, revision]
+      properties:
+        name: {type: string, minLength: 1, maxLength: 120}
+        paradigmKey: {$ref: '#/components/schemas/ConstantKey'}
+        notes: {type: string, maxLength: 2000}
+        revision: {$ref: '#/components/schemas/EnvironmentRevisionInput'}
+    EnvironmentPatch:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      description: An empty notes value clears the notes
+      properties:
+        name: {type: string, minLength: 1, maxLength: 120}
+        notes: {type: string, maxLength: 2000}
+    Protocol:
+      type: object
+      required: [id, experimentId, name, description, latestVersion, createdAt, updatedAt]
+      properties:
+        id: {type: string, format: uuid}
+        experimentId: {type: string, format: uuid}
+        name: {type: string}
+        description: {type: [string, 'null']}
+        latestVersion: {type: integer, minimum: 1}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+    ProtocolStep:
+      type: object
+      required: [position, paradigmKey, paradigmVersion, environmentId, environmentRevision, environmentRevisionId, trialType, trials, interTrialIntervalS, session, notes]
+      properties:
+        position: {type: integer, minimum: 1, maximum: 50}
+        paradigmKey: {$ref: '#/components/schemas/ConstantKey'}
+        paradigmVersion: {type: integer, minimum: 1}
+        environmentId: {type: string, format: uuid}
+        environmentRevision: {type: integer, minimum: 1, description: Number of the referenced revision}
+        environmentRevisionId: {type: string, format: uuid}
+        trialType: {$ref: '#/components/schemas/ConstantKey'}
+        trials: {type: integer, minimum: 1, maximum: 1000}
+        interTrialIntervalS: {type: integer, minimum: 0, maximum: 86400}
+        session:
+          allOf: [{$ref: '#/components/schemas/ParameterValues'}]
+          description: Every session parameter of the paradigm version, with defaults filled in
+        notes: {type: [string, 'null']}
+    ProtocolStepInput:
+      type: object
+      additionalProperties: false
+      required: [position, paradigmKey, paradigmVersion, environmentRevisionId, trialType, trials]
+      properties:
+        position: {type: integer, minimum: 1, maximum: 50, description: Positions run from 1 without gaps or duplicates}
+        paradigmKey: {$ref: '#/components/schemas/ConstantKey'}
+        paradigmVersion: {type: integer, minimum: 1}
+        environmentRevisionId: {type: string, format: uuid, description: A revision set up for the same paradigm key and version}
+        trialType: {$ref: '#/components/schemas/ConstantKey'}
+        trials: {type: integer, minimum: 1, maximum: 1000}
+        interTrialIntervalS: {type: integer, minimum: 0, maximum: 86400, default: 0}
+        session:
+          allOf: [{$ref: '#/components/schemas/ParameterValues'}]
+          description: Session parameters of the paradigm version; omitted ones take their defaults
+        notes: {type: string, maxLength: 2000}
+    ProtocolVersion:
+      type: object
+      required: [id, experimentId, protocolId, number, notes, createdBy, createdAt, steps]
+      description: Immutable; tests reference a fixed version
+      properties:
+        id: {type: string, format: uuid}
+        experimentId: {type: string, format: uuid}
+        protocolId: {type: string, format: uuid}
+        number: {type: integer, minimum: 1}
+        notes: {type: [string, 'null']}
+        createdBy: {type: string, format: uuid}
+        createdAt: {type: string, format: date-time}
+        steps: {type: array, items: {$ref: '#/components/schemas/ProtocolStep'}}
+    ProtocolVersionInput:
+      type: object
+      additionalProperties: false
+      required: [steps]
+      properties:
+        notes: {type: string, maxLength: 2000}
+        steps: {type: array, minItems: 1, maxItems: 50, items: {$ref: '#/components/schemas/ProtocolStepInput'}}
+    ProtocolInput:
+      type: object
+      additionalProperties: false
+      required: [name, version]
+      properties:
+        name: {type: string, minLength: 1, maxLength: 120}
+        description: {type: string, maxLength: 5000}
+        version: {$ref: '#/components/schemas/ProtocolVersionInput'}
+    ProtocolPatch:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      description: An empty description clears it
+      properties:
+        name: {type: string, minLength: 1, maxLength: 120}
+        description: {type: string, maxLength: 5000}
+    TestStatus: {type: string, enum: [PLANNED, IN_PROGRESS, COMPLETED, CANCELLED]}
+    Test:
+      type: object
+      required: [id, experimentId, enrollmentId, subjectId, phaseId, groupId, protocolVersionId, stepPosition, paradigmKey, paradigmVersion, environmentRevisionId, plannedTrials, status, scheduledAt, startedAt, completedAt, cancelledAt, cancelReason, notes, createdBy, createdAt, updatedAt]
+      description: One session of a subject on one protocol step. Context fields never change; status is the session's own lifecycle, separate from analysis.
+      properties:
+        id: {type: string, format: uuid}
+        experimentId: {type: string, format: uuid}
+        enrollmentId: {type: string, format: uuid}
+        subjectId: {type: string, format: uuid}
+        phaseId: {type: [string, 'null'], format: uuid}
+        groupId: {type: [string, 'null'], format: uuid, description: The subject's group at the scheduled time}
+        protocolVersionId: {type: string, format: uuid}
+        stepPosition: {type: integer, minimum: 1}
+        paradigmKey: {$ref: '#/components/schemas/ConstantKey'}
+        paradigmVersion: {type: integer, minimum: 1}
+        environmentRevisionId: {type: string, format: uuid}
+        plannedTrials: {type: integer, minimum: 1}
+        status: {$ref: '#/components/schemas/TestStatus'}
+        scheduledAt: {type: string, format: date-time}
+        startedAt: {type: [string, 'null'], format: date-time}
+        completedAt: {type: [string, 'null'], format: date-time}
+        cancelledAt: {type: [string, 'null'], format: date-time}
+        cancelReason: {type: [string, 'null']}
+        notes: {type: [string, 'null']}
+        createdBy: {type: string, format: uuid}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+    TestInput:
+      type: object
+      additionalProperties: false
+      required: [enrollmentId, protocolVersionId, stepPosition, scheduledAt]
+      properties:
+        enrollmentId: {type: string, format: uuid, description: An enrollment of this experiment; the subject comes from it}
+        phaseId: {type: string, format: uuid}
+        protocolVersionId: {type: string, format: uuid, description: A protocol version of this experiment}
+        stepPosition: {type: integer, minimum: 1}
+        scheduledAt: {type: string, format: date-time, description: Not before the enrollment}
+        notes: {type: string, maxLength: 2000}
+    Trial:
+      type: object
+      required: [id, testId, number, repetition, attempt, startedAt, endedAt, notes, recordedBy, createdAt]
+      description: Immutable; a repeated repetition is a new attempt
+      properties:
+        id: {type: string, format: uuid}
+        testId: {type: string, format: uuid}
+        number: {type: integer, minimum: 1, description: Recording order within the test}
+        repetition: {type: integer, minimum: 1}
+        attempt: {type: integer, minimum: 1}
+        startedAt: {type: string, format: date-time}
+        endedAt: {type: [string, 'null'], format: date-time}
+        notes: {type: [string, 'null']}
+        recordedBy: {type: string, format: uuid}
+        createdAt: {type: string, format: date-time}
+    TrialInput:
+      type: object
+      additionalProperties: false
+      required: [repetition, startedAt]
+      properties:
+        repetition: {type: integer, minimum: 1, description: At most the planned trials of the step}
+        startedAt: {type: string, format: date-time, description: Not before the test started}
+        endedAt: {type: string, format: date-time, description: After startedAt}
+        notes: {type: string, maxLength: 2000}
+    Comment:
+      type: object
+      required: [id, testId, authorId, authorName, body, edited, createdAt, updatedAt]
+      properties:
+        id: {type: string, format: uuid}
+        testId: {type: string, format: uuid}
+        authorId: {type: string, format: uuid}
+        authorName: {type: [string, 'null'], description: Null once the author's account is deleted}
+        body: {type: string, description: Plain text; render it escaped}
+        edited: {type: boolean}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+    CommentInput:
+      type: object
+      additionalProperties: false
+      required: [body]
+      properties:
+        body: {type: string, minLength: 1, maxLength: 2000, description: Control characters other than tab and line breaks are removed before the length check}
+    Video:
+      type: object
+      required: [id, kind, contentType, fileName, sizeBytes, crc32c, status, generation, rejectionReason, verifiedAt, createdBy, createdAt]
+      description: A video object in private Cloud Storage. Verified videos never change.
+      properties:
+        id: {type: string, format: uuid}
+        kind: {type: string, enum: [ORIGINAL, ANALYZED]}
+        contentType: {type: string, enum: [video/mp4, video/quicktime, video/webm]}
+        fileName: {type: [string, 'null']}
+        sizeBytes: {type: integer, format: int64}
+        crc32c: {type: string, description: Base64 of the big-endian CRC32C}
+        status: {type: string, enum: [PENDING, VERIFIED, REJECTED]}
+        generation: {type: [string, 'null'], description: Cloud Storage object generation as a decimal string}
+        rejectionReason: {type: [string, 'null'], enum: [OVERSIZED, SIZE_MISMATCH, CHECKSUM_MISMATCH, CONTENT_TYPE_MISMATCH, null]}
+        verifiedAt: {type: [string, 'null'], format: date-time}
+        createdBy: {type: string, format: uuid}
+        createdAt: {type: string, format: date-time}
+    Recording:
+      type: object
+      required: [id, experimentId, testId, clipStartUs, clipEndUs, video, createdBy, createdAt]
+      properties:
+        id: {type: string, format: uuid}
+        experimentId: {type: string, format: uuid}
+        testId: {type: string, format: uuid}
+        clipStartUs: {type: integer, format: int64, minimum: 0, description: Microseconds from the start of the video}
+        clipEndUs: {type: [integer, 'null'], format: int64, description: Null runs to the end of the video}
+        video: {$ref: '#/components/schemas/Video'}
+        createdBy: {type: string, format: uuid}
+        createdAt: {type: string, format: date-time}
+    RecordingUploadInput:
+      type: object
+      additionalProperties: false
+      required: [fileName, contentType, sizeBytes, crc32c]
+      properties:
+        fileName: {type: string, minLength: 1, maxLength: 255}
+        contentType: {type: string, enum: [video/mp4, video/quicktime, video/webm]}
+        sizeBytes: {type: integer, format: int64, minimum: 1, description: At most VIDEO_MAX_BYTES}
+        crc32c: {type: string, description: Base64 of the big-endian CRC32C of the whole file}
+        clipStartUs: {type: integer, format: int64, minimum: 0, default: 0}
+        clipEndUs: {type: integer, format: int64}
+    SignedUpload:
+      type: object
+      required: [method, url, headers, expiresAt]
+      description: A signed request that starts a resumable upload; it fails if the object already exists
+      properties:
+        method: {type: string, enum: [POST]}
+        url: {type: string, format: uri}
+        headers: {type: object, additionalProperties: {type: string}}
+        expiresAt: {type: string, format: date-time}
+    CalibrationPoint:
+      type: object
+      additionalProperties: false
+      required: [pixelX, pixelY, worldX, worldY]
+      properties:
+        pixelX: {type: number, description: Full-frame pixel column}
+        pixelY: {type: number, description: Full-frame pixel row}
+        worldX: {type: number, description: Centimeters on the measurement plane}
+        worldY: {type: number}
+    CalibrationCrop:
+      type: object
+      additionalProperties: false
+      required: [x, y, width, height]
+      properties:
+        x: {type: integer, minimum: 0}
+        y: {type: integer, minimum: 0}
+        width: {type: integer, minimum: 1}
+        height: {type: integer, minimum: 1}
+    CalibrationInput:
+      type: object
+      additionalProperties: false
+      required: [cameraId, frameWidth, frameHeight, crop, referenceFrameUs, measurementPlane, fitPoints, checkPoints]
+      properties:
+        cameraId: {type: string, minLength: 1, maxLength: 120}
+        frameWidth: {type: integer, minimum: 1, maximum: 16384}
+        frameHeight: {type: integer, minimum: 1, maximum: 16384}
+        crop: {$ref: '#/components/schemas/CalibrationCrop'}
+        referenceFrameUs: {type: integer, format: int64, minimum: 0, description: Video time of the frame the points were read from}
+        measurementPlane: {type: string, enum: [ARENA_FLOOR, WATER_SURFACE, APPARATUS_TOP]}
+        fitPoints: {type: array, minItems: 4, maxItems: 100, items: {$ref: '#/components/schemas/CalibrationPoint'}, description: Inside the crop, no three on a line; inside the environment when the paradigm derives its zones from parameters}
+        checkPoints: {type: array, minItems: 3, maxItems: 100, items: {$ref: '#/components/schemas/CalibrationPoint'}, description: Independent of the FIT points (at least 1 pixel away)}
+        supersedesId: {type: string, format: uuid, description: The latest calibration of the recording; required for corrections}
+    Calibration:
+      type: object
+      required: [id, recordingId, supersedesId, cameraId, frameWidth, frameHeight, crop, referenceFrameUs, measurementPlane, fitPoints, checkPoints, transform, fitRmsErrorCm, checkRmsErrorCm, checkMaxErrorCm, toleranceCm, algorithmVersion, status, rejectionReason, createdBy, createdAt]
+      description: Immutable; analysis runs reference a fixed calibration
+      properties:
+        id: {type: string, format: uuid}
+        recordingId: {type: string, format: uuid}
+        supersedesId: {type: [string, 'null'], format: uuid}
+        cameraId: {type: string}
+        frameWidth: {type: integer}
+        frameHeight: {type: integer}
+        crop: {$ref: '#/components/schemas/CalibrationCrop'}
+        referenceFrameUs: {type: integer, format: int64}
+        measurementPlane: {type: string, enum: [ARENA_FLOOR, WATER_SURFACE, APPARATUS_TOP]}
+        fitPoints: {type: array, items: {$ref: '#/components/schemas/CalibrationPoint'}}
+        checkPoints: {type: array, items: {$ref: '#/components/schemas/CalibrationPoint'}}
+        transform: {type: array, minItems: 9, maxItems: 9, items: {type: number}, description: Row-major 3x3 homography from pixels to centimeters, normalized so the last entry is 1}
+        fitRmsErrorCm: {type: number}
+        checkRmsErrorCm: {type: number}
+        checkMaxErrorCm: {type: number}
+        toleranceCm: {type: number, description: The paradigm's max_calibration_error_cm}
+        algorithmVersion: {type: string}
+        status: {type: string, enum: [VALID, REJECTED]}
+        rejectionReason: {type: [string, 'null'], enum: [EXCESSIVE_CHECK_ERROR, null]}
+        createdBy: {type: string, format: uuid}
+        createdAt: {type: string, format: date-time}
+    AnalysisCapability:
+      type: object
+      additionalProperties: false
+      required: [paradigmKey, paradigmVersion]
+      properties:
+        paradigmKey: {type: string, pattern: '^[A-Z][A-Z_]{0,39}$'}
+        paradigmVersion: {type: integer, minimum: 1}
+    AnalysisWorkerInput:
+      type: object
+      additionalProperties: false
+      required: [name, modelVersion, capabilities]
+      properties:
+        name: {type: string, minLength: 1, maxLength: 120, description: Unique, case-insensitive}
+        modelVersion: {type: string, minLength: 1, maxLength: 120}
+        capabilities: {type: array, minItems: 1, items: {$ref: '#/components/schemas/AnalysisCapability'}, description: Paradigm versions from the catalog}
+    AnalysisWorker:
+      type: object
+      required: [id, name, modelVersion, capabilities, disabledAt, createdAt]
+      properties:
+        id: {type: string, format: uuid}
+        name: {type: string}
+        modelVersion: {type: string}
+        capabilities: {type: array, items: {$ref: '#/components/schemas/AnalysisCapability'}}
+        disabledAt: {type: [string, 'null'], format: date-time}
+        createdAt: {type: string, format: date-time}
+    AnalysisRun:
+      type: object
+      required: [id, experimentId, testId, recordingId, sourceVideoId, sourceGeneration, sourceCrc32c, clipStartUs, clipEndUs, calibrationId, paradigmKey, paradigmVersion, metricEngineVersion, resultSchemaVersion, environmentRevisionId, protocolVersionId, parameters, trigger, status, attempt, maxAttempts, workerId, leaseExpiresAt, modelVersion, failureReason, createdBy, createdAt, finishedAt]
+      description: Inputs are pinned at creation and never change; reanalysis is a new run
+      properties:
+        id: {type: string, format: uuid}
+        experimentId: {type: string, format: uuid}
+        testId: {type: string, format: uuid}
+        recordingId: {type: string, format: uuid}
+        sourceVideoId: {type: string, format: uuid}
+        sourceGeneration: {type: string, pattern: '^[0-9]+$', description: GCS generation of the analyzed original}
+        sourceCrc32c: {type: string, description: Base64 big-endian CRC32C}
+        clipStartUs: {type: integer, format: int64}
+        clipEndUs: {type: [integer, 'null'], format: int64}
+        calibrationId: {type: [string, 'null'], format: uuid, description: Set only for paradigms that require calibration}
+        paradigmKey: {type: string}
+        paradigmVersion: {type: integer}
+        metricEngineVersion: {type: integer}
+        resultSchemaVersion: {type: integer}
+        environmentRevisionId: {type: string, format: uuid}
+        protocolVersionId: {type: string, format: uuid}
+        parameters: {type: object, additionalProperties: {type: number}, description: Apparatus parameters merged with the step's session parameters}
+        trigger: {type: string, enum: [AUTOMATIC, MANUAL]}
+        status: {type: string, enum: [QUEUED, RUNNING, SUCCEEDED, FAILED]}
+        attempt: {type: integer, minimum: 0, description: Number of claims; the current attempt is the fencing token}
+        maxAttempts: {type: integer}
+        workerId: {type: [string, 'null'], format: uuid}
+        leaseExpiresAt: {type: [string, 'null'], format: date-time}
+        modelVersion: {type: [string, 'null']}
+        failureReason: {type: [string, 'null'], description: 'The worker reason, or LEASE_EXPIRED'}
+        createdBy: {type: [string, 'null'], format: uuid, description: Null for automatic runs}
+        createdAt: {type: string, format: date-time}
+        finishedAt: {type: [string, 'null'], format: date-time}
+    AnalysisContract:
+      type: object
+      required: [metrics, events, missingReasons, qc]
+      description: What the metric engine will compute from the trajectory; workers send no metrics or events
+      properties:
+        qc:
+          type: array
+          items: {type: object, required: [key, operator, value], properties: {key: {type: string}, operator: {type: string, enum: ['>=', '<=']}, value: {type: number}}}
+        metrics:
+          type: array
+          items:
+            type: object
+            required: [key, unit, integer, min, max]
+            properties:
+              key: {type: string}
+              unit: {type: string}
+              integer: {type: boolean}
+              min: {type: number}
+              max: {type: number}
+        events:
+          type: array
+          items: {type: object, required: [type, kind], properties: {type: {type: string}, kind: {type: string, enum: [INTERVAL, POINT]}}}
+        missingReasons: {type: array, items: {type: string}}
+    AnalysisAttempt:
+      type: object
+      additionalProperties: false
+      required: [attempt]
+      properties:
+        attempt: {type: integer, minimum: 1}
+    AnalysisOutputInput:
+      type: object
+      additionalProperties: false
+      required: [attempt, kind, fileName, contentType, sizeBytes, crc32c]
+      properties:
+        attempt: {type: integer, minimum: 1}
+        kind: {type: string, enum: [ANALYZED_VIDEO, TRAJECTORY, THUMBNAIL]}
+        fileName: {type: string, minLength: 1, maxLength: 120, description: 'No "/", "\" or ".."; stored under the attempt prefix'}
+        contentType: {type: string, enum: [video/mp4, video/webm, application/json, image/jpeg, image/png], description: ANALYZED_VIDEO takes video types, TRAJECTORY application/json (misko.trajectory.v1), THUMBNAIL images}
+        sizeBytes: {type: integer, format: int64, minimum: 1}
+        crc32c: {type: string, description: Base64 big-endian CRC32C}
+    AnalysisResultInput:
+      type: object
+      additionalProperties: false
+      required: [attempt, modelVersion, artifacts, pair]
+      description: Metrics and events are not accepted; the API computes them from the TRAJECTORY artifact.
+      properties:
+        attempt: {type: integer, minimum: 1}
+        modelVersion: {type: string, minLength: 1, maxLength: 120}
+        recordingDurationUs: {type: integer, format: int64, description: Required when the clip has no end; must equal the clip length otherwise and the trajectory's durationUs}
+        artifacts:
+          type: array
+          description: Declared outputs of this attempt, exactly one ANALYZED_VIDEO and exactly one TRAJECTORY
+          items:
+            type: object
+            additionalProperties: false
+            required: [kind, objectName]
+            properties:
+              kind: {type: string, enum: [ANALYZED_VIDEO, TRAJECTORY, THUMBNAIL]}
+              objectName: {type: string}
+        pair:
+          type: object
+          additionalProperties: false
+          required: [analyzedObjectName, sourceOffsetUs, outputOffsetUs, timeMappingVersion]
+          properties:
+            analyzedObjectName: {type: string}
+            sourceOffsetUs: {type: integer, format: int64, description: Must equal the clip start}
+            outputOffsetUs: {type: integer, format: int64, minimum: 0}
+            timeMappingVersion: {type: string, minLength: 1, maxLength: 60}
+    AnalysisResult:
+      type: object
+      required: [metrics, events, artifacts, pair]
+      properties:
+        metrics:
+          type: array
+          items:
+            type: object
+            required: [key, unit, value, missingReason]
+            properties:
+              key: {type: string}
+              unit: {type: string}
+              value: {type: [number, 'null']}
+              missingReason: {type: [string, 'null']}
+        events:
+          type: array
+          items:
+            type: object
+            required: [type, kind, startUs, endUs, confidence, trialId]
+            properties:
+              type: {type: string}
+              kind: {type: string, enum: [INTERVAL, POINT]}
+              startUs: {type: integer, format: int64}
+              endUs: {type: integer, format: int64}
+              confidence: {type: number}
+              trialId: {type: [string, 'null'], format: uuid}
+        artifacts:
+          type: array
+          items:
+            type: object
+            required: [kind, objectName, generation, sizeBytes, contentType]
+            properties:
+              kind: {type: string, enum: [ANALYZED_VIDEO, TRAJECTORY, THUMBNAIL]}
+              objectName: {type: string}
+              generation: {type: string, pattern: '^[0-9]+$'}
+              sizeBytes: {type: integer, format: int64}
+              contentType: {type: string}
+        pair:
+          type: [object, 'null']
+          required: [sourceVideoId, sourceGeneration, analyzedVideoId, sourceOffsetUs, outputOffsetUs, timeMappingVersion]
+          properties:
+            sourceVideoId: {type: string, format: uuid}
+            sourceGeneration: {type: string, pattern: '^[0-9]+$'}
+            analyzedVideoId: {type: string, format: uuid}
+            sourceOffsetUs: {type: integer, format: int64}
+            outputOffsetUs: {type: integer, format: int64}
+            timeMappingVersion: {type: string}
+    ReportProvenance:
+      type: object
+      required: [runId, latest, trigger, modelVersion, metricEngineVersion, resultSchemaVersion, calibrationId, recordingId, sourceVideoId, runFinishedAt, testId, testStatus, scheduledAt, trialCount, experimentId, experimentCode, subjectId, subjectCode, species, sex, phaseId, phaseName, groupId, groupName, groupRole, paradigmKey, paradigmVersion, environmentId, environmentName, environmentRevision]
+      properties:
+        runId: {type: string, format: uuid}
+        latest: {type: boolean, description: The newest succeeded run of its test for this metric engine version}
+        trigger: {type: string, enum: [AUTOMATIC, MANUAL]}
+        modelVersion: {type: [string, 'null']}
+        metricEngineVersion: {type: integer}
+        resultSchemaVersion: {type: integer}
+        calibrationId: {type: [string, 'null'], format: uuid}
+        recordingId: {type: string, format: uuid}
+        sourceVideoId: {type: string, format: uuid}
+        runFinishedAt: {type: string, format: date-time}
+        testId: {type: string, format: uuid}
+        testStatus: {type: string, enum: [PLANNED, IN_PROGRESS, COMPLETED, CANCELLED]}
+        scheduledAt: {type: string, format: date-time}
+        trialCount: {type: integer}
+        experimentId: {type: string, format: uuid}
+        experimentCode: {type: string}
+        subjectId: {type: string, format: uuid}
+        subjectCode: {type: string}
+        species: {type: string}
+        sex: {type: string}
+        phaseId: {type: [string, 'null'], format: uuid}
+        phaseName: {type: [string, 'null']}
+        groupId: {type: [string, 'null'], format: uuid, description: The group stored on the test}
+        groupName: {type: [string, 'null']}
+        groupRole: {type: [string, 'null'], enum: [CONTROL, TREATMENT, null]}
+        paradigmKey: {type: string}
+        paradigmVersion: {type: integer}
+        environmentId: {type: string, format: uuid}
+        environmentName: {type: string}
+        environmentRevision: {type: integer}
+    MetricReportRow:
+      allOf:
+        - $ref: '#/components/schemas/ReportProvenance'
+        - type: object
+          required: [metricKey, unit, value, missingReason]
+          properties:
+            metricKey: {type: string}
+            unit: {type: string}
+            value: {type: [number, 'null'], description: Null exactly when missingReason is set; never zero for a missing result}
+            missingReason: {type: [string, 'null']}
+    EventReportRow:
+      allOf:
+        - $ref: '#/components/schemas/ReportProvenance'
+        - type: object
+          required: [eventId, eventType, kind, startUs, endUs, confidence, trialId, trialNumber, trialRepetition, trialAttempt]
+          properties:
+            eventId: {type: string, format: uuid}
+            eventType: {type: string}
+            kind: {type: string, enum: [INTERVAL, POINT]}
+            startUs: {type: integer, format: int64}
+            endUs: {type: integer, format: int64}
+            confidence: {type: number}
+            trialId: {type: [string, 'null'], format: uuid}
+            trialNumber: {type: [integer, 'null']}
+            trialRepetition: {type: [integer, 'null']}
+            trialAttempt: {type: [integer, 'null']}
+    MetricSummary:
+      type: object
+      required: [metricKey, version, groups]
+      properties:
+        metricKey: {type: string}
+        version:
+          oneOf:
+            - type: 'null'
+            - type: object
+              required: [paradigmKey, paradigmVersion, metricEngineVersion, unit]
+              properties:
+                paradigmKey: {type: string}
+                paradigmVersion: {type: integer}
+                metricEngineVersion: {type: integer}
+                unit: {type: string}
+        groups:
+          type: array
+          description: Control groups first, then treatment groups by name, then tests without a group
+          items:
+            type: object
+            required: [groupId, groupName, groupRole, tests, subjects, missingSubjects, missingReasons, mean, sd, sem, min, max]
+            properties:
+              groupId: {type: [string, 'null'], format: uuid}
+              groupName: {type: [string, 'null']}
+              groupRole: {type: [string, 'null']}
+              tests: {type: integer}
+              subjects: {type: integer, description: Subjects with at least one value; the n of the statistics}
+              missingSubjects: {type: integer, description: Subjects whose every result is missing}
+              missingReasons: {type: object, additionalProperties: {type: integer}, description: Tests per missing reason}
+              mean: {type: [number, 'null']}
+              sd: {type: [number, 'null'], description: Sample standard deviation of subject values; null below two subjects}
+              sem: {type: [number, 'null']}
+              min: {type: [number, 'null']}
+              max: {type: [number, 'null']}
+    Probe:
+      type: object
+      additionalProperties: false
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [ok, unavailable]
+    Problem:
+      type: object
+      additionalProperties: false
+      required: [error, code]
+      properties:
+        error: {type: string}
+        code: {type: string}
+    Role:
+      type: string
+      enum: [SUPERADMIN, LAB_MANAGER, RESEARCHER, TECHNICIAN, VIEWER]
+    Permission:
+      type: string
+      enum: ['user:manage', 'lab:configure', 'study:write', 'subject:write', 'weight:write', 'apparatus:write', 'test:write', 'test:run', '*:read']
+    NewPassword:
+      type: string
+      description: At least 8 characters and at most 72 UTF-8 bytes; compared byte for byte
+    User:
+      type: object
+      additionalProperties: false
+      required: [id, email, name, role, createdAt]
+      properties:
+        id: {type: string, format: uuid}
+        email: {type: string}
+        name: {type: string}
+        role:
+          $ref: '#/components/schemas/Role'
+        createdAt: {type: string, format: date-time}

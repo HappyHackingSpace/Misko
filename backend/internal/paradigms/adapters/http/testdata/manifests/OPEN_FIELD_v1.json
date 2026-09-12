@@ -1,0 +1,297 @@
+{
+  "key": "OPEN_FIELD",
+  "name": "Open field",
+  "category": "ANXIETY",
+  "species": [
+    "MOUSE",
+    "RAT"
+  ],
+  "trialTypes": [
+    "STANDARD"
+  ],
+  "version": 1,
+  "metricEngineVersion": 1,
+  "resultSchemaVersion": 1,
+  "automatedAnalysis": false,
+  "apparatusParameters": [
+    {
+      "key": "arena_width_cm",
+      "label": "Arena width",
+      "unit": "cm",
+      "valueType": "number",
+      "min": 20,
+      "max": 150,
+      "default": 50
+    },
+    {
+      "key": "arena_height_cm",
+      "label": "Arena depth",
+      "unit": "cm",
+      "valueType": "number",
+      "min": 20,
+      "max": 150,
+      "default": 50
+    },
+    {
+      "key": "center_fraction",
+      "label": "Center zone side as a fraction of the arena side",
+      "unit": "ratio",
+      "valueType": "number",
+      "min": 0.2,
+      "max": 0.8,
+      "default": 0.5
+    }
+  ],
+  "sessionParameters": [
+    {
+      "key": "max_sample_gap_s",
+      "label": "Longest gap between samples that still counts as tracked",
+      "unit": "s",
+      "valueType": "number",
+      "min": 0.01,
+      "max": 5,
+      "default": 0.5
+    },
+    {
+      "key": "immobility_threshold_cm_s",
+      "label": "Speed below which an interval is immobile",
+      "unit": "cm_s",
+      "valueType": "number",
+      "min": 0.1,
+      "max": 10,
+      "default": 2
+    },
+    {
+      "key": "min_immobility_bout_s",
+      "label": "Shortest immobile bout that counts",
+      "unit": "s",
+      "valueType": "number",
+      "min": 0,
+      "max": 10,
+      "default": 1
+    }
+  ],
+  "zones": [
+    {
+      "key": "center",
+      "role": "CENTER",
+      "geometry": "Axis-aligned rectangle centered in the arena; each side is center_fraction of the arena side. The boundary belongs to the center.",
+      "calibrated": false,
+      "required": false
+    },
+    {
+      "key": "periphery",
+      "role": "PERIPHERY",
+      "geometry": "Arena area outside the center zone.",
+      "calibrated": false,
+      "required": false
+    }
+  ],
+  "inputEvents": [],
+  "events": [
+    {
+      "type": "in_center",
+      "kind": "INTERVAL",
+      "labels": [],
+      "single": false,
+      "definition": "Contiguous counted intervals whose earlier sample is in the center."
+    },
+    {
+      "type": "immobile",
+      "kind": "INTERVAL",
+      "labels": [],
+      "single": false,
+      "definition": "Contiguous counted intervals with speed below immobility_threshold_cm_s, lasting at least min_immobility_bout_s."
+    },
+    {
+      "type": "center_entry",
+      "kind": "POINT",
+      "labels": [],
+      "single": false,
+      "definition": "Time of the later sample of a counted interval that moves from periphery to center."
+    }
+  ],
+  "metrics": [
+    {
+      "key": "duration_s",
+      "label": "Analyzed duration",
+      "unit": "s",
+      "valueType": "number",
+      "definition": "Time covered by counted intervals. Samples are arena-local centimeters with the origin at one arena corner; x in [0, width], y in [0, height]. Samples outside the arena count as lost. A counted interval is a pair of consecutive samples that are both tracked and inside the arena, with 0 \u003c dt \u003c= max_sample_gap_s.",
+      "formula": "sum(dt over counted intervals)",
+      "missingWhen": "Missing (NO_VALID_INTERVALS) when there is no counted interval.",
+      "inputs": [
+        "samples: t (us), x (cm), y (cm), tracked",
+        "arena_width_cm",
+        "arena_height_cm",
+        "max_sample_gap_s"
+      ],
+      "min": 0,
+      "max": 86400,
+      "tolerance": 0.000001
+    },
+    {
+      "key": "distance_cm",
+      "label": "Distance traveled",
+      "unit": "cm",
+      "valueType": "number",
+      "definition": "Path length over counted intervals; lost frames are not interpolated.",
+      "formula": "sum(hypot(dx, dy) over counted intervals)",
+      "missingWhen": "Missing (NO_VALID_INTERVALS) when there is no counted interval.",
+      "inputs": [
+        "samples: t (us), x (cm), y (cm), tracked",
+        "arena_width_cm",
+        "arena_height_cm",
+        "max_sample_gap_s"
+      ],
+      "min": 0,
+      "max": 1000000,
+      "tolerance": 0.000001
+    },
+    {
+      "key": "mean_speed_cm_s",
+      "label": "Mean speed",
+      "unit": "cm_s",
+      "valueType": "number",
+      "definition": "Distance traveled divided by analyzed duration.",
+      "formula": "distance_cm / duration_s",
+      "missingWhen": "Missing (NO_VALID_INTERVALS) when there is no counted interval.",
+      "inputs": [
+        "distance_cm",
+        "duration_s"
+      ],
+      "min": 0,
+      "max": 10000,
+      "tolerance": 0.000001
+    },
+    {
+      "key": "center_time_s",
+      "label": "Time in center",
+      "unit": "s",
+      "valueType": "number",
+      "definition": "Counted interval time whose earlier sample is in the center zone.",
+      "formula": "sum(dt where earlier sample in center)",
+      "missingWhen": "Missing (NO_VALID_INTERVALS) when there is no counted interval.",
+      "inputs": [
+        "samples: t (us), x (cm), y (cm), tracked",
+        "arena_width_cm",
+        "arena_height_cm",
+        "max_sample_gap_s",
+        "center_fraction"
+      ],
+      "min": 0,
+      "max": 86400,
+      "tolerance": 0.000001
+    },
+    {
+      "key": "periphery_time_s",
+      "label": "Time in periphery",
+      "unit": "s",
+      "valueType": "number",
+      "definition": "Counted interval time whose earlier sample is outside the center zone.",
+      "formula": "sum(dt where earlier sample in periphery)",
+      "missingWhen": "Missing (NO_VALID_INTERVALS) when there is no counted interval.",
+      "inputs": [
+        "samples: t (us), x (cm), y (cm), tracked",
+        "arena_width_cm",
+        "arena_height_cm",
+        "max_sample_gap_s",
+        "center_fraction"
+      ],
+      "min": 0,
+      "max": 86400,
+      "tolerance": 0.000001
+    },
+    {
+      "key": "center_time_ratio",
+      "label": "Center time ratio",
+      "unit": "ratio",
+      "valueType": "number",
+      "definition": "Share of analyzed duration spent in the center.",
+      "formula": "center_time_s / duration_s",
+      "missingWhen": "Missing (NO_VALID_INTERVALS) when there is no counted interval.",
+      "inputs": [
+        "center_time_s",
+        "duration_s"
+      ],
+      "min": 0,
+      "max": 1,
+      "tolerance": 1e-9
+    },
+    {
+      "key": "periphery_time_ratio",
+      "label": "Periphery time ratio",
+      "unit": "ratio",
+      "valueType": "number",
+      "definition": "Share of analyzed duration spent in the periphery.",
+      "formula": "periphery_time_s / duration_s",
+      "missingWhen": "Missing (NO_VALID_INTERVALS) when there is no counted interval.",
+      "inputs": [
+        "periphery_time_s",
+        "duration_s"
+      ],
+      "min": 0,
+      "max": 1,
+      "tolerance": 1e-9
+    },
+    {
+      "key": "center_entries_count",
+      "label": "Center entries",
+      "unit": "count",
+      "valueType": "integer",
+      "definition": "Counted intervals moving from periphery to center. A trajectory starting in the center does not count as an entry; no debounce is applied in version 1.",
+      "formula": "count(counted intervals with earlier sample in periphery and later sample in center)",
+      "missingWhen": "Missing (NO_VALID_INTERVALS) when there is no counted interval.",
+      "inputs": [
+        "samples: t (us), x (cm), y (cm), tracked",
+        "arena_width_cm",
+        "arena_height_cm",
+        "max_sample_gap_s",
+        "center_fraction"
+      ],
+      "min": 0,
+      "max": 1000000,
+      "tolerance": 1e-9
+    },
+    {
+      "key": "immobility_s",
+      "label": "Immobility time",
+      "unit": "s",
+      "valueType": "number",
+      "definition": "Time in immobile bouts. An interval is immobile when hypot(dx, dy) / dt is strictly below the threshold; contiguous immobile intervals form a bout, and bouts shorter than min_immobility_bout_s are ignored.",
+      "formula": "sum(bout duration where bout duration \u003e= min_immobility_bout_s)",
+      "missingWhen": "Missing (NO_VALID_INTERVALS) when there is no counted interval.",
+      "inputs": [
+        "samples: t (us), x (cm), y (cm), tracked",
+        "arena_width_cm",
+        "arena_height_cm",
+        "max_sample_gap_s",
+        "immobility_threshold_cm_s",
+        "min_immobility_bout_s"
+      ],
+      "min": 0,
+      "max": 86400,
+      "tolerance": 0.000001
+    }
+  ],
+  "qc": [
+    {
+      "key": "min_tracking_confidence",
+      "operator": "\u003e=",
+      "value": 0.7,
+      "unit": "ratio"
+    },
+    {
+      "key": "max_lost_frame_ratio",
+      "operator": "\u003c=",
+      "value": 0.1,
+      "unit": "ratio"
+    },
+    {
+      "key": "max_calibration_error_cm",
+      "operator": "\u003c=",
+      "value": 2,
+      "unit": "cm"
+    }
+  ]
+}

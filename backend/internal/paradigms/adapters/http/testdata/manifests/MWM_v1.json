@@ -1,0 +1,298 @@
+{
+  "key": "MWM",
+  "name": "Morris water maze",
+  "category": "LEARNING_MEMORY",
+  "species": [
+    "MOUSE",
+    "RAT"
+  ],
+  "trialTypes": [
+    "ACQUISITION",
+    "PROBE"
+  ],
+  "version": 1,
+  "metricEngineVersion": 1,
+  "resultSchemaVersion": 1,
+  "automatedAnalysis": false,
+  "apparatusParameters": [
+    {
+      "key": "tank_diameter_cm",
+      "label": "Tank diameter",
+      "unit": "cm",
+      "valueType": "number",
+      "min": 60,
+      "max": 250,
+      "default": 120
+    },
+    {
+      "key": "platform_diameter_cm",
+      "label": "Platform diameter",
+      "unit": "cm",
+      "valueType": "number",
+      "min": 4,
+      "max": 20,
+      "default": 10
+    },
+    {
+      "key": "platform_x_cm",
+      "label": "Platform center east of tank center",
+      "unit": "cm",
+      "valueType": "number",
+      "min": -125,
+      "max": 125,
+      "default": 30
+    },
+    {
+      "key": "platform_y_cm",
+      "label": "Platform center north of tank center",
+      "unit": "cm",
+      "valueType": "number",
+      "min": -125,
+      "max": 125,
+      "default": 30
+    },
+    {
+      "key": "wall_annulus_width_cm",
+      "label": "Wall annulus width for thigmotaxis",
+      "unit": "cm",
+      "valueType": "number",
+      "min": 4,
+      "max": 30,
+      "default": 12
+    }
+  ],
+  "sessionParameters": [
+    {
+      "key": "max_sample_gap_s",
+      "label": "Longest gap between samples that still counts as tracked",
+      "unit": "s",
+      "valueType": "number",
+      "min": 0.01,
+      "max": 5,
+      "default": 0.5
+    },
+    {
+      "key": "min_platform_dwell_s",
+      "label": "Time the subject must stay on the platform to escape",
+      "unit": "s",
+      "valueType": "number",
+      "min": 0,
+      "max": 10,
+      "default": 1
+    }
+  ],
+  "zones": [
+    {
+      "key": "platform",
+      "role": "TARGET",
+      "geometry": "Closed disk of platform_diameter_cm at the platform center.",
+      "calibrated": false,
+      "required": true
+    },
+    {
+      "key": "target_quadrant",
+      "role": "TARGET",
+      "geometry": "Quadrant containing the platform center; x \u003e= 0 is east and y \u003e= 0 is north.",
+      "calibrated": false,
+      "required": true
+    },
+    {
+      "key": "wall_annulus",
+      "role": "PERIPHERY",
+      "geometry": "Ring with distance from the tank center \u003e= tank radius - wall_annulus_width_cm.",
+      "calibrated": false,
+      "required": true
+    }
+  ],
+  "inputEvents": [],
+  "events": [
+    {
+      "type": "in_platform",
+      "kind": "INTERVAL",
+      "labels": [],
+      "single": false,
+      "definition": "Contiguous counted intervals whose earlier sample is in platform."
+    },
+    {
+      "type": "platform_entry",
+      "kind": "POINT",
+      "labels": [],
+      "single": false,
+      "definition": "Later sample time of a counted interval entering platform."
+    }
+  ],
+  "metrics": [
+    {
+      "key": "duration_s",
+      "label": "Analyzed duration",
+      "unit": "s",
+      "valueType": "number",
+      "definition": "Coordinates are centimeters from the tank center, x east and y north; samples outside the tank count as lost. A counted interval is a pair of consecutive tracked samples with 0 \u003c dt \u003c= max_sample_gap_s.",
+      "formula": "sum(dt over counted intervals)",
+      "missingWhen": "Missing (NO_VALID_INTERVALS) when there is no counted interval.",
+      "inputs": [
+        "samples",
+        "tank_diameter_cm",
+        "max_sample_gap_s"
+      ],
+      "min": 0,
+      "max": 86400,
+      "tolerance": 0.000001
+    },
+    {
+      "key": "escape_latency_s",
+      "label": "Escape latency",
+      "unit": "s",
+      "valueType": "number",
+      "definition": "Start of the first platform dwell: consecutive tracked samples on the platform, joined by gaps no longer than max_sample_gap_s, spanning at least min_platform_dwell_s.",
+      "formula": "first dwell start with last - first sample time \u003e= min_platform_dwell_s",
+      "missingWhen": "Missing (EVENT_NOT_OBSERVED) when no dwell qualifies, as in probe trials.",
+      "inputs": [
+        "samples",
+        "tank_diameter_cm",
+        "max_sample_gap_s",
+        "platform_x_cm",
+        "platform_y_cm",
+        "platform_diameter_cm",
+        "min_platform_dwell_s"
+      ],
+      "min": 0,
+      "max": 86400,
+      "tolerance": 0.000001
+    },
+    {
+      "key": "path_length_cm",
+      "label": "Path length",
+      "unit": "cm",
+      "valueType": "number",
+      "definition": "Distance over counted intervals ending at or before the escape, or over the whole trial without an escape.",
+      "formula": "sum(hypot(dx, dy) for counted intervals ending \u003c= escape)",
+      "missingWhen": "Missing (NO_VALID_INTERVALS) when there is no counted interval.",
+      "inputs": [
+        "samples",
+        "tank_diameter_cm",
+        "max_sample_gap_s",
+        "platform_x_cm",
+        "platform_y_cm",
+        "platform_diameter_cm",
+        "min_platform_dwell_s"
+      ],
+      "min": 0,
+      "max": 1000000,
+      "tolerance": 0.000001
+    },
+    {
+      "key": "mean_swim_speed_cm_s",
+      "label": "Mean swim speed",
+      "unit": "cm_s",
+      "valueType": "number",
+      "definition": "Path length divided by the counted time it covers.",
+      "formula": "path_length_cm / counted time up to escape",
+      "missingWhen": "Missing (NO_VALID_INTERVALS) when no counted time precedes the escape.",
+      "inputs": [
+        "path_length_cm"
+      ],
+      "min": 0,
+      "max": 10000,
+      "tolerance": 0.000001
+    },
+    {
+      "key": "target_quadrant_time_ratio",
+      "label": "Target quadrant time ratio",
+      "unit": "ratio",
+      "valueType": "number",
+      "definition": "Share of analyzed duration whose earlier sample is in the target quadrant.",
+      "formula": "target quadrant time / duration_s",
+      "missingWhen": "Missing (NO_VALID_INTERVALS) when there is no counted interval.",
+      "inputs": [
+        "samples",
+        "tank_diameter_cm",
+        "max_sample_gap_s",
+        "platform_x_cm",
+        "platform_y_cm",
+        "platform_diameter_cm"
+      ],
+      "min": 0,
+      "max": 1,
+      "tolerance": 1e-9
+    },
+    {
+      "key": "thigmotaxis_time_ratio",
+      "label": "Thigmotaxis time ratio",
+      "unit": "ratio",
+      "valueType": "number",
+      "definition": "Share of analyzed duration whose earlier sample is in the wall annulus.",
+      "formula": "wall annulus time / duration_s",
+      "missingWhen": "Missing (NO_VALID_INTERVALS) when there is no counted interval.",
+      "inputs": [
+        "samples",
+        "tank_diameter_cm",
+        "max_sample_gap_s",
+        "wall_annulus_width_cm"
+      ],
+      "min": 0,
+      "max": 1,
+      "tolerance": 1e-9
+    },
+    {
+      "key": "platform_crossings_count",
+      "label": "Platform crossings",
+      "unit": "count",
+      "valueType": "integer",
+      "definition": "Counted intervals entering the platform disk; starting on the platform is not a crossing.",
+      "formula": "count(platform entries)",
+      "missingWhen": "Missing (NO_VALID_INTERVALS) when there is no counted interval.",
+      "inputs": [
+        "samples",
+        "tank_diameter_cm",
+        "max_sample_gap_s",
+        "platform_x_cm",
+        "platform_y_cm",
+        "platform_diameter_cm"
+      ],
+      "min": 0,
+      "max": 1000000,
+      "tolerance": 1e-9
+    },
+    {
+      "key": "mean_distance_to_platform_cm",
+      "label": "Mean distance to platform",
+      "unit": "cm",
+      "valueType": "number",
+      "definition": "Time-weighted mean distance from the platform center, using the earlier sample of each counted interval.",
+      "formula": "sum(distance(earlier sample, platform) x dt) / sum(dt)",
+      "missingWhen": "Missing (NO_VALID_INTERVALS) when there is no counted interval.",
+      "inputs": [
+        "samples",
+        "tank_diameter_cm",
+        "max_sample_gap_s",
+        "platform_x_cm",
+        "platform_y_cm",
+        "platform_diameter_cm"
+      ],
+      "min": 0,
+      "max": 10000,
+      "tolerance": 0.000001
+    }
+  ],
+  "qc": [
+    {
+      "key": "min_tracking_confidence",
+      "operator": "\u003e=",
+      "value": 0.7,
+      "unit": "ratio"
+    },
+    {
+      "key": "max_lost_frame_ratio",
+      "operator": "\u003c=",
+      "value": 0.1,
+      "unit": "ratio"
+    },
+    {
+      "key": "max_calibration_error_cm",
+      "operator": "\u003c=",
+      "value": 2,
+      "unit": "cm"
+    }
+  ]
+}

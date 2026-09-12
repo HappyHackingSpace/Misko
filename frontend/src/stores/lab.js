@@ -1,5 +1,5 @@
 import { defineStore } from "pinia";
-import { api } from "../api.js";
+import { api } from "../api/client.js";
 
 // Public branding info. The backend /api/meta endpoint returns the
 // Laboratory singleton's name (falls back to LAB_NAME if not set up).

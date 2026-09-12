@@ -1,5 +1,5 @@
 import { reactive } from "vue";
-import { api } from "../api.js";
+import { api } from "../api/client.js";
 
 /**
  * Drives a server-side DataTable: owns pagination / search / sort state, fetches

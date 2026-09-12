@@ -2,7 +2,7 @@
 import { ref, computed, onMounted, onUnmounted } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
-import { api } from "../api.js";
+import { api } from "../api/client.js";
 import { ROLES, DEFAULT_ROLE } from "../constants/roles.js";
 import { useBreadcrumb } from "../stores/breadcrumb.js";
 
@@ -19,7 +19,7 @@ const saving = ref(false);
 
 function syncCrumb() {
   crumb.set([
-    { label: t("nav.dashboard"), to: "/" },
+    { label: t("nav.experiments"), to: "/experiments" },
     { label: t("users.title"), to: "/users" },
     { label: isNew.value ? t("common.new") : form.value.name || form.value.email || route.params.id },
   ]);

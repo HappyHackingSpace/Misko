@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, onMounted } from "vue";
 import { useI18n } from "vue-i18n";
-import { api } from "../api.js";
+import { api } from "../api/client.js";
 import { useAuth } from "../stores/auth.js";
 
 // Discussion thread for a single test. Any authenticated user can post; the

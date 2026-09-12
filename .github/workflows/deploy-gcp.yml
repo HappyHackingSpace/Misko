@@ -32,6 +32,7 @@ permissions:
 
 jobs:
   deploy:
+    if: github.ref == 'refs/heads/main'
     name: Deploy
     runs-on: ubuntu-latest
     environment: production   # <-- onay kapısı: yalnızca required reviewer başlatabilir
@@ -63,10 +64,11 @@ jobs:
             echo "POSTGRES_PASSWORD=${PG}"
             echo "POSTGRES_DB=misko"
             echo "JWT_SECRET=${JWT}"
-            echo "JWT_TTL=7d"
-            echo "CORS_ORIGIN=*"
+            echo "TOKEN_TTL=12h"
             echo "ADMIN_EMAIL=admin@miskolab.com"
             echo "LAB_NAME=Yüzüncü Yıl Üniversitesi"
+            echo "LAB_TIMEZONE=Europe/Istanbul"
+            echo "JOB_INTERVAL=10s"
             echo "FRONTEND_PORT=80"
           } > .env.deploy
 
@@ -85,7 +87,11 @@ jobs:
           $SSH "$USER@$HOST" 'cd ~/misko && if [ -f .env ]; then rm -f .env.new; else mv .env.new .env; fi'
           # Güncel imajı çek (bayat cache kalmasın), değişen container'ları yenile,
           # eski/dangling imajları temizle.
-          $SSH "$USER@$HOST" 'cd ~/misko && docker compose -f docker-compose.prod.yml pull && docker compose -f docker-compose.prod.yml up -d && docker image prune -f'
+          # Şemayı kur: boş bir veritabanında tabloları oluşturur, kurulu bir
+          # veritabanında hiçbir şeyi değiştirmez. Yönetici oluşturma (`setup`)
+          # buraya dahil değil; üretilen şifre bir terminale yazılmalı, bu yüzden
+          # ilk kurulumda sunucuda elle çalıştırılır (bkz. docs/DEPLOY.md).
+          $SSH "$USER@$HOST" 'cd ~/misko && docker compose -f docker-compose.prod.yml pull && docker compose -f docker-compose.prod.yml --profile setup run --rm schema && docker compose -f docker-compose.prod.yml up -d && docker image prune -f'
 
       - name: Summary
         env:
