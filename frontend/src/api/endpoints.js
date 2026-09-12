@@ -63,6 +63,15 @@ export const paradigms = {
   version: (key, version) => api(`/paradigms/${key}/versions/${version}`),
 };
 
+export const protocols = {
+  list: (experimentId) => api(`/experiments/${experimentId}/protocols`),
+  get: (experimentId, protocolId) => api(`/experiments/${experimentId}/protocols/${protocolId}`),
+  create: (experimentId, body) => api(`/experiments/${experimentId}/protocols`, { method: "POST", body }),
+  versions: (experimentId, protocolId) => api(`/experiments/${experimentId}/protocols/${protocolId}/versions`),
+  addVersion: (experimentId, protocolId, body) =>
+    api(`/experiments/${experimentId}/protocols/${protocolId}/versions`, { method: "POST", body }),
+};
+
 export const environments = {
   list: () => api("/environments"),
   get: (id) => api(`/environments/${id}`),

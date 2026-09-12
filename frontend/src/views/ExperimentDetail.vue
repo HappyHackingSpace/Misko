@@ -4,7 +4,7 @@
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { useRoute } from "vue-router";
 import { useI18n } from "vue-i18n";
-import { experiments } from "../api/endpoints.js";
+import { environments, experiments, protocols } from "../api/endpoints.js";
 import { useAuth } from "../stores/auth.js";
 import { useBreadcrumb } from "../stores/breadcrumb.js";
 
@@ -17,12 +17,90 @@ const experiment = ref(null);
 const groups = ref([]);
 const enrollments = ref([]);
 const tests = ref([]);
+const protocolList = ref([]);
+const revisionOptions = ref([]);
 const error = ref("");
 
 // Groups belong to the study, so writing one needs study:write.
 const canWrite = computed(() => auth.can("study:write"));
 const newGroup = ref({ name: "", role: "TREATMENT", targetSize: "" });
 const adding = ref(false);
+
+// A protocol pins apparatus revisions, so writing one needs apparatus:write
+// rather than study:write.
+const canWriteProtocol = computed(() => auth.can("apparatus:write"));
+const emptyStep = () => ({ environmentRevisionId: "", trialType: "STANDARD", trials: 1 });
+const newProtocol = ref({ name: "", description: "", steps: [emptyStep()] });
+const savingProtocol = ref(false);
+
+const revisionLabel = (option) =>
+  t("protocols.revisionLabel", {
+    name: option.environmentName,
+    number: option.number,
+    paradigm: option.paradigmKey,
+    version: option.paradigmVersion,
+  });
+
+function addStep() {
+  newProtocol.value.steps.push(emptyStep());
+}
+
+function removeStep(index) {
+  newProtocol.value.steps.splice(index, 1);
+}
+
+// Every revision of every apparatus, flattened into one list. A step names a
+// revision, and the paradigm it belongs to is read from that revision rather
+// than asked for a second time: the API refuses a mismatch anyway.
+async function loadRevisions() {
+  const list = (await environments.list()).data || [];
+  const perEnvironment = await Promise.all(
+    list.map(async (environment) => {
+      const revisions = (await environments.revisions(environment.id)).data || [];
+      return revisions.map((revision) => ({
+        id: revision.id,
+        number: revision.number,
+        paradigmKey: revision.paradigmKey,
+        paradigmVersion: revision.paradigmVersion,
+        environmentName: environment.name,
+      }));
+    }),
+  );
+  revisionOptions.value = perEnvironment.flat();
+}
+
+async function createProtocol() {
+  error.value = "";
+  savingProtocol.value = true;
+  try {
+    const steps = newProtocol.value.steps.map((step, index) => {
+      const revision = revisionOptions.value.find((option) => option.id === step.environmentRevisionId);
+      return {
+        // Positions have to start at one and run without gaps.
+        position: index + 1,
+        paradigmKey: revision?.paradigmKey || "",
+        paradigmVersion: revision?.paradigmVersion || 0,
+        environmentRevisionId: step.environmentRevisionId,
+        trialType: step.trialType.trim().toUpperCase(),
+        trials: Number(step.trials),
+        interTrialIntervalS: 0,
+        session: {},
+        notes: "",
+      };
+    });
+    await protocols.create(route.params.id, {
+      name: newProtocol.value.name.trim(),
+      description: newProtocol.value.description.trim(),
+      version: { notes: "", steps },
+    });
+    newProtocol.value = { name: "", description: "", steps: [emptyStep()] };
+    await load();
+  } catch (e) {
+    error.value = e.message;
+  } finally {
+    savingProtocol.value = false;
+  }
+}
 
 const subjectOf = (test) => enrollments.value.find((e) => e.id === test.enrollmentId);
 
@@ -51,14 +129,18 @@ async function load() {
   try {
     const id = route.params.id;
     experiment.value = await experiments.get(id);
-    const [groupList, enrollmentPage, testPage] = await Promise.all([
+    const [groupList, enrollmentPage, testPage, protocolPage] = await Promise.all([
       experiments.groups(id),
       experiments.enrollments(id, { pageSize: 100 }),
       experiments.tests(id, { pageSize: 100 }),
+      protocols.list(id),
     ]);
     groups.value = groupList.data || [];
     enrollments.value = enrollmentPage.data || [];
     tests.value = testPage.data || [];
+    protocolList.value = protocolPage.data || [];
+    // Only a role that may write a protocol needs the revisions to choose from.
+    if (canWriteProtocol.value) await loadRevisions();
     crumb.set([
       { label: t("experiments.title"), to: "/experiments" },
       { label: experiment.value.code },
@@ -120,6 +202,66 @@ onUnmounted(() => crumb.clear());
     </div>
 
     <div class="card">
+      <h4>{{ $t("protocols.title") }}</h4>
+      <ul class="protocols" v-if="protocolList.length">
+        <li v-for="protocol in protocolList" :key="protocol.id" data-test="protocol">
+          {{ protocol.name }}
+          <span class="muted">
+            · {{ $t("protocols.version") }} {{ protocol.latestVersion }}
+          </span>
+        </li>
+      </ul>
+      <p v-else class="muted">{{ $t("protocols.none") }}</p>
+
+      <form v-if="canWriteProtocol" class="protocol-form" data-test="protocol-form" @submit.prevent="createProtocol">
+        <label class="fld">
+          <span>{{ $t("protocols.name") }}</span>
+          <input v-model="newProtocol.name" data-test="protocol-name" required />
+        </label>
+
+        <!-- A step pins one apparatus revision. The paradigm comes with it, so
+             it is never asked for separately. -->
+        <div class="steps">
+          <div class="step" v-for="(step, index) in newProtocol.steps" :key="index" data-test="protocol-step">
+            <label class="fld grow">
+              <span>{{ $t("protocols.step") }} {{ index + 1 }} · {{ $t("protocols.environment") }}</span>
+              <select v-model="step.environmentRevisionId" :data-test="`step-revision-${index}`" required>
+                <option value="">{{ $t("protocols.pickEnvironment") }}</option>
+                <option v-for="option in revisionOptions" :key="option.id" :value="option.id">
+                  {{ revisionLabel(option) }}
+                </option>
+              </select>
+            </label>
+            <label class="fld">
+              <span>{{ $t("protocols.trialType") }}</span>
+              <input v-model="step.trialType" :data-test="`step-trial-type-${index}`" required />
+            </label>
+            <label class="fld narrow">
+              <span>{{ $t("protocols.trials") }}</span>
+              <input type="number" min="1" max="1000" v-model="step.trials" :data-test="`step-trials-${index}`" required />
+            </label>
+            <button
+              v-if="newProtocol.steps.length > 1"
+              type="button"
+              class="small"
+              :data-test="`step-remove-${index}`"
+              @click="removeStep(index)"
+            >
+              {{ $t("protocols.removeStep") }}
+            </button>
+          </div>
+        </div>
+
+        <div class="actions">
+          <button type="button" class="small" data-test="protocol-add-step" @click="addStep">
+            {{ $t("protocols.addStep") }}
+          </button>
+          <button type="submit" :disabled="savingProtocol" data-test="protocol-save">{{ $t("common.save") }}</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="card">
       <h4>{{ $t("experiments.tests") }}</h4>
       <div class="table-scroll" v-if="tests.length">
         <table class="rows" data-test="experiment-tests">
@@ -155,6 +297,13 @@ onUnmounted(() => crumb.clear());
 .title { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .pills { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
 .add-group { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; margin-top: 14px; }
+.protocols { list-style: none; margin: 0 0 12px; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.protocol-form { display: flex; flex-direction: column; gap: 12px; margin-top: 14px; }
+.steps { display: flex; flex-direction: column; gap: 10px; }
+.step { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
+.grow { flex: 1; min-width: 240px; }
+.narrow { max-width: 110px; }
+.actions { display: flex; gap: 12px; align-items: center; }
 .fld { display: flex; flex-direction: column; gap: 4px; }
 .fld span { font-size: 12px; color: var(--muted); }
 .small { padding: 4px 10px; font-size: .85rem; }
