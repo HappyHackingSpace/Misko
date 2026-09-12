@@ -4,7 +4,7 @@
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { useRoute } from "vue-router";
 import { useI18n } from "vue-i18n";
-import { environments, experiments, protocols } from "../api/endpoints.js";
+import { environments, experiments, protocols, subjects } from "../api/endpoints.js";
 import { useAuth } from "../stores/auth.js";
 import { useBreadcrumb } from "../stores/breadcrumb.js";
 
@@ -19,6 +19,7 @@ const enrollments = ref([]);
 const tests = ref([]);
 const protocolList = ref([]);
 const revisionOptions = ref([]);
+const subjectList = ref([]);
 const error = ref("");
 
 // Groups belong to the study, so writing one needs study:write.
@@ -102,7 +103,78 @@ async function createProtocol() {
   }
 }
 
-const subjectOf = (test) => enrollments.value.find((e) => e.id === test.enrollmentId);
+// Planning a test writes it, so it needs test:write. Running one later needs
+// test:run, which is a different permission and a different screen.
+const canPlanTest = computed(() => auth.can("test:write"));
+const protocolVersions = ref([]);
+const planning = ref(false);
+
+// The datetime field speaks local time, so the default is now in local time.
+function localNow() {
+  const now = new Date();
+  now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+  return now.toISOString().slice(0, 16);
+}
+
+const newTest = ref({ enrollmentId: "", protocolId: "", protocolVersionId: "", stepPosition: "", scheduledAt: localNow(), notes: "" });
+
+// An enrollment names a subject by id only, so the code comes from the subjects
+// the laboratory holds. It is what a person reads on both the picker and the list.
+const subjectCode = (subjectId) => subjectList.value.find((s) => s.id === subjectId)?.code || t("tests.subjectUnknown");
+
+const selectedVersion = computed(() => protocolVersions.value.find((v) => v.id === newTest.value.protocolVersionId));
+
+const versionLabel = (version) => t("tests.versionLabel", { number: version.number });
+
+const stepLabel = (step) =>
+  t("tests.stepLabel", {
+    position: step.position,
+    paradigm: step.paradigmKey,
+    type: step.trialType,
+    trials: step.trials,
+  });
+
+// A test is planned against one step of one protocol version, so choosing a
+// protocol has to bring its versions along. The newest is the default, since
+// that is the procedure the study is running now.
+async function loadVersions() {
+  newTest.value.protocolVersionId = "";
+  newTest.value.stepPosition = "";
+  protocolVersions.value = [];
+  if (!newTest.value.protocolId) return;
+  const page = await protocols.versions(route.params.id, newTest.value.protocolId);
+  protocolVersions.value = (page.data || []).slice().sort((a, b) => b.number - a.number);
+  newTest.value.protocolVersionId = protocolVersions.value[0]?.id || "";
+  pickVersion();
+}
+
+function pickVersion() {
+  newTest.value.stepPosition = selectedVersion.value?.steps?.[0]?.position || "";
+}
+
+async function planTest() {
+  error.value = "";
+  planning.value = true;
+  try {
+    await experiments.planTest(route.params.id, {
+      enrollmentId: newTest.value.enrollmentId,
+      // Phases are not written from the panel yet, and the API treats an empty
+      // phase as "not part of a phase" rather than as a missing field.
+      phaseId: "",
+      protocolVersionId: newTest.value.protocolVersionId,
+      stepPosition: Number(newTest.value.stepPosition),
+      // The field holds local time; the API stores an instant.
+      scheduledAt: new Date(newTest.value.scheduledAt).toISOString(),
+      notes: newTest.value.notes.trim(),
+    });
+    newTest.value.notes = "";
+    await load();
+  } catch (e) {
+    error.value = e.message;
+  } finally {
+    planning.value = false;
+  }
+}
 
 async function addGroup() {
   error.value = "";
@@ -129,16 +201,18 @@ async function load() {
   try {
     const id = route.params.id;
     experiment.value = await experiments.get(id);
-    const [groupList, enrollmentPage, testPage, protocolPage] = await Promise.all([
+    const [groupList, enrollmentPage, testPage, protocolPage, subjectPage] = await Promise.all([
       experiments.groups(id),
       experiments.enrollments(id, { pageSize: 100 }),
       experiments.tests(id, { pageSize: 100 }),
       protocols.list(id),
+      subjects.list({ pageSize: 100 }),
     ]);
     groups.value = groupList.data || [];
     enrollments.value = enrollmentPage.data || [];
     tests.value = testPage.data || [];
     protocolList.value = protocolPage.data || [];
+    subjectList.value = subjectPage.data || [];
     // Only a role that may write a protocol needs the revisions to choose from.
     if (canWriteProtocol.value) await loadRevisions();
     crumb.set([
@@ -274,10 +348,12 @@ onUnmounted(() => crumb.clear());
             </tr>
           </thead>
           <tbody>
-            <tr v-for="test in tests" :key="test.id">
+            <!-- The scheduled time is rendered in the reader's locale, so the
+                 instant itself travels in an attribute. -->
+            <tr v-for="test in tests" :key="test.id" data-test="test-row" :data-scheduled="test.scheduledAt">
               <td>
                 <RouterLink class="link" :to="`/tests/${test.id}`" data-test="test-link">
-                  {{ subjectOf(test)?.subjectId?.slice(0, 8) || test.id.slice(0, 8) }}
+                  {{ subjectCode(test.subjectId) }}
                 </RouterLink>
               </td>
               <td>{{ test.paradigmKey }} <span class="muted">v{{ test.paradigmVersion }}</span></td>
@@ -288,6 +364,48 @@ onUnmounted(() => crumb.clear());
         </table>
       </div>
       <p v-else class="muted">{{ $t("experiments.noTests") }}</p>
+
+      <form v-if="canPlanTest" class="plan-form" data-test="plan-form" @submit.prevent="planTest">
+        <p v-if="!enrollments.length" class="muted" data-test="plan-needs-enrollment">{{ $t("tests.needsEnrollment") }}</p>
+        <p v-else-if="!protocolList.length" class="muted" data-test="plan-needs-protocol">{{ $t("tests.needsProtocol") }}</p>
+        <template v-else>
+          <label class="fld">
+            <span>{{ $t("tests.enrollment") }}</span>
+            <select v-model="newTest.enrollmentId" data-test="plan-enrollment" required>
+              <option value="">{{ $t("tests.pickEnrollment") }}</option>
+              <option v-for="enrollment in enrollments" :key="enrollment.id" :value="enrollment.id">
+                {{ subjectCode(enrollment.subjectId) }}
+              </option>
+            </select>
+          </label>
+          <label class="fld">
+            <span>{{ $t("tests.protocol") }}</span>
+            <select v-model="newTest.protocolId" data-test="plan-protocol" required @change="loadVersions">
+              <option value="">{{ $t("tests.pickProtocol") }}</option>
+              <option v-for="protocol in protocolList" :key="protocol.id" :value="protocol.id">{{ protocol.name }}</option>
+            </select>
+          </label>
+          <label class="fld">
+            <span>{{ $t("tests.version") }}</span>
+            <select v-model="newTest.protocolVersionId" data-test="plan-version" required @change="pickVersion">
+              <option v-for="version in protocolVersions" :key="version.id" :value="version.id">{{ versionLabel(version) }}</option>
+            </select>
+          </label>
+          <label class="fld grow">
+            <span>{{ $t("tests.step") }}</span>
+            <select v-model="newTest.stepPosition" data-test="plan-step" required>
+              <option v-for="step in selectedVersion?.steps || []" :key="step.position" :value="step.position">
+                {{ stepLabel(step) }}
+              </option>
+            </select>
+          </label>
+          <label class="fld">
+            <span>{{ $t("tests.scheduledAt") }}</span>
+            <input type="datetime-local" v-model="newTest.scheduledAt" data-test="plan-scheduled" required />
+          </label>
+          <button type="submit" :disabled="planning" data-test="plan-save">{{ $t("tests.plan") }}</button>
+        </template>
+      </form>
     </div>
   </div>
 </template>
@@ -299,6 +417,7 @@ onUnmounted(() => crumb.clear());
 .add-group { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; margin-top: 14px; }
 .protocols { list-style: none; margin: 0 0 12px; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .protocol-form { display: flex; flex-direction: column; gap: 12px; margin-top: 14px; }
+.plan-form { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; margin-top: 14px; }
 .steps { display: flex; flex-direction: column; gap: 10px; }
 .step { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
 .grow { flex: 1; min-width: 240px; }

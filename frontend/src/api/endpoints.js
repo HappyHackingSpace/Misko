@@ -26,6 +26,7 @@ export const experiments = {
   addGroup: (id, body) => api(`/experiments/${id}/groups`, { method: "POST", body }),
   enrollments: (id, query) => api(`/experiments/${id}/enrollments`, { query }),
   tests: (id, query) => api(`/experiments/${id}/tests`, { query }),
+  planTest: (id, body) => api(`/experiments/${id}/tests`, { method: "POST", body }),
 };
 
 export const tests = {
