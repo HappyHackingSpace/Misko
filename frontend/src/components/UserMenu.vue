@@ -43,7 +43,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="usermenu" ref="root">
-    <button class="trigger" @click="toggle" :aria-expanded="open">
+    <button class="trigger" data-test="user-menu" @click="toggle" :aria-expanded="open">
       <span class="avatar">{{ (auth.user.name || "?").charAt(0).toUpperCase() }}</span>
       <span class="name">{{ auth.user.name }}</span>
       <svg class="chev" :class="{ up: open }" width="14" height="14" viewBox="0 0 24 24"
@@ -59,7 +59,7 @@ onBeforeUnmount(() => {
         <span class="pill">{{ $t(`roles.${auth.user.role}`) }}</span>
       </div>
       <div class="sep"></div>
-      <button class="item danger" @click="logout">{{ $t("nav.logout") }}</button>
+      <button class="item danger" data-test="logout" @click="logout">{{ $t("nav.logout") }}</button>
     </div>
   </div>
 </template>

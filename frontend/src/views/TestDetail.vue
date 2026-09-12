@@ -10,6 +10,7 @@ import { crc32c, upload } from "../api/upload.js";
 import { useAuth } from "../stores/auth.js";
 import { useBreadcrumb } from "../stores/breadcrumb.js";
 import EventTimeline from "../components/EventTimeline.vue";
+import TestComments from "../components/TestComments.vue";
 import VideoPairPanel from "../components/VideoPairPanel.vue";
 
 const { t } = useI18n();
@@ -621,6 +622,9 @@ onUnmounted(() => crumb.clear());
         </div>
       </template>
     </div>
+
+    <!-- The thread belongs to the test, so it sits at the end of its page. -->
+    <TestComments :test-id="testId" />
   </div>
 </template>
 
