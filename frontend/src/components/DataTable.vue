@@ -26,6 +26,9 @@ const props = defineProps({
   rowKey: { type: String, default: "id" },
   pageSizes: { type: Array, default: () => [10, 20, 50] },
   indexed: { type: Boolean, default: true },
+  // A screen whose endpoint has no free-text search switches the box off rather
+  // than offering one that would be refused.
+  searchable: { type: Boolean, default: true },
   exportable: { type: Boolean, default: true },
   exportName: { type: String, default: "export" },
   entityLabel: { type: String, default: "" },
@@ -187,12 +190,14 @@ function onExport(e) {
   <div class="dt">
     <div class="dt-toolbar">
       <input
+        v-if="searchable"
         class="dt-search"
         type="search"
         :value="search"
         :placeholder="$t('datatable.searchPlaceholder')"
         @input="emit('search', $event.target.value)"
       />
+      <span v-else class="dt-search-spacer"></span>
       <div class="dt-toolbar-right">
         <span class="dt-count muted">{{ $t("datatable.total", { n: total }) }}</span>
         <div v-if="exportable" class="dt-export">

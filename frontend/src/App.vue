@@ -46,6 +46,7 @@ watch(() => route.fullPath, closeSidebar);
         <nav class="nav">
           <RouterLink to="/experiments" data-test="nav-experiments">{{ $t("nav.experiments") }}</RouterLink>
           <RouterLink to="/subjects">{{ $t("nav.subjects") }}</RouterLink>
+          <RouterLink to="/reports" data-test="nav-reports">{{ $t("nav.reports") }}</RouterLink>
 
           <div class="nav-section">{{ $t("nav.reference") }}</div>
           <RouterLink to="/paradigms">{{ $t("nav.paradigms") }}</RouterLink>
