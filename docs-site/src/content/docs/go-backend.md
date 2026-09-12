@@ -395,7 +395,9 @@ an experiment and pick one of its tests.
 - Analysis runs of the test appear as buttons. The screen opens the newest run
   that published a result, so a later failed attempt never hides a readable one.
   A queued or running job says so, and a failed one shows its reason, for example
-  a quality control failure.
+  a quality control failure. A recording can be analyzed more than once, and
+  every run keeps its own videos: opening an earlier run shows that run's
+  analyzed video and its events, not the ones that were on screen before.
 - For a published run the panel shows the metrics and the events. Clicking an
   event, for example "In center 00:03-00:04", plays exactly that stretch in the
   side panel and stops at its end. The original and the analyzed video sit side
@@ -404,6 +406,8 @@ an experiment and pick one of its tests.
   panel shifts both players by the offsets the run's video pair reports.
 - Every event is reachable with the keyboard: Tab moves between them and Enter
   plays the selected one.
+- Read links are short lived. When one expires the panel asks the API for a new
+  pair and puts the reader back where they were, rather than at the start.
 - A viewer reads results but sees no upload or reanalysis controls, the same way
   the API would refuse those actions.
 

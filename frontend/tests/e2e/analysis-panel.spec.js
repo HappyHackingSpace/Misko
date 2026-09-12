@@ -29,6 +29,14 @@ async function openSeededTest(page, data) {
   await expect(page.getByTestId("event-timeline")).toBeVisible();
 }
 
+// The run the panel actually opened. The test has more than one published run,
+// so reading the pair of a run the panel is not showing would prove nothing.
+async function openRunId(page) {
+  const selected = page.locator('[data-test="run"][data-selected="true"]');
+  await expect(selected).toHaveCount(1);
+  return selected.getAttribute("data-run-id");
+}
+
 // The pair of a run, read through the API with the panel's own token.
 async function videoPair(page, request, runId) {
   const token = await page.evaluate(() => localStorage.getItem("misko_token"));
@@ -48,7 +56,7 @@ test.describe("analysis panel", () => {
     // Event times are measured from the clip start, the videos from their own
     // start: the seeded clip begins a second into the recording, so every
     // expected position below carries the pair's output offset.
-    const pair = await videoPair(page, request, data.runId);
+    const pair = await videoPair(page, request, await openRunId(page));
     expect(pair.outputOffsetUs).toBeGreaterThan(0);
     const offset = pair.outputOffsetUs / 1_000_000;
 
@@ -121,7 +129,7 @@ test.describe("analysis panel", () => {
     await signIn(page, { email: data.adminEmail, password: data.adminPassword });
     await openSeededTest(page, data);
 
-    const body = await videoPair(page, request, data.runId);
+    const body = await videoPair(page, request, await openRunId(page));
     expect(body.timeMappingVersion).toBe("identity-v1");
     // The analyzed clip starts inside the recording, so both offsets are the
     // clip start and neither player may ignore them.

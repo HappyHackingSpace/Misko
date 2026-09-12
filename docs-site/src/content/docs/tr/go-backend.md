@@ -394,7 +394,10 @@ bir deney açın ve testlerinden birini seçin.
 - Testin analiz çalıştırmaları düğme olarak görünür. Ekran, sonuç yayınlamış en
   yeni çalıştırmayı açar; böylece sonradan başarısız olan bir deneme okunabilir
   sonucu gizlemez. Kuyruktaki veya çalışan bir iş bunu söyler, başarısız olan ise
-  nedenini gösterir, örneğin kalite kontrol hatası.
+  nedenini gösterir, örneğin kalite kontrol hatası. Bir kayıt birden çok kez
+  analiz edilebilir ve her çalıştırma kendi videolarını saklar: daha eski bir
+  çalıştırma açıldığında ekranda o çalıştırmanın videosu ve olayları görünür,
+  öncekiler değil.
 - Yayınlanmış bir çalıştırmada panel metrikleri ve olayları gösterir. Bir olaya
   tıklamak, örneğin "Merkezde 00:03-00:04", yan panelde tam olarak o aralığı
   oynatır ve sonunda durur. Orijinal ve analiz edilmiş video yan yana, aynı zaman
@@ -403,6 +406,8 @@ bir deney açın ve testlerinden birini seçin.
   oynatıcıyı da çalıştırmanın video çiftindeki kaydırma değerleriyle öteler.
 - Her olaya klavyeyle erişilebilir: Tab olaylar arasında gezer, Enter seçili
   olanı oynatır.
+- Okuma bağlantıları kısa ömürlüdür. Biri geçersizleşince panel API'den yeni bir
+  video çifti ister ve okuyucuyu başa döndürmek yerine kaldığı yere geri koyar.
 - İzleyici rolü sonuçları okur ama yükleme veya yeniden analiz denetimlerini
   görmez; API de bu işlemleri reddederdi.
 
