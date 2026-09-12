@@ -31,9 +31,12 @@ export const experiments = {
 
 export const tests = {
   get: (id) => api(`/tests/${id}`),
-  start: (id) => api(`/tests/${id}/start`, { method: "POST", body: {} }),
-  complete: (id) => api(`/tests/${id}/complete`, { method: "POST", body: {} }),
+  // An empty body means "now"; the API fills the instant in.
+  start: (id, body = {}) => api(`/tests/${id}/start`, { method: "POST", body }),
+  complete: (id, body = {}) => api(`/tests/${id}/complete`, { method: "POST", body }),
+  cancel: (id, reason) => api(`/tests/${id}/cancel`, { method: "POST", body: { reason } }),
   trials: (id) => api(`/tests/${id}/trials`),
+  recordTrial: (id, body) => api(`/tests/${id}/trials`, { method: "POST", body }),
   comments: (id) => api(`/tests/${id}/comments`),
 };
 
