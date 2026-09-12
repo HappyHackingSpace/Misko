@@ -59,7 +59,16 @@ export const analysis = {
 };
 
 export const paradigms = {
+  list: () => api("/paradigms"),
   version: (key, version) => api(`/paradigms/${key}/versions/${version}`),
+};
+
+export const environments = {
+  list: () => api("/environments"),
+  get: (id) => api(`/environments/${id}`),
+  create: (body) => api("/environments", { method: "POST", body }),
+  revisions: (id) => api(`/environments/${id}/revisions`),
+  addRevision: (id, body) => api(`/environments/${id}/revisions`, { method: "POST", body }),
 };
 
 export const reports = {

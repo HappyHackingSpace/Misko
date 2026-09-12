@@ -7,15 +7,18 @@ import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import { useI18n } from "vue-i18n";
 import { api } from "../api/client.js";
+import { useAuth } from "../stores/auth.js";
 import { useBreadcrumb } from "../stores/breadcrumb.js";
 
 const { t } = useI18n();
 const route = useRoute();
+const auth = useAuth();
 const crumb = useBreadcrumb();
 
-const summary = ref(null);
+// Turning a paradigm into a named apparatus needs apparatus:write.
+const canCreateEnvironment = computed(() => auth.can("apparatus:write"));
+
 const manifest = ref(null);
-const version = ref(null);
 const error = ref("");
 const tab = ref("parameters");
 
@@ -41,9 +44,16 @@ const parameters = computed(() => [
 async function load() {
   error.value = "";
   try {
-    summary.value = await api(`/paradigms/${route.params.key}`);
-    version.value = Number(route.query.version) || summary.value.latestVersion;
-    manifest.value = await api(`/paradigms/${route.params.key}/versions/${version.value}`);
+    // GET /paradigms/{key} already returns the latest manifest in full, so it
+    // is only fetched again when a specific version is asked for. Reading a
+    // "latestVersion" field off it asked for /versions/undefined, which is a
+    // 404, and left this page showing "unknown paradigm version" for every
+    // paradigm.
+    const latest = await api(`/paradigms/${route.params.key}`);
+    const asked = Number(route.query.version);
+    manifest.value = asked && asked !== latest.version
+      ? await api(`/paradigms/${route.params.key}/versions/${asked}`)
+      : latest;
     crumb.set([
       { label: t("paradigms.title"), to: "/paradigms" },
       { label: manifest.value.name },
@@ -69,6 +79,16 @@ onUnmounted(() => crumb.clear());
         {{ $t("paradigms.metricEngine") }} {{ manifest.metricEngineVersion }} ·
         {{ $t("paradigms.automated") }}: {{ manifest.automatedAnalysis ? $t("common.yes") : $t("common.no") }}
       </p>
+      <!-- A paradigm is a template. This is where it becomes a real apparatus
+           the laboratory owns, with the physical values of its own setup. -->
+      <RouterLink
+        v-if="canCreateEnvironment"
+        class="link"
+        :to="`/environments/new?paradigm=${manifest.key}`"
+        data-test="create-environment"
+      >
+        {{ $t("environments.createFromParadigm") }}
+      </RouterLink>
     </div>
 
     <div class="card">

@@ -327,6 +327,7 @@ export default {
       confirmDelete: "Ortam silinsin mi?",
       empty: "Henüz ortam yok.",
       count: "ortam",
+      createFromParadigm: "Bu paradigmadan ortam oluştur",
     },
     subjects: {
       species: "Tür",

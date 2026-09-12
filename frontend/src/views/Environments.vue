@@ -1,9 +1,13 @@
 <script setup>
-// Apparatus and their measurement revisions, read only: a revision is created
-// with the protocol that uses it.
-import { onMounted, ref } from "vue";
+// Apparatus and their measurement revisions. Anyone signed in may read them;
+// defining one needs apparatus:write, so the control appears only for a role
+// the API would accept.
+import { computed, onMounted, ref } from "vue";
 import { api } from "../api/client.js";
+import { useAuth } from "../stores/auth.js";
 
+const auth = useAuth();
+const canWrite = computed(() => auth.can("apparatus:write"));
 const environments = ref([]);
 const error = ref("");
 
@@ -19,6 +23,9 @@ onMounted(async () => {
 <template>
   <div class="head">
     <h1>{{ $t("environments.title") }}</h1>
+    <button v-if="canWrite" class="primary" data-test="environment-new" @click="$router.push('/environments/new')">
+      {{ $t("environments.new") }}
+    </button>
   </div>
   <p class="err" v-if="error">{{ error }}</p>
 
@@ -34,7 +41,7 @@ onMounted(async () => {
           </tr>
         </thead>
         <tbody>
-          <tr v-for="environment in environments" :key="environment.id">
+          <tr v-for="environment in environments" :key="environment.id" data-test="environment">
             <td>{{ environment.name }}</td>
             <td class="muted">{{ environment.paradigmKey }}</td>
             <td class="muted">{{ environment.latestRevision }}</td>
