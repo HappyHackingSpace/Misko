@@ -120,7 +120,11 @@ test.describe("analysis panel", () => {
     expect(playback.from).toBeGreaterThanOrEqual(startS - 0.25);
     expect(playback.from).toBeLessThanOrEqual(startS + 0.5);
     expect(playback.current).toBeGreaterThanOrEqual(startS - 0.25);
-    expect(playback.current).toBeLessThanOrEqual(endS + 0.3);
+    // The stop is sampled on timeupdate, and engines sample at different rates:
+    // Firefox overshoots the event end by more than Chromium does. The margin
+    // has to cover that and still stay clear of the clip end, which is what
+    // separates "stopped at the event" from "ran to the end of the video".
+    expect(playback.current).toBeLessThanOrEqual(endS + 0.4);
     expect(playback.current).toBeLessThan(duration - 0.05);
   });
 

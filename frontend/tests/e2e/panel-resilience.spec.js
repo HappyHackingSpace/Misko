@@ -52,7 +52,16 @@ test("switching runs replaces the video and the events of the previous run", asy
   await page.locator(`[data-run-id="${data.secondRunId}"]`).click();
   await expect.poll(async () => analyzed.evaluate(playingObject), { timeout: 10_000 }).toContain("reanalysis.mp4");
 
-  // Play an event here, which arms a stop at that event's end.
+  // Play an event here, which arms a stop at that event's end. The stop is
+  // computed in the open run's own video time, so its offset is the one that
+  // matters.
+  const offset = (
+    await (
+      await request.get(`${API}/api/analysis-runs/${data.secondRunId}/video-pair`, {
+        headers: { Authorization: `Bearer ${await page.evaluate(() => localStorage.getItem("misko_token"))}` },
+      })
+    ).json()
+  ).outputOffsetUs / 1_000_000;
   const interval = (
     await page.getByTestId("event").evaluateAll((nodes) =>
       nodes
@@ -69,14 +78,24 @@ test("switching runs replaces the video and the events of the previous run", asy
     .toBe(true);
 
   // Switch runs and play the other video from its start. The stop belonged to
-  // the run that was open, so nothing may cut this one short of its end.
+  // the run that was open, so nothing may cut this one short.
   await page.locator(`[data-run-id="${data.runId}"]`).click();
   await expect.poll(async () => analyzed.evaluate(playingObject), { timeout: 10_000 }).toContain("overlay.mp4");
   await analyzed.evaluate((video) => {
     video.currentTime = 0;
     return video.play().catch(() => {});
   });
-  await expect.poll(async () => analyzed.evaluate((video) => video.ended), { timeout: 20_000 }).toBe(true);
+
+  // The stale stop sits at the end of the interval that was played, in this
+  // video's own time. Playing past it is what proves it was cleared: a panel
+  // that kept it pauses exactly there. Waiting for the video to end instead
+  // would depend on a shared machine playing four seconds in real time, which
+  // is not something a test should rely on.
+  const staleStop = offset + interval.endUs / 1_000_000;
+  await expect
+    .poll(async () => analyzed.evaluate((video) => video.currentTime), { timeout: 20_000 })
+    .toBeGreaterThan(staleStop + 0.15);
+  expect(await analyzed.evaluate((video) => video.paused)).toBe(false);
 });
 
 test("the last of several quick clicks is the interval that plays", async ({ page, request }) => {
