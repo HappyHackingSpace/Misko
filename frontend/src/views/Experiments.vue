@@ -3,8 +3,13 @@ import { computed } from "vue";
 import { useI18n } from "vue-i18n";
 import DataTable from "../components/DataTable.vue";
 import { useDataTable } from "../composables/useDataTable.js";
+import { useAuth } from "../stores/auth.js";
 
 const { t } = useI18n();
+const auth = useAuth();
+// Creating a study needs study:write, so the control is offered only to a role
+// the API would actually accept.
+const canWrite = computed(() => auth.can("study:write"));
 const table = useDataTable("/experiments", { defaultSort: { field: "createdAt", order: "desc" } });
 
 const columns = computed(() => [
@@ -17,6 +22,9 @@ const columns = computed(() => [
 <template>
   <div class="head">
     <h1>{{ $t("experiments.title") }}</h1>
+    <button v-if="canWrite" class="primary" data-test="experiment-new" @click="$router.push('/experiments/new')">
+      {{ $t("experiments.new") }}
+    </button>
   </div>
 
   <div class="card">

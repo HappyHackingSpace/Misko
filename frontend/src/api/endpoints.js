@@ -20,7 +20,10 @@ export const subjects = {
 export const experiments = {
   list: (query) => api("/experiments", { query }),
   get: (id) => api(`/experiments/${id}`),
+  create: (body) => api("/experiments", { method: "POST", body }),
+  update: (id, body) => api(`/experiments/${id}`, { method: "PATCH", body }),
   groups: (id) => api(`/experiments/${id}/groups`),
+  addGroup: (id, body) => api(`/experiments/${id}/groups`, { method: "POST", body }),
   enrollments: (id, query) => api(`/experiments/${id}/enrollments`, { query }),
   tests: (id, query) => api(`/experiments/${id}/tests`, { query }),
 };
