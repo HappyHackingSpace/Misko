@@ -223,3 +223,9 @@ __marimo__/
 # Playwright browser tests
 frontend/test-results/
 frontend/playwright-report/
+
+# Docker Compose local overrides
+docker-compose.override.yml
+docker-compose.override.*.yml
+!docker-compose.override.example.yml
+

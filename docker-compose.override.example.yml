@@ -1,0 +1,9 @@
+# Example local development overrides for docker-compose.yml.
+# Copy this file to `docker-compose.override.yml` to use it:
+#   cp docker-compose.override.example.yml docker-compose.override.yml
+
+services:
+  # Expose PostgreSQL to the host machine for DB tools (DBeaver, pgAdmin, DataGrip, etc.)
+  db:
+    ports:
+      - "127.0.0.1:5432:5432"
