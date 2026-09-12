@@ -1,11 +1,15 @@
 <script setup>
-// Laboratory animals, read only: subjects are created where they are enrolled.
+// Laboratory animals. Anyone signed in may read them; creating and editing
+// needs subject:write, so the controls appear only for a role that has it.
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
 import DataTable from "../components/DataTable.vue";
 import { useDataTable } from "../composables/useDataTable.js";
+import { useAuth } from "../stores/auth.js";
 
 const { t } = useI18n();
+const auth = useAuth();
+const canWrite = computed(() => auth.can("subject:write"));
 const table = useDataTable("/subjects", { defaultSort: { field: "createdAt", order: "desc" } });
 
 const sexLabel = (sex) => t(`subjects.sex${sex.charAt(0) + sex.slice(1).toLowerCase()}`);
@@ -22,6 +26,9 @@ const columns = computed(() => [
 <template>
   <div class="head">
     <h1>{{ $t("subjects.title") }}</h1>
+    <button v-if="canWrite" class="primary" data-test="subject-new" @click="$router.push('/subjects/new')">
+      {{ $t("subjects.new") }}
+    </button>
   </div>
 
   <div class="card">
@@ -42,7 +49,16 @@ const columns = computed(() => [
       @sort="table.setSort"
       @search="table.setSearch"
     >
-      <template #cell-sex="{ row }">{{ sexLabel(row.sex) }}</template>
+      <!-- The label is translated, so the raw value travels in an attribute for
+           anything that needs to read it without knowing the language. -->
+      <template #cell-sex="{ row }">
+        <span :data-sex="row.sex">{{ sexLabel(row.sex) }}</span>
+      </template>
+      <template v-if="canWrite" #actions="{ row }">
+        <RouterLink class="link" :to="`/subjects/${row.id}`" :data-test="`subject-edit-${row.code}`">
+          {{ $t("common.edit") }}
+        </RouterLink>
+      </template>
     </DataTable>
   </div>
 </template>

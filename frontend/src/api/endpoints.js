@@ -12,6 +12,9 @@ export const meta = {
 
 export const subjects = {
   list: (query) => api("/subjects", { query }),
+  get: (id) => api(`/subjects/${id}`),
+  create: (body) => api("/subjects", { method: "POST", body }),
+  update: (id, body) => api(`/subjects/${id}`, { method: "PATCH", body }),
 };
 
 export const experiments = {
