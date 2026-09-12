@@ -1,0 +1,47 @@
+name: Workflows CI
+
+# Validates the workflow files themselves. Without this, a mistake in a workflow
+# that no pull request triggers stays invisible: GitHub rejects the file and
+# simply registers no check, so `gh pr checks` waits for something that never
+# arrives. That happened in #154, where an unquoted ": " inside a `run:` value
+# made worker-ci.yml invalid and Worker CI never ran.
+#
+# deploy-gcp.yml is the reason this matters most: it only runs on manual
+# dispatch, so nothing else would ever parse it.
+
+on:
+  push:
+    branches: [main, new-backend]
+    paths:
+      - ".github/workflows/**"
+  pull_request:
+    paths:
+      - ".github/workflows/**"
+
+concurrency:
+  group: workflows-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  actionlint:
+    name: Lint every workflow
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@v7.0.0
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      # Every workflow file, not only the ones this pull request touched, so a
+      # file that has been broken for a while cannot hide behind a path filter.
+      # shellcheck is present on the runner, so actionlint also checks the shell
+      # in `run:` steps.
+      - name: actionlint
+        run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 .github/workflows/*.yml

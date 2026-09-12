@@ -114,12 +114,31 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest
 
+      # The digests arrive as empty files named after each platform's digest,
+      # one per matrix entry. Both lists are built as arrays: the tags and the
+      # image references have to reach docker as separate arguments, and letting
+      # the shell split an unquoted command substitution would break on any tag
+      # or path containing a space.
       - name: Create & push manifest list
         working-directory: /tmp/digests
         run: |
-          docker buildx imagetools create \
-            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
-            $(printf 'ghcr.io/happyhackingspace/misko-${{ matrix.name }}@sha256:%s ' *)
+          tags=()
+          while IFS= read -r tag; do
+            tags+=(-t "$tag")
+          done < <(jq -r '.tags[]' <<< "$DOCKER_METADATA_OUTPUT_JSON")
+
+          images=()
+          for digest in *; do
+            [ -e "$digest" ] || continue
+            images+=("ghcr.io/happyhackingspace/misko-${{ matrix.name }}@sha256:$digest")
+          done
+
+          if [ ${#tags[@]} -eq 0 ] || [ ${#images[@]} -eq 0 ]; then
+            echo "no tags or no digests to publish" >&2
+            exit 1
+          fi
+
+          docker buildx imagetools create "${tags[@]}" "${images[@]}"
 
       - name: Inspect
         run: docker buildx imagetools inspect ghcr.io/happyhackingspace/misko-${{ matrix.name }}:latest
