@@ -60,6 +60,15 @@ services:
         condition: service_healthy
     stop_grace_period: 15s
 
+  # The web panel. Nginx serves the built single page application and proxies
+  # /api to the backend service, so the browser talks to one origin.
+  frontend:
+    build: ./frontend
+    ports:
+      - "127.0.0.1:${FRONTEND_PORT:-8080}:80"
+    depends_on:
+      - backend
+
   # Queues analysis runs for verified, calibrated recordings and requeues
   # expired leases. It needs the database only; workers call the API.
   jobs:
