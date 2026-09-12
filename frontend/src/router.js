@@ -11,6 +11,7 @@ const SubjectForm = () => import("./views/SubjectForm.vue");
 const Paradigms = () => import("./views/Paradigms.vue");
 const ParadigmDetail = () => import("./views/ParadigmDetail.vue");
 const Environments = () => import("./views/Environments.vue");
+const EnvironmentForm = () => import("./views/EnvironmentForm.vue");
 const Users = () => import("./views/Users.vue");
 const UserForm = () => import("./views/UserForm.vue");
 
@@ -34,6 +35,8 @@ const routes = [
   { path: "/paradigms", component: Paradigms, meta: { titleKey: "nav.paradigms" } },
   { path: "/paradigms/:key", component: ParadigmDetail, meta: { titleKey: "nav.paradigms" } },
   { path: "/environments", component: Environments, meta: { titleKey: "nav.environments" } },
+  // Defining an apparatus needs apparatus:write.
+  { path: "/environments/new", component: EnvironmentForm, meta: { permission: "apparatus:write", titleKey: "nav.environments" } },
 
   { path: "/users", component: Users, meta: { permission: "user:manage", titleKey: "nav.users" } },
   { path: "/users/new", component: UserForm, meta: { permission: "user:manage", titleKey: "nav.users" } },

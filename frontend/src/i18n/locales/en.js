@@ -327,6 +327,7 @@ export default {
       confirmDelete: "Delete this environment?",
       empty: "No environments yet.",
       count: "environments",
+      createFromParadigm: "Create environment from this paradigm",
     },
     subjects: {
       species: "Species",
