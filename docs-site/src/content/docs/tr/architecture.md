@@ -1,35 +1,48 @@
 ---
 title: Mimari
-description: Katmanlar, teknoloji yığını ve iki sistemli sınır.
+description: Katmanlar, teknoloji yığını ve analiz worker'larının sisteme nasıl bağlandığı.
 ---
 
-Mişko, ince bir kontratla birbirine bağlanmış iki bağımsız sistemdir. Mişko'nun
-kendisi katmanlı bir Express API + Vue 3 SPA'dır; CV servisi ise kendi
-veritabanına sahip ayrı bir Python servisidir.
+Mişko; bir Go API'si, bir Vue paneli ve bir PostgreSQL veritabanından oluşur.
+Video analizi API'nin dışında, iş talep edip sonuçlarını yükleyen worker'larda
+çalışır.
 
 ## Teknoloji yığını
 
-| Katman   | Teknoloji                                        |
-|----------|--------------------------------------------------|
-| Backend  | Node.js 20 · Express · Prisma · PostgreSQL       |
-| Frontend | Vue 3 · Vite · Vue Router · Pinia                |
-| Güvenlik | JWT · bcryptjs · helmet · zod                    |
-| Altyapı  | Docker · Docker Compose · Nginx · GitHub Actions |
-| CV svc   | Python · FastAPI · YOLOv8 · ByteTrack · OpenCV   |
+| Katman   | Teknoloji                                            |
+|----------|------------------------------------------------------|
+| Backend  | Go 1.27 · pgx · sqlc · PostgreSQL 18                  |
+| Frontend | Vue 3 · Vite · Vue Router · Pinia · vue-i18n          |
+| Güvenlik | JWT · bcrypt · rol tabanlı erişim denetimi            |
+| Depolama | Google Cloud Storage (özel bucket, imzalı URL'ler)    |
+| Worker   | Python · PyAV · NumPy · SciPy                         |
+| Altyapı  | Docker · Docker Compose · Nginx · GitHub Actions      |
 
 ## Backend katmanları
 
+API modüler bir monolittir. Her alan `internal/` altında kendi paketidir ve
+hepsi aynı biçimde bölünür:
+
 ```
-İstek → routes → middleware (auth/validate) → controller → service → Prisma → DB
-                                                  ↑
-                                         asyncHandler + ApiError
-                                                  ↓
-                                       merkezî errorHandler → JSON
+internal/<alan>/
+├── domain/       saf iş kuralları, veritabanı ve HTTP yok
+├── application/  kullanım senaryoları ve ihtiyaç duydukları portlar
+└── adapters/
+    ├── http/       rotalar, istek çözümleme, hata eşleme
+    ├── postgres/   sqlc ile üretilen sorgular
+    ├── catalog/    paradigma kataloğunun salt okunur görünümleri
+    └── token/      token üretme ve doğrulama
 ```
 
-Her modül (`auth`, `users`, `scenarios`, `subjects`, `environments`, `tests`) aynı
-yapıyı izler: `routes + controller + service (+ validation)`. Ortak bir CRUD
-fabrikası basit kaynakları tutarlı tutar.
+`internal/bootstrap` kompozisyon köküdür: somut adaptörleri kullanım
+senaryolarına bağlar ve tüm rotaları kurar. `internal/access/domain` ortak izin
+çekirdeğini tutar; bir kullanım senaryosu bir store'a dokunmadan önce
+`actor.Require(permission)` çağırır.
+
+`tests/architecture` içindeki politika testi bu yapıyı zorunlu kılar: domain ve
+application paketleri adaptörleri import edemez ve domain kodu standart
+kütüphanenin küçük bir izin listesiyle sınırlıdır. Katman hatası, incelemeyi
+beklemeden derlemeyi düşürür.
 
 ## Liste sorguları
 
@@ -39,42 +52,41 @@ Her liste endpoint'i çıplak bir dizi yerine sayfalanmış bir zarf döndürür
 { "data": [ ... ], "total": 42, "page": 1, "pageSize": 10 }
 ```
 
-Ortak bir yardımcı (`common/listQuery.js`), istek sorgusunu Prisma `where` /
-`orderBy` / `skip` / `take` ifadesine çevirir; böylece arama, sütun bazlı
-filtreler, sıralama ve sayfalama veritabanı tarafından uygulanır. Her modül kendi
-`searchFields`, `filterFields` ve `sortFields` tanımını bildirir; statik paradigma
-kayıt defteri aynı yapıyı bellek içi bir dizi üzerinde kullanır. Filtreler köşeli
-parantez gösterimini kullanır (`filter[status]=DONE`) ve `?all=true`, tam liste
-gereken form açılır listeleri için sayfalamayı atlar. Frontend'de tek bir
-`DataTable` bileşeni ve `useDataTable` composable'ı bu zarfı tüm ekranlarda
-tüketir. Bileşen ayrıca sürekli bir satır indeksi gösterir ve geçerli sayfayı
-istemci tarafında dışa aktarır: CSV için üretilen bir blob, PDF için tarayıcının
-yazdırma penceresi kullanılır; böylece pakete bir PDF kütüphanesi eklenmez.
+`page` ve `pageSize` sorgu parametreleridir ve sayfalamayı veritabanı uygular.
+Panelde tek bir `DataTable` bileşeni ve `useDataTable` composable'ı bu zarfı
+tüketir; böylece arama, sayfalama ve sıralama her ekranda aynı şekilde çalışır.
 
-## İki sistemli sınır
+## Analiz nasıl çalışır
 
-Mişko, lab iş akışının **system of record**'udur. Kamera + görü tarafı, kendi
-PostgreSQL'i olan **tamamen bağımsız** bir servistir. Ağır veri — kare
-telemetrisi, event'ler, video — CV servisinde durur; Mişko yalnızca testin
-**özet metriklerini** ve artefakt URL'lerini tutar.
+Kamera ve görü tarafı, kendi veritabanı olan ikinci bir servis değildir. Bu
+API'ye kimlik doğrulayan bir worker sürecidir:
 
 ```
-Laboratuvar (singleton) ── Mişko API ── PostgreSQL (ilişkisel, küçük)
-                               │
-                               │  POST /api/tests/:id/result  (X-Service-Key)
-                               ▼
-                          CV Servisi ── PostgreSQL (telemetri, büyük)
-                               │
-                               ▼
-                       Object storage (MinIO/S3) — video + artefaktlar
+Panel ──► Go API ──► PostgreSQL (kayıtlar, metrikler, olaylar)
+             │
+             │  Authorization: Worker <token>
+             ▼
+          Worker  ──►  kaydı okur, çıktılarını imzalı URL'lerle
+             │         bucket'a yazar
+             ▼
+   Cloud Storage (orijinal video, analiz videosu, yörünge)
 ```
 
-Tam kontrat — test ↔ capture session eşlemesi, sonuç push gövdesi ve servis-servis
-auth — [Entegrasyon](../integration/) sayfasındadır.
+Worker kuyruktaki bir çalıştırmayı üstlenir, sabitlenmiş kaynak videoyu okur ve
+bir analiz videosu ile bir `misko.trajectory.v1` yörüngesi yükler. Metrik
+göndermez. API yüklenen her nesneyi bildirilen boyut, sağlama ve içerik türüne
+karşı doğrular, paradigmanın kalite kurallarını uygular; ardından Go metrik
+motoru metrikleri ve olayları yörüngeden hesaplar. Böylece takibi ne üretirse
+üretsin, her ölçümün tek bir tanımı API içinde kalır.
+
+Ağır veri bucket'ta kalır: veritabanı kayıtları, metrikleri, olayları ve nesne
+referanslarını tutar, video baytlarını değil.
 
 ## Dağıtım
 
-Tüm yığın Docker Compose ile çalışır (PostgreSQL + API + Nginx). Migration'lar
-konteyner açılışında otomatik uygulanır, superadmin ilk açılışta oluşturulur.
-Backend ve frontend'in her biri ayrı, path-filtreli bir GitHub Actions pipeline'ına
-sahiptir.
+Yığın Docker Compose ile çalışır: PostgreSQL, API, analiz çalıştırmalarını
+kuyruklayan jobs süreci ve paneli sunan Nginx. Şema ve ilk yönetici, konteyner
+açılışında değil, açık ve tek seferlik komutlarla kurulur (`bootstrap schema` ve
+`bootstrap setup`); böylece mevcut bir veritabanı kazara migrate edilmez.
+Backend, frontend ve worker'ın her birinin kendi path-filtreli GitHub Actions
+pipeline'ı vardır.

@@ -5,39 +5,86 @@ name: misko
 #
 #   1. Put this file and `.env.prod.example` (copied to `.env`) in a folder.
 #   2. docker compose -f docker-compose.prod.yml pull
-#   3. docker compose -f docker-compose.prod.yml up -d
-#   4. docker compose -f docker-compose.prod.yml logs backend   # one-time admin password
+#   3. docker compose -f docker-compose.prod.yml --profile setup run --rm schema
+#   4. docker compose -f docker-compose.prod.yml --profile setup run --rm setup
+#      (prints the one-time administrator password to your terminal)
+#   5. docker compose -f docker-compose.prod.yml up -d
+#
+# Steps 3 and 4 are one-time. The API does not install the schema or create the
+# administrator on its own, so starting the stack without them leaves an empty
+# database and no way to sign in.
 #
 # Override IMAGE_OWNER / IMAGE_TAG in `.env` if the images live elsewhere.
 
+x-database-url: &database-url postgres://${POSTGRES_USER:-misko}:${POSTGRES_PASSWORD:?set a strong POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-misko}?sslmode=disable
+
 services:
   db:
-    image: postgres:16-alpine
+    image: postgres:18.6-alpine@sha256:d3e1620b530c944afa6e887d22eb899824da68e19c52024bf98f5220c88a65b2
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-misko}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set a strong POSTGRES_PASSWORD in .env}
       POSTGRES_DB: ${POSTGRES_DB:-misko}
     volumes:
-      - db-data:/var/lib/postgresql/data
+      - db-data:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-misko} -d ${POSTGRES_DB:-misko}"]
       interval: 5s
       timeout: 5s
       retries: 10
 
+  # One-time: installs the schema into an empty database.
+  schema:
+    image: ghcr.io/${IMAGE_OWNER:-happyhackingspace}/misko-backend:${IMAGE_TAG:-latest}
+    entrypoint: ["/bootstrap", "schema"]
+    environment:
+      DATABASE_URL: *database-url
+    depends_on:
+      db:
+        condition: service_healthy
+    profiles: [setup]
+
+  # One-time: creates the laboratory and the first administrator. Run it with
+  # `run --rm` so the generated password reaches your terminal; it is shown once
+  # and never written to a log.
+  setup:
+    image: ghcr.io/${IMAGE_OWNER:-happyhackingspace}/misko-backend:${IMAGE_TAG:-latest}
+    entrypoint: ["/bootstrap", "setup"]
+    environment:
+      DATABASE_URL: *database-url
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@misko.local}
+      LAB_NAME: ${LAB_NAME:-Misko Laboratory}
+      LAB_TIMEZONE: ${LAB_TIMEZONE:-UTC}
+    depends_on:
+      db:
+        condition: service_healthy
+    profiles: [setup]
+
   backend:
     image: ghcr.io/${IMAGE_OWNER:-happyhackingspace}/misko-backend:${IMAGE_TAG:-latest}
     restart: unless-stopped
     environment:
-      NODE_ENV: production
-      PORT: 4000
-      DATABASE_URL: postgresql://${POSTGRES_USER:-misko}:${POSTGRES_PASSWORD:?set a strong POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-misko}?schema=public
+      DATABASE_URL: *database-url
+      HTTP_ADDR: :4000
       JWT_SECRET: ${JWT_SECRET:?set a strong JWT_SECRET in .env}
-      JWT_TTL: ${JWT_TTL:-7d}
-      CORS_ORIGIN: ${CORS_ORIGIN:-*}
-      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@miskolab.com}
-      LAB_NAME: ${LAB_NAME:-Mişko Laboratuvarı}
+      TOKEN_TTL: ${TOKEN_TTL:-12h}
+      # Video routes answer 503 until a private bucket is configured.
+      GCS_BUCKET: ${GCS_BUCKET:-}
+      GCS_SIGNER_EMAIL: ${GCS_SIGNER_EMAIL:-}
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # Queues analysis runs for verified, calibrated recordings and requeues
+  # expired leases. It needs the database only; workers call the API.
+  jobs:
+    image: ghcr.io/${IMAGE_OWNER:-happyhackingspace}/misko-backend:${IMAGE_TAG:-latest}
+    entrypoint: ["/jobs"]
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: *database-url
+      JOB_INTERVAL: ${JOB_INTERVAL:-10s}
     depends_on:
       db:
         condition: service_healthy
