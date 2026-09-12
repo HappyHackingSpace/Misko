@@ -151,6 +151,8 @@ Path-filtered GitHub Actions pipelines:
 - **Frontend CI**: lint, build, browser tests against the end to end API server,
   and a container build.
 - **Worker CI**: the Python worker's tests.
+- **Workflows CI**: every workflow file is linted with actionlint, so a broken
+  workflow fails a check instead of failing a deployment.
 - **Docs**: the documentation site is published on changes under `docs-site/`.
 
 ## Roadmap
