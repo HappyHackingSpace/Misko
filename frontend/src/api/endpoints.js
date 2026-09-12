@@ -38,6 +38,9 @@ export const tests = {
   trials: (id) => api(`/tests/${id}/trials`),
   recordTrial: (id, body) => api(`/tests/${id}/trials`, { method: "POST", body }),
   comments: (id) => api(`/tests/${id}/comments`),
+  createComment: (id, body) => api(`/tests/${id}/comments`, { method: "POST", body: { body } }),
+  updateComment: (id, commentId, body) => api(`/tests/${id}/comments/${commentId}`, { method: "PATCH", body: { body } }),
+  deleteComment: (id, commentId) => api(`/tests/${id}/comments/${commentId}`, { method: "DELETE" }),
 };
 
 export const recordings = {
