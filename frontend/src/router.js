@@ -6,6 +6,7 @@ const Experiments = () => import("./views/Experiments.vue");
 const ExperimentDetail = () => import("./views/ExperimentDetail.vue");
 const TestDetail = () => import("./views/TestDetail.vue");
 const Subjects = () => import("./views/Subjects.vue");
+const SubjectForm = () => import("./views/SubjectForm.vue");
 const Paradigms = () => import("./views/Paradigms.vue");
 const ParadigmDetail = () => import("./views/ParadigmDetail.vue");
 const Environments = () => import("./views/Environments.vue");
@@ -21,6 +22,10 @@ const routes = [
   { path: "/tests/:id", component: TestDetail, meta: { titleKey: "nav.tests" } },
 
   { path: "/subjects", component: Subjects, meta: { titleKey: "nav.subjects" } },
+  // Writing a subject needs subject:write, so a technician or a viewer cannot
+  // reach the form by typing the address either.
+  { path: "/subjects/new", component: SubjectForm, meta: { permission: "subject:write", titleKey: "nav.subjects" } },
+  { path: "/subjects/:id", component: SubjectForm, meta: { permission: "subject:write", titleKey: "nav.subjects" } },
   { path: "/paradigms", component: Paradigms, meta: { titleKey: "nav.paradigms" } },
   { path: "/paradigms/:key", component: ParadigmDetail, meta: { titleKey: "nav.paradigms" } },
   { path: "/environments", component: Environments, meta: { titleKey: "nav.environments" } },

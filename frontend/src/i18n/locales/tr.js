@@ -335,6 +335,12 @@ export default {
       groupPlaceholder: "kontrol",
       confirmDelete: "Denek silinsin mi?",
       empty: "Denek yok.",
+      new: "Yeni denek",
+      edit: "Deneği düzenle",
+      birthDate: "Doğum tarihi",
+      strainPlaceholder: "C57BL/6",
+      speciesMouse: "Fare",
+      speciesRat: "Sıçan",
     },
     users: {
       title: "Kullanıcı Yönetimi",

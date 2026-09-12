@@ -335,6 +335,12 @@ export default {
       groupPlaceholder: "control",
       confirmDelete: "Delete this subject?",
       empty: "No subjects.",
+      new: "New subject",
+      edit: "Edit subject",
+      birthDate: "Birth date",
+      strainPlaceholder: "C57BL/6",
+      speciesMouse: "Mouse",
+      speciesRat: "Rat",
     },
     users: {
       title: "User Management",
