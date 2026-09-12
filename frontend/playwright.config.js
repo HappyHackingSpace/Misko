@@ -21,7 +21,15 @@ export default defineConfig({
     trace: "retain-on-failure",
     video: "off",
   },
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
+  // The panel leans on <video> behaviour that differs between engines: played
+  // ranges, when a seek settles, how often timeupdate fires and what a failed
+  // source resets. A laboratory on macOS or an iPad gets WebKit, so all three
+  // engines run the same suite.
+  projects: [
+    { name: "chromium", use: { ...devices["Desktop Chrome"] } },
+    { name: "firefox", use: { ...devices["Desktop Firefox"] } },
+    { name: "webkit", use: { ...devices["Desktop Safari"] } },
+  ],
   webServer: [
     {
       command: `go run ./tests/e2e -addr 127.0.0.1:${API_PORT}`,
