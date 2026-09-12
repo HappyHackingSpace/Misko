@@ -43,6 +43,77 @@ const newTrial = ref({ repetition: 1, startedAt: "", endedAt: "", notes: "" });
 const touchedStart = ref(false);
 const cancelReason = ref("");
 
+// Calibration turns pixels into centimetres, so it is what makes a recording
+// measurable. Entering one runs the test, which is test:run.
+const PLANES = ["ARENA_FLOOR", "WATER_SURFACE", "APPARATUS_TOP"];
+const emptyPoint = () => ({ pixelX: "", pixelY: "", worldX: "", worldY: "" });
+// The API asks for at least four fit points and three check points.
+const blankCalibration = () => ({
+  cameraId: "",
+  frameWidth: "",
+  frameHeight: "",
+  crop: { x: 0, y: 0, width: "", height: "" },
+  referenceFrameS: 0,
+  measurementPlane: "ARENA_FLOOR",
+  fitPoints: [emptyPoint(), emptyPoint(), emptyPoint(), emptyPoint()],
+  checkPoints: [emptyPoint(), emptyPoint(), emptyPoint()],
+});
+const calibrating = ref("");
+const newCalibration = ref(blankCalibration());
+
+const calibrationOf = (recordingId) => calibrationStatus.value[recordingId]?.calibration || null;
+const calibratable = (recording) =>
+  recording.video.status === "VERIFIED" && calibrationStatus.value[recording.id]?.status !== "NOT_REQUIRED";
+
+const centimetres = (value) => `${Number(value).toFixed(2)} cm`;
+
+function openCalibration(recording) {
+  const current = calibrationOf(recording.id);
+  newCalibration.value = blankCalibration();
+  // A correction has to keep the camera and the frame of the calibration it
+  // replaces, so those are carried over rather than asked for again.
+  if (current) {
+    newCalibration.value.cameraId = current.cameraId;
+    newCalibration.value.frameWidth = current.frameWidth;
+    newCalibration.value.frameHeight = current.frameHeight;
+    newCalibration.value.crop = { ...current.crop };
+    newCalibration.value.measurementPlane = current.measurementPlane;
+  }
+  calibrating.value = recording.id;
+}
+
+const point = (p) => ({
+  pixelX: Number(p.pixelX),
+  pixelY: Number(p.pixelY),
+  worldX: Number(p.worldX),
+  worldY: Number(p.worldY),
+});
+
+async function saveCalibration(recordingId) {
+  const current = calibrationOf(recordingId);
+  await act("calibration", async () => {
+    await calibration.create(testId.value, recordingId, {
+      cameraId: newCalibration.value.cameraId.trim(),
+      frameWidth: Number(newCalibration.value.frameWidth),
+      frameHeight: Number(newCalibration.value.frameHeight),
+      crop: {
+        x: Number(newCalibration.value.crop.x),
+        y: Number(newCalibration.value.crop.y),
+        width: Number(newCalibration.value.crop.width),
+        height: Number(newCalibration.value.crop.height),
+      },
+      // The field speaks seconds; the API counts microseconds from the start.
+      referenceFrameUs: Math.round(Number(newCalibration.value.referenceFrameS || 0) * 1_000_000),
+      measurementPlane: newCalibration.value.measurementPlane,
+      fitPoints: newCalibration.value.fitPoints.map(point),
+      checkPoints: newCalibration.value.checkPoints.map(point),
+      // Every calibration after the first has to name the one it replaces.
+      supersedesId: current?.id || "",
+    });
+    calibrating.value = "";
+  });
+}
+
 // The datetime fields speak local time; the API stores instants. Seconds are
 // kept, because a test starts partway through a minute and a trial may not
 // start before its test did: a field rounded to the minute would force the
@@ -323,6 +394,186 @@ onUnmounted(() => crumb.clear());
       </div>
     </div>
 
+    <div class="card" v-if="recordingList.length">
+      <h4>{{ $t("calibration.title") }}</h4>
+
+      <!-- A test can hold several recordings, so each one carries its own id:
+           a calibration belongs to one recording, not to the test. -->
+      <div
+        v-for="recording in recordingList"
+        :key="recording.id"
+        class="calibration"
+        data-test="calibration"
+        :data-recording="recording.id"
+      >
+        <p class="muted" v-if="calibrationStatus[recording.id]?.status === 'NOT_REQUIRED'" data-test="calibration-not-required">
+          {{ $t("calibration.notRequired") }}
+        </p>
+        <template v-else>
+          <!-- The measured errors are what say whether the recording can be
+               turned into centimetres, so they are shown rather than a badge. -->
+          <table
+            class="rows"
+            v-if="calibrationOf(recording.id)"
+            data-test="calibration-summary"
+            :data-calibration-status="calibrationOf(recording.id).status"
+          >
+            <tbody>
+              <tr>
+                <td>{{ $t("calibration.fitError") }}</td>
+                <td class="muted" data-test="fit-error">{{ centimetres(calibrationOf(recording.id).fitRmsErrorCm) }}</td>
+              </tr>
+              <tr>
+                <td>{{ $t("calibration.checkError") }}</td>
+                <td class="muted" data-test="check-error">{{ centimetres(calibrationOf(recording.id).checkRmsErrorCm) }}</td>
+              </tr>
+              <tr>
+                <td>{{ $t("calibration.maxError") }}</td>
+                <td class="muted">{{ centimetres(calibrationOf(recording.id).checkMaxErrorCm) }}</td>
+              </tr>
+              <tr>
+                <td>{{ $t("calibration.tolerance") }}</td>
+                <td class="muted" data-test="tolerance">{{ centimetres(calibrationOf(recording.id).toleranceCm) }}</td>
+              </tr>
+              <tr>
+                <td>{{ $t("tests.status") }}</td>
+                <td class="muted">{{ $t(`statuses.${calibrationOf(recording.id).status}`) }}</td>
+              </tr>
+            </tbody>
+          </table>
+          <p v-else class="muted" data-test="calibration-none">{{ $t("calibration.none") }}</p>
+          <p class="err" v-if="calibrationOf(recording.id)?.status === 'REJECTED'" data-test="calibration-rejected">
+            {{ $t("calibration.rejected") }}
+          </p>
+
+          <button
+            v-if="auth.canRun && calibratable(recording) && calibrating !== recording.id"
+            class="small"
+            data-test="calibrate"
+            @click="openCalibration(recording)"
+          >
+            {{ $t("calibration.enter") }}
+          </button>
+
+          <form
+            v-if="calibrating === recording.id"
+            class="calibration-form"
+            data-test="calibration-form"
+            @submit.prevent="saveCalibration(recording.id)"
+          >
+            <p class="muted" v-if="calibrationOf(recording.id)" data-test="calibration-correcting">
+              {{ $t("calibration.correcting") }}
+            </p>
+            <div class="setup">
+              <label class="fld">
+                <span>{{ $t("calibration.camera") }}</span>
+                <input v-model="newCalibration.cameraId" data-test="camera-id" required />
+              </label>
+              <label class="fld narrow">
+                <span>{{ $t("calibration.frame") }}</span>
+                <input type="number" min="1" v-model="newCalibration.frameWidth" data-test="frame-width" required />
+              </label>
+              <label class="fld narrow">
+                <span>&nbsp;</span>
+                <input type="number" min="1" v-model="newCalibration.frameHeight" data-test="frame-height" required />
+              </label>
+              <label class="fld narrow">
+                <span>{{ $t("calibration.crop") }}</span>
+                <input type="number" min="0" v-model="newCalibration.crop.width" data-test="crop-width" required />
+              </label>
+              <label class="fld narrow">
+                <span>&nbsp;</span>
+                <input type="number" min="0" v-model="newCalibration.crop.height" data-test="crop-height" required />
+              </label>
+              <label class="fld">
+                <span>{{ $t("calibration.plane") }}</span>
+                <select v-model="newCalibration.measurementPlane" data-test="plane">
+                  <option v-for="plane in PLANES" :key="plane" :value="plane">{{ $t(`calibration.planes.${plane}`) }}</option>
+                </select>
+              </label>
+              <label class="fld narrow">
+                <span>{{ $t("calibration.referenceFrame") }}</span>
+                <input type="number" min="0" step="0.001" v-model="newCalibration.referenceFrameS" data-test="reference-frame" />
+              </label>
+            </div>
+
+            <p class="muted">{{ $t("calibration.pointsHint") }}</p>
+
+            <h5>{{ $t("calibration.fitPoints") }}</h5>
+            <div class="point" v-for="(p, index) in newCalibration.fitPoints" :key="`fit-${index}`" data-test="fit-point">
+              <label class="fld narrow">
+                <span>{{ $t("calibration.pixel") }} X</span>
+                <input type="number" step="any" v-model="p.pixelX" :data-test="`fit-${index}-pixel-x`" required />
+              </label>
+              <label class="fld narrow">
+                <span>{{ $t("calibration.pixel") }} Y</span>
+                <input type="number" step="any" v-model="p.pixelY" :data-test="`fit-${index}-pixel-y`" required />
+              </label>
+              <label class="fld narrow">
+                <span>{{ $t("calibration.plane_") }} X</span>
+                <input type="number" step="any" v-model="p.worldX" :data-test="`fit-${index}-world-x`" required />
+              </label>
+              <label class="fld narrow">
+                <span>{{ $t("calibration.plane_") }} Y</span>
+                <input type="number" step="any" v-model="p.worldY" :data-test="`fit-${index}-world-y`" required />
+              </label>
+              <button
+                v-if="newCalibration.fitPoints.length > 4"
+                type="button"
+                class="small"
+                :data-test="`fit-${index}-remove`"
+                @click="newCalibration.fitPoints.splice(index, 1)"
+              >
+                {{ $t("calibration.removePoint") }}
+              </button>
+            </div>
+            <button type="button" class="small" data-test="add-fit-point" @click="newCalibration.fitPoints.push(emptyPoint())">
+              {{ $t("calibration.addPoint") }}
+            </button>
+
+            <h5>{{ $t("calibration.checkPoints") }}</h5>
+            <div class="point" v-for="(p, index) in newCalibration.checkPoints" :key="`check-${index}`" data-test="check-point">
+              <label class="fld narrow">
+                <span>{{ $t("calibration.pixel") }} X</span>
+                <input type="number" step="any" v-model="p.pixelX" :data-test="`check-${index}-pixel-x`" required />
+              </label>
+              <label class="fld narrow">
+                <span>{{ $t("calibration.pixel") }} Y</span>
+                <input type="number" step="any" v-model="p.pixelY" :data-test="`check-${index}-pixel-y`" required />
+              </label>
+              <label class="fld narrow">
+                <span>{{ $t("calibration.plane_") }} X</span>
+                <input type="number" step="any" v-model="p.worldX" :data-test="`check-${index}-world-x`" required />
+              </label>
+              <label class="fld narrow">
+                <span>{{ $t("calibration.plane_") }} Y</span>
+                <input type="number" step="any" v-model="p.worldY" :data-test="`check-${index}-world-y`" required />
+              </label>
+              <button
+                v-if="newCalibration.checkPoints.length > 3"
+                type="button"
+                class="small"
+                :data-test="`check-${index}-remove`"
+                @click="newCalibration.checkPoints.splice(index, 1)"
+              >
+                {{ $t("calibration.removePoint") }}
+              </button>
+            </div>
+            <button type="button" class="small" data-test="add-check-point" @click="newCalibration.checkPoints.push(emptyPoint())">
+              {{ $t("calibration.addPoint") }}
+            </button>
+
+            <div class="actions">
+              <button type="submit" :disabled="!!busy" data-test="calibration-save">{{ $t("calibration.save") }}</button>
+              <button type="button" class="small" data-test="calibration-cancel" @click="calibrating = ''">
+                {{ $t("common.cancel") }}
+              </button>
+            </div>
+          </form>
+        </template>
+      </div>
+    </div>
+
     <div class="card">
       <h4>{{ $t("analysis.runs") }}</h4>
       <p v-if="!runs.length" class="muted" data-test="no-runs">{{ $t("analysis.noRuns") }}</p>
@@ -382,6 +633,11 @@ onUnmounted(() => crumb.clear());
 .reason { min-width: 220px; }
 .trials { list-style: none; margin: 0 0 12px; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .trial-form { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; margin-top: 14px; }
+.calibration + .calibration { margin-top: 18px; border-top: 1px solid var(--line); padding-top: 18px; }
+.calibration-form { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+.calibration-form h5 { margin: 6px 0 0; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+.setup { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
+.point { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
 .narrow { max-width: 110px; }
 .fld { display: flex; flex-direction: column; gap: 4px; }
 .fld span { font-size: 12px; color: var(--muted); }
