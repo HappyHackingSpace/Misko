@@ -1,5 +1,10 @@
 # Mişko Roadmap
 
+> **2026-09-10 — Yeni hedef:** Go Clean Architecture, ayrı domainler, kodda
+> tanımlı paradigmalar, mevcut RBAC'nin korunması ve yüklenen videonun otomatik
+> analizi için aktif plan: [Go refactor planı](plans/GO_CLEAN_ARCH_REFACTOR.md).
+> Aşağıdaki roadmap önceki kapsamı kaydeder; yeni uygulama sırası için aktif planı kullanın.
+
 > Philosophy: build the scientific contract and the video-only backbone before
 > adding real AI. Mişko and the CV service stay independent from the start. Their
 > contact point is the contract in `docs/INTEGRATION.md`. The domain model is in
