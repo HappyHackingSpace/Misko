@@ -38,12 +38,15 @@ async function loadPair(keepPosition = false) {
   loading.value = true;
   try {
     pair.value = await analysis.videoPair(props.runId);
-    if (position != null) {
-      // Wait for the new sources to be on the elements. Before that the players
-      // still hold the old ones, and a position set now would be thrown away.
-      await nextTick();
-      restore(position);
-    }
+    // Wait for the new sources to be on the elements. Before that the players
+    // still hold the old ones, and a position set now would be thrown away.
+    await nextTick();
+    // Then ask for the load outright. Writing the src attribute is meant to
+    // restart a player, but WebKit does not always act on it when the element
+    // already holds a source: it stays at readyState 0 and never plays, so
+    // switching runs on Safari or an iPad shows a frame that never moves.
+    for (const video of [original.value, analyzed.value]) video?.load();
+    if (position != null) restore(position);
   } catch (error) {
     emit("error", error.message);
   } finally {

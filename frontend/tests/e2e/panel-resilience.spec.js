@@ -111,7 +111,11 @@ test("switching runs replaces the video and the events of the previous run", asy
   await expect
     .poll(async () => analyzed.evaluate((video) => video.currentTime), { timeout: 20_000 })
     .toBeGreaterThan(staleStop + 0.15);
-  expect(await analyzed.evaluate((video) => video.paused)).toBe(false);
+  // Still playing, or played all the way to the end: the clip is four seconds
+  // and the stale stop sits near it. What it must not be is paused partway,
+  // which is what a stop that survived the switch would do.
+  const state = await analyzed.evaluate((video) => ({ paused: video.paused, ended: video.ended }));
+  expect(state.paused && !state.ended).toBe(false);
 });
 
 test("the last of several quick clicks is the interval that plays", async ({ page, request }) => {
