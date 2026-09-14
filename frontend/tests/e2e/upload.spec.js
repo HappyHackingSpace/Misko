@@ -44,7 +44,12 @@ test("uploading a video adds a recording the API has verified", async ({ page, r
   // back from storage and matched its size, checksum and content type, so the
   // row proves the bytes arrived rather than that a request was sent. The status
   // is read from the attribute, not the label, which is translated.
-  const uploaded = rows.filter({ hasText: "analyzed.mp4" });
-  await expect(uploaded).toHaveCount(1);
+  //
+  // The row to look at is the last one: recordings come back ordered by
+  // creation. Counting rows that carry the file name would not work, because
+  // every project runs against the same seeded test, so the second and third
+  // engine see the uploads the earlier ones made.
+  const uploaded = rows.last();
+  await expect(uploaded).toContainText("analyzed.mp4");
   await expect(uploaded).toHaveAttribute("data-video-status", "VERIFIED");
 });
