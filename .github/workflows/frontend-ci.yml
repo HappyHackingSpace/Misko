@@ -87,9 +87,11 @@ jobs:
         working-directory: frontend
         run: npm ci
 
-      - name: Install the browser
+      # All three engines: the video panel depends on <video> behaviour that
+      # differs between them, and a laboratory on macOS or an iPad gets WebKit.
+      - name: Install the browsers
         working-directory: frontend
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install --with-deps chromium firefox webkit
 
       - name: Browser tests
         working-directory: frontend

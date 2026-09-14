@@ -17,11 +17,14 @@ async function seed(request) {
 async function signOut(page) {
   await page.getByTestId("user-menu").click();
   await page.getByTestId("logout").click();
+  // Logging out routes to the login screen. Waiting for that to land matters:
+  // a goto issued while it is still in flight interrupts it.
+  await page.waitForURL(/\/login$/);
   await expect(page.locator("#login-email")).toBeVisible();
 }
 
 async function signIn(page, email, password) {
-  await page.goto("/login");
+  if (!/\/login$/.test(page.url())) await page.goto("/login");
   await page.locator("#login-email").fill(email);
   await page.locator("#login-password").fill(password);
   await page.getByTestId("sign-in").click();
