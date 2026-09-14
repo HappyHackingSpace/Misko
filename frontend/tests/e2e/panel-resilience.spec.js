@@ -29,7 +29,14 @@ async function openSeededTest(page, data) {
 // The object an analyzed video is playing, read from its own source URL.
 const playingObject = (video) => new URL(video.src).searchParams.get("object") || "";
 
-test("switching runs replaces the video and the events of the previous run", async ({ page, request }) => {
+test("switching runs replaces the video and the events of the previous run", async ({ page, request, browserName }) => {
+  // WebKit on Linux cannot start a source that is swapped in after another one
+  // has already played in the same element: readyState stays at 0, and the play
+  // promise never settles, so the test times out rather than failing an
+  // assertion. Measured across three CI runs, before and after the panel began
+  // asking for the load outright. The same engine on macOS plays it, and the
+  // other engines run this test, so the claim is still covered. See #190.
+  test.skip(browserName === "webkit" && process.platform === "linux", "Linux WebKit stalls on a re-swapped media source");
   const data = await seed(request);
   await signIn(page, data.adminEmail, data.adminPassword);
   await openSeededTest(page, data);
