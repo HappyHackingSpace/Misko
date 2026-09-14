@@ -81,10 +81,26 @@ test("switching runs replaces the video and the events of the previous run", asy
   // the run that was open, so nothing may cut this one short.
   await page.locator(`[data-run-id="${data.runId}"]`).click();
   await expect.poll(async () => analyzed.evaluate(playingObject), { timeout: 10_000 }).toContain("overlay.mp4");
-  await analyzed.evaluate((video) => {
-    video.currentTime = 0;
-    return video.play().catch(() => {});
-  });
+  // Playing a source that has only just been swapped in is a race: seeking
+  // before the engine holds any data, or calling play() before that seek
+  // settles, leaves WebKit stalled on the first frame. Wait for data, seek,
+  // wait for the seek, then play. A refused play is reported rather than
+  // swallowed, so a stall says why it happened.
+  await expect
+    .poll(async () => analyzed.evaluate((video) => video.readyState), { timeout: 15_000 })
+    .toBeGreaterThanOrEqual(2);
+  await analyzed.evaluate(
+    (video) =>
+      new Promise((resolve) => {
+        if (video.currentTime === 0) {
+          resolve();
+          return;
+        }
+        video.addEventListener("seeked", resolve, { once: true });
+        video.currentTime = 0;
+      }),
+  );
+  await analyzed.evaluate((video) => video.play());
 
   // The stale stop sits at the end of the interval that was played, in this
   // video's own time. Playing past it is what proves it was cleared: a panel
