@@ -8,6 +8,7 @@ const ExperimentForm = () => import("./views/ExperimentForm.vue");
 const TestDetail = () => import("./views/TestDetail.vue");
 const Subjects = () => import("./views/Subjects.vue");
 const SubjectForm = () => import("./views/SubjectForm.vue");
+const Reports = () => import("./views/Reports.vue");
 const Paradigms = () => import("./views/Paradigms.vue");
 const ParadigmDetail = () => import("./views/ParadigmDetail.vue");
 const Environments = () => import("./views/Environments.vue");
@@ -32,6 +33,8 @@ const routes = [
   // reach the form by typing the address either.
   { path: "/subjects/new", component: SubjectForm, meta: { permission: "subject:write", titleKey: "nav.subjects" } },
   { path: "/subjects/:id", component: SubjectForm, meta: { permission: "subject:write", titleKey: "nav.subjects" } },
+  // Reading results is open to every signed-in role, like the rest of the data.
+  { path: "/reports", component: Reports, meta: { titleKey: "nav.reports" } },
   { path: "/paradigms", component: Paradigms, meta: { titleKey: "nav.paradigms" } },
   { path: "/paradigms/:key", component: ParadigmDetail, meta: { titleKey: "nav.paradigms" } },
   { path: "/environments", component: Environments, meta: { titleKey: "nav.environments" } },
