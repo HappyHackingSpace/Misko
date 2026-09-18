@@ -110,14 +110,18 @@ jobs:
           $SCP worker.env "$USER@$HOST:~/misko/worker.env"
           # Güncel imajı çek, worker'ı kaynaktan yeniden build et, değişen
           # container'ları yenile, eski/dangling imajları temizle.
-          # Şemayı kur: boş bir veritabanında tabloları oluşturur, kurulu bir
-          # veritabanında hiçbir şeyi değiştirmez. Yönetici oluşturma (`setup`)
-          # ve worker kaydı (`POST /api/analysis/workers`) buraya dahil değil;
-          # ikisi de bir admin oturumu/şifresi gerektiriyor ve bir CI log'una
-          # asla yazılmamalı, bu yüzden hâlâ elle yapılıyor (bkz. docs/DEPLOY.md).
+          # Şemayı kur: sadece boş bir veritabanında işe yarar. `backend/schema`
+          # bilerek IF NOT EXISTS kullanmıyor (bkz. 001_initial.sql), yani ilk
+          # kurulumdan sonraki her deploy'da bu adım *hata verir* - veri
+          # kaybetmez (transaction rollback), sadece "zaten kurulu" der. O
+          # yüzden `|| true`: zinciri kırmasın, ilk deploy'da hâlâ gerçek işi
+          # yapar. Yönetici oluşturma (`setup`) ve worker kaydı
+          # (`POST /api/analysis/workers`) buraya dahil değil; ikisi de bir
+          # admin oturumu/şifresi gerektiriyor ve bir CI log'una asla
+          # yazılmamalı, bu yüzden hâlâ elle yapılıyor (bkz. docs/DEPLOY.md).
           # Worker container'ı gerçek bir token gelene kadar tekrar tekrar çıkış
           # yapar; zararsız, sadece loglarda görünür.
-          $SSH "$USER@$HOST" 'cd ~/misko && docker compose -f docker-compose.prod.yml --profile worker pull --ignore-buildable && docker compose -f docker-compose.prod.yml --profile setup run --rm schema && docker compose -f docker-compose.prod.yml --profile worker up -d --build && docker image prune -f'
+          $SSH "$USER@$HOST" 'cd ~/misko && docker compose -f docker-compose.prod.yml --profile worker pull --ignore-buildable && (docker compose -f docker-compose.prod.yml --profile setup run --rm schema || true) && docker compose -f docker-compose.prod.yml --profile worker up -d --build && docker image prune -f'
 
       - name: Summary
         env:
