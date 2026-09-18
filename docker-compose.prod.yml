@@ -69,9 +69,14 @@ services:
       HTTP_ADDR: :4000
       JWT_SECRET: ${JWT_SECRET:?set a strong JWT_SECRET in .env}
       TOKEN_TTL: ${TOKEN_TTL:-12h}
-      # Video routes answer 503 until a private bucket is configured.
-      GCS_BUCKET: ${GCS_BUCKET:-}
-      GCS_SIGNER_EMAIL: ${GCS_SIGNER_EMAIL:-}
+    # GCS_BUCKET/GCS_SIGNER_EMAIL live in storage.env, not here: like the
+    # worker's token, they're safe to overwrite on every deploy (unlike the
+    # database password and JWT secret), so the workflow renders them fresh
+    # each run instead of leaving them alone like it does `.env`. Video routes
+    # answer 503 until this file names a real bucket.
+    env_file:
+      - path: storage.env
+        required: false
     depends_on:
       db:
         condition: service_healthy

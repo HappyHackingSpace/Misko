@@ -18,6 +18,10 @@ name: Deploy to GCP VM
 #                          ile kaydedince alınır - kayıt hâlâ elle yapılır, admin girişi
 #                          gerektiriyor. Boş kalırsa worker container'ı tekrar tekrar
 #                          çıkış yapar, zararsız ama loglarda görünür).
+#   APP_GCS_BUCKET         Private GCS bucket adı (opsiyonel; boşsa video route'ları 503 döner).
+#   APP_GCS_SIGNER_EMAIL   İmzalayan servis hesabı e-postası (VM'nin kendi servis hesabı
+#                          olabilir; bucket üzerinde Storage Object Admin ve kendi
+#                          üzerinde Service Account Token Creator rolü gerekir).
 #
 # Admin oluşturma (`bootstrap setup`) bilerek burada yok: ürettiği şifre bir CI
 # log'una asla yazılmamalı, o yüzden ilk kurulumda hâlâ bir kere elle SSH'lanıp
@@ -89,6 +93,17 @@ jobs:
           TOKEN: ${{ secrets.APP_WORKER_TOKEN }}
         run: echo "MISKO_WORKER_TOKEN=${TOKEN}" > worker.env
 
+      - name: Render storage.env
+        # Aynı mantık: GCS ayarları .env'in aksine her deploy'da tazelenir.
+        env:
+          BUCKET: ${{ secrets.APP_GCS_BUCKET }}
+          SIGNER: ${{ secrets.APP_GCS_SIGNER_EMAIL }}
+        run: |
+          {
+            echo "GCS_BUCKET=${BUCKET}"
+            echo "GCS_SIGNER_EMAIL=${SIGNER}"
+          } > storage.env
+
       - name: Deploy over SSH
         env:
           HOST: ${{ secrets.GCP_VM_HOST }}
@@ -105,9 +120,10 @@ jobs:
           # böylece her deploy'da DB sıfırlanmaz / auth bozulmaz.
           $SCP .env.deploy "$USER@$HOST:~/misko/.env.new"
           $SSH "$USER@$HOST" 'cd ~/misko && if [ -f .env ]; then rm -f .env.new; else mv .env.new .env; fi'
-          # worker.env her deploy'da yeniden yazılır (bkz. yukarıdaki adım), .env'in
-          # aksine korunmuyor, çünkü içinde sadece worker token'ı var.
+          # worker.env ve storage.env her deploy'da yeniden yazılır (bkz.
+          # yukarıdaki adımlar), .env'in aksine korunmuyor.
           $SCP worker.env "$USER@$HOST:~/misko/worker.env"
+          $SCP storage.env "$USER@$HOST:~/misko/storage.env"
           # Güncel imajı çek, worker'ı kaynaktan yeniden build et, değişen
           # container'ları yenile, eski/dangling imajları temizle.
           # Şemayı kur: sadece boş bir veritabanında işe yarar. `backend/schema`
