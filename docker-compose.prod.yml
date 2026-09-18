@@ -97,5 +97,31 @@ services:
     ports:
       - "${FRONTEND_PORT:-8080}:80"
 
+  # Open Field analysis worker. No published GHCR image exists yet (`release.yml`
+  # only builds backend/frontend), so this builds from the local `worker/`
+  # source instead of pulling - the deploy workflow copies that folder next to
+  # this file. Swap to a `ghcr.io/.../misko-worker:${IMAGE_TAG:-latest}` image
+  # once one is published. Register a worker first
+  # (`POST /api/analysis/workers`, needs `lab:configure`) to get its token.
+  # The token lives in `worker.env`, not `.env`: unlike the database password
+  # and JWT secret, it is safe to overwrite on every deploy, so the workflow
+  # renders it fresh each run instead of leaving it alone like it does `.env`.
+  # Until a real token is set the container exits repeatedly (harmless,
+  # bounded by the limits below). Tested only on synthetic video so far (see
+  # worker/README.md) - do not trust its results yet.
+  worker:
+    build: ./worker
+    profiles: [worker]
+    restart: unless-stopped
+    mem_limit: 1g
+    cpus: 1.0
+    environment:
+      MISKO_API_URL: http://backend:4000
+    env_file:
+      - path: worker.env
+        required: false
+    depends_on:
+      - backend
+
 volumes:
   db-data:
