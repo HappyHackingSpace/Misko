@@ -118,7 +118,10 @@ services:
     build: ./worker
     profiles: [worker]
     restart: unless-stopped
-    mem_limit: 1g
+    # A 2880x1620 clip peaks near 2 GB while the background model is built
+    # (frame list, its np.stack copy and the percentile partition), so 1g gets
+    # the worker killed. The VM has 4 GB; the rest of the stack needs about 1.
+    mem_limit: 2560m
     cpus: 1.0
     environment:
       MISKO_API_URL: http://backend:4000
