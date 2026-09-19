@@ -34,6 +34,12 @@ export default {
       groupRole: "Role",
       targetSize: "Target size",
       noGroups: "No groups yet",
+      noEnrollments: "No subject enrolled yet",
+      enroll: "Enroll",
+      pickSubject: "Select a subject",
+      noSubjectsToEnroll: "Every subject is already enrolled",
+      assignGroup: "Group (optional)",
+      noGroup: "No group",
     },
     tests: {
       title: "Tests",

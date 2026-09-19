@@ -176,6 +176,36 @@ async function planTest() {
   }
 }
 
+// Enrolling a subject is study:write too, same as adding a group; it just
+// names a subject (and optionally a starting group) rather than a role.
+const newEnrollment = ref({ subjectId: "", groupId: "" });
+const enrolling = ref(false);
+
+// A subject already enrolled would only fail the API's one-per-experiment
+// rule, so it is left out of the picker instead of offered and rejected.
+const availableSubjects = computed(() => subjectList.value.filter((s) => !enrollments.value.some((e) => e.subjectId === s.id)));
+
+const groupName = (groupId) => groups.value.find((g) => g.id === groupId)?.name || "";
+
+async function enrollSubject() {
+  error.value = "";
+  enrolling.value = true;
+  try {
+    await experiments.enroll(route.params.id, {
+      subjectId: newEnrollment.value.subjectId,
+      groupId: newEnrollment.value.groupId,
+      // Enrollment starts now; the panel does not offer a past start yet.
+      enrolledAt: new Date().toISOString(),
+    });
+    newEnrollment.value = { subjectId: "", groupId: "" };
+    await load();
+  } catch (e) {
+    error.value = e.message;
+  } finally {
+    enrolling.value = false;
+  }
+}
+
 async function addGroup() {
   error.value = "";
   adding.value = true;
@@ -273,6 +303,40 @@ onUnmounted(() => crumb.clear());
           {{ $t("experiments.addGroup") }}
         </button>
       </form>
+    </div>
+
+    <div class="card">
+      <h4>{{ $t("experiments.enrollments") }}</h4>
+      <ul class="protocols" v-if="enrollments.length" data-test="enrollments">
+        <li v-for="enrollment in enrollments" :key="enrollment.id" data-test="enrollment">
+          {{ subjectCode(enrollment.subjectId) }}
+          <span class="muted" v-if="enrollment.currentGroupId">· {{ groupName(enrollment.currentGroupId) }}</span>
+        </li>
+      </ul>
+      <p v-else class="muted">{{ $t("experiments.noEnrollments") }}</p>
+
+      <form v-if="canWrite && availableSubjects.length" class="add-group" data-test="enroll-form" @submit.prevent="enrollSubject">
+        <label class="fld grow">
+          <span>{{ $t("tests.subject") }}</span>
+          <select v-model="newEnrollment.subjectId" data-test="enroll-subject" required>
+            <option value="">{{ $t("experiments.pickSubject") }}</option>
+            <option v-for="subject in availableSubjects" :key="subject.id" :value="subject.id">{{ subject.code }}</option>
+          </select>
+        </label>
+        <label class="fld">
+          <span>{{ $t("experiments.assignGroup") }}</span>
+          <select v-model="newEnrollment.groupId" data-test="enroll-group">
+            <option value="">{{ $t("experiments.noGroup") }}</option>
+            <option v-for="group in groups" :key="group.id" :value="group.id">{{ group.name }}</option>
+          </select>
+        </label>
+        <button type="submit" class="small" :disabled="enrolling" data-test="enroll-save">
+          {{ $t("experiments.enroll") }}
+        </button>
+      </form>
+      <p v-else-if="canWrite && subjectList.length" class="muted" data-test="enroll-none-left">
+        {{ $t("experiments.noSubjectsToEnroll") }}
+      </p>
     </div>
 
     <div class="card">

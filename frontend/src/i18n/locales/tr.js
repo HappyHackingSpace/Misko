@@ -34,6 +34,12 @@ export default {
       groupRole: "Rol",
       targetSize: "Hedef büyüklük",
       noGroups: "Henüz grup yok",
+      noEnrollments: "Henüz kayıtlı denek yok",
+      enroll: "Kaydet",
+      pickSubject: "Bir denek seçin",
+      noSubjectsToEnroll: "Tüm denekler zaten kayıtlı",
+      assignGroup: "Grup (opsiyonel)",
+      noGroup: "Grup yok",
     },
     tests: {
       title: "Testler",
