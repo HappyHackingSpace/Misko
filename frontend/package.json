@@ -17,19 +17,19 @@
   "dependencies": {
     "chart.js": "^4.5.1",
     "pinia": "^4.0.3",
-    "vue": "^3.5.42",
+    "vue": "^3.5.43",
     "vue-chartjs": "^5.3.4",
-    "vue-i18n": "^11.4.10",
+    "vue-i18n": "^11.4.12",
     "vue-router": "^5.3.1"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@playwright/test": "1.63.0",
-    "@vitejs/plugin-vue": "^6.0.8",
+    "@vitejs/plugin-vue": "^6.0.9",
     "eslint": "^10.10.0",
     "eslint-plugin-vue": "^10.11.0",
     "globals": "^17.12.0",
-    "prettier": "^3.9.6",
+    "prettier": "^3.9.8",
     "vite": "^8.3.0"
   }
 }
