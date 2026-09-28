@@ -26,10 +26,10 @@
     "@eslint/js": "^10.0.1",
     "@playwright/test": "1.63.0",
     "@vitejs/plugin-vue": "^6.0.9",
-    "eslint": "^10.10.0",
-    "eslint-plugin-vue": "^10.11.0",
+    "eslint": "^10.11.0",
+    "eslint-plugin-vue": "^10.11.1",
     "globals": "^17.12.0",
-    "prettier": "^3.9.8",
-    "vite": "^8.3.0"
+    "prettier": "^3.9.9",
+    "vite": "^8.3.1"
   }
 }
