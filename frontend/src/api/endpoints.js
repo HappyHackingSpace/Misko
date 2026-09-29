@@ -102,3 +102,7 @@ export const reports = {
     return `/reports/${kind}/export${search.size ? `?${search}` : ""}`;
   },
 };
+
+export const dashboard = {
+  summary: () => api("/dashboard/summary"),
+};

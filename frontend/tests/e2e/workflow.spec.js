@@ -66,5 +66,5 @@ test("a viewer reads the result but cannot start work", async ({ page, request }
   await expect(page.getByTestId("reanalyze")).toHaveCount(0);
   // The user administration page stays out of reach as well.
   await page.goto("/users");
-  await expect(page).toHaveURL(/\/experiments$/);
+  await expect(page).toHaveURL(/\/dashboard$/);
 });

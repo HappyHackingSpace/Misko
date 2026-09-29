@@ -4,6 +4,7 @@ export default {
   name: "English",
   messages: {
     nav: {
+      dashboard: "Dashboard",
       experiments: "Experiments",
       tests: "Tests",
       subjects: "Subjects",
@@ -16,6 +17,18 @@ export default {
       logout: "Log out",
       menu: "Menu",
       collapse: "Collapse",
+    },
+    dashboard: {
+      title: "Dashboard",
+      intro: "Where the lab's work stands right now: what's waiting, what just finished, and what's coming up.",
+      analysisQueued: "Analysis queued",
+      analysisRunning: "Analysis running",
+      analysisFailed: "Analysis failed",
+      calibrationWaiting: "Waiting for calibration",
+      recentActivity: "Recent activity",
+      upcomingTests: "Upcoming tests",
+      noActivity: "No analysis result has been published yet.",
+      noUpcoming: "No test is planned.",
     },
     experiments: {
       title: "Experiments",

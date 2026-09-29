@@ -20,7 +20,7 @@ watch(
   () => crumb.clear(),
 );
 
-const isHome = computed(() => route.path === "/");
+const isHome = computed(() => route.path === "/dashboard");
 const currentLabel = computed(() =>
   route.meta?.titleKey ? t(route.meta.titleKey) : "",
 );
@@ -37,10 +37,10 @@ const currentLabel = computed(() =>
       </template>
     </template>
     <template v-else-if="isHome">
-      <span class="current">{{ $t("nav.experiments") }}</span>
+      <span class="current">{{ $t("nav.dashboard") }}</span>
     </template>
     <template v-else>
-      <RouterLink to="/experiments">{{ $t("nav.experiments") }}</RouterLink>
+      <RouterLink to="/dashboard">{{ $t("nav.dashboard") }}</RouterLink>
       <span class="sep">/</span>
       <span class="current">{{ currentLabel }}</span>
     </template>
