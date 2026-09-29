@@ -29,6 +29,7 @@ var failures = []httpjson.Failure{
 	{Err: domain.ErrPasswordEncoding, Status: http.StatusBadRequest, Code: "password.invalidEncoding"},
 	{Err: domain.ErrSelfDeletion, Status: http.StatusBadRequest, Code: "user.cannotDeleteSelf"},
 	{Err: domain.ErrLastPrivileged, Status: http.StatusConflict, Code: "user.lastPrivileged"},
+	{Err: domain.ErrSuperAdminProtected, Status: http.StatusForbidden, Code: "user.superAdminProtected"},
 }
 
 type handler struct {

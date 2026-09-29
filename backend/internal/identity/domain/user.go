@@ -17,6 +17,11 @@ var (
 	ErrPasswordEncoding = errors.New("password must be valid UTF-8")
 	ErrSelfDeletion     = errors.New("users cannot delete their own account")
 	ErrLastPrivileged   = errors.New("the last privileged user cannot be deleted or demoted")
+	// ErrSuperAdminProtected guards the single SUPERADMIN account bootstrap
+	// creates: nobody, including that account acting on itself through these
+	// routes, may assign the role, or rename, reassign, reset the password of,
+	// or delete that account. It exists only once and answers to no one.
+	ErrSuperAdminProtected = errors.New("the superadmin account cannot be created, changed or removed through this API")
 )
 
 const (
@@ -76,12 +81,16 @@ func ValidatePassword(password string) error {
 	return nil
 }
 
-// CheckDeletion enforces that users cannot delete themselves and that the last
-// privileged user remains. privilegedCount must be read in the same serializable
-// transaction as the deletion.
+// CheckDeletion enforces that users cannot delete themselves, that the
+// SUPERADMIN account can never be deleted, and that the last privileged user
+// remains. privilegedCount must be read in the same serializable transaction
+// as the deletion.
 func CheckDeletion(actorID string, target User, privilegedCount int) error {
 	if actorID == target.ID {
 		return ErrSelfDeletion
+	}
+	if target.Role == access.SuperAdmin {
+		return ErrSuperAdminProtected
 	}
 	if target.Role.Privileged() && privilegedCount <= 1 {
 		return ErrLastPrivileged
@@ -89,10 +98,34 @@ func CheckDeletion(actorID string, target User, privilegedCount int) error {
 	return nil
 }
 
-// CheckRoleChange prevents demoting the last privileged user to an unprivileged role.
+// CheckRoleChange rejects any change to or from SUPERADMIN — that role exists
+// only for the single account the setup command creates — and prevents
+// demoting the last privileged user to an unprivileged role.
 func CheckRoleChange(target User, next access.Role, privilegedCount int) error {
+	if target.Role == access.SuperAdmin || next == access.SuperAdmin {
+		return ErrSuperAdminProtected
+	}
 	if target.Role.Privileged() && !next.Privileged() && privilegedCount <= 1 {
 		return ErrLastPrivileged
+	}
+	return nil
+}
+
+// CheckNotSuperAdminRole rejects SUPERADMIN as the role for a newly created
+// user: the account exists only once, created by the setup command.
+func CheckNotSuperAdminRole(role access.Role) error {
+	if role == access.SuperAdmin {
+		return ErrSuperAdminProtected
+	}
+	return nil
+}
+
+// CheckNotSuperAdmin rejects any action against the SUPERADMIN account other
+// than role change or deletion, which CheckRoleChange and CheckDeletion
+// already cover — currently just resetting its password.
+func CheckNotSuperAdmin(target User) error {
+	if target.Role == access.SuperAdmin {
+		return ErrSuperAdminProtected
 	}
 	return nil
 }

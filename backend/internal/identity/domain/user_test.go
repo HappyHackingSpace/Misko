@@ -69,6 +69,7 @@ func TestPasswordByteAndUnicodeBoundaries(t *testing.T) {
 
 func TestDeletionRules(t *testing.T) {
 	admin := User{ID: "admin", Role: access.SuperAdmin}
+	manager := User{ID: "manager", Role: access.LabManager}
 	researcher := User{ID: "researcher", Role: access.Researcher}
 	for _, tc := range []struct {
 		name       string
@@ -78,8 +79,12 @@ func TestDeletionRules(t *testing.T) {
 		want       error
 	}{
 		{"self", "admin", admin, 2, ErrSelfDeletion},
-		{"last privileged", "manager", admin, 1, ErrLastPrivileged},
-		{"one of two privileged", "manager", admin, 2, nil},
+		// The SUPERADMIN account can never be deleted, by anyone, regardless of
+		// how many other privileged users exist.
+		{"superadmin, sole privileged", "manager", admin, 1, ErrSuperAdminProtected},
+		{"superadmin, one of two privileged", "manager", admin, 2, ErrSuperAdminProtected},
+		{"last privileged non-superadmin", "someone", manager, 1, ErrLastPrivileged},
+		{"one of two privileged non-superadmin", "someone", manager, 2, nil},
 		{"unprivileged while one admin remains", "admin", researcher, 1, nil},
 	} {
 		if err := CheckDeletion(tc.actorID, tc.target, tc.privileged); !errors.Is(err, tc.want) || (tc.want == nil && err != nil) {
@@ -95,15 +100,33 @@ func TestRoleChangeRules(t *testing.T) {
 		privileged int
 		want       error
 	}{
-		{"demote last privileged", access.SuperAdmin, access.Researcher, 1, ErrLastPrivileged},
+		// The SUPERADMIN account can never be reassigned away from that role,
+		// and no one else can ever be promoted into it: it exists only once,
+		// created by the setup command.
+		{"superadmin cannot be demoted, sole privileged", access.SuperAdmin, access.Researcher, 1, ErrSuperAdminProtected},
+		{"superadmin cannot be demoted, one of two privileged", access.SuperAdmin, access.LabManager, 2, ErrSuperAdminProtected},
+		{"no one can be promoted to superadmin", access.Researcher, access.SuperAdmin, 1, ErrSuperAdminProtected},
 		{"last manager to viewer", access.LabManager, access.Viewer, 1, ErrLastPrivileged},
-		{"privileged to privileged", access.SuperAdmin, access.LabManager, 1, nil},
 		{"demote one of two", access.LabManager, access.Technician, 2, nil},
-		{"promote", access.Researcher, access.SuperAdmin, 1, nil},
 		{"unprivileged change", access.Technician, access.Viewer, 1, nil},
 	} {
 		if err := CheckRoleChange(User{ID: "u", Role: tc.from}, tc.to, tc.privileged); !errors.Is(err, tc.want) || (tc.want == nil && err != nil) {
 			t.Errorf("%s: err=%v want %v", tc.name, err, tc.want)
 		}
+	}
+}
+
+func TestNotSuperAdminRules(t *testing.T) {
+	if err := CheckNotSuperAdminRole(access.SuperAdmin); !errors.Is(err, ErrSuperAdminProtected) {
+		t.Errorf("role=SUPERADMIN: err=%v want %v", err, ErrSuperAdminProtected)
+	}
+	if err := CheckNotSuperAdminRole(access.LabManager); err != nil {
+		t.Errorf("role=LAB_MANAGER: err=%v want nil", err)
+	}
+	if err := CheckNotSuperAdmin(User{Role: access.SuperAdmin}); !errors.Is(err, ErrSuperAdminProtected) {
+		t.Errorf("target=SUPERADMIN: err=%v want %v", err, ErrSuperAdminProtected)
+	}
+	if err := CheckNotSuperAdmin(User{Role: access.LabManager}); err != nil {
+		t.Errorf("target=LAB_MANAGER: err=%v want nil", err)
 	}
 }

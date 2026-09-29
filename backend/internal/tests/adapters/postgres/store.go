@@ -161,6 +161,33 @@ func (s *Store) UpdateTestStatus(ctx context.Context, t domain.Test, from domain
 	return toTest(row), nil
 }
 
+// ListAllTests lists tests across experiments, newest scheduled first. An
+// empty experiment id means every experiment.
+func (s *Store) ListAllTests(ctx context.Context, f application.TestFilter) ([]domain.Test, int, error) {
+	if (f.ExperimentID != "" && !pgtx.ValidUUID(f.ExperimentID)) || (f.SubjectID != "" && !pgtx.ValidUUID(f.SubjectID)) {
+		return []domain.Test{}, 0, nil
+	}
+	experiment, subject := optional(f.ExperimentID), optional(f.SubjectID)
+	rows, err := s.queries.ListAllTests(ctx, sqlcgen.ListAllTestsParams{
+		ExperimentID: experiment, SubjectID: subject, Status: string(f.Status), ParadigmKey: f.ParadigmKey,
+		PageLimit: int32(f.Limit), PageOffset: int32(f.Offset),
+	})
+	if err != nil {
+		return nil, 0, fmt.Errorf("list all tests: %w", err)
+	}
+	total, err := s.queries.CountAllTests(ctx, sqlcgen.CountAllTestsParams{
+		ExperimentID: experiment, SubjectID: subject, Status: string(f.Status), ParadigmKey: f.ParadigmKey,
+	})
+	if err != nil {
+		return nil, 0, fmt.Errorf("count all tests: %w", err)
+	}
+	out := make([]domain.Test, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, toTest(row))
+	}
+	return out, int(total), nil
+}
+
 func (s *Store) ListTests(ctx context.Context, f application.TestFilter) ([]domain.Test, int, error) {
 	if !pgtx.ValidUUID(f.ExperimentID) || (f.SubjectID != "" && !pgtx.ValidUUID(f.SubjectID)) || (f.PhaseID != "" && !pgtx.ValidUUID(f.PhaseID)) {
 		return []domain.Test{}, 0, nil

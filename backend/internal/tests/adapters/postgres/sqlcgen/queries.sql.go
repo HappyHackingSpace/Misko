@@ -10,6 +10,33 @@ import (
 	"time"
 )
 
+const countAllTests = `-- name: CountAllTests :one
+SELECT count(*) FROM misko.tests
+WHERE ($1::uuid IS NULL OR experiment_id = $1::uuid)
+  AND ($2::uuid IS NULL OR subject_id = $2::uuid)
+  AND ($3::text = '' OR status = $3::text)
+  AND ($4::text = '' OR paradigm_key = $4::text)
+`
+
+type CountAllTestsParams struct {
+	ExperimentID *string
+	SubjectID    *string
+	Status       string
+	ParadigmKey  string
+}
+
+func (q *Queries) CountAllTests(ctx context.Context, arg CountAllTestsParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countAllTests,
+		arg.ExperimentID,
+		arg.SubjectID,
+		arg.Status,
+		arg.ParadigmKey,
+	)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const countTests = `-- name: CountTests :one
 SELECT count(*) FROM misko.tests
 WHERE experiment_id = $1
@@ -343,6 +370,75 @@ func (q *Queries) GroupAt(ctx context.Context, arg GroupAtParams) (string, error
 	var group_id string
 	err := row.Scan(&group_id)
 	return group_id, err
+}
+
+const listAllTests = `-- name: ListAllTests :many
+SELECT id, experiment_id, enrollment_id, subject_id, phase_id, group_id, protocol_version_id, step_position, paradigm_key, paradigm_version, environment_revision_id, planned_trials, status, scheduled_at, started_at, completed_at, cancelled_at, cancel_reason, notes, created_by, created_at, updated_at FROM misko.tests
+WHERE ($1::uuid IS NULL OR experiment_id = $1::uuid)
+  AND ($2::uuid IS NULL OR subject_id = $2::uuid)
+  AND ($3::text = '' OR status = $3::text)
+  AND ($4::text = '' OR paradigm_key = $4::text)
+ORDER BY scheduled_at DESC, id
+LIMIT $6 OFFSET $5
+`
+
+type ListAllTestsParams struct {
+	ExperimentID *string
+	SubjectID    *string
+	Status       string
+	ParadigmKey  string
+	PageOffset   int32
+	PageLimit    int32
+}
+
+func (q *Queries) ListAllTests(ctx context.Context, arg ListAllTestsParams) ([]MiskoTest, error) {
+	rows, err := q.db.Query(ctx, listAllTests,
+		arg.ExperimentID,
+		arg.SubjectID,
+		arg.Status,
+		arg.ParadigmKey,
+		arg.PageOffset,
+		arg.PageLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []MiskoTest
+	for rows.Next() {
+		var i MiskoTest
+		if err := rows.Scan(
+			&i.ID,
+			&i.ExperimentID,
+			&i.EnrollmentID,
+			&i.SubjectID,
+			&i.PhaseID,
+			&i.GroupID,
+			&i.ProtocolVersionID,
+			&i.StepPosition,
+			&i.ParadigmKey,
+			&i.ParadigmVersion,
+			&i.EnvironmentRevisionID,
+			&i.PlannedTrials,
+			&i.Status,
+			&i.ScheduledAt,
+			&i.StartedAt,
+			&i.CompletedAt,
+			&i.CancelledAt,
+			&i.CancelReason,
+			&i.Notes,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listComments = `-- name: ListComments :many

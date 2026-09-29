@@ -65,6 +65,8 @@ type Store interface {
 	// UpdateTestStatus stores t only while the stored status is still from.
 	UpdateTestStatus(ctx context.Context, t domain.Test, from domain.Status) (domain.Test, error)
 	ListTests(ctx context.Context, f TestFilter) ([]domain.Test, int, error)
+	// ListAllTests ignores an empty ExperimentID and PhaseID, newest first.
+	ListAllTests(ctx context.Context, f TestFilter) ([]domain.Test, int, error)
 	Trials(ctx context.Context, testID string) ([]domain.Trial, error)
 	CreateTrial(ctx context.Context, tr domain.Trial) (domain.Trial, error)
 	Comments(ctx context.Context, testID string) ([]domain.Comment, error)
@@ -174,6 +176,37 @@ func (s *Service) ListTests(ctx context.Context, actor access.Actor, experimentI
 	}
 	f.Limit, f.Offset = limit, offset
 	tests, total, err := s.store.ListTests(ctx, f)
+	if err != nil {
+		return TestPage{}, err
+	}
+	return TestPage{Tests: tests, Total: total, Page: page, PageSize: limit}, nil
+}
+
+type AllTestsQuery struct {
+	ExperimentID, SubjectID, Status, ParadigmKey string
+	Page, PageSize                               int
+}
+
+// ListAllTests lists tests across every experiment, newest scheduled first,
+// so the panel can show one worklist of sessions.
+func (s *Service) ListAllTests(ctx context.Context, actor access.Actor, q AllTestsQuery) (TestPage, error) {
+	if err := actor.Require(access.Read); err != nil {
+		return TestPage{}, err
+	}
+	f := TestFilter{ExperimentID: q.ExperimentID, SubjectID: q.SubjectID, ParadigmKey: q.ParadigmKey}
+	if q.Status != "" {
+		status, err := domain.ParseStatus(q.Status)
+		if err != nil {
+			return TestPage{}, ErrInvalidQuery
+		}
+		f.Status = status
+	}
+	page, limit, offset, err := paging(q.Page, q.PageSize)
+	if err != nil {
+		return TestPage{}, err
+	}
+	f.Limit, f.Offset = limit, offset
+	tests, total, err := s.store.ListAllTests(ctx, f)
 	if err != nil {
 		return TestPage{}, err
 	}

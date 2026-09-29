@@ -101,3 +101,19 @@ WHERE test_id = @test_id AND id = @id;
 
 -- name: DeleteComment :execrows
 DELETE FROM misko.test_comments WHERE test_id = @test_id AND id = @id;
+
+-- name: ListAllTests :many
+SELECT * FROM misko.tests
+WHERE (sqlc.narg(experiment_id)::uuid IS NULL OR experiment_id = sqlc.narg(experiment_id)::uuid)
+  AND (sqlc.narg(subject_id)::uuid IS NULL OR subject_id = sqlc.narg(subject_id)::uuid)
+  AND (@status::text = '' OR status = @status::text)
+  AND (@paradigm_key::text = '' OR paradigm_key = @paradigm_key::text)
+ORDER BY scheduled_at DESC, id
+LIMIT @page_limit OFFSET @page_offset;
+
+-- name: CountAllTests :one
+SELECT count(*) FROM misko.tests
+WHERE (sqlc.narg(experiment_id)::uuid IS NULL OR experiment_id = sqlc.narg(experiment_id)::uuid)
+  AND (sqlc.narg(subject_id)::uuid IS NULL OR subject_id = sqlc.narg(subject_id)::uuid)
+  AND (@status::text = '' OR status = @status::text)
+  AND (@paradigm_key::text = '' OR paradigm_key = @paradigm_key::text);

@@ -48,6 +48,7 @@ type handler struct {
 
 func Register(mux *http.ServeMux, service *application.Service, authenticate func(*http.Request) (access.Actor, error), logger *slog.Logger) {
 	h := handler{service: service, authenticate: authenticate, logger: logger}
+	mux.HandleFunc("GET /api/tests", h.with(h.listAll))
 	mux.HandleFunc("GET /api/experiments/{id}/tests", h.with(h.list))
 	mux.HandleFunc("POST /api/experiments/{id}/tests", h.with(h.create))
 	mux.HandleFunc("GET /api/tests/{id}", h.with(h.get))
@@ -77,6 +78,15 @@ func (h handler) list(w http.ResponseWriter, r *http.Request, actor access.Actor
 	q := r.URL.Query()
 	page, err := h.service.ListTests(r.Context(), actor, r.PathValue("id"), application.TestQuery{
 		SubjectID: q.Get("subjectId"), PhaseID: q.Get("phaseId"), Status: q.Get("status"), ParadigmKey: q.Get("paradigmKey"),
+		Page: httpjson.QueryInt(q.Get("page")), PageSize: httpjson.QueryInt(q.Get("pageSize")),
+	})
+	h.respond(w, r, http.StatusOK, pageJSON{mapSlice(page.Tests, testJSON), page.Total, page.Page, page.PageSize}, err)
+}
+
+func (h handler) listAll(w http.ResponseWriter, r *http.Request, actor access.Actor) {
+	q := r.URL.Query()
+	page, err := h.service.ListAllTests(r.Context(), actor, application.AllTestsQuery{
+		ExperimentID: q.Get("experimentId"), SubjectID: q.Get("subjectId"), Status: q.Get("status"), ParadigmKey: q.Get("paradigmKey"),
 		Page: httpjson.QueryInt(q.Get("page")), PageSize: httpjson.QueryInt(q.Get("pageSize")),
 	})
 	h.respond(w, r, http.StatusOK, pageJSON{mapSlice(page.Tests, testJSON), page.Total, page.Page, page.PageSize}, err)
