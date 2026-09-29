@@ -18,6 +18,13 @@ async function signIn(page, email, password) {
   await expect(page.getByTestId("nav-experiments")).toBeVisible();
 }
 
+// Naive UI's select is not a native <select>: open it, then click the option
+// by its (locale-independent) test hook.
+async function chooseOption(page, triggerTestId, optionTestId) {
+  await page.getByTestId(triggerTestId).click();
+  await page.getByTestId(optionTestId).click();
+}
+
 // The seeded test is shared by every run, so the subject list keeps whatever
 // earlier runs created. A unique code keeps each run independent of that.
 const uniqueCode = () => `E2E-S-${Date.now().toString(36).toUpperCase()}`;
@@ -32,8 +39,8 @@ test("a subject can be registered and then corrected", async ({ page, request })
   await expect(page).toHaveURL(/\/subjects\/new$/);
 
   await page.getByTestId("subject-code").fill(code);
-  await page.getByTestId("subject-species").selectOption("RAT");
-  await page.getByTestId("subject-sex").selectOption("FEMALE");
+  await chooseOption(page, "subject-species", "subject-species-RAT");
+  await chooseOption(page, "subject-sex", "subject-sex-FEMALE");
   await page.getByTestId("subject-strain").fill("C57BL/6");
   await page.getByTestId("subject-notes").fill("registered by the browser test");
   await page.getByTestId("subject-save").click();
@@ -42,20 +49,18 @@ test("a subject can be registered and then corrected", async ({ page, request })
   // through the same listing endpoint the table reads.
   await expect(page).toHaveURL(/\/subjects$/);
   await expect(page.getByTestId("error")).toHaveCount(0);
-  // The search box carries no test hook and its placeholder is translated, so
-  // it is addressed by its class.
-  await page.locator(".dt-search").fill(code);
+  await page.getByTestId("list-search").locator("input").fill(code);
   await expect(page.getByText(code, { exact: true })).toBeVisible({ timeout: 10_000 });
 
   // Correcting it keeps the same record rather than creating a second one.
   await page.getByTestId(`subject-edit-${code}`).click();
   await expect(page).toHaveURL(/\/subjects\/[0-9a-f-]{36}$/);
   await expect(page.getByTestId("subject-code")).toHaveValue(code);
-  await page.getByTestId("subject-sex").selectOption("MALE");
+  await chooseOption(page, "subject-sex", "subject-sex-MALE");
   await page.getByTestId("subject-save").click();
 
   await expect(page).toHaveURL(/\/subjects$/);
-  await page.locator(".dt-search").fill(code);
+  await page.getByTestId("list-search").locator("input").fill(code);
   await expect(page.getByText(code, { exact: true })).toBeVisible({ timeout: 10_000 });
   // The panel runs in Turkish by default, so the sex is read from the attribute
   // rather than the label: the edit has to have reached the API, not just the page.

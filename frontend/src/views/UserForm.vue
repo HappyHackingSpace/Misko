@@ -2,9 +2,11 @@
 import { ref, computed, onMounted, onUnmounted } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
+import { NAlert, NButton, NCard, NSelect } from "naive-ui";
 import { api } from "../api/client.js";
-import { ROLES, DEFAULT_ROLE } from "../constants/roles.js";
+import { ASSIGNABLE_ROLES, DEFAULT_ROLE } from "../constants/roles.js";
 import { useBreadcrumb } from "../stores/breadcrumb.js";
+import PageHead from "../components/PageHead.vue";
 
 const { t } = useI18n();
 const route = useRoute();
@@ -16,6 +18,11 @@ const form = ref({ name: "", email: "", role: DEFAULT_ROLE, password: "" });
 const err = ref("");
 const notice = ref(""); // show the generated password once
 const saving = ref(false);
+
+const roleOptions = ASSIGNABLE_ROLES.map((r) => ({ value: r, label: () => t(`roles.${r}`) }));
+// The founding SUPERADMIN account: the API rejects any rename, role change,
+// password reset or deletion of it, by anyone, so the form does not offer them.
+const isSuperAdmin = computed(() => !isNew.value && form.value.role === "SUPERADMIN");
 
 function syncCrumb() {
   crumb.set([
@@ -94,30 +101,49 @@ onUnmounted(() => crumb.clear());
 </script>
 
 <template>
-  <div class="card">
-    <h2 style="margin-top:0">{{ isNew ? $t("common.new") : form.name }}</h2>
-    <div class="row">
-      <div class="field"><label>{{ $t("common.name") }}</label><input v-model="form.name" :placeholder="$t('users.namePlaceholder')" /></div>
-      <div class="field"><label>{{ $t("users.email") }}</label><input v-model="form.email" type="email" :disabled="!isNew" :placeholder="$t('users.emailPlaceholder')" /></div>
-      <div class="field">
-        <label>{{ $t("users.role") }}</label>
-        <select v-model="form.role">
-          <option v-for="r in ROLES" :key="r" :value="r">{{ $t(`roles.${r}`) }}</option>
-        </select>
+  <PageHead :title="isNew ? $t('common.new') : form.name" />
+
+  <NAlert v-if="err" type="error" :title="err" style="margin-bottom: 16px" />
+  <NAlert v-if="notice" type="success" :title="notice" style="margin-bottom: 16px" />
+  <NAlert v-if="isSuperAdmin" type="info" :title="$t('users.superAdminProtected')" style="margin-bottom: 16px" />
+
+  <NCard :bordered="true" size="small">
+    <div class="form">
+      <label class="fld">
+        <span>{{ $t("common.name") }}</span>
+        <input v-model="form.name" :disabled="isSuperAdmin" :placeholder="$t('users.namePlaceholder')" />
+      </label>
+      <label class="fld">
+        <span>{{ $t("users.email") }}</span>
+        <input v-model="form.email" type="email" :disabled="!isNew" :placeholder="$t('users.emailPlaceholder')" />
+      </label>
+      <label class="fld">
+        <span>{{ $t("users.role") }}</span>
+        <NSelect v-if="!isSuperAdmin" v-model:value="form.role" :options="roleOptions" />
+        <input v-else :value="$t('roles.SUPERADMIN')" disabled />
+      </label>
+      <label class="fld" v-if="isNew">
+        <span>{{ $t("users.passwordOptional") }}</span>
+        <input v-model="form.password" :placeholder="$t('users.passwordPlaceholder')" />
+      </label>
+
+      <div class="actions wide">
+        <NButton @click="router.push('/users')">{{ $t("common.back") }}</NButton>
+        <NButton v-if="!isNew && !isSuperAdmin" @click="resetPassword">{{ $t("users.resetPassword") }}</NButton>
+        <NButton v-if="!isNew && !isSuperAdmin" type="error" ghost @click="remove">{{ $t("common.delete") }}</NButton>
+        <NButton v-if="!isSuperAdmin" type="primary" :loading="saving" :disabled="!form.name || !form.email" @click="save">
+          {{ isNew ? $t("common.create") : $t("common.save") }}
+        </NButton>
       </div>
-      <div class="field" v-if="isNew"><label>{{ $t("users.passwordOptional") }}</label><input v-model="form.password" :placeholder="$t('users.passwordPlaceholder')" /></div>
     </div>
-    <p class="err" v-if="err">{{ err }}</p>
-    <p v-if="notice" class="notice">{{ notice }}</p>
-    <div class="actions">
-      <button @click="router.push('/users')">{{ $t("common.back") }}</button>
-      <button v-if="!isNew" @click="resetPassword">{{ $t("users.resetPassword") }}</button>
-      <button v-if="!isNew" class="danger" @click="remove">{{ $t("common.delete") }}</button>
-      <button class="primary" :disabled="saving || !form.name || !form.email" @click="save">{{ isNew ? $t("common.create") : $t("common.save") }}</button>
-    </div>
-  </div>
+  </NCard>
 </template>
 
 <style scoped>
-.actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+.form { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; align-items: start; }
+.fld { display: flex; flex-direction: column; gap: 4px; }
+.fld span { font-size: 12px; color: var(--muted); }
+.fld :deep(.n-select) { width: 100%; }
+.wide { grid-column: 1 / -1; }
+.actions { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
 </style>

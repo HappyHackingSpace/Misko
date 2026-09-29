@@ -36,66 +36,67 @@ func newService(t *testing.T, pool *pgxpool.Pool) *application.Service {
 	return application.New(postgres.NewStore(pool), tokens, passwords)
 }
 
-// Two privileged users act on each other at the same moment. Exactly one
-// operation may win; the other must observe the last-privileged rule.
-func TestConcurrentLastPrivilegedDeletionAndDemotion(t *testing.T) {
+// The SUPERADMIN account is permanent: bootstrap creates it once and nothing
+// else can ever demote, delete or reassign it. Because that guard reads the
+// target's role rather than racing a shared count, every concurrent attempt
+// against it must lose, not just one of them — this proves that holds under
+// real database concurrency, not only in a single-threaded call.
+func TestConcurrentSuperAdminIsProtectedUnderLoad(t *testing.T) {
 	pool := pgtest.Database(t)
 	s := newService(t, pool)
 	researcher := "RESEARCHER"
-	operations := map[string]func(access.Actor, string) error{
-		"delete": func(a access.Actor, target string) error { return s.DeleteUser(ctx, a, target) },
-		"demote": func(a access.Actor, target string) error {
-			_, err := s.UpdateUser(ctx, a, target, application.UpdateUser{Role: &researcher})
-			return err
-		},
-	}
-	for _, pair := range [][2]string{{"delete", "delete"}, {"demote", "demote"}, {"delete", "demote"}} {
-		for iteration := range 10 {
-			if _, err := pool.Exec(ctx, "DELETE FROM misko.users"); err != nil {
-				t.Fatal(err)
+	for iteration := range 5 {
+		if _, err := pool.Exec(ctx, "DELETE FROM misko.users"); err != nil {
+			t.Fatal(err)
+		}
+		_, adminPassword, err := s.BootstrapAdministrator(ctx, "admin@lab.io")
+		if err != nil {
+			t.Fatal(err)
+		}
+		admin, err := s.Login(ctx, "admin@lab.io", adminPassword)
+		if err != nil {
+			t.Fatal(err)
+		}
+		adminActor := access.Actor{UserID: admin.User.ID, Role: access.SuperAdmin}
+		manager, err := s.CreateUser(ctx, adminActor, application.CreateUser{Email: "manager@lab.io", Name: "Manager", Role: "LAB_MANAGER"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		managerActor := access.Actor{UserID: manager.User.ID, Role: access.LabManager}
+		resetPassword := "Correct-Horse-9"
+		operations := []func() error{
+			func() error { return s.DeleteUser(ctx, managerActor, admin.User.ID) },
+			func() error {
+				_, err := s.UpdateUser(ctx, managerActor, admin.User.ID, application.UpdateUser{Role: &researcher})
+				return err
+			},
+			func() error {
+				_, err := s.ResetPassword(ctx, managerActor, admin.User.ID, &resetPassword)
+				return err
+			},
+		}
+		errs := make([]error, len(operations))
+		var wg sync.WaitGroup
+		start := make(chan struct{})
+		for i, op := range operations {
+			wg.Go(func() {
+				<-start
+				errs[i] = op()
+			})
+		}
+		close(start)
+		wg.Wait()
+		for i, err := range errs {
+			if !errors.Is(err, domain.ErrSuperAdminProtected) {
+				t.Fatalf("iteration %d op %d: err=%v want %v", iteration, i, err, domain.ErrSuperAdminProtected)
 			}
-			_, adminPassword, err := s.BootstrapAdministrator(ctx, "admin@lab.io")
-			if err != nil {
-				t.Fatal(err)
-			}
-			admin, err := s.Login(ctx, "admin@lab.io", adminPassword)
-			if err != nil {
-				t.Fatal(err)
-			}
-			adminActor := access.Actor{UserID: admin.User.ID, Role: access.SuperAdmin}
-			manager, err := s.CreateUser(ctx, adminActor, application.CreateUser{Email: "manager@lab.io", Name: "Manager", Role: "LAB_MANAGER"})
-			if err != nil {
-				t.Fatal(err)
-			}
-			actors := [2]access.Actor{adminActor, {UserID: manager.User.ID, Role: access.LabManager}}
-			targets := [2]string{manager.User.ID, admin.User.ID}
-			var errs [2]error
-			var wg sync.WaitGroup
-			start := make(chan struct{})
-			for i, name := range pair {
-				wg.Go(func() {
-					<-start
-					errs[i] = operations[name](actors[i], targets[i])
-				})
-			}
-			close(start)
-			wg.Wait()
-			won, guarded := 0, 0
-			for _, err := range errs {
-				switch {
-				case err == nil:
-					won++
-				case errors.Is(err, domain.ErrLastPrivileged):
-					guarded++
-				}
-			}
-			var privileged int
-			if err := pool.QueryRow(ctx, "SELECT count(*) FROM misko.users WHERE role IN ('SUPERADMIN', 'LAB_MANAGER')").Scan(&privileged); err != nil {
-				t.Fatal(err)
-			}
-			if won != 1 || guarded != 1 || privileged != 1 {
-				t.Fatalf("%v iteration %d: errors=%v privileged=%d", pair, iteration, errs, privileged)
-			}
+		}
+		var role string
+		if err := pool.QueryRow(ctx, "SELECT role FROM misko.users WHERE id = $1", admin.User.ID).Scan(&role); err != nil {
+			t.Fatal(err)
+		}
+		if role != string(access.SuperAdmin) {
+			t.Fatalf("iteration %d: admin role changed to %s", iteration, role)
 		}
 	}
 }

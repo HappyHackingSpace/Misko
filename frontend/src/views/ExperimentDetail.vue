@@ -1,12 +1,15 @@
 <script setup>
 // One experiment: its groups, enrolled subjects and tests. Tests link to the
 // workflow screen where video, calibration and analysis live.
-import { computed, onMounted, onUnmounted, ref } from "vue";
+import { computed, h, onMounted, onUnmounted, ref } from "vue";
 import { useRoute } from "vue-router";
 import { useI18n } from "vue-i18n";
+import { RouterLink } from "vue-router";
+import { NAlert, NButton, NCard, NDataTable, NTag } from "naive-ui";
 import { environments, experiments, protocols, subjects } from "../api/endpoints.js";
 import { useAuth } from "../stores/auth.js";
 import { useBreadcrumb } from "../stores/breadcrumb.js";
+import PageHead from "../components/PageHead.vue";
 
 const { t } = useI18n();
 const route = useRoute();
@@ -21,6 +24,11 @@ const protocolList = ref([]);
 const revisionOptions = ref([]);
 const subjectList = ref([]);
 const error = ref("");
+
+// A status carries meaning through its color everywhere else in the panel;
+// the tests table here uses the same map.
+const STATUS_TAG = { PLANNED: "info", IN_PROGRESS: "warning", COMPLETED: "success", CANCELLED: "error" };
+const tagType = (status) => STATUS_TAG[status] || "default";
 
 // Groups belong to the study, so writing one needs study:write.
 const canWrite = computed(() => auth.can("study:write"));
@@ -226,6 +234,29 @@ async function addGroup() {
   }
 }
 
+const columns = computed(() => [
+  {
+    title: t("tests.subject"),
+    key: "subjectId",
+    render: (row) =>
+      h(RouterLink, { class: "link", to: `/tests/${row.id}`, "data-test": "test-link" }, () => subjectCode(row.subjectId)),
+  },
+  {
+    title: t("tests.paradigm"),
+    key: "paradigmKey",
+    render: (row) => [
+      h(NTag, { size: "small", round: true, bordered: false }, () => row.paradigmKey),
+      h("span", { class: "muted version" }, `v${row.paradigmVersion}`),
+    ],
+  },
+  { title: t("tests.scheduled"), key: "scheduledAt", render: (row) => new Date(row.scheduledAt).toLocaleString() },
+  {
+    title: t("tests.status"),
+    key: "status",
+    render: (row) => h(NTag, { size: "small", round: true, type: tagType(row.status) }, () => t(`statuses.${row.status}`)),
+  },
+]);
+
 async function load() {
   error.value = "";
   try {
@@ -259,175 +290,162 @@ onUnmounted(() => crumb.clear());
 </script>
 
 <template>
-  <p class="err" v-if="error">{{ error }}</p>
+  <NAlert v-if="error" type="error" :title="error" data-test="error" style="margin-bottom: 16px" />
 
   <div class="detail" v-if="experiment">
-    <div class="card">
-      <div class="title">
-        <h2 style="margin-top:0">{{ experiment.code }} <span class="muted">{{ experiment.title }}</span></h2>
-        <RouterLink v-if="canWrite" class="link" :to="`/experiments/${experiment.id}/edit`" data-test="experiment-edit">
+    <PageHead :title="`${experiment.code} · ${experiment.title}`" :subtitle="experiment.description">
+      <template #actions>
+        <NButton v-if="canWrite" secondary data-test="experiment-edit" @click="$router.push(`/experiments/${experiment.id}/edit`)">
           {{ $t("common.edit") }}
-        </RouterLink>
-      </div>
-      <p class="muted" v-if="experiment.description">{{ experiment.description }}</p>
+        </NButton>
+      </template>
+    </PageHead>
 
-      <div class="pills" v-if="groups.length">
-        <!-- The role label is translated, so the raw value travels in an
-             attribute for anything reading this without knowing the language. -->
-        <span class="pill" v-for="group in groups" :key="group.id" data-test="group">
-          {{ group.name }}
-          <span class="muted" :data-role="group.role">
-            · {{ group.role === "CONTROL" ? $t("experiments.control") : $t("experiments.treatment") }}
-          </span>
-        </span>
-      </div>
-      <p v-else class="muted">{{ $t("experiments.noGroups") }}</p>
+    <div class="grid-2">
+      <div class="col">
+        <NCard :bordered="true" size="small">
+          <template #header>{{ $t("experiments.groups") }}</template>
+          <div class="pills" v-if="groups.length">
+            <!-- The role label is translated, so the raw value travels in an
+                 attribute for anything reading this without knowing the language. -->
+            <NTag v-for="group in groups" :key="group.id" round :bordered="false" data-test="group">
+              {{ group.name }}
+              <span class="muted" :data-role="group.role">
+                · {{ group.role === "CONTROL" ? $t("experiments.control") : $t("experiments.treatment") }}
+              </span>
+            </NTag>
+          </div>
+          <p v-else class="muted empty">{{ $t("experiments.noGroups") }}</p>
 
-      <form v-if="canWrite" class="add-group" data-test="group-form" @submit.prevent="addGroup">
-        <label class="fld">
-          <span>{{ $t("experiments.groupName") }}</span>
-          <input v-model="newGroup.name" data-test="group-name" required />
-        </label>
-        <label class="fld">
-          <span>{{ $t("experiments.groupRole") }}</span>
-          <select v-model="newGroup.role" data-test="group-role">
-            <option value="CONTROL">{{ $t("experiments.control") }}</option>
-            <option value="TREATMENT">{{ $t("experiments.treatment") }}</option>
-          </select>
-        </label>
-        <label class="fld">
-          <span>{{ $t("experiments.targetSize") }}</span>
-          <input type="number" min="0" v-model="newGroup.targetSize" data-test="group-target-size" />
-        </label>
-        <button type="submit" class="small" :disabled="adding" data-test="group-add">
-          {{ $t("experiments.addGroup") }}
-        </button>
-      </form>
-    </div>
+          <form v-if="canWrite" class="add-group" data-test="group-form" @submit.prevent="addGroup">
+            <label class="fld">
+              <span>{{ $t("experiments.groupName") }}</span>
+              <input v-model="newGroup.name" data-test="group-name" required />
+            </label>
+            <label class="fld">
+              <span>{{ $t("experiments.groupRole") }}</span>
+              <select v-model="newGroup.role" data-test="group-role">
+                <option value="CONTROL">{{ $t("experiments.control") }}</option>
+                <option value="TREATMENT">{{ $t("experiments.treatment") }}</option>
+              </select>
+            </label>
+            <label class="fld narrow">
+              <span>{{ $t("experiments.targetSize") }}</span>
+              <input type="number" min="0" v-model="newGroup.targetSize" data-test="group-target-size" />
+            </label>
+            <NButton attr-type="submit" :loading="adding" :disabled="adding" data-test="group-add">
+              {{ $t("experiments.addGroup") }}
+            </NButton>
+          </form>
+        </NCard>
 
-    <div class="card">
-      <h4>{{ $t("experiments.enrollments") }}</h4>
-      <ul class="protocols" v-if="enrollments.length" data-test="enrollments">
-        <li v-for="enrollment in enrollments" :key="enrollment.id" data-test="enrollment">
-          {{ subjectCode(enrollment.subjectId) }}
-          <span class="muted" v-if="enrollment.currentGroupId">· {{ groupName(enrollment.currentGroupId) }}</span>
-        </li>
-      </ul>
-      <p v-else class="muted">{{ $t("experiments.noEnrollments") }}</p>
+        <NCard :bordered="true" size="small">
+          <template #header>{{ $t("experiments.enrollments") }}</template>
+          <ul class="rows-list" v-if="enrollments.length" data-test="enrollments">
+            <li v-for="enrollment in enrollments" :key="enrollment.id" data-test="enrollment">
+              <span>{{ subjectCode(enrollment.subjectId) }}</span>
+              <span class="muted" v-if="enrollment.currentGroupId">{{ groupName(enrollment.currentGroupId) }}</span>
+            </li>
+          </ul>
+          <p v-else class="muted empty">{{ $t("experiments.noEnrollments") }}</p>
 
-      <form v-if="canWrite && availableSubjects.length" class="add-group" data-test="enroll-form" @submit.prevent="enrollSubject">
-        <label class="fld grow">
-          <span>{{ $t("tests.subject") }}</span>
-          <select v-model="newEnrollment.subjectId" data-test="enroll-subject" required>
-            <option value="">{{ $t("experiments.pickSubject") }}</option>
-            <option v-for="subject in availableSubjects" :key="subject.id" :value="subject.id">{{ subject.code }}</option>
-          </select>
-        </label>
-        <label class="fld">
-          <span>{{ $t("experiments.assignGroup") }}</span>
-          <select v-model="newEnrollment.groupId" data-test="enroll-group">
-            <option value="">{{ $t("experiments.noGroup") }}</option>
-            <option v-for="group in groups" :key="group.id" :value="group.id">{{ group.name }}</option>
-          </select>
-        </label>
-        <button type="submit" class="small" :disabled="enrolling" data-test="enroll-save">
-          {{ $t("experiments.enroll") }}
-        </button>
-      </form>
-      <p v-else-if="canWrite && subjectList.length" class="muted" data-test="enroll-none-left">
-        {{ $t("experiments.noSubjectsToEnroll") }}
-      </p>
-    </div>
-
-    <div class="card">
-      <h4>{{ $t("protocols.title") }}</h4>
-      <ul class="protocols" v-if="protocolList.length">
-        <li v-for="protocol in protocolList" :key="protocol.id" data-test="protocol">
-          {{ protocol.name }}
-          <span class="muted">
-            · {{ $t("protocols.version") }} {{ protocol.latestVersion }}
-          </span>
-        </li>
-      </ul>
-      <p v-else class="muted">{{ $t("protocols.none") }}</p>
-
-      <form v-if="canWriteProtocol" class="protocol-form" data-test="protocol-form" @submit.prevent="createProtocol">
-        <label class="fld">
-          <span>{{ $t("protocols.name") }}</span>
-          <input v-model="newProtocol.name" data-test="protocol-name" required />
-        </label>
-
-        <!-- A step pins one apparatus revision. The paradigm comes with it, so
-             it is never asked for separately. -->
-        <div class="steps">
-          <div class="step" v-for="(step, index) in newProtocol.steps" :key="index" data-test="protocol-step">
+          <form v-if="canWrite && availableSubjects.length" class="add-group" data-test="enroll-form" @submit.prevent="enrollSubject">
             <label class="fld grow">
-              <span>{{ $t("protocols.step") }} {{ index + 1 }} · {{ $t("protocols.environment") }}</span>
-              <select v-model="step.environmentRevisionId" :data-test="`step-revision-${index}`" required>
-                <option value="">{{ $t("protocols.pickEnvironment") }}</option>
-                <option v-for="option in revisionOptions" :key="option.id" :value="option.id">
-                  {{ revisionLabel(option) }}
-                </option>
+              <span>{{ $t("tests.subject") }}</span>
+              <select v-model="newEnrollment.subjectId" data-test="enroll-subject" required>
+                <option value="">{{ $t("experiments.pickSubject") }}</option>
+                <option v-for="subject in availableSubjects" :key="subject.id" :value="subject.id">{{ subject.code }}</option>
               </select>
             </label>
             <label class="fld">
-              <span>{{ $t("protocols.trialType") }}</span>
-              <input v-model="step.trialType" :data-test="`step-trial-type-${index}`" required />
+              <span>{{ $t("experiments.assignGroup") }}</span>
+              <select v-model="newEnrollment.groupId" data-test="enroll-group">
+                <option value="">{{ $t("experiments.noGroup") }}</option>
+                <option v-for="group in groups" :key="group.id" :value="group.id">{{ group.name }}</option>
+              </select>
             </label>
-            <label class="fld narrow">
-              <span>{{ $t("protocols.trials") }}</span>
-              <input type="number" min="1" max="1000" v-model="step.trials" :data-test="`step-trials-${index}`" required />
-            </label>
-            <button
-              v-if="newProtocol.steps.length > 1"
-              type="button"
-              class="small"
-              :data-test="`step-remove-${index}`"
-              @click="removeStep(index)"
-            >
-              {{ $t("protocols.removeStep") }}
-            </button>
-          </div>
-        </div>
+            <NButton attr-type="submit" :loading="enrolling" :disabled="enrolling" data-test="enroll-save">
+              {{ $t("experiments.enroll") }}
+            </NButton>
+          </form>
+          <p v-else-if="canWrite && subjectList.length" class="muted empty" data-test="enroll-none-left">
+            {{ $t("experiments.noSubjectsToEnroll") }}
+          </p>
+        </NCard>
+      </div>
 
-        <div class="actions">
-          <button type="button" class="small" data-test="protocol-add-step" @click="addStep">
-            {{ $t("protocols.addStep") }}
-          </button>
-          <button type="submit" :disabled="savingProtocol" data-test="protocol-save">{{ $t("common.save") }}</button>
-        </div>
-      </form>
+      <NCard :bordered="true" size="small">
+        <template #header>{{ $t("protocols.title") }}</template>
+        <ul class="rows-list" v-if="protocolList.length">
+          <li v-for="protocol in protocolList" :key="protocol.id" data-test="protocol">
+            <span>{{ protocol.name }}</span>
+            <span class="muted">{{ $t("protocols.version") }} {{ protocol.latestVersion }}</span>
+          </li>
+        </ul>
+        <p v-else class="muted empty">{{ $t("protocols.none") }}</p>
+
+        <form v-if="canWriteProtocol" class="protocol-form" data-test="protocol-form" @submit.prevent="createProtocol">
+          <label class="fld">
+            <span>{{ $t("protocols.name") }}</span>
+            <input v-model="newProtocol.name" data-test="protocol-name" required />
+          </label>
+
+          <!-- A step pins one apparatus revision. The paradigm comes with it, so
+               it is never asked for separately. -->
+          <div class="steps">
+            <div class="step" v-for="(step, index) in newProtocol.steps" :key="index" data-test="protocol-step">
+              <label class="fld grow">
+                <span>{{ $t("protocols.step") }} {{ index + 1 }} · {{ $t("protocols.environment") }}</span>
+                <select v-model="step.environmentRevisionId" :data-test="`step-revision-${index}`" required>
+                  <option value="">{{ $t("protocols.pickEnvironment") }}</option>
+                  <option v-for="option in revisionOptions" :key="option.id" :value="option.id">
+                    {{ revisionLabel(option) }}
+                  </option>
+                </select>
+              </label>
+              <label class="fld">
+                <span>{{ $t("protocols.trialType") }}</span>
+                <input v-model="step.trialType" :data-test="`step-trial-type-${index}`" required />
+              </label>
+              <label class="fld narrow">
+                <span>{{ $t("protocols.trials") }}</span>
+                <input type="number" min="1" max="1000" v-model="step.trials" :data-test="`step-trials-${index}`" required />
+              </label>
+              <NButton
+                v-if="newProtocol.steps.length > 1"
+                size="tiny"
+                quaternary
+                :data-test="`step-remove-${index}`"
+                @click="removeStep(index)"
+              >
+                {{ $t("protocols.removeStep") }}
+              </NButton>
+            </div>
+          </div>
+
+          <div class="actions">
+            <NButton dashed size="small" data-test="protocol-add-step" @click="addStep">
+              + {{ $t("protocols.addStep") }}
+            </NButton>
+            <NButton type="primary" attr-type="submit" :loading="savingProtocol" :disabled="savingProtocol" data-test="protocol-save">
+              {{ $t("common.save") }}
+            </NButton>
+          </div>
+        </form>
+      </NCard>
     </div>
 
-    <div class="card">
-      <h4>{{ $t("experiments.tests") }}</h4>
-      <div class="table-scroll" v-if="tests.length">
-        <table class="rows" data-test="experiment-tests">
-          <thead>
-            <tr>
-              <th>{{ $t("tests.subject") }}</th>
-              <th>{{ $t("tests.paradigm") }}</th>
-              <th>{{ $t("tests.scheduled") }}</th>
-              <th>{{ $t("tests.status") }}</th>
-            </tr>
-          </thead>
-          <tbody>
-            <!-- The scheduled time is rendered in the reader's locale, so the
-                 instant itself travels in an attribute. -->
-            <tr v-for="test in tests" :key="test.id" data-test="test-row" :data-scheduled="test.scheduledAt">
-              <td>
-                <RouterLink class="link" :to="`/tests/${test.id}`" data-test="test-link">
-                  {{ subjectCode(test.subjectId) }}
-                </RouterLink>
-              </td>
-              <td>{{ test.paradigmKey }} <span class="muted">v{{ test.paradigmVersion }}</span></td>
-              <td class="muted">{{ new Date(test.scheduledAt).toLocaleString() }}</td>
-              <td>{{ $t(`statuses.${test.status}`) }}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      <p v-else class="muted">{{ $t("experiments.noTests") }}</p>
+    <NCard :bordered="true" size="small">
+      <template #header>{{ $t("experiments.tests") }}</template>
+      <NDataTable
+        v-if="tests.length"
+        data-test="experiment-tests"
+        :columns="columns"
+        :data="tests"
+        :row-key="(row) => row.id"
+        :row-props="(row) => ({ 'data-test': 'test-row', 'data-scheduled': row.scheduledAt })"
+      />
+      <p v-else class="muted empty">{{ $t("experiments.noTests") }}</p>
 
       <form v-if="canPlanTest" class="plan-form" data-test="plan-form" @submit.prevent="planTest">
         <p v-if="!enrollments.length" class="muted" data-test="plan-needs-enrollment">{{ $t("tests.needsEnrollment") }}</p>
@@ -467,32 +485,36 @@ onUnmounted(() => crumb.clear());
             <span>{{ $t("tests.scheduledAt") }}</span>
             <input type="datetime-local" v-model="newTest.scheduledAt" data-test="plan-scheduled" required />
           </label>
-          <button type="submit" :disabled="planning" data-test="plan-save">{{ $t("tests.plan") }}</button>
+          <NButton type="primary" attr-type="submit" :loading="planning" :disabled="planning" data-test="plan-save">
+            {{ $t("tests.plan") }}
+          </NButton>
         </template>
       </form>
-    </div>
+    </NCard>
   </div>
 </template>
 
 <style scoped>
 .detail { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
-.title { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-.pills { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+.grid-2 .col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+@media (max-width: 860px) { .grid-2 { grid-template-columns: 1fr; } }
+
+.pills { display: flex; gap: 8px; flex-wrap: wrap; }
 .add-group { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; margin-top: 14px; }
-.protocols { list-style: none; margin: 0 0 12px; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.rows-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.rows-list li { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 10px; border-radius: 8px; }
+.rows-list li:hover { background: var(--panel2); }
+.empty { margin: 0; }
 .protocol-form { display: flex; flex-direction: column; gap: 12px; margin-top: 14px; }
 .plan-form { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; margin-top: 14px; }
-.steps { display: flex; flex-direction: column; gap: 10px; }
-.step { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
-.grow { flex: 1; min-width: 240px; }
+.steps { display: flex; flex-direction: column; gap: 8px; }
+.step { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; padding: 10px; border-radius: 9px; background: var(--panel2); }
+.grow { flex: 1; min-width: 220px; }
 .narrow { max-width: 110px; }
 .actions { display: flex; gap: 12px; align-items: center; }
 .fld { display: flex; flex-direction: column; gap: 4px; }
 .fld span { font-size: 12px; color: var(--muted); }
-.small { padding: 4px 10px; font-size: .85rem; }
-.rows { width: 100%; border-collapse: collapse; }
-.rows th { text-align: left; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; padding: 6px 8px; }
-.rows td { padding: 6px 8px; border-top: 1px solid var(--line); }
-.link { color: var(--accent); font-weight: 600; text-decoration: none; }
-.link:hover { text-decoration: underline; }
+.version { margin-left: 6px; }
+:deep(.link) { color: inherit; text-decoration: none; }
 </style>

@@ -67,26 +67,39 @@ const isSelected = (event) =>
 </template>
 
 <style scoped>
-.timeline { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.timeline {
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 320px;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel2);
+}
 .event {
   display: grid;
-  grid-template-columns: 14px 1fr auto auto;
+  grid-template-columns: 10px 1fr auto auto;
   align-items: center;
   gap: 10px;
   width: 100%;
   text-align: left;
   background: transparent;
   border: 1px solid transparent;
-  border-radius: 9px;
-  padding: 7px 10px;
+  border-radius: 7px;
+  padding: 6px 9px;
   color: var(--txt);
   cursor: pointer;
+  font-size: 12.5px;
 }
-.event:hover { background: var(--panel2); }
-.event.selected { border-color: var(--dot); background: color-mix(in srgb, var(--dot) 12%, transparent); }
+.event:hover { background: var(--panel); }
+.event.selected { border-color: var(--dot); background: color-mix(in srgb, var(--dot) 14%, var(--panel)); }
 .event:focus-visible { outline: 2px solid var(--dot); outline-offset: 1px; }
-.node { width: 11px; height: 11px; border-radius: 50%; background: var(--dot); }
-.label { font-size: 13px; }
-.range { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
-.confidence { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.node { width: 8px; height: 8px; border-radius: 50%; background: var(--dot); }
+.label { font-weight: 600; }
+.range { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 11.5px; }
+.confidence { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 10.5px; min-width: 30px; text-align: right; }
 </style>

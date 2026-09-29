@@ -167,6 +167,7 @@ paths:
     post:
       operationId: createUser
       summary: Create a user (user:manage); there is no public signup
+      description: Role SUPERADMIN is never accepted here (403 user.superAdminProtected); that account is created once, by the setup command.
       requestBody:
         required: true
         content:
@@ -221,7 +222,7 @@ paths:
     patch:
       operationId: updateUser
       summary: Rename a user or change their role (user:manage)
-      description: The last SUPERADMIN or LAB_MANAGER cannot be demoted to an unprivileged role (409 user.lastPrivileged).
+      description: The last SUPERADMIN or LAB_MANAGER cannot be demoted to an unprivileged role (409 user.lastPrivileged). The SUPERADMIN account cannot be renamed, role-changed or promoted into, by anyone including itself through this route (403 user.superAdminProtected).
       requestBody:
         required: true
         content:
@@ -250,7 +251,7 @@ paths:
     delete:
       operationId: deleteUser
       summary: Delete a user (user:manage)
-      description: Users cannot delete themselves (400 user.cannotDeleteSelf) and the last privileged user remains (409 user.lastPrivileged).
+      description: Users cannot delete themselves (400 user.cannotDeleteSelf) and the last privileged user remains (409 user.lastPrivileged). The SUPERADMIN account can never be deleted (403 user.superAdminProtected).
       responses:
         '204':
           description: Deleted; the user's tokens stop authenticating immediately
@@ -270,6 +271,7 @@ paths:
     post:
       operationId: resetUserPassword
       summary: Set another user's password and revoke their tokens (user:manage)
+      description: Never valid against the SUPERADMIN account (403 user.superAdminProtected); it changes its own password only through POST /api/auth/password.
       requestBody:
         required: true
         content:
@@ -1215,6 +1217,25 @@ paths:
         '401': {$ref: '#/components/responses/Problem'}
         '403': {$ref: '#/components/responses/Problem'}
         '404': {$ref: '#/components/responses/Problem'}
+  /api/tests:
+    get:
+      operationId: listAllTests
+      summary: Tests across every experiment, newest scheduled first (*:read)
+      parameters:
+        - {name: experimentId, in: query, schema: {type: string, format: uuid}}
+        - {name: subjectId, in: query, schema: {type: string, format: uuid}}
+        - {name: status, in: query, schema: {$ref: '#/components/schemas/TestStatus'}}
+        - {name: paradigmKey, in: query, schema: {$ref: '#/components/schemas/ConstantKey'}}
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: Tests
+          content:
+            application/json:
+              schema: {type: object, required: [data, total, page, pageSize], properties: {data: {type: array, items: {$ref: '#/components/schemas/Test'}}, total: {type: integer}, page: {type: integer}, pageSize: {type: integer}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
   /api/tests/{id}:
     parameters:
       - $ref: '#/components/parameters/ID'

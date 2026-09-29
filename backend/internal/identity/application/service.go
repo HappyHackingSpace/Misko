@@ -283,6 +283,9 @@ func (s *Service) CreateUser(ctx context.Context, actor access.Actor, in CreateU
 	if err != nil {
 		return CreatedUser{}, err
 	}
+	if err := domain.CheckNotSuperAdminRole(role); err != nil {
+		return CreatedUser{}, err
+	}
 	plain, generated, err := s.choosePassword(in.Password)
 	if err != nil {
 		return CreatedUser{}, err
@@ -326,11 +329,16 @@ func (s *Service) UpdateUser(ctx context.Context, actor access.Actor, id string,
 	}
 	var updated domain.User
 	err := s.store.Serializable(ctx, func(tx Store) error {
+		target, err := tx.User(ctx, id)
+		if err != nil {
+			return err
+		}
+		// The SUPERADMIN account answers to no one, including itself through
+		// this route: it cannot be renamed, reassigned or role-changed here.
+		if err := domain.CheckNotSuperAdmin(target); err != nil {
+			return err
+		}
 		if change.Role != nil {
-			target, err := tx.User(ctx, id)
-			if err != nil {
-				return err
-			}
 			privileged, err := tx.CountPrivileged(ctx)
 			if err != nil {
 				return err
@@ -339,7 +347,6 @@ func (s *Service) UpdateUser(ctx context.Context, actor access.Actor, id string,
 				return err
 			}
 		}
-		var err error
 		updated, err = tx.UpdateUser(ctx, id, change)
 		return err
 	})
@@ -347,9 +354,18 @@ func (s *Service) UpdateUser(ctx context.Context, actor access.Actor, id string,
 }
 
 // ResetPassword sets another user's password and revokes their tokens. The
-// generated password is returned only when none was supplied.
+// generated password is returned only when none was supplied. The SUPERADMIN
+// account is never a valid target: it changes its own password only through
+// the self-service /api/auth/password route, which proves the current one.
 func (s *Service) ResetPassword(ctx context.Context, actor access.Actor, id string, password *string) (string, error) {
 	if err := actor.Require(access.UserManage); err != nil {
+		return "", err
+	}
+	target, err := s.store.User(ctx, id)
+	if err != nil {
+		return "", err
+	}
+	if err := domain.CheckNotSuperAdmin(target); err != nil {
 		return "", err
 	}
 	plain, generated, err := s.choosePassword(password)

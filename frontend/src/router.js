@@ -6,6 +6,7 @@ const Experiments = () => import("./views/Experiments.vue");
 const ExperimentDetail = () => import("./views/ExperimentDetail.vue");
 const ExperimentForm = () => import("./views/ExperimentForm.vue");
 const TestDetail = () => import("./views/TestDetail.vue");
+const Tests = () => import("./views/Tests.vue");
 const Subjects = () => import("./views/Subjects.vue");
 const SubjectForm = () => import("./views/SubjectForm.vue");
 const Reports = () => import("./views/Reports.vue");
@@ -26,6 +27,7 @@ const routes = [
   { path: "/experiments/new", component: ExperimentForm, meta: { permission: "study:write", titleKey: "nav.experiments" } },
   { path: "/experiments/:id", component: ExperimentDetail, meta: { titleKey: "nav.experiments" } },
   { path: "/experiments/:id/edit", component: ExperimentForm, meta: { permission: "study:write", titleKey: "nav.experiments" } },
+  { path: "/tests", component: Tests, meta: { titleKey: "nav.tests" } },
   { path: "/tests/:id", component: TestDetail, meta: { titleKey: "nav.tests" } },
 
   { path: "/subjects", component: Subjects, meta: { titleKey: "nav.subjects" } },

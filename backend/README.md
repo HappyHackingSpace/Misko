@@ -119,6 +119,13 @@ Rules enforced by tests:
 - Users cannot delete themselves. The last SUPERADMIN or LAB_MANAGER cannot be
   deleted or demoted to an unprivileged role; checks run in a SERIALIZABLE
   transaction with bounded retries, verified with concurrent requests.
+- The SUPERADMIN account is the lab's founding account, created once by the
+  setup command and never again: no request may create a second one, and none
+  may rename, role-change, reset the password of, or delete the existing one —
+  not a LAB_MANAGER (despite otherwise holding identical permissions), and not
+  that account acting on itself through these routes. It changes its own
+  password only through `POST /api/auth/password`, which proves the current
+  one. Every such attempt returns 403 `user.superAdminProtected`.
 - Passwords need at least 8 characters and at most 72 UTF-8 bytes (the bcrypt
   limit; longer input is rejected, never truncated). They are compared byte for
   byte without normalization. Generated passwords are 26 random base32 characters.

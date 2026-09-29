@@ -20,10 +20,17 @@ async function signIn(page, email, password) {
   await expect(page.getByTestId("nav-experiments")).toBeVisible();
 }
 
+// Naive UI's select is not a native <select>: open it, then click the option
+// by its (locale-independent) test hook.
+async function chooseOption(page, triggerTestId, optionTestId) {
+  await page.getByTestId(triggerTestId).click();
+  await page.getByTestId(optionTestId).click();
+}
+
 async function openReports(page, data) {
   await page.getByTestId("nav-reports").click();
   await expect(page.getByTestId("report-experiment")).toBeVisible();
-  await page.getByTestId("report-experiment").selectOption(data.experimentId);
+  await chooseOption(page, "report-experiment", `option-experiment-${data.experimentId}`);
 }
 
 test("an experiment's metrics are listed and its groups summarised", async ({ page, request }) => {
@@ -39,7 +46,7 @@ test("an experiment's metrics are listed and its groups summarised", async ({ pa
 
   // Choosing one metric compares the groups of the experiment on it. The
   // seeded test belongs to no group, so the comparison has one row.
-  await page.getByTestId("report-metric").selectOption("duration_s");
+  await chooseOption(page, "report-metric", "option-metric-duration_s");
   const summary = page.getByTestId("report-summary");
   await expect(summary).toBeVisible({ timeout: 10_000 });
   await expect(page.getByTestId("summary-group")).toHaveCount(1);
@@ -58,7 +65,7 @@ test("an experiment's metrics are listed and its groups summarised", async ({ pa
   // of a test is a question the API refuses, so the screen stops offering one
   // rather than showing a refusal. It has to stay gone: a summary that merely
   // blinks out while a request is in flight would pass a one-off check.
-  await page.getByTestId("report-selection").selectOption("all");
+  await chooseOption(page, "report-selection", "option-selection-all");
   await expect
     .poll(
       async () => {
@@ -97,13 +104,13 @@ test("the rows belong to the experiment that was chosen", async ({ page, request
   await openReports(page, data);
   await expect(page.getByTestId("metric-value").first()).toBeVisible({ timeout: 10_000 });
 
-  await page.getByTestId("report-experiment").selectOption(empty);
+  await chooseOption(page, "report-experiment", `option-experiment-${empty}`);
   await expect(page.getByTestId("metric-value")).toHaveCount(0, { timeout: 10_000 });
   await expect(page.getByTestId("report-error")).toHaveCount(0);
 
   // And back again, so the emptiness is the filter talking rather than a
   // screen that stopped loading.
-  await page.getByTestId("report-experiment").selectOption(data.experimentId);
+  await chooseOption(page, "report-experiment", `option-experiment-${data.experimentId}`);
   await expect(page.getByTestId("metric-value").first()).toBeVisible({ timeout: 10_000 });
 });
 
@@ -149,7 +156,7 @@ test("the rows are taken away as a file the API wrote", async ({ page, request }
 
   // The filters on screen travel with the export: narrowing to one metric
   // narrows the file too, rather than downloading everything regardless.
-  await page.getByTestId("report-metric").selectOption("duration_s");
+  await chooseOption(page, "report-metric", "option-metric-duration_s");
   await expect(page.getByTestId("metric-value")).toHaveCount(1, { timeout: 10_000 });
   const [narrowed] = await Promise.all([
     page.waitForEvent("download", { timeout: 20_000 }),
@@ -169,7 +176,7 @@ test("reports offer no free-text search, because the API refuses one", async ({ 
 
   // Every other list screen has a search box; these endpoints filter by ids and
   // keys instead, and a box that is always refused is worse than no box.
-  await expect(page.locator(".dt-search")).toHaveCount(0);
+  await expect(page.getByTestId("list-search")).toHaveCount(0);
   await page.goto("/subjects");
-  await expect(page.locator(".dt-search")).toHaveCount(1);
+  await expect(page.getByTestId("list-search")).toHaveCount(1);
 });

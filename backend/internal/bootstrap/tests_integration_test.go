@@ -125,6 +125,17 @@ func TestTestsTrialsAndCommentsOverHTTP(t *testing.T) {
 		t.Fatalf("status filter: %v", page)
 	}
 	c.expect("unknown status", c.call("GET", base+"/tests?status=DONE", tokens["VIEWER"], nil), 400, "common.invalidQuery")
+	// The worklist across experiments sees the same tests and takes the same filters.
+	all := c.expect("viewer lists all tests", c.call("GET", "/api/tests", tokens["VIEWER"], nil), 200, "").body
+	scoped := c.call("GET", base+"/tests", tokens["VIEWER"], nil).body
+	if all["total"] != scoped["total"] {
+		t.Fatalf("all tests: %v, experiment tests: %v", all["total"], scoped["total"])
+	}
+	if page := c.call("GET", "/api/tests?status=COMPLETED&experimentId="+id(exp), tokens["VIEWER"], nil).body; page["total"] != float64(1) {
+		t.Fatalf("all tests status filter: %v", page)
+	}
+	c.expect("anonymous GET /api/tests", c.call("GET", "/api/tests", "", nil), 401, "auth.unauthenticated")
+	c.expect("all tests unknown status", c.call("GET", "/api/tests?status=DONE", tokens["VIEWER"], nil), 400, "common.invalidQuery")
 	foreign := c.create("/api/experiments", admin, map[string]any{"code": "EXP-F", "title": "Other"})
 	c.expect("enrollment of another experiment", c.call("POST", "/api/experiments/"+id(foreign)+"/tests", admin, plan), 404, "enrollment.notFound")
 

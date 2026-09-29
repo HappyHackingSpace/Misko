@@ -68,13 +68,16 @@ onBeforeUnmount(() => {
 .usermenu { position: relative; }
 .trigger {
   display: inline-flex; align-items: center; gap: 8px;
-  background: var(--btn-bg); border: 1px solid var(--line);
-  padding: 5px 9px; border-radius: 9px; font-weight: 700;
+  background: transparent; border: 1px solid transparent;
+  padding: 4px 10px 4px 4px; border-radius: 999px; font-weight: 600;
+  height: 36px; transition: background .12s ease, border-color .12s ease;
 }
+.trigger:hover { background: var(--btn-bg); border-color: var(--line); }
 .avatar {
-  width: 24px; height: 24px; border-radius: 50%;
+  width: 27px; height: 27px; border-radius: 50%;
   display: inline-flex; align-items: center; justify-content: center;
-  background: var(--accent); color: #04141d; font-size: 12px; font-weight: 800;
+  background: var(--accent); color: var(--accent-fg); font-size: 12.5px; font-weight: 800;
+  flex-shrink: 0;
 }
 .name { font-size: 13px; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (max-width: 520px) {

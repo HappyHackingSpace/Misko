@@ -4,11 +4,13 @@
 // manifest rather than hard coding a list, so a new paradigm needs no change
 // here. The API stores whatever values are sent, so the limits the manifest
 // declares are applied as input constraints on this side.
-import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import { computed, h, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
+import { NAlert, NButton, NCard, NSelect } from "naive-ui";
 import { environments, paradigms } from "../api/endpoints.js";
 import { useBreadcrumb } from "../stores/breadcrumb.js";
+import PageHead from "../components/PageHead.vue";
 
 const { t } = useI18n();
 const route = useRoute();
@@ -25,6 +27,11 @@ const loadingManifest = ref(false);
 
 const parameters = computed(() => manifest.value?.apparatusParameters || []);
 const chosen = computed(() => catalogue.value.find((p) => p.key === form.value.paradigmKey) || null);
+// The label carries a stable test hook: Naive UI's dropdown options are not a
+// native <select>, so the browser suite can no longer address them by value.
+const paradigmOptions = computed(() =>
+  catalogue.value.map((p) => ({ value: p.key, label: () => h("span", { "data-test": `environment-paradigm-${p.key}` }, p.name) })),
+);
 
 async function loadManifest(key) {
   manifest.value = null;
@@ -91,71 +98,73 @@ onUnmounted(() => crumb.clear());
 </script>
 
 <template>
-  <div class="head">
-    <h1>{{ $t("environments.new") }}</h1>
-  </div>
+  <PageHead :title="$t('environments.new')" />
 
-  <p class="err" v-if="error" data-test="error">{{ error }}</p>
+  <NAlert v-if="error" type="error" :title="error" data-test="error" style="margin-bottom: 16px" />
 
-  <form class="card form" data-test="environment-form" @submit.prevent="save">
-    <label class="fld">
-      <span>{{ $t("common.name") }}</span>
-      <input
-        v-model="form.name"
-        data-test="environment-name"
-        :placeholder="$t('environments.namePlaceholder')"
-        required
-      />
-    </label>
+  <NCard :bordered="true" size="small">
+    <form class="form" data-test="environment-form" @submit.prevent="save">
+      <label class="fld">
+        <span>{{ $t("common.name") }}</span>
+        <input
+          v-model="form.name"
+          data-test="environment-name"
+          :placeholder="$t('environments.namePlaceholder')"
+          required
+        />
+      </label>
 
-    <label class="fld">
-      <span>{{ $t("environments.paradigm") }}</span>
-      <select v-model="form.paradigmKey" data-test="environment-paradigm" required>
-        <option value="">{{ $t("environments.pickParadigm") }}</option>
-        <option v-for="p in catalogue" :key="p.key" :value="p.key">{{ p.name }}</option>
-      </select>
-      <small class="muted">{{ $t("environments.paradigmLocked") }}</small>
-    </label>
+      <label class="fld">
+        <span>{{ $t("environments.paradigm") }}</span>
+        <NSelect
+          v-model:value="form.paradigmKey"
+          data-test="environment-paradigm"
+          :placeholder="$t('environments.pickParadigm')"
+          :options="paradigmOptions"
+        />
+        <small class="muted">{{ $t("environments.paradigmLocked") }}</small>
+      </label>
 
-    <label class="fld wide">
-      <span>{{ $t("common.notes") }}</span>
-      <textarea v-model="form.notes" rows="2" data-test="environment-notes"></textarea>
-    </label>
+      <label class="fld wide">
+        <span>{{ $t("common.notes") }}</span>
+        <textarea v-model="form.notes" rows="2" data-test="environment-notes"></textarea>
+      </label>
 
-    <div class="wide" v-if="parameters.length">
-      <h4>{{ $t("environments.apparatus") }}</h4>
-      <div class="params">
-        <label class="fld" v-for="parameter in parameters" :key="parameter.key">
-          <span>{{ parameter.label }} <span class="muted">{{ parameter.unit }}</span></span>
-          <input
-            type="number"
-            step="any"
-            :min="parameter.min"
-            :max="parameter.max"
-            v-model="values[parameter.key]"
-            :data-test="`apparatus-${parameter.key}`"
-            required
-          />
-          <small class="muted">{{ parameter.min }} - {{ parameter.max }}</small>
-        </label>
+      <div class="wide" v-if="parameters.length">
+        <h4>{{ $t("environments.apparatus") }}</h4>
+        <div class="params">
+          <label class="fld" v-for="parameter in parameters" :key="parameter.key">
+            <span>{{ parameter.label }} <span class="muted">{{ parameter.unit }}</span></span>
+            <input
+              type="number"
+              step="any"
+              :min="parameter.min"
+              :max="parameter.max"
+              v-model="values[parameter.key]"
+              :data-test="`apparatus-${parameter.key}`"
+              required
+            />
+            <small class="muted">{{ parameter.min }} - {{ parameter.max }}</small>
+          </label>
+        </div>
       </div>
-    </div>
-    <p class="muted wide" v-else-if="loadingManifest">{{ $t("common.loading") }}</p>
+      <p class="muted wide" v-else-if="loadingManifest">{{ $t("common.loading") }}</p>
 
-    <div class="actions">
-      <button type="submit" :disabled="saving || !parameters.length" data-test="environment-save">
-        {{ $t("common.save") }}
-      </button>
-      <RouterLink class="link" to="/environments">{{ $t("common.cancel") }}</RouterLink>
-    </div>
-  </form>
+      <div class="actions">
+        <NButton type="primary" attr-type="submit" :loading="saving" :disabled="!parameters.length" data-test="environment-save">
+          {{ $t("common.save") }}
+        </NButton>
+        <RouterLink class="link" to="/environments">{{ $t("common.cancel") }}</RouterLink>
+      </div>
+    </form>
+  </NCard>
 </template>
 
 <style scoped>
-.head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .form { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; align-items: start; }
 .fld { display: flex; flex-direction: column; gap: 4px; }
 .fld span { font-size: 12px; color: var(--muted); }
+.fld :deep(.n-select) { width: 100%; }
 .params { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; }
 .wide { grid-column: 1 / -1; }
 .actions { grid-column: 1 / -1; display: flex; align-items: center; gap: 12px; }

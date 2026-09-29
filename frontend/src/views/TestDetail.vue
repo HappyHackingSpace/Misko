@@ -5,10 +5,12 @@
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { useRoute } from "vue-router";
 import { useI18n } from "vue-i18n";
+import { NAlert, NButton, NCard, NDescriptions, NDescriptionsItem, NProgress, NTag } from "naive-ui";
 import { analysis, calibration, recordings, tests } from "../api/endpoints.js";
 import { crc32c, upload } from "../api/upload.js";
 import { useAuth } from "../stores/auth.js";
 import { useBreadcrumb } from "../stores/breadcrumb.js";
+import PageHead from "../components/PageHead.vue";
 import EventTimeline from "../components/EventTimeline.vue";
 import TestComments from "../components/TestComments.vue";
 import VideoPairPanel from "../components/VideoPairPanel.vue";
@@ -32,6 +34,28 @@ const progress = ref(0);
 const clip = ref({ startS: 0, endS: "" });
 
 const testId = computed(() => route.params.id);
+
+// A status carries meaning through its color everywhere on this page: the
+// test's own lifecycle, a video's verification, a calibration's validity, an
+// analysis run's outcome. One map covers all of them.
+const STATUS_TAG = {
+  PLANNED: "info",
+  IN_PROGRESS: "warning",
+  COMPLETED: "success",
+  CANCELLED: "error",
+  PENDING: "default",
+  VERIFIED: "success",
+  REJECTED: "error",
+  QUEUED: "info",
+  RUNNING: "warning",
+  SUCCEEDED: "success",
+  FAILED: "error",
+  NOT_REQUIRED: "default",
+  WAITING_FOR_CALIBRATION: "warning",
+  CALIBRATED: "success",
+  VALID: "success",
+};
+const tagType = (status) => STATUS_TAG[status] || "default";
 
 // Starting, completing and recording a trial are running the test, which is
 // test:run. Cancelling is test:write, because it retracts a planned record
@@ -197,7 +221,7 @@ async function load() {
       selectedRunId.value = (published || runs.value[0]).id;
     }
     await loadRun();
-    crumb.set([{ label: t("tests.title") }, { label: test.value.paradigmKey }]);
+    crumb.set([{ label: t("tests.title"), to: "/tests" }, { label: test.value.paradigmKey }]);
   } catch (e) {
     error.value = e.message;
   }
@@ -255,148 +279,188 @@ async function reanalyze(recordingId) {
   }
 }
 
-const metricValue = (metric) => (metric.value === null ? t("analysis.missing") : `${metric.value} ${metric.unit}`);
+// Published metrics carry full floating-point precision, which reads as noise
+// next to a unit; three decimal places is more than the underlying tracking
+// accuracy justifies. Trailing zeros are dropped so a whole number of seconds
+// or centimetres still reads as one.
+function formatNumber(value) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return value;
+  if (Number.isInteger(value)) return String(value);
+  return value.toFixed(3).replace(/0+$/, "").replace(/\.$/, "");
+}
+const metricValue = (metric) => (metric.value === null ? t("analysis.missing") : `${formatNumber(metric.value)} ${metric.unit}`);
 
 onMounted(load);
 onUnmounted(() => crumb.clear());
 </script>
 
 <template>
-  <p class="err" v-if="error" data-test="error">{{ error }}</p>
+  <NAlert v-if="error" type="error" :title="error" data-test="error" style="margin-bottom: 16px" />
 
   <div class="detail" v-if="test">
-    <div class="card">
-      <h2 style="margin-top:0">
-        {{ test.paradigmKey }} <span class="muted">v{{ test.paradigmVersion }}</span>
-      </h2>
-      <p class="muted" data-test="test-status" :data-status="test.status">
-        {{ $t("tests.status") }}: {{ $t(`statuses.${test.status}`) }}
-      </p>
-      <p class="muted" v-if="test.cancelReason" data-test="cancel-reason">
-        {{ $t("tests.cancelled", { reason: test.cancelReason }) }}
-      </p>
-
-      <!-- A planned test starts; one in progress completes. Either can be
-           retracted, and a finished one offers nothing. -->
-      <div class="actions" v-if="planned || inProgress">
-        <button v-if="planned && auth.canRun" :disabled="!!busy" data-test="start-test" @click="startTest">
-          {{ $t("tests.start") }}
-        </button>
-        <button
-          v-if="inProgress && auth.canRun"
-          :disabled="!!busy || !trials.length"
-          :title="trials.length ? '' : $t('tests.needsTrial')"
-          data-test="complete-test"
-          @click="completeTest"
-        >
-          {{ $t("tests.complete") }}
-        </button>
-        <template v-if="canCancel">
-          <input
-            v-model="cancelReason"
-            class="reason"
-            :placeholder="$t('tests.cancelReason')"
-            data-test="cancel-reason-input"
-          />
-          <button class="small" :disabled="!!busy || !cancelReason.trim()" data-test="cancel-test" @click="cancelTest">
-            {{ $t("tests.cancel") }}
-          </button>
-        </template>
-      </div>
-      <p class="muted" v-if="inProgress && !trials.length" data-test="needs-trial">{{ $t("tests.needsTrial") }}</p>
-    </div>
-
-    <div class="card">
-      <h4>{{ $t("tests.trials") }}</h4>
-      <p class="muted" data-test="trial-count">
-        {{ $t("tests.plannedTrials", { done: trials.length, planned: test.plannedTrials }) }}
-      </p>
-      <ul class="trials" v-if="trials.length">
-        <li v-for="trial in trials" :key="trial.id" data-test="trial" :data-repetition="trial.repetition">
-          {{ trialLabel(trial) }}
-          <span class="muted">{{ new Date(trial.startedAt).toLocaleString() }}</span>
-        </li>
-      </ul>
-      <p v-else class="muted">{{ $t("tests.noTrials") }}</p>
-
-      <form v-if="inProgress && auth.canRun" class="trial-form" data-test="trial-form" @submit.prevent="recordTrial">
-        <label class="fld narrow">
-          <span>{{ $t("tests.repetition") }}</span>
-          <input
-            type="number"
-            min="1"
-            :max="test.plannedTrials"
-            v-model="newTrial.repetition"
-            data-test="trial-repetition"
-            required
-          />
-        </label>
-        <label class="fld">
-          <span>{{ $t("tests.trialStart") }}</span>
-          <input
-            type="datetime-local"
-            step="1"
-            v-model="newTrial.startedAt"
-            data-test="trial-start"
-            required
-            @input="touchedStart = true"
-          />
-        </label>
-        <label class="fld">
-          <span>{{ $t("tests.trialEnd") }}</span>
-          <input type="datetime-local" step="1" v-model="newTrial.endedAt" data-test="trial-end" />
-        </label>
-        <button type="submit" :disabled="!!busy" data-test="trial-save">{{ $t("tests.recordTrial") }}</button>
-      </form>
-    </div>
-
-    <div class="card">
-      <h4>{{ $t("tests.recordings") }}</h4>
-      <ul class="recordings" v-if="recordingList.length" data-test="recordings">
-        <li
-          v-for="recording in recordingList"
-          :key="recording.id"
-          data-test="recording"
-          :data-video-status="recording.video.status"
-        >
-          <span>{{ recording.video.fileName || recording.video.id.slice(0, 8) }}</span>
-          <span class="muted">{{ $t(`statuses.${recording.video.status}`) }}</span>
-          <span class="muted">{{ $t(`statuses.${calibrationStatus[recording.id]?.status || "PENDING"}`) }}</span>
-          <button
-            v-if="auth.canRun"
-            class="small"
-            :disabled="busy === recording.id"
-            data-test="reanalyze"
-            @click="reanalyze(recording.id)"
+    <PageHead :title="`${test.paradigmKey} · v${test.paradigmVersion}`">
+      <template #actions>
+        <NTag :type="tagType(test.status)" round data-test="test-status" :data-status="test.status">
+          {{ $t(`statuses.${test.status}`) }}
+        </NTag>
+        <template v-if="planned || inProgress">
+          <NButton v-if="planned && auth.canRun" type="primary" :loading="busy === 'start'" :disabled="!!busy" data-test="start-test" @click="startTest">
+            <template #icon>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="6 4 20 12 6 20 6 4" /></svg>
+            </template>
+            {{ $t("tests.start") }}
+          </NButton>
+          <NButton
+            v-if="inProgress && auth.canRun"
+            type="primary"
+            :loading="busy === 'complete'"
+            :disabled="!!busy || !trials.length"
+            :title="trials.length ? '' : $t('tests.needsTrial')"
+            data-test="complete-test"
+            @click="completeTest"
           >
-            {{ $t("analysis.reanalyze") }}
-          </button>
-        </li>
-      </ul>
-      <p v-else class="muted">{{ $t("tests.noRecordings") }}</p>
+            <template #icon>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+            </template>
+            {{ $t("tests.complete") }}
+          </NButton>
+        </template>
+      </template>
+    </PageHead>
+    <p class="muted" v-if="test.cancelReason" data-test="cancel-reason">
+      {{ $t("tests.cancelled", { reason: test.cancelReason }) }}
+    </p>
+    <p class="muted hint" v-if="inProgress && !trials.length" data-test="needs-trial">{{ $t("tests.needsTrial") }}</p>
 
-      <div class="upload" v-if="auth.canRun">
-        <label class="fld">
-          <span>{{ $t("tests.clipStart") }}</span>
-          <input type="number" min="0" step="0.1" v-model="clip.startS" />
-        </label>
-        <label class="fld">
-          <span>{{ $t("tests.clipEnd") }}</span>
-          <input type="number" min="0" step="0.1" v-model="clip.endS" />
-        </label>
-        <label class="fld">
-          <span>{{ $t("tests.upload") }}</span>
-          <input type="file" accept="video/*" data-test="upload-input" :disabled="!!busy" @change="uploadRecording" />
-        </label>
-        <p class="muted" v-if="busy === 'upload'" data-test="upload-progress">
-          {{ $t("tests.uploading") }} {{ Math.round(progress * 100) }}%
-        </p>
-        <p class="muted" v-else-if="busy === 'finalize'">{{ $t("tests.finalizing") }}</p>
+    <NCard v-if="canCancel && (planned || inProgress)" :bordered="true" size="small" class="cancel-card">
+      <div class="cancel-row">
+        <input
+          v-model="cancelReason"
+          class="reason"
+          :placeholder="$t('tests.cancelReason')"
+          data-test="cancel-reason-input"
+        />
+        <NButton :disabled="!!busy || !cancelReason.trim()" :loading="busy === 'cancel'" data-test="cancel-test" @click="cancelTest">
+          <template #icon>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18" /><line x1="6" y1="18" x2="18" y2="6" /></svg>
+          </template>
+          {{ $t("tests.cancel") }}
+        </NButton>
       </div>
+    </NCard>
+
+    <div class="grid-2">
+      <NCard :bordered="true" size="small">
+        <template #header>{{ $t("tests.trials") }}</template>
+        <p class="muted" data-test="trial-count">
+          {{ $t("tests.plannedTrials", { done: trials.length, planned: test.plannedTrials }) }}
+        </p>
+        <ul class="rows-list" v-if="trials.length">
+          <li v-for="trial in trials" :key="trial.id" data-test="trial" :data-repetition="trial.repetition">
+            <span>{{ trialLabel(trial) }}</span>
+            <span class="muted">{{ new Date(trial.startedAt).toLocaleString() }}</span>
+          </li>
+        </ul>
+        <p v-else class="muted empty">{{ $t("tests.noTrials") }}</p>
+
+        <form v-if="inProgress && auth.canRun" class="trial-form" data-test="trial-form" @submit.prevent="recordTrial">
+          <label class="fld narrow">
+            <span>{{ $t("tests.repetition") }}</span>
+            <input
+              type="number"
+              min="1"
+              :max="test.plannedTrials"
+              v-model="newTrial.repetition"
+              data-test="trial-repetition"
+              required
+            />
+          </label>
+          <label class="fld">
+            <span>{{ $t("tests.trialStart") }}</span>
+            <input
+              type="datetime-local"
+              step="1"
+              v-model="newTrial.startedAt"
+              data-test="trial-start"
+              required
+              @input="touchedStart = true"
+            />
+          </label>
+          <label class="fld">
+            <span>{{ $t("tests.trialEnd") }}</span>
+            <input type="datetime-local" step="1" v-model="newTrial.endedAt" data-test="trial-end" />
+          </label>
+          <NButton type="primary" attr-type="submit" :loading="busy === 'trial'" :disabled="!!busy" data-test="trial-save">
+            {{ $t("tests.recordTrial") }}
+          </NButton>
+        </form>
+      </NCard>
+
+      <NCard :bordered="true" size="small">
+        <template #header>{{ $t("tests.recordings") }}</template>
+        <ul class="rows-list recordings-list" v-if="recordingList.length" data-test="recordings">
+          <li
+            v-for="recording in recordingList"
+            :key="recording.id"
+            data-test="recording"
+            :data-video-status="recording.video.status"
+          >
+            <span class="filename" :title="recording.video.fileName || recording.video.id">
+              {{ recording.video.fileName || recording.video.id.slice(0, 8) }}
+            </span>
+            <span class="rec-meta">
+              <span class="rec-tags">
+                <NTag size="small" round :bordered="false" :type="tagType(recording.video.status)">
+                  {{ $t(`statuses.${recording.video.status}`) }}
+                </NTag>
+                <NTag size="small" round :bordered="false" :type="tagType(calibrationStatus[recording.id]?.status || 'PENDING')">
+                  {{ $t(`statuses.${calibrationStatus[recording.id]?.status || "PENDING"}`) }}
+                </NTag>
+              </span>
+              <NButton
+                v-if="auth.canRun"
+                size="small"
+                secondary
+                class="reanalyze-btn"
+                :loading="busy === recording.id"
+                :disabled="!!busy"
+                data-test="reanalyze"
+                @click="reanalyze(recording.id)"
+              >
+                <template #icon>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7" /><polyline points="21 3 21 9 15 9" /></svg>
+                </template>
+                {{ $t("analysis.reanalyze") }}
+              </NButton>
+            </span>
+          </li>
+        </ul>
+        <p v-else class="muted empty">{{ $t("tests.noRecordings") }}</p>
+
+        <div class="upload" v-if="auth.canRun">
+          <label class="fld narrow">
+            <span>{{ $t("tests.clipStart") }}</span>
+            <input type="number" min="0" step="0.1" v-model="clip.startS" />
+          </label>
+          <label class="fld narrow">
+            <span>{{ $t("tests.clipEnd") }}</span>
+            <input type="number" min="0" step="0.1" v-model="clip.endS" />
+          </label>
+          <label class="fld grow">
+            <span>{{ $t("tests.upload") }}</span>
+            <input type="file" accept="video/*" data-test="upload-input" :disabled="!!busy" @change="uploadRecording" />
+          </label>
+        </div>
+        <div class="progress" v-if="busy === 'upload'" data-test="upload-progress">
+          <NProgress type="line" :percentage="Math.round(progress * 100)" :height="6" />
+          <span class="muted">{{ $t("tests.uploading") }} {{ Math.round(progress * 100) }}%</span>
+        </div>
+        <p class="muted hint" v-else-if="busy === 'finalize'">{{ $t("tests.finalizing") }}</p>
+      </NCard>
     </div>
 
-    <div class="card" v-if="recordingList.length">
-      <h4>{{ $t("calibration.title") }}</h4>
+    <NCard v-if="recordingList.length" :bordered="true" size="small">
+      <template #header>{{ $t("calibration.title") }}</template>
 
       <!-- A test can hold several recordings, so each one carries its own id:
            a calibration belongs to one recording, not to the test. -->
@@ -407,54 +471,55 @@ onUnmounted(() => crumb.clear());
         data-test="calibration"
         :data-recording="recording.id"
       >
+        <p class="muted filename">{{ recording.video.fileName || recording.video.id.slice(0, 8) }}</p>
         <p class="muted" v-if="calibrationStatus[recording.id]?.status === 'NOT_REQUIRED'" data-test="calibration-not-required">
           {{ $t("calibration.notRequired") }}
         </p>
         <template v-else>
           <!-- The measured errors are what say whether the recording can be
                turned into centimetres, so they are shown rather than a badge. -->
-          <table
-            class="rows"
+          <NDescriptions
             v-if="calibrationOf(recording.id)"
+            :column="1"
+            label-placement="left"
+            size="small"
+            bordered
             data-test="calibration-summary"
             :data-calibration-status="calibrationOf(recording.id).status"
           >
-            <tbody>
-              <tr>
-                <td>{{ $t("calibration.fitError") }}</td>
-                <td class="muted" data-test="fit-error">{{ centimetres(calibrationOf(recording.id).fitRmsErrorCm) }}</td>
-              </tr>
-              <tr>
-                <td>{{ $t("calibration.checkError") }}</td>
-                <td class="muted" data-test="check-error">{{ centimetres(calibrationOf(recording.id).checkRmsErrorCm) }}</td>
-              </tr>
-              <tr>
-                <td>{{ $t("calibration.maxError") }}</td>
-                <td class="muted">{{ centimetres(calibrationOf(recording.id).checkMaxErrorCm) }}</td>
-              </tr>
-              <tr>
-                <td>{{ $t("calibration.tolerance") }}</td>
-                <td class="muted" data-test="tolerance">{{ centimetres(calibrationOf(recording.id).toleranceCm) }}</td>
-              </tr>
-              <tr>
-                <td>{{ $t("tests.status") }}</td>
-                <td class="muted">{{ $t(`statuses.${calibrationOf(recording.id).status}`) }}</td>
-              </tr>
-            </tbody>
-          </table>
-          <p v-else class="muted" data-test="calibration-none">{{ $t("calibration.none") }}</p>
+            <NDescriptionsItem :label="$t('calibration.fitError')">
+              <span data-test="fit-error">{{ centimetres(calibrationOf(recording.id).fitRmsErrorCm) }}</span>
+            </NDescriptionsItem>
+            <NDescriptionsItem :label="$t('calibration.checkError')">
+              <span data-test="check-error">{{ centimetres(calibrationOf(recording.id).checkRmsErrorCm) }}</span>
+            </NDescriptionsItem>
+            <NDescriptionsItem :label="$t('calibration.maxError')">
+              {{ centimetres(calibrationOf(recording.id).checkMaxErrorCm) }}
+            </NDescriptionsItem>
+            <NDescriptionsItem :label="$t('calibration.tolerance')">
+              <span data-test="tolerance">{{ centimetres(calibrationOf(recording.id).toleranceCm) }}</span>
+            </NDescriptionsItem>
+            <NDescriptionsItem :label="$t('tests.status')">
+              <NTag size="small" round :bordered="false" :type="tagType(calibrationOf(recording.id).status)">
+                {{ $t(`statuses.${calibrationOf(recording.id).status}`) }}
+              </NTag>
+            </NDescriptionsItem>
+          </NDescriptions>
+          <p v-else class="muted empty" data-test="calibration-none">{{ $t("calibration.none") }}</p>
           <p class="err" v-if="calibrationOf(recording.id)?.status === 'REJECTED'" data-test="calibration-rejected">
             {{ $t("calibration.rejected") }}
           </p>
 
-          <button
+          <NButton
             v-if="auth.canRun && calibratable(recording) && calibrating !== recording.id"
-            class="small"
+            size="small"
+            secondary
+            class="calibrate-btn"
             data-test="calibrate"
             @click="openCalibration(recording)"
           >
             {{ $t("calibration.enter") }}
-          </button>
+          </NButton>
 
           <form
             v-if="calibrating === recording.id"
@@ -498,90 +563,97 @@ onUnmounted(() => crumb.clear());
               </label>
             </div>
 
-            <p class="muted">{{ $t("calibration.pointsHint") }}</p>
+            <p class="muted hint">{{ $t("calibration.pointsHint") }}</p>
 
             <h5>{{ $t("calibration.fitPoints") }}</h5>
-            <div class="point" v-for="(p, index) in newCalibration.fitPoints" :key="`fit-${index}`" data-test="fit-point">
-              <label class="fld narrow">
-                <span>{{ $t("calibration.pixel") }} X</span>
-                <input type="number" step="any" v-model="p.pixelX" :data-test="`fit-${index}-pixel-x`" required />
-              </label>
-              <label class="fld narrow">
-                <span>{{ $t("calibration.pixel") }} Y</span>
-                <input type="number" step="any" v-model="p.pixelY" :data-test="`fit-${index}-pixel-y`" required />
-              </label>
-              <label class="fld narrow">
-                <span>{{ $t("calibration.plane_") }} X</span>
-                <input type="number" step="any" v-model="p.worldX" :data-test="`fit-${index}-world-x`" required />
-              </label>
-              <label class="fld narrow">
-                <span>{{ $t("calibration.plane_") }} Y</span>
-                <input type="number" step="any" v-model="p.worldY" :data-test="`fit-${index}-world-y`" required />
-              </label>
-              <button
-                v-if="newCalibration.fitPoints.length > 4"
-                type="button"
-                class="small"
-                :data-test="`fit-${index}-remove`"
-                @click="newCalibration.fitPoints.splice(index, 1)"
-              >
-                {{ $t("calibration.removePoint") }}
-              </button>
+            <div class="points">
+              <div class="point" v-for="(p, index) in newCalibration.fitPoints" :key="`fit-${index}`" data-test="fit-point">
+                <label class="fld narrow">
+                  <span>{{ $t("calibration.pixel") }} X</span>
+                  <input type="number" step="any" v-model="p.pixelX" :data-test="`fit-${index}-pixel-x`" required />
+                </label>
+                <label class="fld narrow">
+                  <span>{{ $t("calibration.pixel") }} Y</span>
+                  <input type="number" step="any" v-model="p.pixelY" :data-test="`fit-${index}-pixel-y`" required />
+                </label>
+                <label class="fld narrow">
+                  <span>{{ $t("calibration.plane_") }} X</span>
+                  <input type="number" step="any" v-model="p.worldX" :data-test="`fit-${index}-world-x`" required />
+                </label>
+                <label class="fld narrow">
+                  <span>{{ $t("calibration.plane_") }} Y</span>
+                  <input type="number" step="any" v-model="p.worldY" :data-test="`fit-${index}-world-y`" required />
+                </label>
+                <NButton
+                  v-if="newCalibration.fitPoints.length > 4"
+                  size="tiny"
+                  quaternary
+                  :data-test="`fit-${index}-remove`"
+                  @click="newCalibration.fitPoints.splice(index, 1)"
+                >
+                  {{ $t("calibration.removePoint") }}
+                </NButton>
+              </div>
             </div>
-            <button type="button" class="small" data-test="add-fit-point" @click="newCalibration.fitPoints.push(emptyPoint())">
-              {{ $t("calibration.addPoint") }}
-            </button>
+            <NButton size="small" dashed data-test="add-fit-point" @click="newCalibration.fitPoints.push(emptyPoint())">
+              + {{ $t("calibration.addPoint") }}
+            </NButton>
 
             <h5>{{ $t("calibration.checkPoints") }}</h5>
-            <div class="point" v-for="(p, index) in newCalibration.checkPoints" :key="`check-${index}`" data-test="check-point">
-              <label class="fld narrow">
-                <span>{{ $t("calibration.pixel") }} X</span>
-                <input type="number" step="any" v-model="p.pixelX" :data-test="`check-${index}-pixel-x`" required />
-              </label>
-              <label class="fld narrow">
-                <span>{{ $t("calibration.pixel") }} Y</span>
-                <input type="number" step="any" v-model="p.pixelY" :data-test="`check-${index}-pixel-y`" required />
-              </label>
-              <label class="fld narrow">
-                <span>{{ $t("calibration.plane_") }} X</span>
-                <input type="number" step="any" v-model="p.worldX" :data-test="`check-${index}-world-x`" required />
-              </label>
-              <label class="fld narrow">
-                <span>{{ $t("calibration.plane_") }} Y</span>
-                <input type="number" step="any" v-model="p.worldY" :data-test="`check-${index}-world-y`" required />
-              </label>
-              <button
-                v-if="newCalibration.checkPoints.length > 3"
-                type="button"
-                class="small"
-                :data-test="`check-${index}-remove`"
-                @click="newCalibration.checkPoints.splice(index, 1)"
-              >
-                {{ $t("calibration.removePoint") }}
-              </button>
+            <div class="points">
+              <div class="point" v-for="(p, index) in newCalibration.checkPoints" :key="`check-${index}`" data-test="check-point">
+                <label class="fld narrow">
+                  <span>{{ $t("calibration.pixel") }} X</span>
+                  <input type="number" step="any" v-model="p.pixelX" :data-test="`check-${index}-pixel-x`" required />
+                </label>
+                <label class="fld narrow">
+                  <span>{{ $t("calibration.pixel") }} Y</span>
+                  <input type="number" step="any" v-model="p.pixelY" :data-test="`check-${index}-pixel-y`" required />
+                </label>
+                <label class="fld narrow">
+                  <span>{{ $t("calibration.plane_") }} X</span>
+                  <input type="number" step="any" v-model="p.worldX" :data-test="`check-${index}-world-x`" required />
+                </label>
+                <label class="fld narrow">
+                  <span>{{ $t("calibration.plane_") }} Y</span>
+                  <input type="number" step="any" v-model="p.worldY" :data-test="`check-${index}-world-y`" required />
+                </label>
+                <NButton
+                  v-if="newCalibration.checkPoints.length > 3"
+                  size="tiny"
+                  quaternary
+                  :data-test="`check-${index}-remove`"
+                  @click="newCalibration.checkPoints.splice(index, 1)"
+                >
+                  {{ $t("calibration.removePoint") }}
+                </NButton>
+              </div>
             </div>
-            <button type="button" class="small" data-test="add-check-point" @click="newCalibration.checkPoints.push(emptyPoint())">
-              {{ $t("calibration.addPoint") }}
-            </button>
+            <NButton size="small" dashed data-test="add-check-point" @click="newCalibration.checkPoints.push(emptyPoint())">
+              + {{ $t("calibration.addPoint") }}
+            </NButton>
 
             <div class="actions">
-              <button type="submit" :disabled="!!busy" data-test="calibration-save">{{ $t("calibration.save") }}</button>
-              <button type="button" class="small" data-test="calibration-cancel" @click="calibrating = ''">
+              <NButton type="primary" attr-type="submit" :loading="busy === 'calibration'" :disabled="!!busy" data-test="calibration-save">
+                {{ $t("calibration.save") }}
+              </NButton>
+              <NButton quaternary data-test="calibration-cancel" @click="calibrating = ''">
                 {{ $t("common.cancel") }}
-              </button>
+              </NButton>
             </div>
           </form>
         </template>
       </div>
-    </div>
+    </NCard>
 
-    <div class="card">
-      <h4>{{ $t("analysis.runs") }}</h4>
-      <p v-if="!runs.length" class="muted" data-test="no-runs">{{ $t("analysis.noRuns") }}</p>
+    <NCard :bordered="true" size="small">
+      <template #header>{{ $t("analysis.runs") }}</template>
+      <p v-if="!runs.length" class="muted empty" data-test="no-runs">{{ $t("analysis.noRuns") }}</p>
       <div v-else class="runs" data-test="runs">
         <button
           v-for="run in runs"
           :key="run.id"
+          type="button"
           class="run"
           :class="{ active: run.id === selectedRunId }"
           data-test="run"
@@ -590,29 +662,26 @@ onUnmounted(() => crumb.clear());
           @click="selectRun(run.id)"
         >
           <span>{{ $t(`analysis.${run.trigger}`) }}</span>
-          <span class="muted">{{ $t(`statuses.${run.status}`) }}</span>
+          <NTag size="tiny" round :bordered="false" :type="tagType(run.status)">{{ $t(`statuses.${run.status}`) }}</NTag>
           <span class="muted" v-if="run.finishedAt">{{ new Date(run.finishedAt).toLocaleString() }}</span>
         </button>
       </div>
 
       <template v-if="detail">
-        <p v-if="detail.status === 'QUEUED'" class="muted" data-test="run-hint">{{ $t("analysis.queuedHint") }}</p>
-        <p v-else-if="detail.status === 'RUNNING'" class="muted" data-test="run-hint">{{ $t("analysis.runningHint") }}</p>
-        <p v-else-if="detail.status === 'FAILED'" class="err" data-test="run-failure">
+        <p v-if="detail.status === 'QUEUED'" class="muted hint" data-test="run-hint">{{ $t("analysis.queuedHint") }}</p>
+        <p v-else-if="detail.status === 'RUNNING'" class="muted hint" data-test="run-hint">{{ $t("analysis.runningHint") }}</p>
+        <NAlert v-else-if="detail.status === 'FAILED'" type="error" data-test="run-failure" style="margin-top: 10px">
           {{ $t("analysis.failure") }}: {{ detail.failureReason }}
-        </p>
+        </NAlert>
 
         <div v-if="succeeded" class="result">
           <div class="col">
             <h5>{{ $t("analysis.metrics") }}</h5>
-            <table class="rows" data-test="metrics">
-              <tbody>
-                <tr v-for="metric in metrics" :key="metric.key">
-                  <td>{{ metric.key }}</td>
-                  <td class="muted" :data-test="`metric-${metric.key}`">{{ metricValue(metric) }}</td>
-                </tr>
-              </tbody>
-            </table>
+            <NDescriptions :column="1" label-placement="left" size="small" bordered data-test="metrics">
+              <NDescriptionsItem v-for="metric in metrics" :key="metric.key" :label="metric.key">
+                <span :data-test="`metric-${metric.key}`">{{ metricValue(metric) }}</span>
+              </NDescriptionsItem>
+            </NDescriptions>
             <h5>{{ $t("analysis.events") }}</h5>
             <EventTimeline :events="events" :selected="selectedEvent" @play="selectedEvent = $event" />
           </div>
@@ -621,7 +690,7 @@ onUnmounted(() => crumb.clear());
           </div>
         </div>
       </template>
-    </div>
+    </NCard>
 
     <!-- The thread belongs to the test, so it sits at the end of its page. -->
     <TestComments :test-id="testId" />
@@ -630,31 +699,61 @@ onUnmounted(() => crumb.clear());
 
 <style scoped>
 .detail { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
-.recordings { list-style: none; margin: 0 0 12px; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-.recordings li { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.upload { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
-.actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
-.reason { min-width: 220px; }
-.trials { list-style: none; margin: 0 0 12px; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+@media (max-width: 860px) { .grid-2 { grid-template-columns: 1fr; } }
+
+.cancel-card { padding-top: 2px; }
+.cancel-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.reason { min-width: 220px; flex: 1; }
+.hint { margin: 8px 0 0; }
+.empty { margin: 0; }
+
+.rows-list { list-style: none; margin: 0 0 12px; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.rows-list li {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 8px 10px; border-radius: 8px;
+}
+.rows-list li:hover { background: var(--panel2); }
+.filename { font-weight: 600; }
+
+.recordings-list li { flex-direction: column; align-items: stretch; gap: 6px; }
+.recordings-list .filename { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rec-meta { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.rec-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+.reanalyze-btn { flex-shrink: 0; }
+
+.upload { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; margin-top: 10px; }
+.progress { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+.progress :deep(.n-progress) { flex: 1; }
+
 .trial-form { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; margin-top: 14px; }
 .calibration + .calibration { margin-top: 18px; border-top: 1px solid var(--line); padding-top: 18px; }
+.calibrate-btn { margin-top: 4px; }
 .calibration-form { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
 .calibration-form h5 { margin: 6px 0 0; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
 .setup { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
-.point { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
+.points { display: flex; flex-direction: column; gap: 8px; }
+.point {
+  display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap;
+  padding: 10px; border-radius: 9px; background: var(--panel2);
+}
 .narrow { max-width: 110px; }
+.grow { flex: 1; min-width: 200px; }
 .fld { display: flex; flex-direction: column; gap: 4px; }
 .fld span { font-size: 12px; color: var(--muted); }
+.actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 4px; }
+
 .runs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
 .run {
-  display: flex; gap: 8px; align-items: center;
+  display: flex; gap: 8px; align-items: center; font: inherit; color: var(--txt);
   background: var(--panel2); border: 1px solid var(--line); border-radius: 9px; padding: 6px 10px; cursor: pointer;
 }
-.run.active { border-color: var(--accent); }
-.result { display: flex; gap: 20px; flex-wrap: wrap; }
-.col { flex: 1; min-width: 280px; }
+.run:hover { border-color: var(--accent); }
+.run.active { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--panel2)); }
+.result { display: grid; grid-template-columns: minmax(280px, 420px) 1fr; gap: 24px; margin-top: 14px; align-items: start; }
+@media (max-width: 900px) { .result { grid-template-columns: 1fr; } }
+.col { min-width: 0; }
 .col h5 { margin: 0 0 8px; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
-.rows { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
-.rows td { padding: 4px 8px; border-bottom: 1px solid var(--line); }
-.small { padding: 4px 10px; font-size: .85rem; }
+.col h5 + h5 { margin-top: 18px; }
+.col :deep(.n-descriptions-table-content) { word-break: break-word; }
 </style>
