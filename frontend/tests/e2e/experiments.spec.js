@@ -69,5 +69,5 @@ test("a viewer cannot create an experiment", async ({ page, request }) => {
 
   // And the form stays out of reach when the address is typed by hand.
   await page.goto("/experiments/new");
-  await expect(page).toHaveURL(/\/experiments$/);
+  await expect(page).toHaveURL(/\/dashboard$/);
 });

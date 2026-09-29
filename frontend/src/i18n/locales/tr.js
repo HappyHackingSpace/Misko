@@ -4,6 +4,7 @@ export default {
   name: "Türkçe",
   messages: {
     nav: {
+      dashboard: "Panel",
       experiments: "Deneyler",
       tests: "Testler",
       subjects: "Denekler",
@@ -16,6 +17,18 @@ export default {
       logout: "Çıkış",
       menu: "Menü",
       collapse: "Daralt",
+    },
+    dashboard: {
+      title: "Panel",
+      intro: "Laboratuvarın şu anki durumu: bekleyen işler, son sonuçlar ve yaklaşan testler.",
+      analysisQueued: "Analiz kuyrukta",
+      analysisRunning: "Analiz çalışıyor",
+      analysisFailed: "Analiz başarısız",
+      calibrationWaiting: "Kalibrasyon bekliyor",
+      recentActivity: "Son aktivite",
+      upcomingTests: "Yaklaşan testler",
+      noActivity: "Henüz yayımlanmış bir analiz sonucu yok.",
+      noUpcoming: "Planlanmış bir test yok.",
     },
     experiments: {
       title: "Deneyler",

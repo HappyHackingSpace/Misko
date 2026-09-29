@@ -1900,6 +1900,18 @@ paths:
         '400': {$ref: '#/components/responses/Problem'}
         '401': {$ref: '#/components/responses/Problem'}
         '409': {$ref: '#/components/responses/Problem'}
+  /api/dashboard/summary:
+    get:
+      operationId: dashboardSummary
+      summary: Counts and short lists the dashboard shows on landing (*:read)
+      description: >-
+        Test status counts across every experiment, queued/running/failed
+        analysis counts, how many verified recordings still need a
+        calibration their paradigm requires, the 5 most recently published
+        analysis results, and the 5 soonest planned tests.
+      responses:
+        '200': {description: Summary, content: {application/json: {schema: {$ref: '#/components/schemas/DashboardSummary'}}}}
+        '401': {$ref: '#/components/responses/Problem'}
 components:
   parameters:
     ID: {name: id, in: path, required: true, schema: {type: string, format: uuid}}
@@ -2997,6 +3009,48 @@ components:
               sem: {type: [number, 'null']}
               min: {type: [number, 'null']}
               max: {type: [number, 'null']}
+    DashboardSummary:
+      type: object
+      required: [tests, analysisQueued, analysisRunning, analysisFailed, calibrationWaiting, recentActivity, upcomingTests]
+      properties:
+        tests:
+          type: object
+          required: [planned, inProgress, completed, cancelled]
+          properties:
+            planned: {type: integer}
+            inProgress: {type: integer}
+            completed: {type: integer}
+            cancelled: {type: integer}
+        analysisQueued: {type: integer}
+        analysisRunning: {type: integer}
+        analysisFailed: {type: integer}
+        calibrationWaiting: {type: integer, description: Verified recordings whose paradigm requires a calibration they do not yet have}
+        recentActivity:
+          type: array
+          description: The 5 most recently published analysis results, newest first
+          items:
+            type: object
+            required: [testId, subjectCode, experimentCode, paradigmKey, paradigmVersion, finishedAt]
+            properties:
+              testId: {type: string, format: uuid}
+              subjectCode: {type: string}
+              experimentCode: {type: string}
+              paradigmKey: {$ref: '#/components/schemas/ConstantKey'}
+              paradigmVersion: {type: integer}
+              finishedAt: {type: string, format: date-time}
+        upcomingTests:
+          type: array
+          description: The 5 soonest planned tests
+          items:
+            type: object
+            required: [id, subjectCode, experimentCode, paradigmKey, paradigmVersion, scheduledAt]
+            properties:
+              id: {type: string, format: uuid}
+              subjectCode: {type: string}
+              experimentCode: {type: string}
+              paradigmKey: {$ref: '#/components/schemas/ConstantKey'}
+              paradigmVersion: {type: integer}
+              scheduledAt: {type: string, format: date-time}
     Probe:
       type: object
       additionalProperties: false

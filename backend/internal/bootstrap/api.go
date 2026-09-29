@@ -8,6 +8,10 @@ import (
 	calibrationhttp "github.com/HappyHackingSpace/Misko/backend/internal/calibration/adapters/http"
 	calibrationpostgres "github.com/HappyHackingSpace/Misko/backend/internal/calibration/adapters/postgres"
 	calibrationapp "github.com/HappyHackingSpace/Misko/backend/internal/calibration/application"
+	dashboardcatalog "github.com/HappyHackingSpace/Misko/backend/internal/dashboard/adapters/catalog"
+	dashboardhttp "github.com/HappyHackingSpace/Misko/backend/internal/dashboard/adapters/http"
+	dashboardpostgres "github.com/HappyHackingSpace/Misko/backend/internal/dashboard/adapters/postgres"
+	dashboardapp "github.com/HappyHackingSpace/Misko/backend/internal/dashboard/application"
 	environmentscatalog "github.com/HappyHackingSpace/Misko/backend/internal/environments/adapters/catalog"
 	environmentshttp "github.com/HappyHackingSpace/Misko/backend/internal/environments/adapters/http"
 	environmentspostgres "github.com/HappyHackingSpace/Misko/backend/internal/environments/adapters/postgres"
@@ -163,6 +167,7 @@ func NewAPI(pool *pgxpool.Pool, cfg config.Config, auth config.Auth, logger *slo
 	calibrationhttp.Register(mux, calibration, authenticate, logger)
 	analysishttp.Register(mux, analysis, authenticate, logger)
 	reportshttp.Register(mux, reportsapp.New(reportspostgres.NewStore(pool), reportExportLimit), authenticate, logger)
+	dashboardhttp.Register(mux, dashboardapp.New(dashboardpostgres.NewStore(pool), dashboardcatalog.New()), authenticate, logger)
 	tick := func(ctx context.Context) error {
 		_, err := analysis.Tick(ctx)
 		return err

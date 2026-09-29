@@ -79,5 +79,5 @@ test("a viewer cannot register a subject", async ({ page, request }) => {
   // And the form stays out of reach even when the address is typed by hand:
   // the route requires subject:write.
   await page.goto("/subjects/new");
-  await expect(page).toHaveURL(/\/experiments$/);
+  await expect(page).toHaveURL(/\/dashboard$/);
 });

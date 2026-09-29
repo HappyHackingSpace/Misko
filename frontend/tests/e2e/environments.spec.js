@@ -83,5 +83,5 @@ test("a viewer cannot define an apparatus", async ({ page, request }) => {
   await expect(page.getByTestId("create-environment")).toHaveCount(0);
 
   await page.goto("/environments/new");
-  await expect(page).toHaveURL(/\/experiments$/);
+  await expect(page).toHaveURL(/\/dashboard$/);
 });

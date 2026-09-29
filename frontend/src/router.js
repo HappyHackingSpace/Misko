@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from "vue-router";
 import { useAuth } from "./stores/auth.js";
 
 const Login = () => import("./views/Login.vue");
+const Dashboard = () => import("./views/Dashboard.vue");
 const Experiments = () => import("./views/Experiments.vue");
 const ExperimentDetail = () => import("./views/ExperimentDetail.vue");
 const ExperimentForm = () => import("./views/ExperimentForm.vue");
@@ -19,8 +20,9 @@ const UserForm = () => import("./views/UserForm.vue");
 
 const routes = [
   { path: "/login", component: Login, meta: { public: true } },
-  { path: "/", redirect: "/experiments" },
+  { path: "/", redirect: "/dashboard" },
 
+  { path: "/dashboard", component: Dashboard, meta: { titleKey: "nav.dashboard" } },
   { path: "/experiments", component: Experiments, meta: { titleKey: "nav.experiments" } },
   // Writing an experiment needs study:write. The edit route is /:id/edit so it
   // cannot be confused with the detail screen at /:id.

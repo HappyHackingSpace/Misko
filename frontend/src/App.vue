@@ -78,6 +78,7 @@ function navLabel(key, testId) {
 // per-group collapse content), which just clips. A plain heading we hide
 // ourselves when collapsed avoids that.
 const primaryOptions = computed(() => [
+  { label: navLabel("nav.dashboard", "nav-dashboard"), key: "/dashboard", icon: navIcon("dashboard") },
   { label: navLabel("nav.experiments", "nav-experiments"), key: "/experiments", icon: navIcon("experiments") },
   { label: navLabel("nav.tests", "nav-tests"), key: "/tests", icon: navIcon("test") },
   { label: t("nav.subjects"), key: "/subjects", icon: navIcon("subjects") },
@@ -97,7 +98,7 @@ function onMenuSelect(key) {
   if (key && key !== route.path) router.push(key);
 }
 
-const topLevelKeys = ["/experiments", "/tests", "/subjects", "/reports", "/paradigms", "/environments", "/users"];
+const topLevelKeys = ["/dashboard", "/experiments", "/tests", "/subjects", "/reports", "/paradigms", "/environments", "/users"];
 const activeKey = computed(() => topLevelKeys.find((k) => route.path.startsWith(k)) ?? null);
 </script>
 
@@ -116,9 +117,18 @@ const activeKey = computed(() => topLevelKeys.find((k) => route.path.startsWith(
           class="app-sider"
         >
           <div class="sider-inner">
-            <RouterLink to="/experiments" class="brand" :class="{ collapsed: railCollapsed }">
-              <span v-if="railCollapsed" class="brand-mark">M</span>
-              <span v-else class="brand-text">
+            <RouterLink to="/dashboard" class="brand" :class="{ collapsed: railCollapsed }">
+              <!-- A running mouse reduced to four shapes: an ear and body sharing
+                   one fill so they read as one silhouette, a tail stroke, and an
+                   eye punched through in the badge's own background color. -->
+              <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true">
+                <rect width="32" height="32" rx="9" fill="var(--accent)" />
+                <path d="M22 19c3.4.5 6.1 3.1 6.7 6.5" stroke="var(--accent-fg)" stroke-width="1.8" fill="none" stroke-linecap="round" />
+                <circle cx="11" cy="10.2" r="4" fill="var(--accent-fg)" />
+                <ellipse cx="15.2" cy="17.2" rx="8.4" ry="6.2" transform="rotate(-10 15.2 17.2)" fill="var(--accent-fg)" />
+                <circle cx="8.7" cy="15.6" r="1.1" fill="var(--accent)" />
+              </svg>
+              <span v-if="!railCollapsed" class="brand-text">
                 <span class="brand-name">{{ $t("app.name") }}</span>
                 <span class="brand-lab" v-if="lab.labName">{{ lab.labName }}</span>
               </span>
@@ -191,14 +201,19 @@ const activeKey = computed(() => topLevelKeys.find((k) => route.path.startsWith(
 
 .brand {
   display: flex; align-items: center; gap: 10px; min-width: 0;
-  padding: 14px 16px; height: 56px; flex-shrink: 0;
-  border-bottom: 1px solid var(--line);
+  padding: 16px 18px; height: 56px; flex-shrink: 0;
 }
 .brand.collapsed { padding: 14px; justify-content: center; }
-.brand-mark { font-weight: 800; font-size: 19px; color: var(--accent); line-height: 1; }
-.brand-text { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
-.brand-name { font-weight: 800; font-size: 17px; letter-spacing: -0.015em; color: var(--txt); white-space: nowrap; }
-.brand-lab { font-weight: 500; font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.brand-mark { width: 30px; height: 30px; flex-shrink: 0; }
+.brand-text { display: flex; flex-direction: column; min-width: 0; gap: 2px; }
+.brand-name {
+  font-weight: 700; font-size: 18px; letter-spacing: -0.03em;
+  color: var(--txt); white-space: nowrap; line-height: 1.1;
+}
+.brand-lab {
+  font-weight: 600; font-size: 10.5px; letter-spacing: 0.07em; text-transform: uppercase;
+  color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.1;
+}
 
 .sider-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 8px 0; }
 .section-label {

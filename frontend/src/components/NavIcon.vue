@@ -6,7 +6,13 @@ const props = defineProps({ name: { type: String, required: true }, size: { type
 
 <template>
   <svg :width="props.size" :height="props.size" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
-    <g v-if="name === 'experiments'">
+    <g v-if="name === 'dashboard'">
+      <rect x="3" y="3" width="8" height="8" rx="1.6" />
+      <rect x="13" y="3" width="8" height="8" rx="1.6" />
+      <rect x="3" y="13" width="8" height="8" rx="1.6" />
+      <rect x="13" y="13" width="8" height="8" rx="1.6" />
+    </g>
+    <g v-else-if="name === 'experiments'">
       <path d="M9 2v6.2L4.5 17a2 2 0 0 0 1.8 3h11.4a2 2 0 0 0 1.8-3L15 8.2V2" />
       <path d="M8.5 2h7" />
       <path d="M8 14h8" />
