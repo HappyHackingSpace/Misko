@@ -25,10 +25,16 @@ test("the menu lists every test and opens one", async ({ page, request }) => {
   await page.getByTestId("nav-tests").click();
   await expect(page).toHaveURL(/\/tests$/);
 
+  // The row itself comes from the first fetch, but its subject and experiment
+  // codes are resolved by a second round of requests once the rows are in, so
+  // both need the same allowance the rest of the suite gives an eventual
+  // response.
   const row = page.locator(`[data-test="all-tests"] a[href="/tests/${data.testId}"]`);
-  await expect(row).toHaveText(data.subjectCode);
+  await expect(row).toBeVisible({ timeout: 10_000 });
+  await expect(row).toHaveText(data.subjectCode, { timeout: 10_000 });
   await expect(page.locator(`[data-test="all-tests"] a[href="/experiments/${data.experimentId}"]`).first()).toHaveText(
     data.experimentCode,
+    { timeout: 10_000 },
   );
 
   await row.click();
@@ -40,9 +46,9 @@ test("the status filter narrows the list", async ({ page, request }) => {
   const data = await seed(request);
   await signIn(page, data.viewerEmail, data.viewerPassword);
   await page.goto("/tests");
-  await expect(page.locator(`[data-test="all-tests"] a[href="/tests/${data.testId}"]`)).toBeVisible();
+  await expect(page.locator(`[data-test="all-tests"] a[href="/tests/${data.testId}"]`)).toBeVisible({ timeout: 10_000 });
 
   await page.getByTestId("all-tests-status").click();
   await page.getByTestId("option-status-CANCELLED").click();
-  await expect(page.locator(`[data-test="all-tests"] a[href="/tests/${data.testId}"]`)).toHaveCount(0);
+  await expect(page.locator(`[data-test="all-tests"] a[href="/tests/${data.testId}"]`)).toHaveCount(0, { timeout: 10_000 });
 });
