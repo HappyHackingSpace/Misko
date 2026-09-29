@@ -194,6 +194,9 @@ const activeKey = computed(() => topLevelKeys.find((k) => route.path.startsWith(
 <style scoped>
 .theme-root { display: contents; }
 .app { height: 100vh; }
+/* Naive's layouts paint an opaque bodyColor; make the content area transparent so
+   the dotted body background (style.css) shows through. */
+.shell, .main-col, .app-content { background-color: transparent !important; }
 .shell { height: 100%; }
 .main-col { height: 100%; }
 
