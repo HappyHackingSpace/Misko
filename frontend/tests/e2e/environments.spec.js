@@ -19,6 +19,13 @@ async function signIn(page, email, password) {
   await expect(page.getByTestId("nav-experiments")).toBeVisible();
 }
 
+// Naive UI's select is not a native <select>: open it, then click the option
+// by its (locale-independent) test hook.
+async function chooseOption(page, triggerTestId, optionTestId) {
+  await page.getByTestId(triggerTestId).click();
+  await page.getByTestId(optionTestId).click();
+}
+
 // The seeded data is shared by every run, so a unique name keeps each run
 // independent of what earlier runs created.
 const uniqueName = () => `E2E Arena ${Date.now().toString(36).toUpperCase()}`;
@@ -33,7 +40,7 @@ test("an apparatus can be defined from a paradigm template", async ({ page, requ
   await expect(page).toHaveURL(/\/environments\/new$/);
 
   await page.getByTestId("environment-name").fill(name);
-  await page.getByTestId("environment-paradigm").selectOption("OPEN_FIELD");
+  await chooseOption(page, "environment-paradigm", "environment-paradigm-OPEN_FIELD");
 
   // The paradigm decides which physical values exist, and the form fills them
   // with what the published version considers normal.
@@ -61,7 +68,7 @@ test("a paradigm page offers to create an environment from it", async ({ page, r
   // Arriving this way preselects the paradigm, so the apparatus fields are
   // already the ones that paradigm declares.
   await expect(page).toHaveURL(/\/environments\/new\?paradigm=OPEN_FIELD$/);
-  await expect(page.getByTestId("environment-paradigm")).toHaveValue("OPEN_FIELD");
+  await expect(page.getByTestId("environment-paradigm-OPEN_FIELD")).toBeVisible();
   await expect(page.getByTestId("apparatus-arena_width_cm")).toBeVisible({ timeout: 10_000 });
 });
 

@@ -182,7 +182,7 @@ defineExpose({ playEvent, seek });
 .panel { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .head h5 { margin: 0; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
-.toggle { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+.toggle { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); white-space: nowrap; flex-shrink: 0; }
 .videos { display: flex; flex-direction: column; gap: 10px; }
 figure { margin: 0; display: flex; flex-direction: column; gap: 4px; }
 video { width: 100%; background: #000; border-radius: 10px; }

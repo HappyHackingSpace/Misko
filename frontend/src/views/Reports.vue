@@ -3,12 +3,13 @@
 // and it carries the run, the recording and the calibration it came from, so a
 // number can always be traced back to the video it was measured on. Reading
 // results needs no permission beyond being signed in.
-import { computed, ref, watch } from "vue";
+import { computed, h, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
-import DataTable from "../components/DataTable.vue";
+import { NAlert, NButton, NCard, NDataTable, NRadioButton, NRadioGroup, NSelect } from "naive-ui";
 import { useDataTable } from "../composables/useDataTable.js";
 import { experiments, reports } from "../api/endpoints.js";
 import { getToken } from "../api/client.js";
+import PageHead from "../components/PageHead.vue";
 
 const { t } = useI18n();
 
@@ -45,25 +46,91 @@ const eventTable = useDataTable("/reports/events", { defaultSort: sort, pageSize
 const metricKeys = computed(() => [...new Set(metricTable.state.rows.map((r) => r.metricKey))].sort());
 const eventTypes = computed(() => [...new Set(eventTable.state.rows.map((r) => r.eventType))].sort());
 
+// The label carries a stable test hook: Naive UI's dropdown options are not a
+// native <select>, so the browser suite can no longer address them by value.
+function testLabel(text, testId) {
+  return () => h("span", { "data-test": testId }, text);
+}
+
+const experimentOptions = computed(() =>
+  experimentList.value.map((e) => ({ value: e.id, label: testLabel(`${e.code} · ${e.title}`, `option-experiment-${e.id}`) })),
+);
+const metricKeyOptions = computed(() => [
+  { value: "", label: testLabel(t("reports.allMetrics"), "option-metric-all") },
+  ...metricKeys.value.map((k) => ({ value: k, label: testLabel(k, `option-metric-${k}`) })),
+]);
+const eventTypeOptions = computed(() => [
+  { value: "", label: testLabel(t("reports.allEvents"), "option-event-type-all") },
+  ...eventTypes.value.map((k) => ({ value: k, label: testLabel(k, `option-event-type-${k}`) })),
+]);
+const selectionOptions = computed(() => [
+  { value: "latest", label: testLabel(t("reports.latestOnly"), "option-selection-latest") },
+  { value: "all", label: testLabel(t("reports.allRuns"), "option-selection-all") },
+]);
+
 const seconds = (us) => `${(us / 1_000_000).toFixed(2)} s`;
 const number = (value) => (value === null || value === undefined ? t("reports.missing") : String(value));
 
+function sortOrderFor(table, key) {
+  if (table.state.sort.field !== key) return false;
+  return table.state.sort.order === "asc" ? "ascend" : "descend";
+}
+function onUpdateSorter(table, sorter) {
+  if (!sorter || !sorter.order) return;
+  table.setSort({ field: sorter.columnKey, order: sorter.order === "ascend" ? "asc" : "desc" });
+}
+
 const metricColumns = computed(() => [
-  { key: "subjectCode", label: t("reports.subject"), sortable: true },
-  { key: "paradigmKey", label: t("reports.paradigm") },
-  { key: "scheduledAt", label: t("reports.scheduled"), sortable: true },
-  { key: "metricKey", label: t("reports.metricKey"), sortable: true },
-  { key: "value", label: t("reports.value"), sortable: true },
-  { key: "unit", label: t("reports.unit"), cellClass: "muted" },
+  { title: t("reports.subject"), key: "subjectCode", sorter: true, sortOrder: sortOrderFor(metricTable, "subjectCode") },
+  { title: t("reports.paradigm"), key: "paradigmKey" },
+  {
+    title: t("reports.scheduled"),
+    key: "scheduledAt",
+    sorter: true,
+    sortOrder: sortOrderFor(metricTable, "scheduledAt"),
+    render: (row) => new Date(row.scheduledAt).toLocaleString(),
+  },
+  { title: t("reports.metricKey"), key: "metricKey", sorter: true, sortOrder: sortOrderFor(metricTable, "metricKey") },
+  {
+    title: t("reports.value"),
+    key: "value",
+    sorter: true,
+    sortOrder: sortOrderFor(metricTable, "value"),
+    render: (row) =>
+      h(
+        "span",
+        { "data-metric": row.metricKey, "data-missing": row.value === null, "data-test": "metric-value" },
+        row.value === null ? t("reports.missing") : String(row.value),
+      ),
+  },
+  { title: t("reports.unit"), key: "unit" },
 ]);
 
 const eventColumns = computed(() => [
-  { key: "subjectCode", label: t("reports.subject"), sortable: true },
-  { key: "eventType", label: t("reports.eventType"), sortable: true },
-  { key: "kind", label: t("reports.kind"), cellClass: "muted" },
-  { key: "startUs", label: t("reports.start") },
-  { key: "endUs", label: t("reports.end") },
-  { key: "confidence", label: t("reports.confidence"), cellClass: "muted" },
+  { title: t("reports.subject"), key: "subjectCode", sorter: true, sortOrder: sortOrderFor(eventTable, "subjectCode") },
+  {
+    title: t("reports.eventType"),
+    key: "eventType",
+    sorter: true,
+    sortOrder: sortOrderFor(eventTable, "eventType"),
+    render: (row) => h("span", { "data-event": row.eventType, "data-test": "event-type" }, row.eventType),
+  },
+  { title: t("reports.kind"), key: "kind" },
+  { title: t("reports.start"), key: "startUs", render: (row) => seconds(row.startUs) },
+  { title: t("reports.end"), key: "endUs", render: (row) => seconds(row.endUs) },
+  { title: t("reports.confidence"), key: "confidence" },
+]);
+
+const summaryColumns = computed(() => [
+  { title: t("reports.group"), key: "groupName", render: (row) => row.groupName || t("reports.ungrouped") },
+  { title: t("reports.tests"), key: "tests" },
+  { title: t("reports.subjects"), key: "subjects" },
+  { title: t("reports.mean"), key: "mean", render: (row) => h("span", { "data-test": "summary-mean" }, number(row.mean)) },
+  { title: t("reports.sd"), key: "sd", render: (row) => number(row.sd) },
+  { title: t("reports.sem"), key: "sem", render: (row) => number(row.sem) },
+  { title: t("reports.min"), key: "min", render: (row) => number(row.min) },
+  { title: t("reports.max"), key: "max", render: (row) => number(row.max) },
+  { title: t("reports.missingSubjects"), key: "missingSubjects" },
 ]);
 
 async function loadExperiments() {
@@ -129,160 +196,117 @@ loadExperiments();
 </script>
 
 <template>
-  <div class="head">
-    <h1>{{ $t("reports.title") }}</h1>
-  </div>
-  <p class="muted intro">{{ $t("reports.intro") }}</p>
-  <p class="err" v-if="error" data-test="report-error">{{ error }}</p>
+  <PageHead :title="$t('reports.title')" :subtitle="$t('reports.intro')" />
+  <NAlert v-if="error" type="error" :title="error" data-test="report-error" style="margin-bottom: 16px" />
 
-  <div class="card filters">
-    <label class="fld">
-      <span>{{ $t("reports.experiment") }}</span>
-      <select v-model="experimentId" data-test="report-experiment">
-        <option value="">{{ $t("reports.pickExperiment") }}</option>
-        <option v-for="experiment in experimentList" :key="experiment.id" :value="experiment.id">
-          {{ experiment.code }} · {{ experiment.title }}
-        </option>
-      </select>
-    </label>
+  <NCard :bordered="true" size="small" class="filters-card">
+    <div class="filters">
+      <label class="fld">
+        <span>{{ $t("reports.experiment") }}</span>
+        <NSelect
+          v-model:value="experimentId"
+          data-test="report-experiment"
+          filterable
+          clearable
+          :placeholder="$t('reports.pickExperiment')"
+          :options="experimentOptions"
+        />
+      </label>
 
-    <label class="fld">
-      <span>{{ isMetrics ? $t("reports.metricKey") : $t("reports.eventType") }}</span>
-      <select v-if="isMetrics" v-model="metricKey" data-test="report-metric">
-        <option value="">{{ $t("reports.allMetrics") }}</option>
-        <option v-for="key in metricKeys" :key="key" :value="key">{{ key }}</option>
-      </select>
-      <select v-else v-model="eventType" data-test="report-event-type">
-        <option value="">{{ $t("reports.allEvents") }}</option>
-        <option v-for="type in eventTypes" :key="type" :value="type">{{ type }}</option>
-      </select>
-    </label>
+      <label class="fld">
+        <span>{{ isMetrics ? $t("reports.metricKey") : $t("reports.eventType") }}</span>
+        <NSelect v-if="isMetrics" v-model:value="metricKey" data-test="report-metric" :options="metricKeyOptions" />
+        <NSelect v-else v-model:value="eventType" data-test="report-event-type" :options="eventTypeOptions" />
+      </label>
 
-    <label class="fld">
-      <span>{{ $t("analysis.runs") }}</span>
-      <select v-model="selection" data-test="report-selection">
-        <option value="latest">{{ $t("reports.latestOnly") }}</option>
-        <option value="all">{{ $t("reports.allRuns") }}</option>
-      </select>
-    </label>
+      <label class="fld">
+        <span>{{ $t("analysis.runs") }}</span>
+        <NSelect v-model:value="selection" data-test="report-selection" :options="selectionOptions" />
+      </label>
 
-    <div class="tabs">
-      <button class="small" :class="{ active: isMetrics }" data-test="tab-metrics" @click="tab = 'metrics'">
-        {{ $t("reports.metrics") }}
-      </button>
-      <button class="small" :class="{ active: !isMetrics }" data-test="tab-events" @click="tab = 'events'">
-        {{ $t("reports.events") }}
-      </button>
+      <div class="fld fld-tabs">
+        <span>{{ $t("reports.view") }}</span>
+        <NRadioGroup v-model:value="tab" class="tabs">
+          <NRadioButton value="metrics" data-test="tab-metrics">{{ $t("reports.metrics") }}</NRadioButton>
+          <NRadioButton value="events" data-test="tab-events">{{ $t("reports.events") }}</NRadioButton>
+        </NRadioGroup>
+      </div>
+
+      <NButton type="primary" class="export-btn" :loading="exporting" data-test="report-export" @click="download">
+        <template #icon>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5" /><path d="M5 21h14" /></svg>
+        </template>
+        {{ exporting ? $t("reports.exporting") : $t("reports.export") }}
+      </NButton>
     </div>
-
-    <button class="small" :disabled="exporting" data-test="report-export" @click="download">
-      {{ exporting ? $t("reports.exporting") : $t("reports.export") }}
-    </button>
-  </div>
+  </NCard>
 
   <!-- The summary is the comparison the laboratory reads: one row per group of
        the experiment, on one metric. -->
-  <div class="card" v-if="summary" data-test="report-summary">
-    <h4>{{ $t("reports.summary") }} · {{ summary.metricKey }}<span class="muted" v-if="summary.version"> ({{ summary.version.unit }})</span></h4>
-    <div class="table-scroll">
-      <table class="rows">
-        <thead>
-          <tr>
-            <th>{{ $t("reports.group") }}</th>
-            <th>{{ $t("reports.tests") }}</th>
-            <th>{{ $t("reports.subjects") }}</th>
-            <th>{{ $t("reports.mean") }}</th>
-            <th>{{ $t("reports.sd") }}</th>
-            <th>{{ $t("reports.sem") }}</th>
-            <th>{{ $t("reports.min") }}</th>
-            <th>{{ $t("reports.max") }}</th>
-            <th>{{ $t("reports.missingSubjects") }}</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="(group, index) in summary.groups" :key="group.groupId || index" data-test="summary-group">
-            <td>{{ group.groupName || $t("reports.ungrouped") }}</td>
-            <td class="muted">{{ group.tests }}</td>
-            <td class="muted">{{ group.subjects }}</td>
-            <td data-test="summary-mean">{{ number(group.mean) }}</td>
-            <td class="muted">{{ number(group.sd) }}</td>
-            <td class="muted">{{ number(group.sem) }}</td>
-            <td class="muted">{{ number(group.min) }}</td>
-            <td class="muted">{{ number(group.max) }}</td>
-            <td class="muted">{{ group.missingSubjects }}</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-  </div>
+  <NCard v-if="summary" :bordered="true" size="small" class="summary-card" data-test="report-summary">
+    <template #header>
+      {{ $t("reports.summary") }} · {{ summary.metricKey }}<span class="muted" v-if="summary.version"> ({{ summary.version.unit }})</span>
+    </template>
+    <NDataTable
+      :columns="summaryColumns"
+      :data="summary.groups"
+      :row-key="(row, i) => row.groupId || i"
+      :row-props="() => ({ 'data-test': 'summary-group' })"
+    />
+  </NCard>
   <p class="muted hint" v-else-if="experimentId && isMetrics" data-test="summary-hint">{{ $t("reports.summaryHint") }}</p>
 
-  <div class="card">
-    <DataTable
+  <NCard :bordered="true" size="small">
+    <NDataTable
       v-if="isMetrics"
+      remote
       :columns="metricColumns"
-      :rows="metricTable.state.rows"
-      :total="metricTable.state.total"
-      :page="metricTable.state.page"
-      :page-size="metricTable.state.pageSize"
-      :sort="metricTable.state.sort"
+      :data="metricTable.state.rows"
       :loading="metricTable.state.loading"
-      :searchable="false"
-      :exportable="false"
-      :entity-label="$t('reports.metrics')"
-      @page="metricTable.setPage"
-      @page-size="metricTable.setPageSize"
-      @sort="metricTable.setSort"
-    >
-      <template #cell-scheduledAt="{ row }">
-        <span class="muted">{{ new Date(row.scheduledAt).toLocaleString() }}</span>
-      </template>
-      <!-- A measured value and a missing one are different answers, so the row
-           says which it is rather than showing an empty cell. -->
-      <template #cell-value="{ row }">
-        <span :data-metric="row.metricKey" :data-missing="row.value === null" data-test="metric-value">
-          {{ row.value === null ? $t("reports.missing") : row.value }}
-        </span>
-      </template>
-    </DataTable>
-
-    <DataTable
+      :row-key="(row) => row.id"
+      :pagination="{
+        page: metricTable.state.page,
+        pageSize: metricTable.state.pageSize,
+        itemCount: metricTable.state.total,
+        pageSizes: [20, 50, 100],
+        showSizePicker: true,
+        onUpdatePage: metricTable.setPage,
+        onUpdatePageSize: metricTable.setPageSize,
+      }"
+      @update:sorter="(s) => onUpdateSorter(metricTable, s)"
+    />
+    <NDataTable
       v-else
+      remote
       :columns="eventColumns"
-      :rows="eventTable.state.rows"
-      :total="eventTable.state.total"
-      :page="eventTable.state.page"
-      :page-size="eventTable.state.pageSize"
-      :sort="eventTable.state.sort"
+      :data="eventTable.state.rows"
       :loading="eventTable.state.loading"
-      :searchable="false"
-      :exportable="false"
-      :entity-label="$t('reports.events')"
-      @page="eventTable.setPage"
-      @page-size="eventTable.setPageSize"
-      @sort="eventTable.setSort"
-    >
-      <template #cell-eventType="{ row }">
-        <span :data-event="row.eventType" data-test="event-type">{{ row.eventType }}</span>
-      </template>
-      <template #cell-startUs="{ row }">{{ seconds(row.startUs) }}</template>
-      <template #cell-endUs="{ row }">{{ seconds(row.endUs) }}</template>
-    </DataTable>
-  </div>
+      :row-key="(row) => row.id"
+      :pagination="{
+        page: eventTable.state.page,
+        pageSize: eventTable.state.pageSize,
+        itemCount: eventTable.state.total,
+        pageSizes: [20, 50, 100],
+        showSizePicker: true,
+        onUpdatePage: eventTable.setPage,
+        onUpdatePageSize: eventTable.setPageSize,
+      }"
+      @update:sorter="(s) => onUpdateSorter(eventTable, s)"
+    />
+  </NCard>
 </template>
 
 <style scoped>
-.head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-.intro { margin: 0 0 12px; max-width: 70ch; }
-.filters { display: flex; gap: 14px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 16px; }
-.fld { display: flex; flex-direction: column; gap: 4px; }
-.fld span { font-size: 12px; color: var(--muted); }
-.tabs { display: flex; gap: 6px; }
-.tabs .active { border-color: var(--accent); color: var(--accent); }
-.small { padding: 4px 10px; font-size: .85rem; }
+.filters-card, .summary-card { margin-bottom: 16px; }
+.filters { display: flex; gap: 14px; align-items: flex-end; flex-wrap: wrap; }
+.fld { display: flex; flex-direction: column; gap: 4px; min-width: 180px; }
+.fld > span { font-size: 12px; color: var(--muted); }
+.fld :deep(.n-select) { width: 100%; }
+.fld-tabs { min-width: 0; }
+/* The global label rule in style.css makes these block-level with a bottom
+   margin, which breaks the segmented control; put them back inline. */
+.tabs :deep(.n-radio-button) { display: inline-flex; align-items: center; margin-bottom: 0; font-size: 14px; }
+.export-btn { margin-left: auto; font-weight: 600; }
+@media (max-width: 720px) { .export-btn { margin-left: 0; width: 100%; } }
 .hint { margin: 0 0 16px; }
-.table-scroll { overflow-x: auto; }
-.rows { width: 100%; border-collapse: collapse; }
-.rows th { text-align: left; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; padding: 6px 8px; }
-.rows td { padding: 6px 8px; border-top: 1px solid var(--line); }
 </style>

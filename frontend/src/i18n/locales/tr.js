@@ -10,10 +10,12 @@ export default {
       paradigms: "Paradigmalar",
       environments: "Ortamlar",
       reports: "Raporlar",
-      reference: "Referans",
+      general: "Genel",
+      reference: "Yönetim",
       users: "Kullanıcılar",
       logout: "Çıkış",
       menu: "Menü",
+      collapse: "Daralt",
     },
     experiments: {
       title: "Deneyler",
@@ -83,6 +85,17 @@ export default {
       trialLabel: "{number}. deneme · tekrar {repetition} · hak {attempt}",
       needsTrial: "Bir test tamamlanmadan önce en az bir deneme kaydedilmelidir.",
       plannedTrials: "Planlanan {planned} denemeden {done} tanesi",
+    },
+    testsPage: {
+      title: "Testler",
+      intro:
+        "Bütün deneylerdeki testler, en yeni planlanan en üstte. Video yüklemek, kalibrasyon yapmak ya da sonucu görmek için bir testi açın. Yeni test deneyin sayfasından planlanır.",
+      experiment: "Deney",
+      allExperiments: "Bütün deneyler",
+      allStatuses: "Bütün durumlar",
+      open: "Aç",
+      view: "Görüntüle",
+      empty: "Henüz test yok. Bir deneyi açıp alttaki Testler bölümünden test planlayın.",
     },
     statuses: {
       PLANNED: "Planlandı",
@@ -376,6 +389,7 @@ export default {
         "Bir deneydeki yayımlanmış sonuçlar: her metrik ya da olay için bir satır, geldiği koşu, kayıt ve kalibrasyonla birlikte.",
       experiment: "Deney",
       pickExperiment: "Bir deney seçin",
+      view: "Görünüm",
       metrics: "Metrikler",
       events: "Olaylar",
       metricKey: "Metrik",
@@ -483,6 +497,7 @@ export default {
       sexMale: "Erkek",
       sexUnknown: "Bilinmiyor",
       title: "Denekler (Fareler)",
+      subtitle: "Laboratuvar hayvanları; tür, cinsiyet ve soy bilgileriyle.",
       code: "Kod",
       sex: "Cinsiyet",
       male: "Erkek",
@@ -516,6 +531,8 @@ export default {
       confirmReset: "{email} için şifre sıfırlansın mı?",
       confirmDelete: "{email} silinsin mi?",
       empty: "Kullanıcı yok.",
+      superAdminProtected:
+        "Bu, laboratuvarın kurucu hesabıdır. Bu ekran üzerinden bu hesap dahil hiç kimse onu yeniden adlandıramaz, rolünü değiştiremez, şifresini sıfırlayamaz veya silemez.",
     },
   },
 };

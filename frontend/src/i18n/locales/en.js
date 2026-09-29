@@ -10,10 +10,12 @@ export default {
       paradigms: "Paradigms",
       environments: "Environments",
       reports: "Reports",
-      reference: "Reference",
+      general: "General",
+      reference: "Management",
       users: "Users",
       logout: "Log out",
       menu: "Menu",
+      collapse: "Collapse",
     },
     experiments: {
       title: "Experiments",
@@ -83,6 +85,17 @@ export default {
       trialLabel: "Trial {number} · repetition {repetition} · attempt {attempt}",
       needsTrial: "A test needs at least one recorded trial before it can be completed.",
       plannedTrials: "{done} of {planned} planned trials",
+    },
+    testsPage: {
+      title: "Tests",
+      intro:
+        "Tests across every experiment, newest scheduled first. Open a test to upload its video, calibrate it or read its result. New tests are planned from the experiment page.",
+      experiment: "Experiment",
+      allExperiments: "All experiments",
+      allStatuses: "All statuses",
+      open: "Open",
+      view: "View",
+      empty: "No tests yet. Open an experiment and plan one in its Tests section.",
     },
     statuses: {
       PLANNED: "Planned",
@@ -376,6 +389,7 @@ export default {
         "Published results across an experiment: one row per metric or event, with the run, the recording and the calibration they came from.",
       experiment: "Experiment",
       pickExperiment: "Select an experiment",
+      view: "View",
       metrics: "Metrics",
       events: "Events",
       metricKey: "Metric",
@@ -483,6 +497,7 @@ export default {
       sexMale: "Male",
       sexUnknown: "Unknown",
       title: "Subjects (Mice)",
+      subtitle: "Laboratory animals, with species, sex and strain.",
       code: "Code",
       sex: "Sex",
       male: "Male",
@@ -516,6 +531,8 @@ export default {
       confirmReset: "Reset password for {email}?",
       confirmDelete: "Delete {email}?",
       empty: "No users.",
+      superAdminProtected:
+        "This is the lab's founding account. Nobody, including this account through this screen, can rename, reassign, reset the password of, or delete it.",
     },
   },
 };

@@ -206,7 +206,7 @@ onMounted(load);
 .avatar {
   width: 24px; height: 24px; border-radius: 50%;
   display: inline-flex; align-items: center; justify-content: center;
-  background: var(--accent); color: #04141d; font-size: 12px; font-weight: 800;
+  background: var(--accent); color: var(--accent-fg); font-size: 12px; font-weight: 800;
   flex: 0 0 auto;
 }
 .author { font-weight: 600; }

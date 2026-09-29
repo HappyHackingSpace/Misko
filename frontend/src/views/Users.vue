@@ -1,61 +1,95 @@
 <script setup>
-import { computed } from "vue";
+import { computed, h } from "vue";
 import { useI18n } from "vue-i18n";
-import DataTable from "../components/DataTable.vue";
+import { RouterLink } from "vue-router";
+import { NButton, NCard, NDataTable } from "naive-ui";
 import { useDataTable } from "../composables/useDataTable.js";
+import { useTableExport } from "../composables/useTableExport.js";
+import PageHead from "../components/PageHead.vue";
+import ListToolbar from "../components/ListToolbar.vue";
 
 const { t, locale } = useI18n();
-
 const table = useDataTable("/users", { defaultSort: { field: "createdAt", order: "desc" } });
 
+function sortOrderFor(key) {
+  if (table.state.sort.field !== key) return false;
+  return table.state.sort.order === "asc" ? "ascend" : "descend";
+}
+function onUpdateSorter(sorter) {
+  if (!sorter || !sorter.order) return;
+  table.setSort({ field: sorter.columnKey, order: sorter.order === "ascend" ? "asc" : "desc" });
+}
+
 const columns = computed(() => [
-  { key: "name", label: t("common.name"), sortable: true },
-  { key: "email", label: t("users.email"), sortable: true, cellClass: "muted" },
   {
-    key: "role", label: t("users.role"), sortable: true,
-    exportValue: (row) => t(`roles.${row.role}`),
+    title: t("common.name"),
+    key: "name",
+    sorter: true,
+    sortOrder: sortOrderFor("name"),
+    render: (row) => h(RouterLink, { class: "link", to: `/users/${row.id}` }, () => row.name),
   },
+  { title: t("users.email"), key: "email", sorter: true, sortOrder: sortOrderFor("email") },
+  { title: t("users.role"), key: "role", sorter: true, sortOrder: sortOrderFor("role"), render: (row) => t(`roles.${row.role}`) },
   {
-    key: "createdAt", label: t("common.addedAt"), sortable: true, cellClass: "muted",
-    exportValue: (row) => new Date(row.createdAt).toLocaleDateString(locale.value),
+    title: t("common.addedAt"),
+    key: "createdAt",
+    sorter: true,
+    sortOrder: sortOrderFor("createdAt"),
+    render: (row) => new Date(row.createdAt).toLocaleDateString(locale.value),
   },
 ]);
+
+const exportColumns = [
+  { key: "name", label: t("common.name") },
+  { key: "email", label: t("users.email") },
+  { key: "role", label: t("users.role"), value: (row) => t(`roles.${row.role}`) },
+  { key: "createdAt", label: t("common.addedAt"), value: (row) => new Date(row.createdAt).toLocaleDateString(locale.value) },
+];
+const { exportCsv, exportPdf } = useTableExport({
+  state: table.state,
+  columns: exportColumns,
+  exportName: "users",
+  entityLabel: t("users.title"),
+});
 </script>
 
 <template>
-  <div class="head">
-    <h1>{{ $t("users.title") }}</h1>
-    <button class="primary" @click="$router.push('/users/new')">{{ $t("common.create") }}</button>
-  </div>
-  <p class="muted" style="margin-top:0">{{ $t("users.intro") }}</p>
+  <PageHead :title="$t('users.title')" :count="table.state.total">
+    <template #actions>
+      <NButton type="primary" @click="$router.push('/users/new')">
+        <template #icon>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+        </template>
+        {{ $t("common.create") }}
+      </NButton>
+    </template>
+  </PageHead>
+  <p class="muted intro">{{ $t("users.intro") }}</p>
 
-  <div class="card">
-    <DataTable
+  <NCard :bordered="true" size="small">
+    <template #header>
+      <ListToolbar :search="table.state.search" :export-disabled="!table.state.rows.length" @update:search="table.setSearch" @csv="exportCsv" @pdf="exportPdf" />
+    </template>
+    <NDataTable
+      remote
       :columns="columns"
-      :rows="table.state.rows"
-      :total="table.state.total"
-      :page="table.state.page"
-      :page-size="table.state.pageSize"
-      :sort="table.state.sort"
-      :search="table.state.search"
+      :data="table.state.rows"
       :loading="table.state.loading"
-      export-name="users"
-      :entity-label="$t('users.title')"
-      :empty-hint="$t('datatable.emptyHint')"
-      @page="table.setPage"
-      @page-size="table.setPageSize"
-      @sort="table.setSort"
-      @search="table.setSearch"
-    >
-      <template #cell-name="{ row }"><RouterLink class="link" :to="`/users/${row.id}`">{{ row.name }}</RouterLink></template>
-      <template #cell-role="{ row }">{{ $t(`roles.${row.role}`) }}</template>
-      <template #cell-createdAt="{ row }">{{ new Date(row.createdAt).toLocaleDateString(locale) }}</template>
-    </DataTable>
-  </div>
+      :row-key="(row) => row.id"
+      :pagination="{
+        page: table.state.page,
+        pageSize: table.state.pageSize,
+        itemCount: table.state.total,
+        pageSizes: [10, 20, 50],
+        showSizePicker: true,
+        onUpdatePage: table.setPage,
+        onUpdatePageSize: table.setPageSize,
+      }"
+      @update:sorter="onUpdateSorter"
+    />
+  </NCard>
 </template>
 
 <style scoped>
-.head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-.link { color: var(--accent); cursor: pointer; font-weight: 600; text-decoration: none; }
-.link:hover { text-decoration: underline; }
+.intro { margin: -8px 0 18px; }
 </style>
