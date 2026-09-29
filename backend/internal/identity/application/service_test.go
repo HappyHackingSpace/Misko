@@ -179,20 +179,44 @@ func TestDeletionAndDemotionGuards(t *testing.T) {
 		t.Fatalf("self deletion: %v", err)
 	}
 	researcher := "RESEARCHER"
-	if _, err := s.UpdateUser(ctx(), actor, admin.ID, UpdateUser{Role: &researcher}); !errors.Is(err, domain.ErrLastPrivileged) {
-		t.Fatalf("last admin demoted: %v", err)
+	superadmin := "SUPERADMIN"
+	name := "Renamed"
+	// The SUPERADMIN account cannot be renamed, reassigned, password-reset or
+	// deleted through this API by anyone, including itself: it answers to no
+	// one, and it exists only once, so no one may be promoted into it either.
+	if _, err := s.UpdateUser(ctx(), actor, admin.ID, UpdateUser{Role: &researcher}); !errors.Is(err, domain.ErrSuperAdminProtected) {
+		t.Fatalf("admin demotes self: %v", err)
 	}
 	manager := store.seed(t, "manager@lab.io", access.LabManager)
-	if err := s.DeleteUser(ctx(), actorFor(manager), admin.ID); err != nil {
-		t.Fatalf("one of two privileged: %v", err)
+	managerActor := actorFor(manager)
+	if err := s.DeleteUser(ctx(), managerActor, admin.ID); !errors.Is(err, domain.ErrSuperAdminProtected) {
+		t.Fatalf("manager deletes admin: %v", err)
 	}
-	if _, err := s.UpdateUser(ctx(), actorFor(manager), manager.ID, UpdateUser{Role: &researcher}); !errors.Is(err, domain.ErrLastPrivileged) {
-		t.Fatalf("remaining manager demoted: %v", err)
+	if _, err := s.UpdateUser(ctx(), managerActor, admin.ID, UpdateUser{Role: &researcher}); !errors.Is(err, domain.ErrSuperAdminProtected) {
+		t.Fatalf("manager demotes admin: %v", err)
 	}
-	if err := s.DeleteUser(ctx(), actorFor(manager), "missing"); !errors.Is(err, ErrNotFound) {
+	if _, err := s.UpdateUser(ctx(), managerActor, admin.ID, UpdateUser{Name: &name}); !errors.Is(err, domain.ErrSuperAdminProtected) {
+		t.Fatalf("manager renames admin: %v", err)
+	}
+	password := "Correct-Horse-9"
+	if _, err := s.ResetPassword(ctx(), managerActor, admin.ID, &password); !errors.Is(err, domain.ErrSuperAdminProtected) {
+		t.Fatalf("manager resets admin password: %v", err)
+	}
+	if _, err := s.CreateUser(ctx(), managerActor, CreateUser{Email: "second@lab.io", Name: "Second", Role: "SUPERADMIN"}); !errors.Is(err, domain.ErrSuperAdminProtected) {
+		t.Fatalf("manager creates a second superadmin: %v", err)
+	}
+	if _, err := s.UpdateUser(ctx(), managerActor, manager.ID, UpdateUser{Role: &superadmin}); !errors.Is(err, domain.ErrSuperAdminProtected) {
+		t.Fatalf("manager promotes self to superadmin: %v", err)
+	}
+	// The admin remains, so demoting the sole other privileged user is a
+	// normal role change, not a last-privileged violation.
+	if _, err := s.UpdateUser(ctx(), managerActor, manager.ID, UpdateUser{Role: &researcher}); err != nil {
+		t.Fatalf("manager demotes self, admin remains: %v", err)
+	}
+	if err := s.DeleteUser(ctx(), managerActor, "missing"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("missing user: %v", err)
 	}
-	if _, err := s.UpdateUser(ctx(), actorFor(manager), manager.ID, UpdateUser{}); !errors.Is(err, ErrNoChanges) {
+	if _, err := s.UpdateUser(ctx(), managerActor, manager.ID, UpdateUser{}); !errors.Is(err, ErrNoChanges) {
 		t.Fatalf("empty update: %v", err)
 	}
 }

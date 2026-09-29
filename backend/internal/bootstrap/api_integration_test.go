@@ -181,12 +181,23 @@ func TestAPIAuthenticationAndAuthorization(t *testing.T) {
 	expect("unknown sort", status, 400, body, "common.invalidQuery")
 	status, body, _ = call("DELETE", "/api/users/"+adminID, admin, nil)
 	expect("self deletion", status, 400, body, "user.cannotDeleteSelf")
+
+	// The SUPERADMIN account is permanent: no one, including a fellow
+	// privileged LAB_MANAGER, can demote, rename, delete or reset the
+	// password of it, or mint a second one, through the API.
 	status, body, _ = call("PATCH", "/api/users/"+adminID, manager, map[string]any{"role": "VIEWER"})
-	expect("demote admin", status, 200, body, "")
+	expect("demote admin", status, 403, body, "user.superAdminProtected")
+	status, body, _ = call("PATCH", "/api/users/"+adminID, manager, map[string]any{"name": "Renamed"})
+	expect("rename admin", status, 403, body, "user.superAdminProtected")
+	status, body, _ = call("DELETE", "/api/users/"+adminID, manager, nil)
+	expect("delete admin", status, 403, body, "user.superAdminProtected")
+	status, body, _ = call("POST", "/api/users/"+adminID+"/reset-password", manager, map[string]any{})
+	expect("reset admin password", status, 403, body, "user.superAdminProtected")
+	status, body, _ = call("POST", "/api/users", manager, map[string]any{"email": "second-admin@lab.io", "name": "Second", "role": "SUPERADMIN"})
+	expect("mint a second superadmin", status, 403, body, "user.superAdminProtected")
 	status, body, _ = call("GET", "/api/users", admin, nil)
-	expect("demoted admin", status, 403, body, "auth.forbidden")
-	status, body, _ = call("PATCH", "/api/users/"+researcherID, manager, map[string]any{"role": "RESEARCHER"})
-	expect("last privileged", status, 409, body, "user.lastPrivileged")
+	expect("admin retains access", status, 200, body, "")
+
 	status, body, _ = call("DELETE", "/api/users/00000000-0000-0000-0000-000000000000", manager, nil)
 	expect("missing user", status, 404, body, "user.notFound")
 
