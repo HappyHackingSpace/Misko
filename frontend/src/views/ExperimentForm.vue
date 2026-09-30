@@ -6,8 +6,10 @@
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
+import { NAlert, NButton, NCard, NCheckbox } from "naive-ui";
 import { experiments } from "../api/endpoints.js";
 import { useBreadcrumb } from "../stores/breadcrumb.js";
+import PageHead from "../components/PageHead.vue";
 
 const { t } = useI18n();
 const route = useRoute();
@@ -75,48 +77,49 @@ onUnmounted(() => crumb.clear());
 </script>
 
 <template>
-  <div class="head">
-    <h1>{{ isNew ? $t("experiments.new") : $t("experiments.edit") }}</h1>
-  </div>
+  <PageHead :title="isNew ? $t('experiments.new') : $t('experiments.edit')" />
 
-  <p class="err" v-if="error" data-test="error">{{ error }}</p>
+  <NAlert v-if="error" type="error" :title="error" data-test="error" style="margin-bottom: 16px" />
 
-  <form class="card form" data-test="experiment-form" @submit.prevent="save">
-    <label class="fld">
-      <span>{{ $t("experiments.code") }}</span>
-      <input v-model="form.code" data-test="experiment-code" required />
-    </label>
+  <NCard :bordered="true" size="small">
+    <form class="form" data-test="experiment-form" @submit.prevent="save">
+      <label class="fld">
+        <span>{{ $t("experiments.code") }}</span>
+        <input v-model="form.code" data-test="experiment-code" required />
+      </label>
 
-    <label class="fld">
-      <span>{{ $t("experiments.name") }}</span>
-      <input v-model="form.title" data-test="experiment-title" required />
-    </label>
+      <label class="fld">
+        <span>{{ $t("experiments.name") }}</span>
+        <input v-model="form.title" data-test="experiment-title" required />
+      </label>
 
-    <label class="fld wide">
-      <span>{{ $t("common.description") }}</span>
-      <textarea v-model="form.description" rows="3" data-test="experiment-description"></textarea>
-    </label>
+      <label class="fld wide">
+        <span>{{ $t("common.description") }}</span>
+        <textarea v-model="form.description" rows="3" data-test="experiment-description"></textarea>
+      </label>
 
-    <label class="check wide">
-      <input type="checkbox" v-model="form.requiresControl" data-test="experiment-requires-control" />
-      <span>{{ $t("experiments.requiresControl") }}</span>
-    </label>
-    <p class="muted wide">{{ $t("experiments.requiresControlHint") }}</p>
+      <div class="wide">
+        <NCheckbox v-model:checked="form.requiresControl" data-test="experiment-requires-control">
+          {{ $t("experiments.requiresControl") }}
+        </NCheckbox>
+        <p class="muted hint">{{ $t("experiments.requiresControlHint") }}</p>
+      </div>
 
-    <div class="actions">
-      <button type="submit" :disabled="saving" data-test="experiment-save">{{ $t("common.save") }}</button>
-      <RouterLink class="link" to="/experiments">{{ $t("common.cancel") }}</RouterLink>
-    </div>
-  </form>
+      <div class="actions">
+        <NButton type="primary" attr-type="submit" :loading="saving" :disabled="saving" data-test="experiment-save">
+          {{ $t("common.save") }}
+        </NButton>
+        <RouterLink class="link" to="/experiments">{{ $t("common.cancel") }}</RouterLink>
+      </div>
+    </form>
+  </NCard>
 </template>
 
 <style scoped>
-.head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .form { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; align-items: start; }
 .fld { display: flex; flex-direction: column; gap: 4px; }
 .fld span { font-size: 12px; color: var(--muted); }
-.check { display: flex; align-items: center; gap: 8px; }
 .wide { grid-column: 1 / -1; }
-.muted { margin: 0; font-size: 12px; }
+.hint { margin: 6px 0 0 24px; font-size: 12px; }
 .actions { grid-column: 1 / -1; display: flex; align-items: center; gap: 12px; }
 </style>

@@ -2,7 +2,7 @@
 import { ref, computed, onMounted, onUnmounted } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
-import { NAlert, NButton, NCard, NSelect } from "naive-ui";
+import { NAlert, NButton, NCard, NPopconfirm, NSelect } from "naive-ui";
 import { api } from "../api/client.js";
 import { ASSIGNABLE_ROLES, DEFAULT_ROLE } from "../constants/roles.js";
 import { useBreadcrumb } from "../stores/breadcrumb.js";
@@ -76,7 +76,6 @@ async function save() {
 async function resetPassword() {
   err.value = "";
   notice.value = "";
-  if (!confirm(t("users.confirmReset", { email: form.value.email }))) return;
   try {
     const { generatedPassword } = await api(`/users/${route.params.id}/reset-password`, { method: "POST", body: {} });
     notice.value = t("users.newPassword", { email: form.value.email, password: generatedPassword });
@@ -87,7 +86,6 @@ async function resetPassword() {
 
 async function remove() {
   err.value = "";
-  if (!confirm(t("users.confirmDelete", { email: form.value.email }))) return;
   try {
     await api(`/users/${route.params.id}`, { method: "DELETE" });
     router.push("/users");
@@ -129,8 +127,15 @@ onUnmounted(() => crumb.clear());
 
       <div class="actions wide">
         <NButton @click="router.push('/users')">{{ $t("common.back") }}</NButton>
-        <NButton v-if="!isNew && !isSuperAdmin" @click="resetPassword">{{ $t("users.resetPassword") }}</NButton>
-        <NButton v-if="!isNew && !isSuperAdmin" type="error" ghost @click="remove">{{ $t("common.delete") }}</NButton>
+        <!-- Both act at once and cannot be undone, so each asks in place. -->
+        <NPopconfirm v-if="!isNew && !isSuperAdmin" @positive-click="resetPassword">
+          <template #trigger><NButton data-test="user-reset">{{ $t("users.resetPassword") }}</NButton></template>
+          {{ $t("users.confirmReset", { email: form.email }) }}
+        </NPopconfirm>
+        <NPopconfirm v-if="!isNew && !isSuperAdmin" @positive-click="remove">
+          <template #trigger><NButton type="error" ghost data-test="user-delete">{{ $t("common.delete") }}</NButton></template>
+          {{ $t("users.confirmDelete", { email: form.email }) }}
+        </NPopconfirm>
         <NButton v-if="!isSuperAdmin" type="primary" :loading="saving" :disabled="!form.name || !form.email" @click="save">
           {{ isNew ? $t("common.create") : $t("common.save") }}
         </NButton>

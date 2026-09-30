@@ -18,6 +18,13 @@ async function signIn(page, email, password) {
   await expect(page.getByTestId("nav-experiments")).toBeVisible();
 }
 
+// The dropdowns are Naive UI selects, not native ones: open one and pick an
+// option by the hook every option carries (its value travels in data-value).
+async function choose(page, testId, value) {
+  await page.getByTestId(testId).click();
+  await page.locator(`.n-base-select-option [data-test="${testId}-option"][data-value="${value}"]`).click();
+}
+
 // The seeded data is shared by every run, so a unique code keeps each run
 // independent of what earlier runs created.
 const uniqueCode = () => `E2E-X-${Date.now().toString(36).toUpperCase()}`;
@@ -47,7 +54,7 @@ test("an experiment can be created and given a group", async ({ page, request })
   // the next thing the laboratory has to do.
   await expect(page.getByTestId("group")).toHaveCount(0);
   await page.getByTestId("group-name").fill("Control A");
-  await page.getByTestId("group-role").selectOption("CONTROL");
+  await choose(page, "group-role", "CONTROL");
   await page.getByTestId("group-target-size").fill("8");
   await page.getByTestId("group-add").click();
 

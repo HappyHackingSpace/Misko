@@ -19,6 +19,10 @@ async function signIn(page, email, password) {
   await expect(page.getByTestId("nav-experiments")).toBeVisible();
 }
 
+// The dropdowns are Naive UI selects, not native ones: open one and pick an
+// option by the hook every option carries (its value travels in data-value).
+const optionsOf = (page, testId) => page.locator(`.n-base-select-option [data-test="${testId}-option"]`);
+
 // The seeded experiment is shared by every run, so a unique name keeps each run
 // independent of the protocols earlier runs added.
 const uniqueName = () => `E2E Protocol ${Date.now().toString(36).toUpperCase()}`;
@@ -35,11 +39,18 @@ test("a protocol can be written for an experiment", async ({ page, request }) =>
 
   // The apparatus revisions of the whole laboratory are the choices. The seed
   // created one, so the first real option is selectable.
-  const revision = page.getByTestId("step-revision-0");
-  const options = revision.locator("option");
-  await expect(options).not.toHaveCount(1, { timeout: 10_000 });
-  const value = await options.nth(1).getAttribute("value");
-  await revision.selectOption(value);
+  // The revisions belong to an environment, so that dropdown stays shut until one
+  // is chosen.
+  await expect(page.locator('[data-test="step-revision-0"] .n-base-selection--disabled')).toHaveCount(1, { timeout: 10_000 });
+  await page.getByTestId("step-environment-0").click();
+  await expect(optionsOf(page, "step-environment")).not.toHaveCount(0, { timeout: 10_000 });
+  await optionsOf(page, "step-environment").first().click();
+
+  await expect(page.locator('[data-test="step-revision-0"] .n-base-selection--disabled')).toHaveCount(0);
+  await page.getByTestId("step-revision-0").click();
+  // The newest revision is marked and offered first.
+  await expect(page.getByTestId("step-revision-badge").first()).toBeVisible();
+  await optionsOf(page, "step-revision").first().click();
 
   await page.getByTestId("step-trial-type-0").fill("STANDARD");
   await page.getByTestId("step-trials-0").fill("3");
