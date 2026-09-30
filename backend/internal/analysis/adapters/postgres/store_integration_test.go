@@ -20,6 +20,7 @@ import (
 	"math"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -551,7 +552,7 @@ func TestReanalysisFailuresAndValidation(t *testing.T) {
 // own be analyzed, and correcting it never reanalyzes what already ran.
 func TestEnvironmentCalibrationSchedulesOnceAndNeverReanalyzes(t *testing.T) {
 	f := newFixture(t)
-	f.worker("tracker-a")
+	tracker, _ := f.worker("tracker-a")
 	if report, err := f.s.Tick(ctx); err != nil || report.Enqueued != 1 {
 		t.Fatalf("only the recording with its own calibration is ready: %+v %v", report, err)
 	}
@@ -580,6 +581,19 @@ func TestEnvironmentCalibrationSchedulesOnceAndNeverReanalyzes(t *testing.T) {
 	if report, err := f.s.Tick(ctx); err != nil || report.Enqueued != 0 {
 		t.Fatalf("correcting the default must not reanalyze: %+v %v", report, err)
 	}
+	// A recording with a queued run cannot be analyzed again until that run ends.
+	if _, err := f.s.Reanalyze(ctx, technician, f.test, f.bare); !errors.Is(err, application.ErrRunPending) {
+		t.Fatalf("reanalysis while a run is queued: %v", err)
+	}
+	for range runs {
+		job, err := f.s.Claim(ctx, tracker)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := f.s.Fail(ctx, tracker, job.Run.ID, 1, "stopped", false); err != nil {
+			t.Fatal(err)
+		}
+	}
 	// Reanalysis stays an explicit act and pins the corrected default.
 	manual, err := f.s.Reanalyze(ctx, technician, f.test, f.bare)
 	if err != nil || manual.CalibrationID != corrected {
@@ -593,4 +607,60 @@ func TestEnvironmentCalibrationSchedulesOnceAndNeverReanalyzes(t *testing.T) {
 		SELECT experiment_id, test_id, recording_id, source_asset_id, source_generation + 1, source_crc32c, clip_start_us, clip_end_us,
 			$2::uuid, paradigm_key, paradigm_version, metric_engine_version, result_schema_version, environment_revision_id, protocol_version_id,
 			parameters, 'MANUAL', 'QUEUED', max_attempts, available_at FROM misko.analysis_runs WHERE id = $1`, manual.ID, ownOfCalibrated)
+}
+
+func TestReanalysisIsRefusedWhileARunIsPending(t *testing.T) {
+	f := newFixture(t)
+	w, _ := f.worker("tracker")
+	first, err := f.s.Reanalyze(ctx, technician, f.test, f.calibrated)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Queued: a repeated request is refused and adds no run.
+	if _, err := f.s.Reanalyze(ctx, technician, f.test, f.calibrated); !errors.Is(err, application.ErrRunPending) {
+		t.Fatalf("second request while queued: %v", err)
+	}
+	// Running is pending too.
+	job, err := f.s.Claim(ctx, w)
+	if err != nil || job.Run.ID != first.ID {
+		t.Fatalf("claim: %+v %v", job, err)
+	}
+	if _, err := f.s.Reanalyze(ctx, technician, f.test, f.calibrated); !errors.Is(err, application.ErrRunPending) {
+		t.Fatalf("request while running: %v", err)
+	}
+	// Another recording is not blocked by this one.
+	if _, err := f.s.Reanalyze(ctx, technician, f.test, f.bare); errors.Is(err, application.ErrRunPending) {
+		t.Fatalf("a pending run of one recording blocked another: %v", err)
+	}
+	// Once the run has ended a new request is accepted again.
+	if _, err := f.s.Fail(ctx, w, first.ID, 1, "stopped", false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.s.Reanalyze(ctx, technician, f.test, f.calibrated); err != nil {
+		t.Fatalf("request after the run ended: %v", err)
+	}
+
+	// Concurrent requests create at most one run.
+	f2 := newFixture(t)
+	f2.worker("tracker")
+	var wg sync.WaitGroup
+	var accepted, refused atomic.Int32
+	for range 8 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			switch _, err := f2.s.Reanalyze(ctx, technician, f2.test, f2.calibrated); {
+			case err == nil:
+				accepted.Add(1)
+			case errors.Is(err, application.ErrRunPending):
+				refused.Add(1)
+			default:
+				t.Error(err)
+			}
+		}()
+	}
+	wg.Wait()
+	if accepted.Load() != 1 || refused.Load() != 7 {
+		t.Fatalf("accepted %d refused %d, want 1 and 7", accepted.Load(), refused.Load())
+	}
 }

@@ -21,6 +21,7 @@ var (
 	ErrRunNotFound           = errors.New("analysis run not found")
 	ErrRecordingNotFound     = errors.New("recording not found on this test")
 	ErrNotReady              = errors.New("the recording needs a verified video, a valid calibration when the paradigm requires one and an active worker capability")
+	ErrRunPending            = errors.New("an analysis of this recording is already queued or running")
 	ErrNoRun                 = errors.New("no queued run matches the worker's capabilities")
 	ErrUnknownOutput         = errors.New("artifacts must name outputs requested for this attempt")
 	ErrOutputNotVerified     = errors.New("an output object is missing or differs from its declared size, checksum or content type")
@@ -136,6 +137,10 @@ type Store interface {
 	Candidate(ctx context.Context, testID, recordingID string) (Candidate, error)
 	// CreateAutomaticRun reports false when an equal automatic run already exists.
 	CreateAutomaticRun(ctx context.Context, r domain.Run) (bool, error)
+	// LockRecording serializes run creation for one recording until the transaction
+	// ends; PendingRun then reports a queued or running run of it.
+	LockRecording(ctx context.Context, recordingID string) error
+	PendingRun(ctx context.Context, recordingID string) (bool, error)
 	CreateRun(ctx context.Context, r domain.Run) (domain.Run, error)
 	LockExpiredRuns(ctx context.Context, now time.Time) ([]domain.Run, error)
 	// ClaimNext locks the oldest available queued run for one of the
@@ -358,7 +363,23 @@ func (s *Service) Reanalyze(ctx context.Context, actor access.Actor, testID, rec
 	if !ok {
 		return domain.Run{}, ErrNotReady
 	}
-	return s.store.CreateRun(ctx, run)
+	var created domain.Run
+	err = s.store.Transaction(ctx, func(tx Store) error {
+		// One analysis per recording at a time: a repeated request must not flood the workers.
+		if err := tx.LockRecording(ctx, recordingID); err != nil {
+			return err
+		}
+		pending, err := tx.PendingRun(ctx, recordingID)
+		if err != nil {
+			return err
+		}
+		if pending {
+			return ErrRunPending
+		}
+		created, err = tx.CreateRun(ctx, run)
+		return err
+	})
+	return created, err
 }
 
 // Job is a claimed run with its contract and, when the paradigm needs one, the

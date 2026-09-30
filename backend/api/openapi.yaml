@@ -1595,7 +1595,7 @@ paths:
     post:
       operationId: reanalyzeRecording
       summary: Queue a manual run with the current inputs; earlier runs are kept (test:run)
-      description: Returns analysis.notReady until the video is verified, a VALID calibration applies (its own, else the environment's) when the paradigm requires one, and an enabled worker supports the paradigm version.
+      description: Returns analysis.notReady until the video is verified, a VALID calibration applies (its own, else the environment's) when the paradigm requires one, and an enabled worker supports the paradigm version. Returns analysis.runPending while an earlier run of the same recording is still queued or running, so a repeated request cannot flood the workers.
       requestBody: {required: true, content: {application/json: {schema: {type: object, additionalProperties: false}}}}
       responses:
         '201': {description: Queued, content: {application/json: {schema: {$ref: '#/components/schemas/AnalysisRun'}}}}

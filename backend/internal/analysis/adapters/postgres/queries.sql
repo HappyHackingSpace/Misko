@@ -195,3 +195,10 @@ JOIN misko.video_assets s ON s.id = p.source_asset_id
 JOIN misko.video_assets a ON a.id = p.analyzed_asset_id
 WHERE p.run_id = @run_id;
 
+-- LockRecordingRuns serializes run creation for one recording until the
+-- transaction ends, so two requests cannot both see no pending run.
+-- name: LockRecordingRuns :exec
+SELECT pg_advisory_xact_lock(hashtextextended(@recording_id::text, 0));
+
+-- name: PendingRunExists :one
+SELECT EXISTS (SELECT 1 FROM misko.analysis_runs WHERE recording_id = @recording_id AND status IN ('QUEUED', 'RUNNING'))::boolean;
