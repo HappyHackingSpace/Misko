@@ -100,7 +100,31 @@ services:
     depends_on:
       - backend
     ports:
-      - "${FRONTEND_PORT:-8080}:80"
+      - "${FRONTEND_BIND:-0.0.0.0}:${FRONTEND_PORT:-8080}:80"
+
+  # Optional TLS terminator: `--profile https` publishes 80/443 and gets a
+  # Let's Encrypt certificate for SITE_ADDRESS, which must already resolve to
+  # this machine (A record) with ports 80 and 443 open. Run it with
+  # FRONTEND_BIND=127.0.0.1 and a FRONTEND_PORT other than 80 so the plain HTTP
+  # panel is no longer reachable from outside; the deploy workflow does this.
+  # Certificates live in the caddy-data volume, so keep it across restarts to
+  # stay clear of Let's Encrypt rate limits.
+  caddy:
+    image: caddy:2-alpine
+    profiles: [https]
+    restart: unless-stopped
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:-localhost}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - frontend
 
   # Open Field analysis worker. No published GHCR image exists yet (`release.yml`
   # only builds backend/frontend), so this builds from the local `worker/`
@@ -133,3 +157,5 @@ services:
 
 volumes:
   db-data:
+  caddy-data:
+  caddy-config:
