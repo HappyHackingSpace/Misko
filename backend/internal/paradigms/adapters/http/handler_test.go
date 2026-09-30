@@ -21,7 +21,7 @@ var update = flag.Bool("update", false, "write golden manifests for newly publis
 
 func newMux() *http.ServeMux {
 	mux := http.NewServeMux()
-	Register(mux, application.New(), func(r *http.Request) (access.Actor, error) {
+	Register(mux, application.New(nil), func(r *http.Request) (access.Actor, error) {
 		switch r.Header.Get("Authorization") {
 		case "viewer":
 			return access.Actor{UserID: "u", Role: access.Viewer}, nil

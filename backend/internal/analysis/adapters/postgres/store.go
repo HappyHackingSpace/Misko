@@ -199,6 +199,21 @@ func (s *Store) CreateAutomaticRun(ctx context.Context, r domain.Run) (bool, err
 	return n == 1, nil
 }
 
+func (s *Store) LockRecording(ctx context.Context, recordingID string) error {
+	if err := s.queries.LockRecordingRuns(ctx, recordingID); err != nil {
+		return fmt.Errorf("lock recording runs: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) PendingRun(ctx context.Context, recordingID string) (bool, error) {
+	pending, err := s.queries.PendingRunExists(ctx, recordingID)
+	if err != nil {
+		return false, fmt.Errorf("check pending run: %w", err)
+	}
+	return pending, nil
+}
+
 func (s *Store) CreateRun(ctx context.Context, r domain.Run) (domain.Run, error) {
 	params, err := json.Marshal(nonNil(r.Parameters))
 	if err != nil {

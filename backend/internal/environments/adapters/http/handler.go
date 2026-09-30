@@ -44,6 +44,7 @@ func Register(mux *http.ServeMux, service *application.Service, authenticate fun
 	mux.HandleFunc("GET /api/environments/{id}/revisions", h.with(h.revisions))
 	mux.HandleFunc("POST /api/environments/{id}/revisions", h.with(h.addRevision))
 	mux.HandleFunc("GET /api/environments/{id}/revisions/{number}", h.with(h.revision))
+	mux.HandleFunc("GET /api/environment-revisions", h.with(h.allRevisions))
 }
 
 func (h handler) with(next func(http.ResponseWriter, *http.Request, access.Actor)) http.HandlerFunc {
@@ -107,6 +108,11 @@ func (h handler) update(w http.ResponseWriter, r *http.Request, actor access.Act
 func (h handler) revisions(w http.ResponseWriter, r *http.Request, actor access.Actor) {
 	revisions, err := h.service.Revisions(r.Context(), actor, r.PathValue("id"))
 	h.respond(w, r, http.StatusOK, dataJSON{mapSlice(revisions, revisionJSON)}, err)
+}
+
+func (h handler) allRevisions(w http.ResponseWriter, r *http.Request, actor access.Actor) {
+	revisions, err := h.service.AllRevisions(r.Context(), actor)
+	h.respond(w, r, http.StatusOK, dataJSON{mapSlice(revisions, revisionSummaryJSON)}, err)
 }
 
 func (h handler) addRevision(w http.ResponseWriter, r *http.Request, actor access.Actor) {
@@ -175,6 +181,19 @@ type revisionJSONBody struct {
 	Notes           *string            `json:"notes"`
 	CreatedBy       string             `json:"createdBy"`
 	CreatedAt       time.Time          `json:"createdAt"`
+}
+
+type revisionSummaryJSONBody struct {
+	ID              string `json:"id"`
+	EnvironmentID   string `json:"environmentId"`
+	EnvironmentName string `json:"environmentName"`
+	ParadigmKey     string `json:"paradigmKey"`
+	Number          int    `json:"number"`
+	ParadigmVersion int    `json:"paradigmVersion"`
+}
+
+func revisionSummaryJSON(r domain.RevisionSummary) revisionSummaryJSONBody {
+	return revisionSummaryJSONBody(r)
 }
 
 func revisionJSON(r domain.Revision) revisionJSONBody {

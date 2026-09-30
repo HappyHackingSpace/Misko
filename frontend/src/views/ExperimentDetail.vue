@@ -5,11 +5,12 @@ import { computed, h, onMounted, onUnmounted, ref } from "vue";
 import { useRoute } from "vue-router";
 import { useI18n } from "vue-i18n";
 import { RouterLink } from "vue-router";
-import { NAlert, NButton, NCard, NDataTable, NTag } from "naive-ui";
+import { NAlert, NButton, NCard, NDataTable, NSelect, NTag } from "naive-ui";
 import { environments, experiments, protocols, subjects } from "../api/endpoints.js";
 import { useAuth } from "../stores/auth.js";
 import { useBreadcrumb } from "../stores/breadcrumb.js";
 import PageHead from "../components/PageHead.vue";
+import { filterByText, selectOption } from "../composables/selectOptions.js";
 
 const { t } = useI18n();
 const route = useRoute();
@@ -38,17 +39,9 @@ const adding = ref(false);
 // A protocol pins apparatus revisions, so writing one needs apparatus:write
 // rather than study:write.
 const canWriteProtocol = computed(() => auth.can("apparatus:write"));
-const emptyStep = () => ({ environmentRevisionId: "", trialType: "STANDARD", trials: 1 });
+const emptyStep = () => ({ environmentId: "", environmentRevisionId: "", trialType: "STANDARD", trials: 1 });
 const newProtocol = ref({ name: "", description: "", steps: [emptyStep()] });
 const savingProtocol = ref(false);
-
-const revisionLabel = (option) =>
-  t("protocols.revisionLabel", {
-    name: option.environmentName,
-    number: option.number,
-    paradigm: option.paradigmKey,
-    version: option.paradigmVersion,
-  });
 
 function addStep() {
   newProtocol.value.steps.push(emptyStep());
@@ -58,24 +51,15 @@ function removeStep(index) {
   newProtocol.value.steps.splice(index, 1);
 }
 
-// Every revision of every apparatus, flattened into one list. A step names a
-// revision, and the paradigm it belongs to is read from that revision rather
-// than asked for a second time: the API refuses a mismatch anyway.
+// Every revision of every apparatus, in one request. A step names an environment
+// first and then one of its revisions; the paradigm comes with the revision, so it
+// is never asked for separately (the API refuses a mismatch anyway).
 async function loadRevisions() {
-  const list = (await environments.list()).data || [];
-  const perEnvironment = await Promise.all(
-    list.map(async (environment) => {
-      const revisions = (await environments.revisions(environment.id)).data || [];
-      return revisions.map((revision) => ({
-        id: revision.id,
-        number: revision.number,
-        paradigmKey: revision.paradigmKey,
-        paradigmVersion: revision.paradigmVersion,
-        environmentName: environment.name,
-      }));
-    }),
-  );
-  revisionOptions.value = perEnvironment.flat();
+  const all = (await environments.allRevisions()).data || [];
+  // The highest number of an environment is the one to use now.
+  const newest = {};
+  for (const revision of all) newest[revision.environmentId] = Math.max(newest[revision.environmentId] || 0, revision.number);
+  revisionOptions.value = all.map((revision) => ({ ...revision, latest: revision.number === newest[revision.environmentId] }));
 }
 
 async function createProtocol() {
@@ -117,11 +101,13 @@ const canPlanTest = computed(() => auth.can("test:write"));
 const protocolVersions = ref([]);
 const planning = ref(false);
 
-// The datetime field speaks local time, so the default is now in local time.
+// The datetime field speaks local time and holds whole minutes. The default is the
+// next whole minute: rounding down would put it before a subject enrolled a moment
+// ago, which the API refuses because a test cannot precede the enrollment.
 function localNow() {
-  const now = new Date();
-  now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
-  return now.toISOString().slice(0, 16);
+  const next = new Date(Math.ceil(Date.now() / 60_000) * 60_000);
+  next.setMinutes(next.getMinutes() - next.getTimezoneOffset());
+  return next.toISOString().slice(0, 16);
 }
 
 const newTest = ref({ enrollmentId: "", protocolId: "", protocolVersionId: "", stepPosition: "", scheduledAt: localNow(), notes: "" });
@@ -158,6 +144,16 @@ async function loadVersions() {
 
 function pickVersion() {
   newTest.value.stepPosition = selectedVersion.value?.steps?.[0]?.position || "";
+}
+
+function chooseProtocol(id) {
+  newTest.value.protocolId = id || "";
+  return loadVersions();
+}
+
+function chooseVersion(id) {
+  newTest.value.protocolVersionId = id || "";
+  pickVersion();
 }
 
 async function planTest() {
@@ -201,11 +197,13 @@ async function enrollSubject() {
   try {
     await experiments.enroll(route.params.id, {
       subjectId: newEnrollment.value.subjectId,
-      groupId: newEnrollment.value.groupId,
+      groupId: newEnrollment.value.groupId || "",
       // Enrollment starts now; the panel does not offer a past start yet.
       enrolledAt: new Date().toISOString(),
     });
     newEnrollment.value = { subjectId: "", groupId: "" };
+    // The default time was read when the page opened, before this enrollment.
+    newTest.value.scheduledAt = localNow();
     await load();
   } catch (e) {
     error.value = e.message;
@@ -285,6 +283,50 @@ async function load() {
   }
 }
 
+// The choices of every dropdown. A test hook rides on each option, see selectOptions.js.
+const groupRoleOptions = computed(() => [
+  selectOption("group-role", "CONTROL", t("experiments.control")),
+  selectOption("group-role", "TREATMENT", t("experiments.treatment")),
+]);
+const subjectOptions = computed(() => availableSubjects.value.map((s) => selectOption("enroll-subject", s.id, s.code)));
+const enrollGroupOptions = computed(() => groups.value.map((g) => selectOption("enroll-group", g.id, g.name)));
+const stepEnvironmentOptions = computed(() => {
+  const seen = new Map(revisionOptions.value.map((o) => [o.environmentId, o.environmentName]));
+  return [...seen].map(([id, name]) => selectOption("step-environment", id, name));
+});
+// The revisions of the environment a step has chosen, newest first.
+const stepRevisionOptions = (step) =>
+  revisionOptions.value
+    .filter((o) => o.environmentId === step.environmentId)
+    .toReversed()
+    .map((o) =>
+      selectOption(
+        "step-revision",
+        o.id,
+        `${t("environments.revisionNumber", { number: o.number })} (${o.paradigmKey} v${o.paradigmVersion})`,
+        o.latest ? t("environments.latest") : "",
+      ),
+    );
+
+// Choosing another environment empties the revision: it belonged to the old one.
+function chooseEnvironment(step, id) {
+  step.environmentId = id || "";
+  step.environmentRevisionId = "";
+}
+const planEnrollmentOptions = computed(() =>
+  enrollments.value.map((e) => selectOption("plan-enrollment", e.id, subjectCode(e.subjectId))),
+);
+const planProtocolOptions = computed(() => protocolList.value.map((p) => selectOption("plan-protocol", p.id, p.name)));
+const planVersionOptions = computed(() => protocolVersions.value.map((v) => selectOption("plan-version", v.id, versionLabel(v))));
+const planStepOptions = computed(() =>
+  (selectedVersion.value?.steps || []).map((s) => selectOption("plan-step", s.position, stepLabel(s))),
+);
+
+// A dropdown has no native "required", so what a form cannot be saved without is
+// checked here and the button waits for it.
+const protocolReady = computed(() => !!newProtocol.value.name.trim() && newProtocol.value.steps.every((s) => s.environmentRevisionId));
+const planReady = computed(() => !!(newTest.value.enrollmentId && newTest.value.protocolVersionId && newTest.value.stepPosition));
+
 onMounted(load);
 onUnmounted(() => crumb.clear());
 </script>
@@ -324,10 +366,7 @@ onUnmounted(() => crumb.clear());
             </label>
             <label class="fld">
               <span>{{ $t("experiments.groupRole") }}</span>
-              <select v-model="newGroup.role" data-test="group-role">
-                <option value="CONTROL">{{ $t("experiments.control") }}</option>
-                <option value="TREATMENT">{{ $t("experiments.treatment") }}</option>
-              </select>
+              <NSelect v-model:value="newGroup.role" data-test="group-role" :options="groupRoleOptions" />
             </label>
             <label class="fld narrow">
               <span>{{ $t("experiments.targetSize") }}</span>
@@ -352,19 +391,26 @@ onUnmounted(() => crumb.clear());
           <form v-if="canWrite && availableSubjects.length" class="add-group" data-test="enroll-form" @submit.prevent="enrollSubject">
             <label class="fld grow">
               <span>{{ $t("tests.subject") }}</span>
-              <select v-model="newEnrollment.subjectId" data-test="enroll-subject" required>
-                <option value="">{{ $t("experiments.pickSubject") }}</option>
-                <option v-for="subject in availableSubjects" :key="subject.id" :value="subject.id">{{ subject.code }}</option>
-              </select>
+              <NSelect
+                v-model:value="newEnrollment.subjectId"
+                data-test="enroll-subject"
+                filterable
+                :filter="filterByText"
+                :placeholder="$t('experiments.pickSubject')"
+                :options="subjectOptions"
+              />
             </label>
             <label class="fld">
               <span>{{ $t("experiments.assignGroup") }}</span>
-              <select v-model="newEnrollment.groupId" data-test="enroll-group">
-                <option value="">{{ $t("experiments.noGroup") }}</option>
-                <option v-for="group in groups" :key="group.id" :value="group.id">{{ group.name }}</option>
-              </select>
+              <NSelect
+                v-model:value="newEnrollment.groupId"
+                data-test="enroll-group"
+                clearable
+                :placeholder="$t('experiments.noGroup')"
+                :options="enrollGroupOptions"
+              />
             </label>
-            <NButton attr-type="submit" :loading="enrolling" :disabled="enrolling" data-test="enroll-save">
+            <NButton attr-type="submit" :loading="enrolling" :disabled="enrolling || !newEnrollment.subjectId" data-test="enroll-save">
               {{ $t("experiments.enroll") }}
             </NButton>
           </form>
@@ -396,12 +442,27 @@ onUnmounted(() => crumb.clear());
             <div class="step" v-for="(step, index) in newProtocol.steps" :key="index" data-test="protocol-step">
               <label class="fld grow">
                 <span>{{ $t("protocols.step") }} {{ index + 1 }} · {{ $t("protocols.environment") }}</span>
-                <select v-model="step.environmentRevisionId" :data-test="`step-revision-${index}`" required>
-                  <option value="">{{ $t("protocols.pickEnvironment") }}</option>
-                  <option v-for="option in revisionOptions" :key="option.id" :value="option.id">
-                    {{ revisionLabel(option) }}
-                  </option>
-                </select>
+                <NSelect
+                  :value="step.environmentId"
+                  :data-test="`step-environment-${index}`"
+                  filterable
+                  :filter="filterByText"
+                  :placeholder="$t('protocols.pickEnvironment')"
+                  :options="stepEnvironmentOptions"
+                  @update:value="chooseEnvironment(step, $event)"
+                />
+              </label>
+              <!-- The revisions belong to the environment, so the dropdown stays shut
+                   until one is chosen. -->
+              <label class="fld grow">
+                <span>{{ $t("protocols.revision") }}</span>
+                <NSelect
+                  v-model:value="step.environmentRevisionId"
+                  :data-test="`step-revision-${index}`"
+                  :disabled="!step.environmentId"
+                  :placeholder="$t(step.environmentId ? 'protocols.pickRevision' : 'protocols.pickEnvironmentFirst')"
+                  :options="stepRevisionOptions(step)"
+                />
               </label>
               <label class="fld">
                 <span>{{ $t("protocols.trialType") }}</span>
@@ -427,7 +488,7 @@ onUnmounted(() => crumb.clear());
             <NButton dashed size="small" data-test="protocol-add-step" @click="addStep">
               + {{ $t("protocols.addStep") }}
             </NButton>
-            <NButton type="primary" attr-type="submit" :loading="savingProtocol" :disabled="savingProtocol" data-test="protocol-save">
+            <NButton type="primary" attr-type="submit" :loading="savingProtocol" :disabled="savingProtocol || !protocolReady" data-test="protocol-save">
               {{ $t("common.save") }}
             </NButton>
           </div>
@@ -453,39 +514,51 @@ onUnmounted(() => crumb.clear());
         <template v-else>
           <label class="fld">
             <span>{{ $t("tests.enrollment") }}</span>
-            <select v-model="newTest.enrollmentId" data-test="plan-enrollment" required>
-              <option value="">{{ $t("tests.pickEnrollment") }}</option>
-              <option v-for="enrollment in enrollments" :key="enrollment.id" :value="enrollment.id">
-                {{ subjectCode(enrollment.subjectId) }}
-              </option>
-            </select>
+            <NSelect
+              v-model:value="newTest.enrollmentId"
+              data-test="plan-enrollment"
+              filterable
+              :filter="filterByText"
+              :placeholder="$t('tests.pickEnrollment')"
+              :options="planEnrollmentOptions"
+            />
           </label>
           <label class="fld">
             <span>{{ $t("tests.protocol") }}</span>
-            <select v-model="newTest.protocolId" data-test="plan-protocol" required @change="loadVersions">
-              <option value="">{{ $t("tests.pickProtocol") }}</option>
-              <option v-for="protocol in protocolList" :key="protocol.id" :value="protocol.id">{{ protocol.name }}</option>
-            </select>
+            <NSelect
+              :value="newTest.protocolId"
+              data-test="plan-protocol"
+              filterable
+              :filter="filterByText"
+              :placeholder="$t('tests.pickProtocol')"
+              :options="planProtocolOptions"
+              @update:value="chooseProtocol"
+            />
           </label>
           <label class="fld">
             <span>{{ $t("tests.version") }}</span>
-            <select v-model="newTest.protocolVersionId" data-test="plan-version" required @change="pickVersion">
-              <option v-for="version in protocolVersions" :key="version.id" :value="version.id">{{ versionLabel(version) }}</option>
-            </select>
+            <NSelect
+              :value="newTest.protocolVersionId"
+              data-test="plan-version"
+              :disabled="!protocolVersions.length"
+              :options="planVersionOptions"
+              @update:value="chooseVersion"
+            />
           </label>
           <label class="fld grow">
             <span>{{ $t("tests.step") }}</span>
-            <select v-model="newTest.stepPosition" data-test="plan-step" required>
-              <option v-for="step in selectedVersion?.steps || []" :key="step.position" :value="step.position">
-                {{ stepLabel(step) }}
-              </option>
-            </select>
+            <NSelect
+              v-model:value="newTest.stepPosition"
+              data-test="plan-step"
+              :disabled="!planStepOptions.length"
+              :options="planStepOptions"
+            />
           </label>
           <label class="fld">
             <span>{{ $t("tests.scheduledAt") }}</span>
             <input type="datetime-local" v-model="newTest.scheduledAt" data-test="plan-scheduled" required />
           </label>
-          <NButton type="primary" attr-type="submit" :loading="planning" :disabled="planning" data-test="plan-save">
+          <NButton type="primary" attr-type="submit" :loading="planning" :disabled="planning || !planReady" data-test="plan-save">
             {{ $t("tests.plan") }}
           </NButton>
         </template>
@@ -515,6 +588,8 @@ onUnmounted(() => crumb.clear());
 .actions { display: flex; gap: 12px; align-items: center; }
 .fld { display: flex; flex-direction: column; gap: 4px; }
 .fld span { font-size: 12px; color: var(--muted); }
+.fld :deep(.n-select) { width: 100%; min-width: 190px; }
+.grow :deep(.n-select) { min-width: 220px; }
 .version { margin-left: 6px; }
 :deep(.link) { color: inherit; text-decoration: none; }
 </style>

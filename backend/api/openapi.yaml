@@ -1083,6 +1083,18 @@ paths:
         '401': {$ref: '#/components/responses/Problem'}
         '403': {$ref: '#/components/responses/Problem'}
         '404': {$ref: '#/components/responses/Problem'}
+  /api/environment-revisions:
+    get:
+      operationId: listAllEnvironmentRevisions
+      summary: Every revision of every environment with the name of its environment (*:read)
+      description: Lets a screen say which apparatus and revision a test was planned with from the revision id alone, in one request. Ordered by environment name, then revision number. It carries no measurements.
+      responses:
+        '200':
+          description: Revisions
+          content:
+            application/json:
+              schema: {type: object, required: [data], properties: {data: {type: array, items: {$ref: '#/components/schemas/EnvironmentRevisionSummary'}}}}
+        '401': {$ref: '#/components/responses/Problem'}
   /api/environments/{id}/revisions/{number}:
     parameters:
       - $ref: '#/components/parameters/ID'
@@ -1436,13 +1448,56 @@ paths:
         '404': {$ref: '#/components/responses/Problem'}
         '409': {$ref: '#/components/responses/Problem'}
         '503': {$ref: '#/components/responses/Problem'}
+  /api/environments/{id}/revisions/{number}/calibrations:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+      - {name: number, in: path, required: true, schema: {type: integer, minimum: 1}}
+    get:
+      operationId: listEnvironmentCalibrations
+      summary: Default calibrations of an environment revision, oldest first (*:read)
+      responses:
+        '200':
+          description: Calibrations
+          content:
+            application/json:
+              schema: {type: object, required: [data], properties: {data: {type: array, items: {$ref: '#/components/schemas/Calibration'}}}}
+        '401': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+    post:
+      operationId: createEnvironmentCalibration
+      summary: Calibrate the environment revision once; every recording of it uses this calibration unless it has one of its own (apparatus:write)
+      description: Same fitting and validation as a recording calibration, against the revision's measurements. There is no video, so referenceFrameUs is ignored. A correction must supersede the latest calibration of the revision and use the same camera and frame size. Analysis runs that already pinned an earlier calibration keep it, and a correction never queues automatic runs for recordings that already have one. Answers calibration.notRequired for paradigms without max_calibration_error_cm.
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/EnvironmentCalibrationInput'}}}}
+      responses:
+        '201': {description: Stored, content: {application/json: {schema: {$ref: '#/components/schemas/Calibration'}}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/environments/{id}/revisions/{number}/calibration-status:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+      - {name: number, in: path, required: true, schema: {type: integer, minimum: 1}}
+    get:
+      operationId: getEnvironmentCalibrationStatus
+      summary: Whether recordings of the revision are calibrated by default (*:read)
+      responses:
+        '200':
+          description: Calibration status
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CalibrationStatus'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
   /api/tests/{id}/recordings/{recordingId}/calibrations:
     parameters:
       - $ref: '#/components/parameters/ID'
       - {name: recordingId, in: path, required: true, schema: {type: string, format: uuid}}
     get:
       operationId: listCalibrations
-      summary: Calibrations of a recording, oldest first (*:read)
+      summary: The recording's own calibrations, oldest first (*:read)
+      description: Manual calibrations of this video only; the default of its environment is listed under the revision.
       responses:
         '200':
           description: Calibrations
@@ -1453,8 +1508,8 @@ paths:
         '404': {$ref: '#/components/responses/Problem'}
     post:
       operationId: createCalibration
-      summary: Fit a pixel-to-centimeter transform from FIT points and validate it with independent CHECK points (test:run)
-      description: The result is VALID, or REJECTED with EXCESSIVE_CHECK_ERROR when CHECK points deviate more than the paradigm's max_calibration_error_cm. A correction must supersede the latest calibration and use the same camera and frame size.
+      summary: Manually calibrate this video, overriding the environment's calibration for it only (test:run)
+      description: Fits a pixel-to-centimeter transform from FIT points and validates it with independent CHECK points. A recording with a calibration of its own never falls back to the environment, so a REJECTED one leaves it waiting. The result is VALID, or REJECTED with EXCESSIVE_CHECK_ERROR when CHECK points deviate more than the paradigm's max_calibration_error_cm. A correction must supersede the latest calibration and use the same camera and frame size.
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CalibrationInput'}}}}
       responses:
         '201': {description: Stored, content: {application/json: {schema: {$ref: '#/components/schemas/Calibration'}}}}
@@ -1470,17 +1525,13 @@ paths:
     get:
       operationId: getCalibrationStatus
       summary: Whether the recording can be analyzed into physical metrics (*:read)
+      description: The recording's own latest calibration decides when it has one, otherwise the default of its environment revision.
       responses:
         '200':
           description: Calibration status
           content:
             application/json:
-              schema:
-                type: object
-                required: [status, calibration]
-                properties:
-                  status: {type: string, enum: [NOT_REQUIRED, WAITING_FOR_CALIBRATION, CALIBRATED], description: WAITING_FOR_CALIBRATION until the video is verified and its latest calibration is VALID}
-                  calibration: {oneOf: [{$ref: '#/components/schemas/Calibration'}, {type: 'null'}]}
+              schema: {$ref: '#/components/schemas/CalibrationStatus'}
         '401': {$ref: '#/components/responses/Problem'}
         '404': {$ref: '#/components/responses/Problem'}
   /api/analysis/workers:
@@ -1544,7 +1595,7 @@ paths:
     post:
       operationId: reanalyzeRecording
       summary: Queue a manual run with the current inputs; earlier runs are kept (test:run)
-      description: Returns analysis.notReady until the video is verified, the latest calibration is VALID when the paradigm requires one, and an enabled worker supports the paradigm version.
+      description: Returns analysis.notReady until the video is verified, a VALID calibration applies (its own, else the environment's) when the paradigm requires one, and an enabled worker supports the paradigm version. Returns analysis.runPending while an earlier run of the same recording is still queued or running, so a repeated request cannot flood the workers.
       requestBody: {required: true, content: {application/json: {schema: {type: object, additionalProperties: false}}}}
       responses:
         '201': {description: Queued, content: {application/json: {schema: {$ref: '#/components/schemas/AnalysisRun'}}}}
@@ -2447,6 +2498,16 @@ components:
         notes: {type: [string, 'null']}
         createdBy: {type: string, format: uuid}
         createdAt: {type: string, format: date-time}
+    EnvironmentRevisionSummary:
+      type: object
+      required: [id, environmentId, environmentName, paradigmKey, number, paradigmVersion]
+      properties:
+        id: {type: string, format: uuid}
+        environmentId: {type: string, format: uuid}
+        environmentName: {type: string}
+        paradigmKey: {$ref: '#/components/schemas/ConstantKey'}
+        number: {type: integer, minimum: 1}
+        paradigmVersion: {type: integer, minimum: 1}
     EnvironmentRevisionInput:
       type: object
       additionalProperties: false
@@ -2702,6 +2763,29 @@ components:
         y: {type: integer, minimum: 0}
         width: {type: integer, minimum: 1}
         height: {type: integer, minimum: 1}
+    EnvironmentCalibrationInput:
+      type: object
+      additionalProperties: false
+      required: [cameraId, frameWidth, frameHeight, crop, measurementPlane, fitPoints, checkPoints]
+      description: A calibration input without a video
+      properties:
+        cameraId: {type: string, minLength: 1, maxLength: 120}
+        frameWidth: {type: integer, minimum: 1, maximum: 16384}
+        frameHeight: {type: integer, minimum: 1, maximum: 16384}
+        crop: {$ref: '#/components/schemas/CalibrationCrop'}
+        referenceFrameUs: {type: integer, format: int64, minimum: 0, description: Ignored; an environment has no video}
+        measurementPlane: {type: string, enum: [ARENA_FLOOR, WATER_SURFACE, APPARATUS_TOP]}
+        fitPoints: {type: array, minItems: 4, maxItems: 100, items: {$ref: '#/components/schemas/CalibrationPoint'}, description: Inside the crop, no three on a line, inside the environment revision}
+        checkPoints: {type: array, minItems: 3, maxItems: 100, items: {$ref: '#/components/schemas/CalibrationPoint'}, description: Independent of the FIT points (at least 1 pixel away)}
+        supersedesId: {type: string, format: uuid, description: The latest calibration of the revision; required for corrections}
+    CalibrationStatus:
+      type: object
+      required: [status, source, drift, calibration]
+      properties:
+        status: {type: string, enum: [NOT_REQUIRED, WAITING_FOR_CALIBRATION, CALIBRATED], description: WAITING_FOR_CALIBRATION until a VALID calibration applies (and, for a recording, its video is verified)}
+        source: {type: [string, 'null'], enum: [ENVIRONMENT, RECORDING, null], description: Which calibration decides. RECORDING with WAITING_FOR_CALIBRATION means the recording's own calibration was rejected. Null when nothing was calibrated}
+        drift: {type: [string, 'null'], enum: [UNCHECKED, null], description: Whether camera or arena movement was checked. No check exists yet, so a calibration in use is UNCHECKED; null while waiting}
+        calibration: {oneOf: [{$ref: '#/components/schemas/Calibration'}, {type: 'null'}]}
     CalibrationInput:
       type: object
       additionalProperties: false
@@ -2718,17 +2802,19 @@ components:
         supersedesId: {type: string, format: uuid, description: The latest calibration of the recording; required for corrections}
     Calibration:
       type: object
-      required: [id, recordingId, supersedesId, cameraId, frameWidth, frameHeight, crop, referenceFrameUs, measurementPlane, fitPoints, checkPoints, transform, fitRmsErrorCm, checkRmsErrorCm, checkMaxErrorCm, toleranceCm, algorithmVersion, status, rejectionReason, createdBy, createdAt]
+      required: [id, scope, recordingId, environmentRevisionId, supersedesId, cameraId, frameWidth, frameHeight, crop, referenceFrameUs, measurementPlane, fitPoints, checkPoints, transform, fitRmsErrorCm, checkRmsErrorCm, checkMaxErrorCm, toleranceCm, algorithmVersion, status, rejectionReason, createdBy, createdAt]
       description: Immutable; analysis runs reference a fixed calibration
       properties:
         id: {type: string, format: uuid}
-        recordingId: {type: string, format: uuid}
+        scope: {type: string, enum: [ENVIRONMENT, RECORDING], description: ENVIRONMENT is the default of a revision, RECORDING a manual override for one video}
+        recordingId: {type: [string, 'null'], format: uuid, description: Null for an environment calibration}
+        environmentRevisionId: {type: string, format: uuid}
         supersedesId: {type: [string, 'null'], format: uuid}
         cameraId: {type: string}
         frameWidth: {type: integer}
         frameHeight: {type: integer}
         crop: {$ref: '#/components/schemas/CalibrationCrop'}
-        referenceFrameUs: {type: integer, format: int64}
+        referenceFrameUs: {type: [integer, 'null'], format: int64, description: Null for an environment calibration}
         measurementPlane: {type: string, enum: [ARENA_FLOOR, WATER_SURFACE, APPARATUS_TOP]}
         fitPoints: {type: array, items: {$ref: '#/components/schemas/CalibrationPoint'}}
         checkPoints: {type: array, items: {$ref: '#/components/schemas/CalibrationPoint'}}
@@ -3024,7 +3110,7 @@ components:
         analysisQueued: {type: integer}
         analysisRunning: {type: integer}
         analysisFailed: {type: integer}
-        calibrationWaiting: {type: integer, description: Verified recordings whose paradigm requires a calibration they do not yet have}
+        calibrationWaiting: {type: integer, description: Verified recordings whose paradigm requires a calibration and that have no valid one, of their own or from their environment}
         recentActivity:
           type: array
           description: The 5 most recently published analysis results, newest first

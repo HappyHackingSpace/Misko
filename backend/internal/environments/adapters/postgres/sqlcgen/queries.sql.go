@@ -139,6 +139,51 @@ func (q *Queries) GetRevision(ctx context.Context, arg GetRevisionParams) (Misko
 	return i, err
 }
 
+const listAllRevisions = `-- name: ListAllRevisions :many
+SELECT r.id, r.environment_id, e.name AS environment_name, r.paradigm_key, r.number, r.paradigm_version
+FROM misko.environment_revisions r
+JOIN misko.environments e ON e.id = r.environment_id
+ORDER BY lower(e.name), e.id, r.number
+`
+
+type ListAllRevisionsRow struct {
+	ID              string
+	EnvironmentID   string
+	EnvironmentName string
+	ParadigmKey     string
+	Number          int32
+	ParadigmVersion int32
+}
+
+// Every revision with the name of its environment, so a screen can say which
+// apparatus a revision id belongs to with one request.
+func (q *Queries) ListAllRevisions(ctx context.Context) ([]ListAllRevisionsRow, error) {
+	rows, err := q.db.Query(ctx, listAllRevisions)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListAllRevisionsRow
+	for rows.Next() {
+		var i ListAllRevisionsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.EnvironmentID,
+			&i.EnvironmentName,
+			&i.ParadigmKey,
+			&i.Number,
+			&i.ParadigmVersion,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listEnvironments = `-- name: ListEnvironments :many
 SELECT e.id, e.name, e.paradigm_key, e.notes, e.created_at, e.updated_at,
        coalesce((SELECT max(r.number) FROM misko.environment_revisions r WHERE r.environment_id = e.id), 0)::integer AS latest_revision

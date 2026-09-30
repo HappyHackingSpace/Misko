@@ -19,6 +19,12 @@ async function signIn(page, email, password) {
   await expect(page.getByTestId("nav-experiments")).toBeVisible();
 }
 
+// The dropdowns are Naive UI selects, not native ones: open one and pick an
+// option by the hook every option carries (its value travels in data-value).
+const optionsOf = (page, testId) => page.locator(`.n-base-select-option [data-test="${testId}-option"]`);
+// A select that cannot be opened yet carries this class on its inner trigger.
+const disabled = (page, testId) => page.locator(`[data-test="${testId}"] .n-base-selection--disabled`);
+
 // The seeded experiment is shared by every run, so each run plans its test at a
 // minute of its own and finds that row rather than counting rows.
 function uniqueFutureMinute() {
@@ -60,16 +66,17 @@ test("a test can be planned for an enrolled subject", async ({ page, request }) 
 
   await expect(page.getByTestId("plan-form")).toBeVisible();
   // The subject is chosen by its code, not by an identifier.
-  await page.getByTestId("plan-enrollment").selectOption({ label: data.subjectCode });
+  await page.getByTestId("plan-enrollment").click();
+  await optionsOf(page, "plan-enrollment").filter({ hasText: data.subjectCode }).click();
 
-  const protocols = page.getByTestId("plan-protocol").locator("option");
-  await expect(protocols).not.toHaveCount(1, { timeout: 10_000 });
-  await page.getByTestId("plan-protocol").selectOption(await protocols.nth(1).getAttribute("value"));
+  await page.getByTestId("plan-protocol").click();
+  await expect(optionsOf(page, "plan-protocol")).not.toHaveCount(0, { timeout: 10_000 });
+  await optionsOf(page, "plan-protocol").first().click();
 
   // Choosing a protocol brings its versions, and one of them with one of its
-  // steps is what the plan carries.
-  await expect(page.getByTestId("plan-version").locator("option")).not.toHaveCount(0);
-  await expect(page.getByTestId("plan-step").locator("option")).not.toHaveCount(0);
+  // steps is what the plan carries: both dropdowns are filled in and usable.
+  await expect(disabled(page, "plan-version")).toHaveCount(0, { timeout: 10_000 });
+  await expect(disabled(page, "plan-step")).toHaveCount(0);
 
   const when = uniqueFutureMinute();
   await page.getByTestId("plan-scheduled").fill(localValue(when));
@@ -126,17 +133,22 @@ test("the plan follows the newest version of the chosen protocol", async ({ page
 
   // Nothing is offered before a protocol is chosen, because a step belongs to a
   // version and a version belongs to a protocol.
-  await expect(page.getByTestId("plan-version").locator("option")).toHaveCount(0);
-  await expect(page.getByTestId("plan-step").locator("option")).toHaveCount(0);
+  await expect(disabled(page, "plan-version")).toHaveCount(1);
+  await expect(disabled(page, "plan-step")).toHaveCount(1);
 
-  await page.getByTestId("plan-protocol").selectOption({ label: name });
+  await page.getByTestId("plan-protocol").click();
+  await optionsOf(page, "plan-protocol").filter({ hasText: name }).click();
 
   // Both revisions are offered, and the plan defaults to the newest: the study
   // runs the procedure it revised to, not the one it left behind. The second
   // version runs seven trials where the first ran one.
-  await expect(page.getByTestId("plan-version").locator("option")).toHaveCount(2);
-  await expect(page.getByTestId("plan-step").locator("option")).toHaveCount(1, { timeout: 10_000 });
-  await expect(page.getByTestId("plan-step").locator("option")).toContainText("7");
+  await page.getByTestId("plan-version").click();
+  await expect(optionsOf(page, "plan-version")).toHaveCount(2, { timeout: 10_000 });
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("plan-step")).toContainText("7", { timeout: 10_000 });
+  await page.getByTestId("plan-step").click();
+  await expect(optionsOf(page, "plan-step")).toHaveCount(1);
+  await page.keyboard.press("Escape");
 });
 
 test("a viewer cannot plan a test", async ({ page, request }) => {

@@ -50,8 +50,12 @@ test("an apparatus can be defined from a paradigm template", async ({ page, requ
   await width.fill("60");
 
   await page.getByTestId("environment-save").click();
-  await expect(page).toHaveURL(/\/environments$/);
+  // A new environment opens on its own page, where it is calibrated once.
+  await expect(page).toHaveURL(/\/environments\/[0-9a-f-]{36}$/);
   await expect(page.getByTestId("error")).toHaveCount(0);
+  await expect(page.getByTestId("environment-revision")).toHaveCount(1);
+
+  await page.goto("/environments");
 
   const row = page.getByTestId("environment").filter({ hasText: name });
   await expect(row).toHaveCount(1, { timeout: 10_000 });

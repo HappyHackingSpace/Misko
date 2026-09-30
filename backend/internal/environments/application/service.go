@@ -44,6 +44,8 @@ type Store interface {
 	// CreateRevision stores r with the next number of its environment.
 	CreateRevision(ctx context.Context, r domain.Revision) (domain.Revision, error)
 	Revisions(ctx context.Context, environmentID string) ([]domain.Revision, error)
+	// AllRevisions lists every revision of every environment, by environment name.
+	AllRevisions(ctx context.Context) ([]domain.RevisionSummary, error)
 	Revision(ctx context.Context, environmentID string, number int) (domain.Revision, error)
 }
 
@@ -197,6 +199,14 @@ func (s *Service) Revisions(ctx context.Context, actor access.Actor, id string) 
 		return nil, err
 	}
 	return s.store.Revisions(ctx, id)
+}
+
+// AllRevisions lists every revision with the name of its environment.
+func (s *Service) AllRevisions(ctx context.Context, actor access.Actor) ([]domain.RevisionSummary, error) {
+	if err := actor.Require(access.Read); err != nil {
+		return nil, err
+	}
+	return s.store.AllRevisions(ctx)
 }
 
 func (s *Service) Revision(ctx context.Context, actor access.Actor, id string, number int) (domain.Revision, error) {

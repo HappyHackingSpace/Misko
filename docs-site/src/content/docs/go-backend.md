@@ -23,7 +23,7 @@ current release. Do not deploy this branch.
 | Environments with measurement revisions and experiment test protocols | Implemented |
 | Tests, trials and test comments | Implemented |
 | Video uploads to Google Cloud Storage | Implemented, live storage test pending |
-| Per-video calibration | Implemented |
+| Environment calibration with per-video override | Implemented |
 | Analysis runs and worker protocol | Implemented, no vision worker yet |
 | Reports, CSV/JSON exports and group comparisons | Implemented |
 | Vue panel on the new API | Not yet |
@@ -318,11 +318,24 @@ video routes answer 503 with `media.storageNotConfigured`. See
 Before a video can be turned into distances and times in zones, the system needs
 to know how camera pixels map to centimeters.
 
-- After the video is verified, a technician (or a role above) opens a frame where
-  the arena is visible and marks points: at least 4 FIT points and at least 3
+- A calibration belongs to the environment. When the rig is set up, someone who
+  can change apparatus opens a frame from the fixed camera and calibrates the
+  environment revision once, with
+  `POST /api/environments/{id}/revisions/{number}/calibrations`. Every video of
+  a test in that environment then uses it, so 200 videos do not need 200
+  calibrations.
+- The camera and the arena can move. Nothing checks that yet: the calibration
+  status of a video that uses the environment's calibration says
+  `drift: UNCHECKED`. If a video does not match, a technician (or a role above)
+  calibrates that one video by hand. It replaces the environment's calibration
+  for that video only, and if it is rejected the video waits instead of falling
+  back to the environment. A corrected environment calibration does not
+  reanalyze videos that were already analyzed.
+- Marking points works the same either way: a frame where
+  the arena is visible, with points: at least 4 FIT points and at least 3
   separate CHECK points, each with its pixel position and its real position in
   centimeters. Send them with
-  `POST /api/tests/{id}/recordings/{recordingId}/calibrations`.
+  `POST /api/tests/{id}/recordings/{recordingId}/calibrations` for a video.
 - The FIT points define the mapping and the CHECK points test it. If a CHECK point
   is off by more than the paradigm allows (2 cm for the trajectory paradigms),
   the calibration is stored as `REJECTED`.

@@ -120,30 +120,32 @@ type MiskoAnalysisWorker struct {
 }
 
 type MiskoCalibration struct {
-	ID               string
-	RecordingID      string
-	SupersedesID     pgtype.UUID
-	CameraID         string
-	FrameWidth       int32
-	FrameHeight      int32
-	CropX            int32
-	CropY            int32
-	CropWidth        int32
-	CropHeight       int32
-	ReferenceFrameUs int64
-	MeasurementPlane string
-	FitPoints        []byte
-	CheckPoints      []byte
-	Transform        []float64
-	FitRmsErrorCm    float64
-	CheckRmsErrorCm  float64
-	CheckMaxErrorCm  float64
-	ToleranceCm      float64
-	AlgorithmVersion string
-	Status           string
-	RejectionReason  *string
-	CreatedBy        string
-	CreatedAt        time.Time
+	ID                    string
+	RecordingID           pgtype.UUID
+	SupersedesID          pgtype.UUID
+	CameraID              string
+	FrameWidth            int32
+	FrameHeight           int32
+	CropX                 int32
+	CropY                 int32
+	CropWidth             int32
+	CropHeight            int32
+	ReferenceFrameUs      *int64
+	MeasurementPlane      string
+	FitPoints             []byte
+	CheckPoints           []byte
+	Transform             []float64
+	FitRmsErrorCm         float64
+	CheckRmsErrorCm       float64
+	CheckMaxErrorCm       float64
+	ToleranceCm           float64
+	AlgorithmVersion      string
+	Status                string
+	RejectionReason       *string
+	CreatedBy             string
+	CreatedAt             time.Time
+	EnvironmentRevisionID string
+	ChainID               pgtype.UUID
 }
 
 type MiskoDiseaseModel struct {
@@ -152,6 +154,12 @@ type MiskoDiseaseModel struct {
 	Description *string
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
+}
+
+type MiskoEffectiveCalibration struct {
+	RecordingID   string
+	Source        interface{}
+	CalibrationID interface{}
 }
 
 type MiskoEnrollment struct {

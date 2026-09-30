@@ -43,6 +43,7 @@ func TestEveryOperationRequiresItsPermission(t *testing.T) {
 			return second(s.AddRevision(ctx, a, "env", validEnvironment().Revision))
 		}},
 		{"revisions", access.Read, func(s *Service, a access.Actor) error { return second(s.Revisions(ctx, a, "env")) }},
+		{"all revisions", access.Read, func(s *Service, a access.Actor) error { return second(s.AllRevisions(ctx, a)) }},
 		{"revision", access.Read, func(s *Service, a access.Actor) error { return second(s.Revision(ctx, a, "env", 1)) }},
 	}
 	for _, role := range append(access.Roles(), "ROOT") {

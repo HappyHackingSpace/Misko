@@ -180,3 +180,28 @@ func TestEnvironmentsAreValidatedAgainstTheCatalog(t *testing.T) {
 }
 
 func second[T any](_ T, err error) error { return err }
+
+func TestAllRevisionsNameTheirEnvironment(t *testing.T) {
+	s, _ := newService(t)
+	b, err := s.Create(ctx, manager, application.EnvironmentInput{Name: "Arena B", ParadigmKey: "OPEN_FIELD", Revision: arena(50)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, err := s.Create(ctx, manager, application.EnvironmentInput{Name: "Arena A", ParadigmKey: "OPEN_FIELD", Revision: arena(60)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := s.AddRevision(ctx, manager, a.Environment.ID, arena(70))
+	if err != nil {
+		t.Fatal(err)
+	}
+	all, err := s.AllRevisions(ctx, manager)
+	if err != nil || len(all) != 3 {
+		t.Fatalf("all revisions: %+v %v", all, err)
+	}
+	// By environment name, then revision number.
+	if all[0].EnvironmentName != "Arena A" || all[0].Number != 1 || all[1].ID != second.ID || all[1].Number != 2 ||
+		all[2].EnvironmentName != "Arena B" || all[2].EnvironmentID != b.Environment.ID || all[2].ParadigmKey != "OPEN_FIELD" {
+		t.Fatalf("summaries: %+v", all)
+	}
+}

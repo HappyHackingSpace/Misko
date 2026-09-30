@@ -2,6 +2,7 @@
 // between, events clicked faster than the player can settle, a slow object
 // store, and a signed URL that expired while the laboratory was reading.
 import { expect, test } from "@playwright/test";
+import { chooseRun } from "./helpers.js";
 
 const API = `http://127.0.0.1:${process.env.E2E_API_PORT || "4010"}`;
 
@@ -21,7 +22,7 @@ async function signIn(page, email, password) {
 
 async function openSeededTest(page, data) {
   await page.goto(`/tests/${data.testId}`);
-  await expect(page.getByTestId("runs")).toBeVisible();
+  await expect(page.getByTestId("run-select")).toBeVisible();
   await expect(page.getByTestId("event-timeline")).toBeVisible();
   await expect(page.getByTestId("analyzed-video")).toBeVisible();
 }
@@ -44,19 +45,19 @@ test("switching runs replaces the video and the events of the previous run", asy
   const analyzed = page.getByTestId("analyzed-video");
   // The panel opens the newest published run, which is the reanalysis, and the
   // reanalysis wrote its own analyzed video.
-  await expect(page.locator('[data-test="run"][data-selected="true"]')).toHaveAttribute("data-run-id", data.secondRunId);
+  await expect(page.getByTestId("result")).toHaveAttribute("data-run-id", data.secondRunId);
   await expect.poll(async () => analyzed.evaluate(playingObject)).toContain("reanalysis.mp4");
 
   // Open the older run. Its pair is a different object, and nothing of the run
   // that was on screen may survive the switch.
-  await page.locator(`[data-run-id="${data.runId}"]`).click();
+  await chooseRun(page, data.runId);
   await expect.poll(async () => analyzed.evaluate(playingObject), { timeout: 10_000 }).toContain("overlay.mp4");
   await expect(analyzed).toBeVisible();
   await expect(page.getByTestId("event")).toHaveCount(3);
   await expect(page.getByTestId("metric-distance_cm")).toBeVisible();
 
   // And back again: the older run stays inspectable, so both pairs are readable.
-  await page.locator(`[data-run-id="${data.secondRunId}"]`).click();
+  await chooseRun(page, data.secondRunId);
   await expect.poll(async () => analyzed.evaluate(playingObject), { timeout: 10_000 }).toContain("reanalysis.mp4");
 
   // Play an event here, which arms a stop at that event's end. The stop is
@@ -86,7 +87,7 @@ test("switching runs replaces the video and the events of the previous run", asy
 
   // Switch runs and play the other video from its start. The stop belonged to
   // the run that was open, so nothing may cut this one short.
-  await page.locator(`[data-run-id="${data.runId}"]`).click();
+  await chooseRun(page, data.runId);
   await expect.poll(async () => analyzed.evaluate(playingObject), { timeout: 10_000 }).toContain("overlay.mp4");
   // Playing a source that has only just been swapped in is a race: seeking
   // before the engine holds any data, or calling play() before that seek

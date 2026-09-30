@@ -5,28 +5,24 @@
 // Enter or Space, because each row is a button.
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
+import { eventColors } from "../composables/eventColors.js";
 
 const props = defineProps({
   // [{ type, kind, startUs, endUs, confidence, trialId }]
   events: { type: Array, default: () => [] },
   selected: { type: Object, default: null },
+  // Only these types are listed; null lists every type.
+  types: { type: Array, default: null },
 });
 const emit = defineEmits(["play"]);
 const { t, te } = useI18n();
 
-const PALETTE = ["#4cc2ff", "#46d369", "#ffb454", "#c792ea", "#ff6b81", "#5bd1c5", "#e0c46c"];
-
-const colorFor = computed(() => {
-  const map = {};
-  let i = 0;
-  for (const event of props.events) {
-    if (!(event.type in map)) map[event.type] = PALETTE[i++ % PALETTE.length];
-  }
-  return map;
-});
+const colorFor = computed(() => eventColors(props.events));
 
 const ordered = computed(() =>
-  [...props.events].sort((a, b) => a.startUs - b.startUs || a.type.localeCompare(b.type)),
+  props.events
+    .filter((event) => !props.types || props.types.includes(event.type))
+    .sort((a, b) => a.startUs - b.startUs || a.type.localeCompare(b.type)),
 );
 
 // "Movement 00:12-00:18" reads the same way in both languages.
@@ -74,7 +70,7 @@ const isSelected = (event) =>
   display: flex;
   flex-direction: column;
   gap: 2px;
-  max-height: 320px;
+  max-height: 240px;
   overflow-y: auto;
   border: 1px solid var(--line);
   border-radius: 10px;

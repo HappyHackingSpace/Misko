@@ -5,6 +5,7 @@
 import { computed, h, reactive, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { RouterLink } from "vue-router";
+import { useEnvironmentRevisions } from "../composables/useEnvironmentRevisions.js";
 import { NAlert, NButton, NCard, NDataTable, NSelect, NTag } from "naive-ui";
 import { useDataTable } from "../composables/useDataTable.js";
 import { experiments, subjects } from "../api/endpoints.js";
@@ -69,6 +70,10 @@ const statusOptions = computed(() => [
   })),
 ]);
 
+// Which apparatus and revision each test was run with.
+const revisions = useEnvironmentRevisions();
+revisions.load().catch(() => {});
+
 const columns = computed(() => [
   {
     title: t("tests.subject"),
@@ -95,6 +100,24 @@ const columns = computed(() => [
       h(NTag, { size: "small", round: true, bordered: false }, () => row.paradigmKey),
       h("span", { class: "muted version" }, `v${row.paradigmVersion}`),
     ],
+  },
+  {
+    title: t("tests.environment"),
+    key: "environmentRevisionId",
+    render: (row) => {
+      const apparatus = revisions.byId.value[row.environmentRevisionId];
+      if (!apparatus) return "…";
+      return h(RouterLink, { class: "link-muted", to: `/environments/${apparatus.environmentId}`, "data-test": "all-tests-environment" }, () => apparatus.environmentName);
+    },
+  },
+  {
+    title: t("tests.revision"),
+    key: "environmentRevision",
+    render: (row) => {
+      const apparatus = revisions.byId.value[row.environmentRevisionId];
+      if (!apparatus) return "…";
+      return h("span", { class: "muted", "data-test": "all-tests-revision", "data-revision": apparatus.number }, `#${apparatus.number}`);
+    },
   },
   { title: t("tests.scheduled"), key: "scheduledAt", render: (row) => new Date(row.scheduledAt).toLocaleString() },
   {

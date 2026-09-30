@@ -1,6 +1,7 @@
 // What the panel shows around the analysis: a failed run explains itself, a
 // read-only role cannot start work, and switching runs swaps the result.
 import { expect, test } from "@playwright/test";
+import { openRun } from "./helpers.js";
 
 const API = `http://127.0.0.1:${process.env.E2E_API_PORT || "4010"}`;
 
@@ -23,10 +24,9 @@ test("a failed run says why and publishes no result", async ({ page, request }) 
   await signIn(page, data.adminEmail, data.adminPassword);
   await page.goto(`/tests/${data.testId}`);
 
-  // The test has three runs: the first analysis, a reanalysis of the same
-  // recording, and a second recording whose analysis failed quality control.
-  await expect(page.getByTestId("run")).toHaveCount(3);
-  await page.locator(`[data-run-id="${data.failedRunId}"]`).click();
+  // The failed run belongs to the second recording, whose analysis failed
+  // quality control.
+  await openRun(page, request, data.failedRunId);
 
   const failure = page.getByTestId("run-failure");
   await expect(failure).toBeVisible();
@@ -42,10 +42,10 @@ test("switching back to the successful run restores its result", async ({ page, 
   await signIn(page, data.adminEmail, data.adminPassword);
   await page.goto(`/tests/${data.testId}`);
 
-  await page.locator(`[data-run-id="${data.failedRunId}"]`).click();
+  await openRun(page, request, data.failedRunId);
   await expect(page.getByTestId("run-failure")).toBeVisible();
 
-  await page.locator(`[data-run-id="${data.runId}"]`).click();
+  await openRun(page, request, data.runId);
   await expect(page.getByTestId("metric-distance_cm")).toBeVisible();
   await expect(page.getByTestId("event")).toHaveCount(3);
   // The panel plays the run that is selected, not the one that failed.

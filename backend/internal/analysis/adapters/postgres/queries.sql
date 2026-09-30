@@ -43,16 +43,17 @@ ORDER BY c.paradigm_key, c.paradigm_version;
 
 -- ReadyRecordings lists verified recordings of tests that are not cancelled,
 -- with an active capability and no automatic run for the current source
--- generation and latest valid calibration.
+-- generation and calibration. An environment calibration never triggers a run for
+-- a recording that already has an automatic run: correcting the default must not
+-- silently reanalyze every recording, that stays an explicit manual run.
 -- name: ReadyRecordings :many
 WITH candidates AS (
     SELECT r.experiment_id, r.test_id, r.id AS recording_id, a.id AS source_asset_id, a.generation AS source_generation,
            a.crc32c AS source_crc32c, r.clip_start_us, r.clip_end_us, t.paradigm_key, t.paradigm_version,
            t.environment_revision_id, t.protocol_version_id, e.apparatus, s.session, r.created_at,
-           coalesce((SELECT c.id::text FROM misko.calibrations c
-                     WHERE c.recording_id = r.id AND c.status = 'VALID'
-                       AND NOT EXISTS (SELECT 1 FROM misko.calibrations n WHERE n.supersedes_id = c.id)), '')::text AS calibration_id
+           coalesce(ec.calibration_id::text, '')::text AS calibration_id, coalesce(ec.source, '')::text AS calibration_source
     FROM misko.test_recordings r
+    JOIN misko.effective_calibrations ec ON ec.recording_id = r.id
     JOIN misko.video_assets a ON a.id = r.video_asset_id
     JOIN misko.tests t ON t.id = r.test_id
     JOIN misko.environment_revisions e ON e.id = t.environment_revision_id
@@ -69,7 +70,7 @@ WHERE NOT EXISTS (
     SELECT 1 FROM misko.analysis_runs x
     WHERE x.trigger = 'AUTOMATIC' AND x.recording_id = c.recording_id AND x.source_generation = c.source_generation
       AND x.paradigm_key = c.paradigm_key AND x.paradigm_version = c.paradigm_version
-      AND coalesce(x.calibration_id::text, '') IN (c.calibration_id, ''))
+      AND (c.calibration_source = 'ENVIRONMENT' OR coalesce(x.calibration_id::text, '') IN (c.calibration_id, '')))
 ORDER BY c.created_at, c.recording_id
 LIMIT 500;
 
@@ -77,10 +78,9 @@ LIMIT 500;
 SELECT r.experiment_id, r.test_id, r.id AS recording_id, a.id AS source_asset_id, coalesce(a.generation, 0)::bigint AS source_generation,
        a.crc32c AS source_crc32c, r.clip_start_us, r.clip_end_us, t.paradigm_key, t.paradigm_version,
        t.environment_revision_id, t.protocol_version_id, e.apparatus, s.session, a.status AS video_status, t.status AS test_status,
-       coalesce((SELECT c.id::text FROM misko.calibrations c
-                 WHERE c.recording_id = r.id AND c.status = 'VALID'
-                   AND NOT EXISTS (SELECT 1 FROM misko.calibrations n WHERE n.supersedes_id = c.id)), '')::text AS calibration_id
+       coalesce(ec.calibration_id::text, '')::text AS calibration_id
 FROM misko.test_recordings r
+JOIN misko.effective_calibrations ec ON ec.recording_id = r.id
 JOIN misko.video_assets a ON a.id = r.video_asset_id
 JOIN misko.tests t ON t.id = r.test_id
 JOIN misko.environment_revisions e ON e.id = t.environment_revision_id
@@ -194,3 +194,11 @@ FROM misko.analysis_video_pairs p
 JOIN misko.video_assets s ON s.id = p.source_asset_id
 JOIN misko.video_assets a ON a.id = p.analyzed_asset_id
 WHERE p.run_id = @run_id;
+
+-- LockRecordingRuns serializes run creation for one recording until the
+-- transaction ends, so two requests cannot both see no pending run.
+-- name: LockRecordingRuns :exec
+SELECT pg_advisory_xact_lock(hashtextextended(@recording_id::text, 0));
+
+-- name: PendingRunExists :one
+SELECT EXISTS (SELECT 1 FROM misko.analysis_runs WHERE recording_id = @recording_id AND status IN ('QUEUED', 'RUNNING'))::boolean;

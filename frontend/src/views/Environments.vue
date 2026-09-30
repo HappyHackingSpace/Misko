@@ -4,6 +4,7 @@
 // the API would accept.
 import { computed, h, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
+import { RouterLink } from "vue-router";
 import { NAlert, NButton, NCard, NDataTable, NTag } from "naive-ui";
 import { api } from "../api/client.js";
 import { useAuth } from "../stores/auth.js";
@@ -36,7 +37,12 @@ const filtered = computed(() => {
 });
 
 const columns = computed(() => [
-  { title: t("common.name"), key: "name", sorter: "default" },
+  {
+    title: t("common.name"),
+    key: "name",
+    sorter: "default",
+    render: (row) => h(RouterLink, { class: "link", to: `/environments/${row.id}`, "data-test": "environment-open" }, () => row.name),
+  },
   {
     title: t("environments.paradigm"),
     key: "paradigmKey",

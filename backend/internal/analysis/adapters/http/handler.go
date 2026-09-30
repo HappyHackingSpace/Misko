@@ -30,6 +30,7 @@ var failures = []httpjson.Failure{
 	{Err: application.ErrRunNotFound, Status: http.StatusNotFound, Code: "analysis.runNotFound"},
 	{Err: application.ErrRecordingNotFound, Status: http.StatusNotFound, Code: "recording.notFound"},
 	{Err: application.ErrNotReady, Status: http.StatusConflict, Code: "analysis.notReady"},
+	{Err: application.ErrRunPending, Status: http.StatusConflict, Code: "analysis.runPending"},
 	{Err: application.ErrRunNotSucceeded, Status: http.StatusConflict, Code: "analysis.runNotSucceeded"},
 	{Err: application.ErrUnknownOutput, Status: http.StatusBadRequest, Code: "analysis.unknownOutput"},
 	{Err: application.ErrOutputNotVerified, Status: http.StatusConflict, Code: "analysis.outputNotVerified"},

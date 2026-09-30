@@ -183,8 +183,11 @@ defineExpose({ playEvent, seek });
 .head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .head h5 { margin: 0; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
 .toggle { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); white-space: nowrap; flex-shrink: 0; }
-.videos { display: flex; flex-direction: column; gap: 10px; }
+.videos { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+/* One player fills the row when the other is hidden. */
+.videos:has(figure[style*="display: none"]) { grid-template-columns: minmax(0, 1fr); }
 figure { margin: 0; display: flex; flex-direction: column; gap: 4px; }
-video { width: 100%; background: #000; border-radius: 10px; }
+video { width: 100%; height: 260px; object-fit: contain; background: #000; border-radius: 10px; }
+@media (max-width: 620px) { .videos { grid-template-columns: minmax(0, 1fr); } }
 figcaption { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
 </style>

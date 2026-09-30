@@ -84,8 +84,15 @@ export const environments = {
   list: () => api("/environments"),
   get: (id) => api(`/environments/${id}`),
   create: (body) => api("/environments", { method: "POST", body }),
+  update: (id, body) => api(`/environments/${id}`, { method: "PATCH", body }),
   revisions: (id) => api(`/environments/${id}/revisions`),
+  // Every revision with its environment's name, in one request.
+  allRevisions: () => api("/environment-revisions"),
   addRevision: (id, body) => api(`/environments/${id}/revisions`, { method: "POST", body }),
+  // The default calibration of one revision, entered once for every video of it.
+  calibrations: (id, number) => api(`/environments/${id}/revisions/${number}/calibrations`),
+  calibrationStatus: (id, number) => api(`/environments/${id}/revisions/${number}/calibration-status`),
+  calibrate: (id, number, body) => api(`/environments/${id}/revisions/${number}/calibrations`, { method: "POST", body }),
 };
 
 export const reports = {
