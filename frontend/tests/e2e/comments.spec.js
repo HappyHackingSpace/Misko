@@ -42,6 +42,8 @@ const commentWith = (page, text) => page.getByTestId("comment").filter({ hasText
 const commentById = (page, id) => page.locator(`[data-test="comment"][data-comment="${id}"]`);
 
 async function post(page, text) {
+  // The thread is a tab of the test page.
+  await page.getByTestId("page-tab-comments").click();
   await page.getByTestId("comment-draft").fill(text);
   await page.getByTestId("comment-submit").click();
   const row = commentWith(page, text);

@@ -145,6 +145,10 @@ test("cancelling asks for a reason and records it", async ({ page, request }) =>
   await signIn(page, data.adminEmail, data.adminPassword);
   await page.goto(`/tests/${planned.id}`);
 
+  // Cancelling is behind the menu of the page, and asks in a dialog.
+  await page.getByTestId("test-menu").click();
+  await page.getByTestId("cancel-open").click();
+
   // The API refuses an empty reason, so the screen does not offer to send one.
   await expect(page.getByTestId("cancel-test")).toBeDisabled();
 
@@ -167,6 +171,8 @@ test("a viewer reads the trials but runs nothing", async ({ page, request }) => 
   // role that had the permissions.
   await page.goto(`/tests/${data.testId}`);
   await expect(page.getByTestId("test-status")).toHaveAttribute("data-status", "IN_PROGRESS");
+  // The test has videos, so the page opens on them; the trials are one tab over.
+  await page.getByTestId("page-tab-trials").click();
   await expect(page.getByTestId("trial-count")).toBeVisible();
 
   // Running needs test:run and cancelling needs test:write; a viewer has neither.

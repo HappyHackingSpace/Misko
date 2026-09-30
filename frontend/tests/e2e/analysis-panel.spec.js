@@ -25,16 +25,16 @@ async function signIn(page, credentials) {
 // The seeded run's events, in the order the timeline shows them.
 async function openSeededTest(page, data) {
   await page.goto(`/tests/${data.testId}`);
-  await expect(page.getByTestId("runs")).toBeVisible();
+  await expect(page.getByTestId("run-select")).toBeVisible();
   await expect(page.getByTestId("event-timeline")).toBeVisible();
 }
 
 // The run the panel actually opened. The test has more than one published run,
 // so reading the pair of a run the panel is not showing would prove nothing.
 async function openRunId(page) {
-  const selected = page.locator('[data-test="run"][data-selected="true"]');
-  await expect(selected).toHaveCount(1);
-  return selected.getAttribute("data-run-id");
+  const result = page.getByTestId("result");
+  await expect(result).toHaveAttribute("data-run-id", /.+/);
+  return result.getAttribute("data-run-id");
 }
 
 // The pair of a run, read through the API with the panel's own token.

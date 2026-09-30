@@ -24,6 +24,9 @@ test("uploading a video adds a recording the API has verified", async ({ page, r
   await signIn(page, data.adminEmail, data.adminPassword);
   await page.goto(`/tests/${data.testId}`);
 
+  // The test is waiting for its trials, so the page opens on those: the videos
+  // are one tab over.
+  await page.getByTestId("page-tab-videos").click();
   // Wait for the list before counting: count() does not wait on its own.
   await expect(page.getByTestId("recordings")).toBeVisible();
   const rows = page.getByTestId("recording");
@@ -32,6 +35,7 @@ test("uploading a video adds a recording the API has verified", async ({ page, r
 
   // The same fixture the harness seeds: real bytes, so the checksum the browser
   // computes is the one the API checks against storage.
+  await page.getByTestId("upload-open").click();
   await page.getByTestId("upload-input").setInputFiles("tests/fixtures/analyzed.mp4");
 
   // The upload finishes and the reloaded list shows the new recording. A wrong
@@ -50,6 +54,8 @@ test("uploading a video adds a recording the API has verified", async ({ page, r
   // every project runs against the same seeded test, so the second and third
   // engine see the uploads the earlier ones made.
   const uploaded = rows.last();
-  await expect(uploaded).toContainText("analyzed.mp4");
+  // The list names videos by number; the file name rides in an attribute.
+  await expect(uploaded).toHaveAttribute("data-filename", "analyzed.mp4");
+  await expect(uploaded).toContainText(String(before + 1));
   await expect(uploaded).toHaveAttribute("data-video-status", "VERIFIED");
 });

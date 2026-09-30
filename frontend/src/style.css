@@ -45,6 +45,11 @@ label{font-size:12px;color:var(--muted);display:block;margin-bottom:4px}
 input,select,textarea{width:100%;background:var(--input-bg);color:var(--txt);border:1px solid var(--line);
   border-radius:9px;padding:9px 11px;font:inherit}
 .field{margin-bottom:12px;flex:1;min-width:160px}
+/* The native file picker takes the look of the panel's buttons. */
+input[type=file]{padding:6px 8px}
+input[type=file]::file-selector-button{cursor:pointer;margin-right:10px;border-radius:7px;border:1px solid var(--line);
+  background:var(--btn-bg);color:var(--txt);padding:5px 10px;font:inherit;font-weight:600}
+input[type=file]::file-selector-button:hover{border-color:var(--accent)}
 button{cursor:pointer;border-radius:9px;border:1px solid var(--line);background:var(--btn-bg);color:var(--txt);
   padding:9px 14px;font-weight:700}
 button.primary{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
