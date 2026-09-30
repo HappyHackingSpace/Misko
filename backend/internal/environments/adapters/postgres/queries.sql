@@ -50,3 +50,11 @@ ORDER BY number;
 SELECT id, environment_id, paradigm_key, number, paradigm_version, apparatus, notes, created_by, created_at
 FROM misko.environment_revisions
 WHERE environment_id = @environment_id AND number = @number;
+
+-- Every revision with the name of its environment, so a screen can say which
+-- apparatus a revision id belongs to with one request.
+-- name: ListAllRevisions :many
+SELECT r.id, r.environment_id, e.name AS environment_name, r.paradigm_key, r.number, r.paradigm_version
+FROM misko.environment_revisions r
+JOIN misko.environments e ON e.id = r.environment_id
+ORDER BY lower(e.name), e.id, r.number;

@@ -504,14 +504,50 @@ func seedAnalyzedTest(ctx context.Context, api bootstrap.API, store *diskStore, 
 	if err != nil {
 		return nil, err
 	}
+	inheritedRecordingID, err := seedInheritedRecording(c, store, testID, text(nested(environment, "environment"), "id"), overlay)
+	if err != nil {
+		return nil, err
+	}
 	return map[string]any{
 		"experimentId": experimentID, "experimentCode": "E2E", "subjectCode": "E2E-1",
-		"testId": testID, "recordingId": recordingID, "runId": runID, "secondRunId": secondRunID, "failedRunId": failedRunID,
+		"testId": testID, "recordingId": recordingID, "runId": runID,
+		"environmentId": text(nested(environment, "environment"), "id"), "inheritedRecordingId": inheritedRecordingID, "secondRunId": secondRunID, "failedRunId": failedRunID,
 		"viewerEmail": "viewer@e2e.local", "viewerPassword": viewerPassword,
 	}, nil
 }
 
 const viewerPassword = "Viewer-password-1"
+
+// seedInheritedRecording calibrates the seeded environment once and adds a
+// verified recording that has no calibration of its own, so it is analyzed with
+// the environment's. It runs after every analysis tick on purpose: the earlier
+// seeds claim the oldest queued run, and this recording must not queue one.
+func seedInheritedRecording(c *caller, store *diskStore, testID, environmentID string, overlay []byte) (string, error) {
+	if _, err := c.do(http.MethodPost, "/api/environments/"+environmentID+"/revisions/1/calibrations", map[string]any{
+		"cameraId": "e2e-camera", "frameWidth": 320, "frameHeight": 240,
+		"crop": map[string]any{"x": 0, "y": 0, "width": 320, "height": 240}, "measurementPlane": "ARENA_FLOOR",
+		"fitPoints": correspondences(fitPoints), "checkPoints": correspondences(checkPoints),
+	}); err != nil {
+		return "", err
+	}
+	started, err := c.do(http.MethodPost, "/api/tests/"+testID+"/recordings", map[string]any{
+		"fileName": "inherited.mp4", "contentType": "video/mp4", "sizeBytes": len(overlay), "crc32c": mediadomain.FormatCRC32C(crc32c(overlay)),
+		"clipStartUs": 0, "clipEndUs": 4_000_000,
+	})
+	if err != nil {
+		return "", err
+	}
+	recordingID := text(nested(started, "recording"), "id")
+	uploaded, err := url.Parse(text(nested(started, "upload"), "url"))
+	if err != nil {
+		return "", err
+	}
+	store.put(uploaded.Query().Get("object"), overlay, "video/mp4")
+	if _, err := c.do(http.MethodPost, "/api/tests/"+testID+"/recordings/"+recordingID+"/finalize", map[string]any{}); err != nil {
+		return "", err
+	}
+	return recordingID, nil
+}
 
 // seedSecondRun reanalyzes the recording that already has a published result,
 // so the test has two runs whose pairs can both be opened. The analyzed video

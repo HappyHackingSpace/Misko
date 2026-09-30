@@ -37,7 +37,7 @@ business routes return 404. There is no legacy API adapter or data migration.
 - `internal/protocols`: test protocols of an experiment with immutable versions of ordered paradigm steps.
 - `internal/tests`: tests of enrolled subjects, their trials and comments.
 - `internal/media`: video assets and test recordings; `adapters/gcs` is the only package that imports the Cloud Storage client.
-- `internal/calibration`: per-video pixel-to-centimeter calibrations and the status that gates analysis.
+- `internal/calibration`: pixel-to-centimeter calibrations, the default of an environment revision and manual overrides per video, and the status that gates analysis.
 - `internal/analysis`: analysis workers, runs, leases, result validation and publication of metrics, events, artifacts and video pairs.
 - `internal/reports`: read-only reports, exports and group comparisons over the reporting views.
 - `internal/health`: readiness use case and probes.
@@ -102,8 +102,10 @@ The five roles and their permissions are static code, not database rows.
 | `GET /api/tests/{id}/recordings`, `GET /api/tests/{id}/recordings/{recordingId}/read-url` | `*:read` |
 | `POST /api/tests/{id}/recordings` | `test:run` |
 | `POST /api/tests/{id}/recordings/{recordingId}/finalize` | `test:run`, and the uploader, SUPERADMIN or LAB_MANAGER |
-| `GET /api/tests/{id}/recordings/{recordingId}/calibrations`, `GET .../calibration-status` | `*:read` |
-| `POST /api/tests/{id}/recordings/{recordingId}/calibrations` | `test:run` |
+| `GET /api/tests/{id}/recordings/{recordingId}/calibrations`, `GET ./../calibration-status` | `*:read` |
+| `POST /api/tests/{id}/recordings/{recordingId}/calibrations` (manual override for one video) | `test:run` |
+| `GET /api/environments/{id}/revisions/{number}/calibrations`, `GET ./../calibration-status` | `*:read` |
+| `POST /api/environments/{id}/revisions/{number}/calibrations` | `apparatus:write` |
 
 Use cases check the actor and permission themselves; HTTP handlers only translate.
 Rules enforced by tests:
@@ -420,8 +422,9 @@ GCS_LIVE_BUCKET=BUCKET GCS_LIVE_ORIGIN=https://UI_ORIGIN go test -tags=gcslive -
 
 ## Calibration
 
-Physical metrics need a validated calibration of the video. Paradigms whose QC
-contract has `max_calibration_error_cm` (the trajectory paradigms) require one;
+Physical metrics need a validated calibration. Paradigms whose QC contract has
+`max_calibration_error_cm` (the trajectory paradigms) require one, and every
+new paradigm that declares it gets the workflow below without further code;
 observation-only paradigms such as ROTAROD report `NOT_REQUIRED`.
 
 - `POST /api/tests/{id}/recordings/{recordingId}/calibrations` (`test:run`) takes
@@ -445,10 +448,27 @@ observation-only paradigms such as ROTAROD report `NOT_REQUIRED`.
   the recording's latest calibration, and keeps the camera id and frame size;
   the crop may change. The recording row is locked, a unique index allows one
   first calibration, and a unique `supersedes_id` keeps one linear chain.
+- A calibration has a scope. An environment calibration is the default of one
+  environment revision, entered once when the rig is set up with
+  `POST /api/environments/{id}/revisions/{number}/calibrations`
+  (`apparatus:write`, no video, so no reference frame). A recording calibration
+  is a manual override for one video, for example when its camera or arena moved.
+  Chains are separate: one per revision and one per recording, each linear and
+  immutable. A recording calibration belongs to the revision of its test.
+- A recording is analyzed with its own latest calibration when it has one, and a
+  `REJECTED` one leaves it waiting instead of falling back to the environment.
+  Without one it uses the latest calibration of its environment revision. One
+  rule decides this (`calibration/domain.Effective`, mirrored by the
+  `misko.effective_calibrations` view that analysis and the dashboard read).
 - `GET .../calibration-status` returns `WAITING_FOR_CALIBRATION` until the video
-  is verified and its latest calibration is `VALID`, then `CALIBRATED` with that
-  calibration. Analysis runs reference the calibration id, so older runs keep
-  their inputs after a correction.
+  is verified and a valid calibration applies, then `CALIBRATED` with that
+  calibration. The response also carries `source` (`ENVIRONMENT` or
+  `RECORDING`) and `drift` (`UNCHECKED`: nothing checks camera or arena movement
+  yet, so a calibration taken from the environment is trusted as entered).
+- Correcting an environment calibration never queues automatic runs for
+  recordings that already have one; reanalysis stays an explicit manual run.
+  Analysis runs reference the calibration id, so older runs keep their inputs
+  after a correction.
 
 ## Analysis runs
 
@@ -484,10 +504,11 @@ session parameters. The inputs never change; reanalysis is a new run.
 - `cmd/jobs` ticks every `JOB_INTERVAL`. A tick first returns runs whose lease
   expired to the queue, or fails them with `LEASE_EXPIRED` after the last
   attempt, then creates one `AUTOMATIC` run for every recording whose video is
-  `VERIFIED`, whose latest calibration is `VALID` when the paradigm requires it,
+  `VERIFIED`, with a valid calibration (its own, else the environment's) when the paradigm requires it,
   and whose paradigm version an enabled worker supports. A partial unique index on
   recording, source generation, paradigm version and calibration makes concurrent
-  ticks create each automatic run once; a new calibration creates a new run.
+  ticks create each automatic run once; a new calibration of the recording creates a
+  new run, a corrected environment calibration does not.
 - `POST /api/tests/{id}/recordings/{recordingId}/analysis-runs` (`test:run`)
   queues a `MANUAL` run with the current inputs, or returns 409
   `analysis.notReady`. Earlier runs and their results stay unchanged.

@@ -124,6 +124,20 @@ func (s *Store) Revisions(ctx context.Context, environmentID string) ([]domain.R
 	return out, nil
 }
 
+func (s *Store) AllRevisions(ctx context.Context) ([]domain.RevisionSummary, error) {
+	rows, err := s.queries.ListAllRevisions(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list all revisions: %w", err)
+	}
+	out := make([]domain.RevisionSummary, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, domain.RevisionSummary{
+			ID: r.ID, EnvironmentID: r.EnvironmentID, EnvironmentName: r.EnvironmentName, ParadigmKey: r.ParadigmKey, Number: int(r.Number), ParadigmVersion: int(r.ParadigmVersion),
+		})
+	}
+	return out, nil
+}
+
 func (s *Store) Revision(ctx context.Context, environmentID string, number int) (domain.Revision, error) {
 	if !pgtx.ValidUUID(environmentID) || number < 1 || number > math.MaxInt32 {
 		return domain.Revision{}, application.ErrRevisionNotFound

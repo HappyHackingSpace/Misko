@@ -557,10 +557,9 @@ const getCandidate = `-- name: GetCandidate :one
 SELECT r.experiment_id, r.test_id, r.id AS recording_id, a.id AS source_asset_id, coalesce(a.generation, 0)::bigint AS source_generation,
        a.crc32c AS source_crc32c, r.clip_start_us, r.clip_end_us, t.paradigm_key, t.paradigm_version,
        t.environment_revision_id, t.protocol_version_id, e.apparatus, s.session, a.status AS video_status, t.status AS test_status,
-       coalesce((SELECT c.id::text FROM misko.calibrations c
-                 WHERE c.recording_id = r.id AND c.status = 'VALID'
-                   AND NOT EXISTS (SELECT 1 FROM misko.calibrations n WHERE n.supersedes_id = c.id)), '')::text AS calibration_id
+       coalesce(ec.calibration_id::text, '')::text AS calibration_id
 FROM misko.test_recordings r
+JOIN misko.effective_calibrations ec ON ec.recording_id = r.id
 JOIN misko.video_assets a ON a.id = r.video_asset_id
 JOIN misko.tests t ON t.id = r.test_id
 JOIN misko.environment_revisions e ON e.id = t.environment_revision_id
@@ -999,6 +998,17 @@ func (q *Queries) LockExpiredRuns(ctx context.Context, now time.Time) ([]MiskoAn
 	return items, nil
 }
 
+const lockRecordingRuns = `-- name: LockRecordingRuns :exec
+SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))
+`
+
+// LockRecordingRuns serializes run creation for one recording until the
+// transaction ends, so two requests cannot both see no pending run.
+func (q *Queries) LockRecordingRuns(ctx context.Context, recordingID string) error {
+	_, err := q.db.Exec(ctx, lockRecordingRuns, recordingID)
+	return err
+}
+
 const lockRun = `-- name: LockRun :one
 SELECT id, experiment_id, test_id, recording_id, source_asset_id, source_generation, source_crc32c, clip_start_us, clip_end_us, calibration_id, paradigm_key, paradigm_version, metric_engine_version, result_schema_version, environment_revision_id, protocol_version_id, parameters, trigger, status, attempt, max_attempts, worker_id, lease_expires_at, available_at, model_version, failure_reason, created_by, created_at, finished_at FROM misko.analysis_runs WHERE id = $1 FOR UPDATE
 `
@@ -1090,15 +1100,25 @@ func (q *Queries) OutputUploads(ctx context.Context, arg OutputUploadsParams) ([
 	return items, nil
 }
 
+const pendingRunExists = `-- name: PendingRunExists :one
+SELECT EXISTS (SELECT 1 FROM misko.analysis_runs WHERE recording_id = $1 AND status IN ('QUEUED', 'RUNNING'))::boolean
+`
+
+func (q *Queries) PendingRunExists(ctx context.Context, recordingID string) (bool, error) {
+	row := q.db.QueryRow(ctx, pendingRunExists, recordingID)
+	var column_1 bool
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const readyRecordings = `-- name: ReadyRecordings :many
 WITH candidates AS (
     SELECT r.experiment_id, r.test_id, r.id AS recording_id, a.id AS source_asset_id, a.generation AS source_generation,
            a.crc32c AS source_crc32c, r.clip_start_us, r.clip_end_us, t.paradigm_key, t.paradigm_version,
            t.environment_revision_id, t.protocol_version_id, e.apparatus, s.session, r.created_at,
-           coalesce((SELECT c.id::text FROM misko.calibrations c
-                     WHERE c.recording_id = r.id AND c.status = 'VALID'
-                       AND NOT EXISTS (SELECT 1 FROM misko.calibrations n WHERE n.supersedes_id = c.id)), '')::text AS calibration_id
+           coalesce(ec.calibration_id::text, '')::text AS calibration_id, coalesce(ec.source, '')::text AS calibration_source
     FROM misko.test_recordings r
+    JOIN misko.effective_calibrations ec ON ec.recording_id = r.id
     JOIN misko.video_assets a ON a.id = r.video_asset_id
     JOIN misko.tests t ON t.id = r.test_id
     JOIN misko.environment_revisions e ON e.id = t.environment_revision_id
@@ -1115,7 +1135,7 @@ WHERE NOT EXISTS (
     SELECT 1 FROM misko.analysis_runs x
     WHERE x.trigger = 'AUTOMATIC' AND x.recording_id = c.recording_id AND x.source_generation = c.source_generation
       AND x.paradigm_key = c.paradigm_key AND x.paradigm_version = c.paradigm_version
-      AND coalesce(x.calibration_id::text, '') IN (c.calibration_id, ''))
+      AND (c.calibration_source = 'ENVIRONMENT' OR coalesce(x.calibration_id::text, '') IN (c.calibration_id, '')))
 ORDER BY c.created_at, c.recording_id
 LIMIT 500
 `
@@ -1140,7 +1160,9 @@ type ReadyRecordingsRow struct {
 
 // ReadyRecordings lists verified recordings of tests that are not cancelled,
 // with an active capability and no automatic run for the current source
-// generation and latest valid calibration.
+// generation and calibration. An environment calibration never triggers a run for
+// a recording that already has an automatic run: correcting the default must not
+// silently reanalyze every recording, that stays an explicit manual run.
 func (q *Queries) ReadyRecordings(ctx context.Context) ([]ReadyRecordingsRow, error) {
 	rows, err := q.db.Query(ctx, readyRecordings)
 	if err != nil {

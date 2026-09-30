@@ -12,6 +12,7 @@ import (
 	"github.com/HappyHackingSpace/Misko/backend/internal/platform/pgtx"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"math"
 )
 
 // constraintErrors maps named constraints to the error a violation means.
@@ -56,11 +57,51 @@ func (s *Store) LockRecording(ctx context.Context, testID, recordingID string) (
 	return toRef(sqlcgen.GetRecordingRefRow(row))
 }
 
+func (s *Store) Revision(ctx context.Context, environmentID string, number int) (application.RevisionRef, error) {
+	if !pgtx.ValidUUID(environmentID) || number < 1 || number > math.MaxInt32 {
+		return application.RevisionRef{}, application.ErrRevisionNotFound
+	}
+	row, err := s.queries.GetRevisionRef(ctx, sqlcgen.GetRevisionRefParams{EnvironmentID: environmentID, Number: int32(number)})
+	if err != nil {
+		return application.RevisionRef{}, translate(err, application.ErrRevisionNotFound, "get revision")
+	}
+	return toRevisionRef(row)
+}
+
+func (s *Store) LockRevision(ctx context.Context, environmentID string, number int) (application.RevisionRef, error) {
+	if !pgtx.ValidUUID(environmentID) || number < 1 || number > math.MaxInt32 {
+		return application.RevisionRef{}, application.ErrRevisionNotFound
+	}
+	row, err := s.queries.LockRevisionRef(ctx, sqlcgen.LockRevisionRefParams{EnvironmentID: environmentID, Number: int32(number)})
+	if err != nil {
+		return application.RevisionRef{}, translate(err, application.ErrRevisionNotFound, "lock revision")
+	}
+	return toRevisionRef(sqlcgen.GetRevisionRefRow(row))
+}
+
 func (s *Store) Calibrations(ctx context.Context, recordingID string) ([]domain.Calibration, error) {
-	rows, err := s.queries.ListCalibrations(ctx, recordingID)
+	if !pgtx.ValidUUID(recordingID) {
+		return nil, nil
+	}
+	rows, err := s.queries.ListCalibrations(ctx, &recordingID)
 	if err != nil {
 		return nil, fmt.Errorf("list calibrations: %w", err)
 	}
+	return toCalibrations(rows)
+}
+
+func (s *Store) EnvironmentCalibrations(ctx context.Context, revisionID string) ([]domain.Calibration, error) {
+	if !pgtx.ValidUUID(revisionID) {
+		return nil, nil
+	}
+	rows, err := s.queries.ListEnvironmentCalibrations(ctx, revisionID)
+	if err != nil {
+		return nil, fmt.Errorf("list environment calibrations: %w", err)
+	}
+	return toCalibrations(rows)
+}
+
+func toCalibrations(rows []sqlcgen.MiskoCalibration) ([]domain.Calibration, error) {
 	out := make([]domain.Calibration, 0, len(rows))
 	for _, row := range rows {
 		c, err := toCalibration(row)
@@ -82,10 +123,10 @@ func (s *Store) CreateCalibration(ctx context.Context, c domain.Calibration) (do
 		return domain.Calibration{}, fmt.Errorf("encode CHECK points: %w", err)
 	}
 	row, err := s.queries.CreateCalibration(ctx, sqlcgen.CreateCalibrationParams{
-		RecordingID: c.RecordingID, SupersedesID: optional(c.SupersedesID), CameraID: c.CameraID,
+		RecordingID: optional(c.RecordingID), EnvironmentRevisionID: c.EnvironmentRevisionID, SupersedesID: optional(c.SupersedesID), CameraID: c.CameraID,
 		FrameWidth: int32(c.FrameWidth), FrameHeight: int32(c.FrameHeight),
 		CropX: int32(c.Crop.X), CropY: int32(c.Crop.Y), CropWidth: int32(c.Crop.Width), CropHeight: int32(c.Crop.Height),
-		ReferenceFrameUs: c.ReferenceFrameUs, MeasurementPlane: string(c.Plane), FitPoints: fit, CheckPoints: check, Transform: c.Transform[:],
+		ReferenceFrameUs: referenceFrame(c), MeasurementPlane: string(c.Plane), FitPoints: fit, CheckPoints: check, Transform: c.Transform[:],
 		FitRmsErrorCm: c.FitRMSErrorCm, CheckRmsErrorCm: c.CheckRMSErrorCm, CheckMaxErrorCm: c.CheckMaxErrorCm, ToleranceCm: c.ToleranceCm,
 		AlgorithmVersion: c.AlgorithmVersion, Status: string(c.Status), RejectionReason: optional(c.RejectionReason), CreatedBy: c.CreatedBy,
 	})
@@ -140,8 +181,16 @@ func toRef(r sqlcgen.GetRecordingRefRow) (application.RecordingRef, error) {
 		return application.RecordingRef{}, fmt.Errorf("decode apparatus: %w", err)
 	}
 	return application.RecordingRef{
-		ID: r.ID, TestID: r.TestID, VideoStatus: r.VideoStatus, ParadigmKey: r.ParadigmKey, ParadigmVersion: int(r.ParadigmVersion), Apparatus: apparatus,
+		ID: r.ID, TestID: r.TestID, VideoStatus: r.VideoStatus, ParadigmKey: r.ParadigmKey, ParadigmVersion: int(r.ParadigmVersion), EnvironmentRevisionID: r.EnvironmentRevisionID, Apparatus: apparatus,
 	}, nil
+}
+
+func toRevisionRef(r sqlcgen.GetRevisionRefRow) (application.RevisionRef, error) {
+	apparatus := map[string]float64{}
+	if err := json.Unmarshal(r.Apparatus, &apparatus); err != nil {
+		return application.RevisionRef{}, fmt.Errorf("decode apparatus: %w", err)
+	}
+	return application.RevisionRef{ID: r.ID, EnvironmentID: r.EnvironmentID, ParadigmKey: r.ParadigmKey, ParadigmVersion: int(r.ParadigmVersion), Apparatus: apparatus}, nil
 }
 
 func toCalibration(r sqlcgen.MiskoCalibration) (domain.Calibration, error) {
@@ -157,10 +206,10 @@ func toCalibration(r sqlcgen.MiskoCalibration) (domain.Calibration, error) {
 		return domain.Calibration{}, fmt.Errorf("calibration %s has %d transform values", r.ID, len(r.Transform))
 	}
 	c := domain.Calibration{
-		ID: r.ID, RecordingID: r.RecordingID, SupersedesID: value(r.SupersedesID), CameraID: r.CameraID,
+		ID: r.ID, RecordingID: value(r.RecordingID), EnvironmentRevisionID: r.EnvironmentRevisionID, SupersedesID: value(r.SupersedesID), CameraID: r.CameraID,
 		FrameWidth: int(r.FrameWidth), FrameHeight: int(r.FrameHeight),
 		Crop:             domain.Rect{X: int(r.CropX), Y: int(r.CropY), Width: int(r.CropWidth), Height: int(r.CropHeight)},
-		ReferenceFrameUs: r.ReferenceFrameUs, Plane: domain.Plane(r.MeasurementPlane), Fit: fit, Check: check,
+		ReferenceFrameUs: int64Value(r.ReferenceFrameUs), Plane: domain.Plane(r.MeasurementPlane), Fit: fit, Check: check,
 		FitRMSErrorCm: r.FitRmsErrorCm, CheckRMSErrorCm: r.CheckRmsErrorCm, CheckMaxErrorCm: r.CheckMaxErrorCm, ToleranceCm: r.ToleranceCm,
 		AlgorithmVersion: r.AlgorithmVersion, Status: domain.Status(r.Status), RejectionReason: value(r.RejectionReason),
 		CreatedBy: r.CreatedBy, CreatedAt: r.CreatedAt.UTC(),
@@ -182,4 +231,19 @@ func value(s *string) string {
 		return ""
 	}
 	return *s
+}
+
+// referenceFrame stores the video time only for calibrations of a recording.
+func referenceFrame(c domain.Calibration) *int64 {
+	if c.RecordingID == "" {
+		return nil
+	}
+	return &c.ReferenceFrameUs
+}
+
+func int64Value(v *int64) int64 {
+	if v == nil {
+		return 0
+	}
+	return *v
 }

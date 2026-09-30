@@ -1,7 +1,8 @@
-// Package domain holds per-video calibrations: a pixel-to-centimeter
-// homography fitted from FIT points and validated against independent CHECK
-// points. Calibrations never change; a correction is a new calibration that
-// supersedes the latest one of the same recording.
+// Package domain holds calibrations: a pixel-to-centimeter homography fitted
+// from FIT points and validated against independent CHECK points. A
+// calibration is either the default of an environment revision or a manual
+// override for one recording. Calibrations never change; a correction is a new
+// calibration that supersedes the latest one of the same chain.
 package domain
 
 import (
@@ -32,7 +33,7 @@ var (
 	ErrPointOutsideEnvironment = errors.New("plane coordinates must lie inside the environment")
 	ErrCheckPointReused        = errors.New("CHECK points must differ from FIT points")
 	ErrDegenerateFit           = errors.New("FIT points must include four points with no three on a line")
-	ErrStaleCorrection         = errors.New("a correction must supersede the latest calibration of the recording, and only the first calibration may have none")
+	ErrStaleCorrection         = errors.New("a correction must supersede the latest calibration of its chain, and only the first calibration may have none")
 	ErrCameraMismatch          = errors.New("a correction must use the same camera and frame size")
 )
 
@@ -42,6 +43,18 @@ const (
 	ArenaFloor   Plane = "ARENA_FLOOR"
 	WaterSurface Plane = "WATER_SURFACE"
 	ApparatusTop Plane = "APPARATUS_TOP"
+)
+
+// Scope tells what a calibration applies to.
+type Scope string
+
+const (
+	// ScopeEnvironment is the default of an environment revision, entered once
+	// when the rig is set up and used by every recording of that revision.
+	ScopeEnvironment Scope = "ENVIRONMENT"
+	// ScopeRecording is a manual override for one recording, used when its
+	// camera or arena moved.
+	ScopeRecording Scope = "RECORDING"
 )
 
 type Status string
@@ -80,6 +93,7 @@ type Input struct {
 	FrameWidth, FrameHeight int
 	Crop                    Rect
 	// ReferenceFrameUs is the video time of the frame the points were read from.
+	// Environment calibrations have no video and leave it zero.
 	ReferenceFrameUs int64
 	Plane            Plane
 	Fit, Check       []Correspondence
@@ -87,8 +101,12 @@ type Input struct {
 }
 
 type Calibration struct {
-	ID                      string
-	RecordingID             string
+	ID string
+	// RecordingID is empty for an environment calibration.
+	RecordingID string
+	// EnvironmentRevisionID is the revision whose measurements the points were
+	// validated against.
+	EnvironmentRevisionID   string
 	SupersedesID            string
 	CameraID                string
 	FrameWidth, FrameHeight int
@@ -179,6 +197,14 @@ func New(in Input, req Requirement, createdBy string, now time.Time) (Calibratio
 	return c, nil
 }
 
+// Scope is ScopeRecording when the calibration belongs to a recording.
+func (c Calibration) Scope() Scope {
+	if c.RecordingID != "" {
+		return ScopeRecording
+	}
+	return ScopeEnvironment
+}
+
 // Latest returns the calibration no other calibration supersedes, or nil.
 func Latest(chain []Calibration) *Calibration {
 	superseded := map[string]bool{}
@@ -220,4 +246,42 @@ func SameSetup(previous Calibration, in Input) error {
 		return ErrCameraMismatch
 	}
 	return nil
+}
+
+// Source names where the effective calibration of a recording comes from.
+type Source string
+
+const (
+	SourceEnvironment Source = "ENVIRONMENT"
+	SourceRecording   Source = "RECORDING"
+)
+
+// Resolution is the calibration a recording is analyzed with. A nil
+// Calibration means the recording waits for calibration; Source then names the
+// chain that is blocking it, or is empty when nothing has been calibrated.
+type Resolution struct {
+	Calibration *Calibration
+	Source      Source
+}
+
+// Effective decides which calibration a recording uses. A calibration entered
+// for the recording itself always decides: when it is REJECTED the recording
+// waits instead of silently falling back to the environment, because someone
+// entered it for a reason. Without one, the environment default applies when
+// it is VALID. Every reader of calibration state must use this function so the
+// status endpoint, the analysis scheduler and the dashboard cannot disagree.
+func Effective(recording, environment []Calibration) Resolution {
+	if latest := Latest(recording); latest != nil {
+		if latest.Status == Valid {
+			return Resolution{Calibration: latest, Source: SourceRecording}
+		}
+		return Resolution{Source: SourceRecording}
+	}
+	if current := Current(environment); current != nil {
+		return Resolution{Calibration: current, Source: SourceEnvironment}
+	}
+	if Latest(environment) != nil {
+		return Resolution{Source: SourceEnvironment}
+	}
+	return Resolution{}
 }

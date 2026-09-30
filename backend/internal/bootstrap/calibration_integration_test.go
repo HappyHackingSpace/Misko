@@ -51,6 +51,7 @@ func TestCalibrationOverHTTP(t *testing.T) {
 		"revision": map[string]any{"paradigmVersion": 1, "apparatus": map[string]any{"arena_width_cm": 50, "arena_height_cm": 40, "center_fraction": 0.5}}})
 	rotarod := c.create("/api/environments", admin, map[string]any{"name": "Rod", "paradigmKey": "ROTAROD",
 		"revision": map[string]any{"paradigmVersion": 1, "apparatus": map[string]any{"start_rpm": 4, "end_rpm": 40}}})
+	rotarodEnv := rotarod["environment"].(map[string]any)
 	protocol := c.create(base+"/protocols", admin, map[string]any{"name": "Battery", "version": map[string]any{"steps": []any{
 		map[string]any{"position": 1, "paradigmKey": "OPEN_FIELD", "paradigmVersion": 1, "environmentRevisionId": id(arena["revision"].(map[string]any)), "trialType": "STANDARD", "trials": 1},
 		map[string]any{"position": 2, "paradigmKey": "ROTAROD", "paradigmVersion": 1, "environmentRevisionId": id(rotarod["revision"].(map[string]any)), "trialType": "ACCELERATING", "trials": 1},
@@ -126,4 +127,35 @@ func TestCalibrationOverHTTP(t *testing.T) {
 		t.Fatalf("observation-only paradigm: %v", s)
 	}
 	c.expect("calibrate a rotarod video", c.call("POST", rotarodPath+"/calibrations", tokens["TECHNICIAN"], body("", 0)), 409, "calibration.notRequired")
+
+	// The default calibration of an environment revision serves every recording of it.
+	arenaPath := "/api/environments/" + id(arena["environment"].(map[string]any)) + "/revisions/1"
+	second := upload(openField, true)
+	if s := status(second); s["status"] != "WAITING_FOR_CALIBRATION" || s["source"] != nil || s["drift"] != nil {
+		t.Fatalf("before the environment is calibrated: %v", s)
+	}
+	if s := c.expect("environment status", c.call("GET", arenaPath+"/calibration-status", tokens["VIEWER"], nil), 200, "").body; s["status"] != "WAITING_FOR_CALIBRATION" {
+		t.Fatalf("uncalibrated environment: %v", s)
+	}
+	c.expect("technician calibrates the rig", c.call("POST", arenaPath+"/calibrations", tokens["TECHNICIAN"], body("", 0)), 403, "auth.forbidden")
+	c.expect("unknown revision", c.call("POST", "/api/environments/"+id(arena["environment"].(map[string]any))+"/revisions/9/calibrations", admin, body("", 0)), 404, "environment.revisionNotFound")
+	c.expect("rotarod rig", c.call("POST", "/api/environments/"+id(rotarodEnv)+"/revisions/1/calibrations", admin, body("", 0)), 409, "calibration.notRequired")
+	defaults := c.create(arenaPath+"/calibrations", admin, body("", 0))
+	if defaults["status"] != "VALID" || defaults["scope"] != "ENVIRONMENT" || defaults["recordingId"] != nil || defaults["referenceFrameUs"] != nil || defaults["environmentRevisionId"] != id(arena["revision"].(map[string]any)) {
+		t.Fatalf("environment calibration: %v", defaults)
+	}
+	if s := status(second); s["status"] != "CALIBRATED" || s["source"] != "ENVIRONMENT" || s["drift"] != "UNCHECKED" || s["calibration"].(map[string]any)["id"] != id(defaults) {
+		t.Fatalf("inherited by a recording: %v", s)
+	}
+	if s := status(recPath); s["status"] != "WAITING_FOR_CALIBRATION" || s["source"] != "RECORDING" {
+		t.Fatalf("a rejected override does not fall back to the default: %v", s)
+	}
+	override := c.create(recPath+"/calibrations", tokens["TECHNICIAN"], body(id(rejected), 0))
+	if s := status(recPath); s["status"] != "CALIBRATED" || s["source"] != "RECORDING" || s["calibration"].(map[string]any)["id"] != id(override) {
+		t.Fatalf("override: %v", s)
+	}
+	c.expect("second first environment calibration", c.call("POST", arenaPath+"/calibrations", admin, body("", 0)), 409, "calibration.staleCorrection")
+	if list := c.call("GET", arenaPath+"/calibrations", tokens["VIEWER"], nil).body["data"].([]any); len(list) != 1 {
+		t.Fatalf("environment calibrations: %v", list)
+	}
 }

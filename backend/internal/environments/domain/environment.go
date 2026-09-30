@@ -106,3 +106,14 @@ func ValidateParadigmKey(key string) error {
 	}
 	return nil
 }
+
+// RevisionSummary names the environment a revision belongs to. It carries no
+// measurements; it lets a reader turn a revision id into "Arena A, revision 2".
+type RevisionSummary struct {
+	ID              string
+	EnvironmentID   string
+	EnvironmentName string
+	ParadigmKey     string
+	Number          int
+	ParadigmVersion int
+}

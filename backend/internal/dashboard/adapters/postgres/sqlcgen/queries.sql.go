@@ -91,18 +91,13 @@ func (q *Queries) RecentSucceededRuns(ctx context.Context, rowLimit int32) ([]Re
 }
 
 const recordingsAwaitingCalibrationCheck = `-- name: RecordingsAwaitingCalibrationCheck :many
-WITH latest_calibration AS (
-    SELECT c.recording_id, c.status
-    FROM misko.calibrations c
-    WHERE NOT EXISTS (SELECT 1 FROM misko.calibrations n WHERE n.supersedes_id = c.id)
-)
 SELECT r.id AS recording_id, t.paradigm_key, t.paradigm_version, er.apparatus
 FROM misko.test_recordings r
 JOIN misko.video_assets a ON a.id = r.video_asset_id
 JOIN misko.tests t ON t.id = r.test_id
 JOIN misko.environment_revisions er ON er.id = t.environment_revision_id
-LEFT JOIN latest_calibration lc ON lc.recording_id = r.id
-WHERE a.status = 'VERIFIED' AND (lc.status IS NULL OR lc.status <> 'VALID')
+JOIN misko.effective_calibrations ec ON ec.recording_id = r.id
+WHERE a.status = 'VERIFIED' AND ec.calibration_id IS NULL
 `
 
 type RecordingsAwaitingCalibrationCheckRow struct {
@@ -112,10 +107,10 @@ type RecordingsAwaitingCalibrationCheckRow struct {
 	Apparatus       []byte
 }
 
-// Every verified recording whose calibration chain has no unsuperseded VALID
-// entry. Whether the paradigm actually requires calibration for it is a rule
-// of the paradigm catalog, not of the database, so it is decided in Go from
-// this candidate set (mirrors the single-recording calibration status check).
+// Every verified recording without an effective calibration: neither its own
+// latest calibration nor, when it has none, its environment default is VALID. Whether the paradigm
+// actually requires calibration for it is a rule of the paradigm catalog, not of
+// the database, so it is decided in Go from this candidate set (mirrors the single-recording calibration status check).
 func (q *Queries) RecordingsAwaitingCalibrationCheck(ctx context.Context) ([]RecordingsAwaitingCalibrationCheckRow, error) {
 	rows, err := q.db.Query(ctx, recordingsAwaitingCalibrationCheck)
 	if err != nil {

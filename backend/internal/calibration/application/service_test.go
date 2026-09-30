@@ -121,6 +121,10 @@ func TestStatusShowsWaitingForCalibration(t *testing.T) {
 	viewer := access.Actor{UserID: "viewer", Role: access.Viewer}
 	valid, _ := domain.New(input(), domain.Requirement{Required: true, ToleranceCm: 2}, "tech", now)
 	valid.ID = "c1"
+	envValid := valid
+	envValid.ID = "e1"
+	rejectedFirst := valid
+	rejectedFirst.ID, rejectedFirst.Status, rejectedFirst.RejectionReason = "c9", domain.Rejected, domain.RejectedCheckError
 	rejected := valid
 	rejected.ID, rejected.SupersedesID, rejected.Status, rejected.RejectionReason = "c2", "c1", domain.Rejected, domain.RejectedCheckError
 	for name, tc := range map[string]struct {
@@ -128,11 +132,15 @@ func TestStatusShowsWaitingForCalibration(t *testing.T) {
 		status  CalibrationStatus
 		current string
 	}{
-		"no calibration yet":         {&fakeStore{}, Waiting, ""},
-		"valid calibration":          {&fakeStore{chain: []domain.Calibration{valid}}, Calibrated, "c1"},
-		"latest correction rejected": {&fakeStore{chain: []domain.Calibration{valid, rejected}}, Waiting, ""},
-		"unverified video":           {&fakeStore{video: "PENDING"}, Waiting, ""},
-		"observation-only paradigm":  {&fakeStore{paradigm: "ROTAROD"}, NotRequired, ""},
+		"no calibration yet":            {&fakeStore{}, Waiting, ""},
+		"valid calibration":             {&fakeStore{chain: []domain.Calibration{valid}}, Calibrated, "c1"},
+		"latest correction rejected":    {&fakeStore{chain: []domain.Calibration{valid, rejected}}, Waiting, ""},
+		"unverified video":              {&fakeStore{video: "PENDING"}, Waiting, ""},
+		"observation-only paradigm":     {&fakeStore{paradigm: "ROTAROD"}, NotRequired, ""},
+		"environment default":           {&fakeStore{envChain: []domain.Calibration{envValid}}, Calibrated, "e1"},
+		"override beats default":        {&fakeStore{chain: []domain.Calibration{valid}, envChain: []domain.Calibration{envValid}}, Calibrated, "c1"},
+		"rejected override waits":       {&fakeStore{chain: []domain.Calibration{rejectedFirst}, envChain: []domain.Calibration{envValid}}, Waiting, ""},
+		"unverified video with default": {&fakeStore{video: "PENDING", envChain: []domain.Calibration{envValid}}, Waiting, ""},
 	} {
 		view, err := New(tc.store, fakeCatalog{}, clock).Status(ctx, viewer, "test", "rec")
 		got := ""
@@ -156,11 +164,13 @@ func (fakeCatalog) Requirement(key string, _ int, _ map[string]float64) (domain.
 
 type fakeStore struct {
 	Store
-	calls    []string
-	video    string
-	paradigm string
-	missing  bool
-	chain    []domain.Calibration
+	calls      []string
+	video      string
+	paradigm   string
+	missing    bool
+	chain      []domain.Calibration
+	envChain   []domain.Calibration
+	noRevision bool
 }
 
 func (f *fakeStore) record(name string) { f.calls = append(f.calls, name) }
@@ -181,7 +191,7 @@ func (f *fakeStore) ref() (RecordingRef, error) {
 	if paradigm == "" {
 		paradigm = "OPEN_FIELD"
 	}
-	return RecordingRef{ID: "rec", TestID: "test", VideoStatus: video, ParadigmKey: paradigm, ParadigmVersion: 1}, nil
+	return RecordingRef{ID: "rec", TestID: "test", VideoStatus: video, ParadigmKey: paradigm, ParadigmVersion: 1, EnvironmentRevisionID: "rev"}, nil
 }
 
 func (f *fakeStore) Recording(context.Context, string, string) (RecordingRef, error) {
@@ -199,6 +209,32 @@ func (f *fakeStore) Calibrations(context.Context, string) ([]domain.Calibration,
 	return f.chain, nil
 }
 
+func (f *fakeStore) revision() (RevisionRef, error) {
+	if f.noRevision {
+		return RevisionRef{}, ErrRevisionNotFound
+	}
+	paradigm := f.paradigm
+	if paradigm == "" {
+		paradigm = "OPEN_FIELD"
+	}
+	return RevisionRef{ID: "rev", EnvironmentID: "env", ParadigmKey: paradigm, ParadigmVersion: 1}, nil
+}
+
+func (f *fakeStore) Revision(context.Context, string, int) (RevisionRef, error) {
+	f.record("Revision")
+	return f.revision()
+}
+
+func (f *fakeStore) LockRevision(context.Context, string, int) (RevisionRef, error) {
+	f.record("LockRevision")
+	return f.revision()
+}
+
+func (f *fakeStore) EnvironmentCalibrations(context.Context, string) ([]domain.Calibration, error) {
+	f.record("EnvironmentCalibrations")
+	return f.envChain, nil
+}
+
 func (f *fakeStore) CreateCalibration(_ context.Context, c domain.Calibration) (domain.Calibration, error) {
 	f.record("CreateCalibration")
 	c.ID = "new"
@@ -206,3 +242,74 @@ func (f *fakeStore) CreateCalibration(_ context.Context, c domain.Calibration) (
 }
 
 func second[T any](_ T, err error) error { return err }
+
+func TestCalibrateEnvironmentStoresTheDefaultOfARevision(t *testing.T) {
+	admin := access.Actor{UserID: "lab", Role: access.LabManager}
+	store := &fakeStore{}
+	in := input()
+	in.ReferenceFrameUs = 5_000_000
+	c, err := New(store, fakeCatalog{}, clock).CalibrateEnvironment(ctx, admin, "env", 1, in)
+	if err != nil || c.Status != domain.Valid || c.RecordingID != "" || c.EnvironmentRevisionID != "rev" || c.ReferenceFrameUs != 0 || c.Scope() != domain.ScopeEnvironment {
+		t.Fatalf("environment calibration: %+v %v", c, err)
+	}
+	if !slices.Equal(store.calls, []string{"Transaction", "LockRevision", "EnvironmentCalibrations", "CreateCalibration"}) {
+		t.Fatalf("store calls: %v", store.calls)
+	}
+
+	previous := c
+	previous.ID = "e1"
+	for name, tc := range map[string]struct {
+		store  *fakeStore
+		mutate func(*domain.Input)
+		want   error
+	}{
+		"unknown revision":             {&fakeStore{noRevision: true}, func(*domain.Input) {}, ErrRevisionNotFound},
+		"paradigm without calibration": {&fakeStore{paradigm: "ROTAROD"}, func(*domain.Input) {}, domain.ErrNotRequired},
+		"second first calibration":     {&fakeStore{envChain: []domain.Calibration{previous}}, func(*domain.Input) {}, domain.ErrStaleCorrection},
+		"correction from another camera": {&fakeStore{envChain: []domain.Calibration{previous}}, func(in *domain.Input) {
+			in.SupersedesID, in.CameraID = "e1", "cam-side-2"
+		}, domain.ErrCameraMismatch},
+	} {
+		in := input()
+		tc.mutate(&in)
+		if _, err := New(tc.store, fakeCatalog{}, clock).CalibrateEnvironment(ctx, admin, "env", 1, in); !errors.Is(err, tc.want) || slices.Contains(tc.store.calls, "CreateCalibration") {
+			t.Errorf("%s: err=%v calls=%v want %v", name, err, tc.store.calls, tc.want)
+		}
+	}
+	corrected := input()
+	corrected.SupersedesID = "e1"
+	chained := &fakeStore{envChain: []domain.Calibration{previous}}
+	if c, err := New(chained, fakeCatalog{}, clock).CalibrateEnvironment(ctx, admin, "env", 1, corrected); err != nil || c.SupersedesID != "e1" {
+		t.Fatalf("correction: %+v %v", c, err)
+	}
+}
+
+func TestStatusReportsWhereTheCalibrationComesFrom(t *testing.T) {
+	viewer := access.Actor{UserID: "viewer", Role: access.Viewer}
+	env, _ := domain.New(input(), domain.Requirement{Required: true, ToleranceCm: 2}, "lab", now)
+	env.ID, env.EnvironmentRevisionID = "e1", "rev"
+	own := env
+	own.ID, own.RecordingID = "c1", "rec"
+
+	view, err := New(&fakeStore{envChain: []domain.Calibration{env}}, fakeCatalog{}, clock).Status(ctx, viewer, "test", "rec")
+	if err != nil || view.Source != domain.SourceEnvironment || view.Drift != DriftUnchecked {
+		t.Fatalf("inherited: %+v %v", view, err)
+	}
+	view, err = New(&fakeStore{chain: []domain.Calibration{own}, envChain: []domain.Calibration{env}}, fakeCatalog{}, clock).Status(ctx, viewer, "test", "rec")
+	if err != nil || view.Source != domain.SourceRecording {
+		t.Fatalf("override: %+v %v", view, err)
+	}
+	view, err = New(&fakeStore{}, fakeCatalog{}, clock).Status(ctx, viewer, "test", "rec")
+	if err != nil || view.Source != "" || view.Drift != "" {
+		t.Fatalf("uncalibrated: %+v %v", view, err)
+	}
+
+	view, err = New(&fakeStore{envChain: []domain.Calibration{env}}, fakeCatalog{}, clock).EnvironmentStatus(ctx, viewer, "env", 1)
+	if err != nil || view.Status != Calibrated || view.Current.ID != "e1" {
+		t.Fatalf("environment status: %+v %v", view, err)
+	}
+	view, err = New(&fakeStore{paradigm: "ROTAROD"}, fakeCatalog{}, clock).EnvironmentStatus(ctx, viewer, "env", 1)
+	if err != nil || view.Status != NotRequired {
+		t.Fatalf("observation-only environment: %+v %v", view, err)
+	}
+}

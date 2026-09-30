@@ -155,9 +155,9 @@ func newFixture(t *testing.T) *fixture {
 			exp, f.test, asset, technician.UserID)
 	}
 	f.calibrated, f.bare = recording("tests/source-a"), recording("tests/source-b")
-	id(t, pool, `INSERT INTO misko.calibrations (recording_id, camera_id, frame_width, frame_height, crop_x, crop_y, crop_width, crop_height, reference_frame_us,
+	id(t, pool, `INSERT INTO misko.calibrations (recording_id, environment_revision_id, camera_id, frame_width, frame_height, crop_x, crop_y, crop_width, crop_height, reference_frame_us,
 		measurement_plane, fit_points, check_points, transform, fit_rms_error_cm, check_rms_error_cm, check_max_error_cm, tolerance_cm, algorithm_version, status, created_by)
-		VALUES ($1, 'cam', 1920, 1080, 0, 0, 1920, 1080, 0, 'ARENA_FLOOR', '[{},{},{},{}]', '[{},{},{}]', '{1,0,0,0,1,0,0,0,1}', 0, 0, 0, 2, 'test', 'VALID', $2) RETURNING id`,
+		VALUES ($1, (SELECT t.environment_revision_id FROM misko.test_recordings r JOIN misko.tests t ON t.id = r.test_id WHERE r.id = $1), 'cam', 1920, 1080, 0, 0, 1920, 1080, 0, 'ARENA_FLOOR', '[{},{},{},{}]', '[{},{},{}]', '{1,0,0,0,1,0,0,0,1}', 0, 0, 0, 2, 'test', 'VALID', $2) RETURNING id`,
 		f.calibrated, technician.UserID)
 	return f
 }
@@ -545,4 +545,52 @@ func TestReanalysisFailuresAndValidation(t *testing.T) {
 	if len(runs) != 4 {
 		t.Fatalf("runs: %d", len(runs))
 	}
+}
+
+// A default calibration of the environment lets recordings without one of their
+// own be analyzed, and correcting it never reanalyzes what already ran.
+func TestEnvironmentCalibrationSchedulesOnceAndNeverReanalyzes(t *testing.T) {
+	f := newFixture(t)
+	f.worker("tracker-a")
+	if report, err := f.s.Tick(ctx); err != nil || report.Enqueued != 1 {
+		t.Fatalf("only the recording with its own calibration is ready: %+v %v", report, err)
+	}
+	revision := id(t, f.pool, "SELECT environment_revision_id FROM misko.tests WHERE id = $1", f.test)
+	insert := `INSERT INTO misko.calibrations (recording_id, environment_revision_id, supersedes_id, camera_id, frame_width, frame_height, crop_x, crop_y, crop_width, crop_height,
+		measurement_plane, fit_points, check_points, transform, fit_rms_error_cm, check_rms_error_cm, check_max_error_cm, tolerance_cm, algorithm_version, status, created_by)
+		VALUES (NULL, $1, $2, 'cam', 1920, 1080, 0, 0, 1920, 1080, 'ARENA_FLOOR', '[{},{},{},{}]', '[{},{},{}]', '{1,0,0,0,1,0,0,0,1}', 0, 0, 0, 2, 'test', $3, $4) RETURNING id`
+	def := id(t, f.pool, insert, revision, nil, "VALID", technician.UserID)
+	if report, err := f.s.Tick(ctx); err != nil || report.Enqueued != 1 {
+		t.Fatalf("the default calibrates the other recording: %+v %v", report, err)
+	}
+	runs, err := f.s.Runs(ctx, viewer, f.test)
+	if err != nil || len(runs) != 2 {
+		t.Fatalf("runs: %+v %v", runs, err)
+	}
+	for _, run := range runs {
+		switch {
+		case run.RecordingID == f.bare && run.CalibrationID != def:
+			t.Fatalf("the bare recording pins the environment calibration: %+v", run)
+		case run.RecordingID == f.calibrated && (run.CalibrationID == "" || run.CalibrationID == def):
+			t.Fatalf("a recording with its own calibration keeps it: %+v", run)
+		}
+	}
+
+	corrected := id(t, f.pool, insert, revision, def, "VALID", technician.UserID)
+	if report, err := f.s.Tick(ctx); err != nil || report.Enqueued != 0 {
+		t.Fatalf("correcting the default must not reanalyze: %+v %v", report, err)
+	}
+	// Reanalysis stays an explicit act and pins the corrected default.
+	manual, err := f.s.Reanalyze(ctx, technician, f.test, f.bare)
+	if err != nil || manual.CalibrationID != corrected {
+		t.Fatalf("manual reanalysis: %+v %v", manual, err)
+	}
+	ownOfCalibrated := id(t, f.pool, "SELECT id FROM misko.calibrations WHERE recording_id = $1", f.calibrated)
+	assertRejected(t, "a run pinning the calibration of another recording", f.pool, "analysis_runs_calibration_scope",
+		`INSERT INTO misko.analysis_runs (experiment_id, test_id, recording_id, source_asset_id, source_generation, source_crc32c, clip_start_us, clip_end_us,
+			calibration_id, paradigm_key, paradigm_version, metric_engine_version, result_schema_version, environment_revision_id, protocol_version_id,
+			parameters, trigger, status, max_attempts, available_at)
+		SELECT experiment_id, test_id, recording_id, source_asset_id, source_generation + 1, source_crc32c, clip_start_us, clip_end_us,
+			$2::uuid, paradigm_key, paradigm_version, metric_engine_version, result_schema_version, environment_revision_id, protocol_version_id,
+			parameters, 'MANUAL', 'QUEUED', max_attempts, available_at FROM misko.analysis_runs WHERE id = $1`, manual.ID, ownOfCalibrated)
 }
