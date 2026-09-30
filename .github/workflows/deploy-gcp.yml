@@ -20,7 +20,7 @@ name: Deploy to GCP VM
 #                          çıkış yapar, zararsız ama loglarda görünür).
 #   APP_GCS_BUCKET         Private GCS bucket adı (opsiyonel; boşsa video route'ları 503 döner).
 #   SITE_ADDRESS (Variables sekmesi, secret değil)
-#                          HTTPS için genel hostname, örn. misko.happyhackings.space.
+#                          HTTPS için genel hostname, örn. misko.happyhacking.space.
 #                          DNS A kaydı VM'i göstermeli, GCP firewall'da 80 ve 443
 #                          açık olmalı. Boşsa Caddy kurulmaz, TLS'siz :80 kalır.
 #   APP_GCS_SIGNER_EMAIL   İmzalayan servis hesabı e-postası (VM'nin kendi servis hesabı
