@@ -67,6 +67,28 @@ The API answers `/api/health` and `/api/ready`, so
 `curl http://localhost:8080/api/health` is a quick check that the panel reaches
 the backend through nginx.
 
+### HTTPS (optional)
+
+For a public hostname, the `https` profile adds Caddy, which obtains and renews
+a Let's Encrypt certificate on its own. Before starting it:
+
+- The hostname's `A` record must already point at this machine.
+- Ports 80 and 443 must be open in the firewall (Let's Encrypt validates over 80).
+
+```bash
+export SITE_ADDRESS=misko.example.org
+FRONTEND_BIND=127.0.0.1 FRONTEND_PORT=8080 \
+  docker compose -f docker-compose.prod.yml --profile https up -d
+```
+
+Caddy takes 80 and 443, so the panel itself moves to `127.0.0.1:8080` and is no
+longer reachable over plain HTTP from outside. Keep the `caddy-data` volume
+(`down -v` deletes it) so the certificate is reused instead of re-issued. If
+the hostname is behind Cloudflare's proxy, set the SSL/TLS mode to Full (strict).
+
+The GCP deploy workflow does this when the `SITE_ADDRESS` repository variable
+(Settings > Secrets and variables > Actions > Variables) is set.
+
 ### Video storage
 
 Uploads and playback need a private Google Cloud Storage bucket. Without

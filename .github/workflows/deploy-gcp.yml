@@ -19,6 +19,10 @@ name: Deploy to GCP VM
 #                          gerektiriyor. Boş kalırsa worker container'ı tekrar tekrar
 #                          çıkış yapar, zararsız ama loglarda görünür).
 #   APP_GCS_BUCKET         Private GCS bucket adı (opsiyonel; boşsa video route'ları 503 döner).
+#   SITE_ADDRESS (Variables sekmesi, secret değil)
+#                          HTTPS için genel hostname, örn. misko.happyhackings.space.
+#                          DNS A kaydı VM'i göstermeli, GCP firewall'da 80 ve 443
+#                          açık olmalı. Boşsa Caddy kurulmaz, TLS'siz :80 kalır.
 #   APP_GCS_SIGNER_EMAIL   İmzalayan servis hesabı e-postası (VM'nin kendi servis hesabı
 #                          olabilir; bucket üzerinde Storage Object Admin ve kendi
 #                          üzerinde Service Account Token Creator rolü gerekir).
@@ -108,6 +112,7 @@ jobs:
         env:
           HOST: ${{ secrets.GCP_VM_HOST }}
           USER: ${{ secrets.GCP_VM_USER }}
+          SITE_ADDRESS: ${{ vars.SITE_ADDRESS }}
         run: |
           SSH="ssh -i ~/.ssh/id_deploy -o StrictHostKeyChecking=accept-new"
           SCP="scp -i ~/.ssh/id_deploy -o StrictHostKeyChecking=accept-new"
@@ -137,10 +142,30 @@ jobs:
           # yazılmamalı, bu yüzden hâlâ elle yapılıyor (bkz. docs/DEPLOY.md).
           # Worker container'ı gerçek bir token gelene kadar tekrar tekrar çıkış
           # yapar; zararsız, sadece loglarda görünür.
-          $SSH "$USER@$HOST" 'cd ~/misko && docker compose -f docker-compose.prod.yml --profile worker pull --ignore-buildable && (docker compose -f docker-compose.prod.yml --profile setup run --rm schema || true) && docker compose -f docker-compose.prod.yml --profile worker up -d --build && docker image prune -f'
+          #
+          # HTTPS: SITE_ADDRESS (repo variable) doluysa Caddy `https` profile'iyle
+          # açılır ve Let's Encrypt sertifikası alır. Caddy 80/443'ü tuttuğu için
+          # frontend'in yayını 127.0.0.1:8080'e çekilir; .env'deki eski
+          # FRONTEND_PORT=80 değeri bu komut satırı değişkenleriyle ezilir.
+          # Boşsa eski davranış: frontend doğrudan :80'de, TLS yok.
+          if [ -n "$SITE_ADDRESS" ]; then
+            $SCP Caddyfile "$USER@$HOST:~/misko/Caddyfile"
+            RUN_ENV="SITE_ADDRESS='$SITE_ADDRESS' FRONTEND_BIND=127.0.0.1 FRONTEND_PORT=8080"
+            PROFILES="--profile https --profile worker"
+          else
+            RUN_ENV=""
+            PROFILES="--profile worker"
+          fi
+          $SSH "$USER@$HOST" "cd ~/misko && $RUN_ENV docker compose -f docker-compose.prod.yml $PROFILES pull --ignore-buildable && ($RUN_ENV docker compose -f docker-compose.prod.yml --profile setup run --rm schema || true) && $RUN_ENV docker compose -f docker-compose.prod.yml $PROFILES up -d --build && docker image prune -f"
 
       - name: Summary
         env:
           TAG: ${{ inputs.image_tag }}
           HOST: ${{ secrets.GCP_VM_HOST }}
-        run: echo "Deployed image_tag=${TAG} to ${HOST} (frontend on :80)"
+          SITE_ADDRESS: ${{ vars.SITE_ADDRESS }}
+        run: |
+          if [ -n "$SITE_ADDRESS" ]; then
+            echo "Deployed image_tag=${TAG} to ${HOST} (https://${SITE_ADDRESS})"
+          else
+            echo "Deployed image_tag=${TAG} to ${HOST} (frontend on :80)"
+          fi
