@@ -1,0 +1,7 @@
+# Used by the `https` profile of docker-compose.prod.yml. SITE_ADDRESS is the
+# public hostname (e.g. misko.happyhackings.space). Caddy obtains and renews the
+# Let's Encrypt certificate on its own and redirects HTTP to HTTPS.
+{$SITE_ADDRESS:localhost} {
+	encode zstd gzip
+	reverse_proxy frontend:80
+}
