@@ -10,7 +10,7 @@ import (
 
 func TestCatalogReadsFollowReadPermission(t *testing.T) {
 	ctx := context.Background()
-	s := New()
+	s := New(nil)
 	for _, role := range append(access.Roles(), "ROOT") {
 		actor := access.Actor{UserID: "u", Role: role}
 		_, listErr := s.List(ctx, actor)
@@ -44,5 +44,32 @@ func TestCatalogReadsFollowReadPermission(t *testing.T) {
 	m, err := s.Version(ctx, viewer, "OPEN_FIELD", 1)
 	if err != nil || m.MetricEngineVersion != domain.MetricEngineVersion || m.ResultSchemaVersion != domain.ResultSchemaVersion || m.Paradigm.Version != 1 {
 		t.Fatalf("manifest versions: %+v %v", m, err)
+	}
+}
+
+type fakeCapabilities []Capability
+
+func (f fakeCapabilities) Active(context.Context) ([]Capability, error) { return f, nil }
+
+func TestAutomatedAnalysisFollowsActiveWorkerCapabilities(t *testing.T) {
+	ctx := context.Background()
+	viewer := access.Actor{UserID: "u", Role: access.Viewer}
+	s := New(fakeCapabilities{{Key: "OPEN_FIELD", Version: 1}})
+	list, err := s.List(ctx, viewer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, summary := range list {
+		if want := summary.Key == "OPEN_FIELD"; summary.AutomatedAnalysis != want {
+			t.Errorf("%s automated = %v, want %v", summary.Key, summary.AutomatedAnalysis, want)
+		}
+	}
+	m, err := s.Latest(ctx, viewer, "OPEN_FIELD")
+	if err != nil || !m.AutomatedAnalysis {
+		t.Fatalf("OPEN_FIELD latest: %+v %v", m, err)
+	}
+	m, err = s.Latest(ctx, viewer, "EPM")
+	if err != nil || m.AutomatedAnalysis {
+		t.Fatalf("EPM latest: %+v %v", m, err)
 	}
 }

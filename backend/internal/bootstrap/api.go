@@ -159,7 +159,7 @@ func NewAPI(pool *pgxpool.Pool, cfg config.Config, auth config.Auth, logger *slo
 	subjectshttp.Register(mux, subjects, authenticate, logger)
 	experimentshttp.Register(mux, experiments, authenticate, logger)
 	interventionshttp.Register(mux, interventions, authenticate, logger)
-	paradigmshttp.Register(mux, paradigmsapp.New(), authenticate, logger)
+	paradigmshttp.Register(mux, paradigmsapp.New(newWorkerCapabilities(pool)), authenticate, logger)
 	environmentshttp.Register(mux, environments, authenticate, logger)
 	protocolshttp.Register(mux, protocols, authenticate, logger)
 	testshttp.Register(mux, tests, authenticate, logger)

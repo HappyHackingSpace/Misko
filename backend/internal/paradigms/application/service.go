@@ -21,17 +21,47 @@ type Summary struct {
 }
 
 type Service struct {
-	// automated reports whether a worker can analyze a paradigm version. No
-	// worker capability is registered yet, so every paradigm is unsupported.
-	automated func(key string, version int) bool
+	// capabilities tells which paradigm versions a worker can analyze. A nil
+	// source means no worker exists, so every paradigm is unsupported.
+	capabilities Capabilities
 }
 
-func New() *Service {
-	return &Service{automated: func(string, int) bool { return false }}
+// Capability is a paradigm version an active worker can analyze.
+type Capability struct {
+	Key     string
+	Version int
 }
 
-func (s *Service) List(_ context.Context, actor access.Actor) ([]Summary, error) {
+// Capabilities lists the paradigm versions with at least one active worker.
+type Capabilities interface {
+	Active(ctx context.Context) ([]Capability, error)
+}
+
+func New(capabilities Capabilities) *Service {
+	return &Service{capabilities: capabilities}
+}
+
+func (s *Service) automated(ctx context.Context) (map[Capability]bool, error) {
+	out := map[Capability]bool{}
+	if s.capabilities == nil {
+		return out, nil
+	}
+	active, err := s.capabilities.Active(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, c := range active {
+		out[c] = true
+	}
+	return out, nil
+}
+
+func (s *Service) List(ctx context.Context, actor access.Actor) ([]Summary, error) {
 	if err := actor.Require(access.Read); err != nil {
+		return nil, err
+	}
+	supported, err := s.automated(ctx)
+	if err != nil {
 		return nil, err
 	}
 	var out []Summary
@@ -42,7 +72,7 @@ func (s *Service) List(_ context.Context, actor access.Actor) ([]Summary, error)
 		}
 		out = append(out, Summary{
 			Key: p.Key, Name: p.Name, Category: p.Category, Species: p.Species,
-			Versions: versions, LatestVersion: p.Version, AutomatedAnalysis: s.automated(p.Key, p.Version),
+			Versions: versions, LatestVersion: p.Version, AutomatedAnalysis: supported[Capability{p.Key, p.Version}],
 		})
 	}
 	return out, nil
@@ -57,7 +87,7 @@ type Manifest struct {
 	AutomatedAnalysis   bool
 }
 
-func (s *Service) Latest(_ context.Context, actor access.Actor, key string) (Manifest, error) {
+func (s *Service) Latest(ctx context.Context, actor access.Actor, key string) (Manifest, error) {
 	if err := actor.Require(access.Read); err != nil {
 		return Manifest{}, err
 	}
@@ -65,10 +95,10 @@ func (s *Service) Latest(_ context.Context, actor access.Actor, key string) (Man
 	if err != nil {
 		return Manifest{}, err
 	}
-	return s.manifest(p), nil
+	return s.manifest(ctx, p)
 }
 
-func (s *Service) Version(_ context.Context, actor access.Actor, key string, version int) (Manifest, error) {
+func (s *Service) Version(ctx context.Context, actor access.Actor, key string, version int) (Manifest, error) {
 	if err := actor.Require(access.Read); err != nil {
 		return Manifest{}, err
 	}
@@ -76,12 +106,16 @@ func (s *Service) Version(_ context.Context, actor access.Actor, key string, ver
 	if err != nil {
 		return Manifest{}, err
 	}
-	return s.manifest(p), nil
+	return s.manifest(ctx, p)
 }
 
-func (s *Service) manifest(p domain.Paradigm) Manifest {
+func (s *Service) manifest(ctx context.Context, p domain.Paradigm) (Manifest, error) {
+	supported, err := s.automated(ctx)
+	if err != nil {
+		return Manifest{}, err
+	}
 	return Manifest{
 		Paradigm: p, MetricEngineVersion: domain.MetricEngineVersion, ResultSchemaVersion: domain.ResultSchemaVersion,
-		AutomatedAnalysis: s.automated(p.Key, p.Version),
-	}
+		AutomatedAnalysis: supported[Capability{p.Key, p.Version}],
+	}, nil
 }
