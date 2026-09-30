@@ -15,6 +15,7 @@ const Paradigms = () => import("./views/Paradigms.vue");
 const ParadigmDetail = () => import("./views/ParadigmDetail.vue");
 const Environments = () => import("./views/Environments.vue");
 const EnvironmentForm = () => import("./views/EnvironmentForm.vue");
+const EnvironmentDetail = () => import("./views/EnvironmentDetail.vue");
 const Users = () => import("./views/Users.vue");
 const UserForm = () => import("./views/UserForm.vue");
 
@@ -44,6 +45,9 @@ const routes = [
   { path: "/environments", component: Environments, meta: { titleKey: "nav.environments" } },
   // Defining an apparatus needs apparatus:write.
   { path: "/environments/new", component: EnvironmentForm, meta: { permission: "apparatus:write", titleKey: "nav.environments" } },
+  // Reading an apparatus and its calibration is open to every role; calibrating
+  // is checked on the page and by the API.
+  { path: "/environments/:id", component: EnvironmentDetail, meta: { titleKey: "nav.environments" } },
 
   { path: "/users", component: Users, meta: { permission: "user:manage", titleKey: "nav.users" } },
   { path: "/users/new", component: UserForm, meta: { permission: "user:manage", titleKey: "nav.users" } },

@@ -64,6 +64,8 @@ async function save() {
     for (const parameter of parameters.value) {
       apparatus[parameter.key] = Number(values.value[parameter.key]);
     }
+    // The new environment opens on its own page, where the calibration every
+    // video of it will use is entered once.
     const created = await environments.create({
       name: form.value.name.trim(),
       paradigmKey: form.value.paradigmKey,
@@ -74,8 +76,7 @@ async function save() {
         notes: "",
       },
     });
-    void created;
-    router.push("/environments");
+    router.push(`/environments/${created.environment.id}`);
   } catch (e) {
     error.value = e.message;
   } finally {

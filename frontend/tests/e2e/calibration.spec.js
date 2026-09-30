@@ -2,6 +2,7 @@
 // measurable at all. The panel showed only a badge saying whether one existed,
 // and offered no way to enter one.
 import { expect, test } from "@playwright/test";
+import { openCalibration } from "./helpers.js";
 
 const API = `http://127.0.0.1:${process.env.E2E_API_PORT || "4010"}`;
 
@@ -22,7 +23,6 @@ async function signIn(page, email, password) {
 // The seeded test holds two recordings, one of which failed quality control, and
 // a calibration belongs to one recording rather than to the test. Every
 // assertion is therefore scoped to the recording the seed names.
-const cardOf = (page, data) => page.locator(`[data-test="calibration"][data-recording="${data.recordingId}"]`);
 
 // The arena is 50 cm square and the frame is 320x240. These four corners and
 // three inner points are the correspondences the harness itself calibrates
@@ -63,7 +63,7 @@ test("a recording is calibrated from the panel and the errors are shown", async 
   await signIn(page, data.adminEmail, data.adminPassword);
   await page.goto(`/tests/${data.testId}`);
 
-  const card = cardOf(page, data);
+  const card = await openCalibration(page, data.recordingId);
   // The seeded recording is already calibrated, so this enters a correction,
   // which is the harder path: it has to name the calibration it replaces.
   await expect(card.getByTestId("fit-error")).toBeVisible();
@@ -87,7 +87,7 @@ test("a calibration whose points do not describe the camera is refused", async (
   await signIn(page, data.adminEmail, data.adminPassword);
   await page.goto(`/tests/${data.testId}`);
 
-  const card = cardOf(page, data);
+  const card = await openCalibration(page, data.recordingId);
   await openForm(card);
 
   // Four points on one line cannot define a plane, and the API says so rather
@@ -133,13 +133,13 @@ test("a recording whose video is not verified is not offered for calibration", a
   await signIn(page, data.adminEmail, data.adminPassword);
   await page.goto(`/tests/${data.testId}`);
 
-  const card = page.locator(`[data-test="calibration"][data-recording="${pending}"]`);
-  await expect(card).toBeVisible();
+  const card = await openCalibration(page, pending);
   await expect(card.getByTestId("calibration-none")).toBeVisible();
   await expect(card.getByTestId("calibrate")).toHaveCount(0);
   // The verified recording of the same test is still offered, so this is the
   // video's state talking and not a permission.
-  await expect(cardOf(page, data).getByTestId("calibrate")).toHaveCount(1);
+  const verified = await openCalibration(page, data.recordingId);
+  await expect(verified.getByTestId("calibrate")).toHaveCount(1);
 });
 
 test("a viewer reads the calibration but cannot enter one", async ({ page, request }) => {
@@ -147,7 +147,7 @@ test("a viewer reads the calibration but cannot enter one", async ({ page, reque
   await signIn(page, data.viewerEmail, data.viewerPassword);
   await page.goto(`/tests/${data.testId}`);
 
-  const card = cardOf(page, data);
+  const card = await openCalibration(page, data.recordingId);
   // The measured errors stay readable.
   await expect(card.getByTestId("calibration-summary")).toBeVisible();
   // Entering one needs test:run, which a viewer does not have.
