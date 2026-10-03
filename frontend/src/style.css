@@ -35,8 +35,19 @@ a{color:var(--accent);text-decoration:none}
 @media (max-width: 860px){
   .sidebar-overlay{display:block;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:30}
 }
+@media (max-width: 860px){
+  /* Naive's DataTable squeezes every column to fit, which on a phone wraps
+     text letter by letter. Keep a readable minimum width and scroll sideways. */
+  .n-data-table .n-data-table-wrapper{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .n-data-table .n-data-table-table{min-width:640px}
+  .n-data-table .n-data-table-th,.n-data-table .n-data-table-td{white-space:nowrap}
+  .n-data-table .n-data-table__pagination{flex-wrap:wrap;justify-content:center;row-gap:8px}
+}
 @media (max-width: 520px){
   h1{font-size:18px}
+  /* 16px stops iOS Safari from zooming the page when a field is focused. */
+  input,select,textarea,.n-input .n-input__input-el,.n-base-selection{font-size:16px}
+  button{min-height:40px}
 }
 h1{font-size:20px;margin:0 0 16px}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:16px;box-shadow:var(--shadow-sm)}

@@ -52,8 +52,9 @@ async function submit() {
           <label for="login-password">{{ $t("login.password") }}</label>
           <input id="login-password" v-model="password" type="password" autocomplete="current-password" required />
         </div>
-        <button class="primary" style="width:100%" data-test="sign-in" :disabled="busy">
-          {{ busy ? $t("common.loading") : $t("login.signIn") }}
+        <button class="primary sign-in" data-test="sign-in" :disabled="busy" :aria-busy="busy">
+          <span v-if="busy" class="spinner" role="status" :aria-label="$t('common.loading')"></span>
+          <span v-else>{{ $t("login.signIn") }}</span>
         </button>
       </form>
 
@@ -64,3 +65,15 @@ async function submit() {
     </div>
   </div>
 </template>
+
+<style scoped>
+.sign-in { width: 100%; display: inline-flex; align-items: center; justify-content: center; min-height: 40px; }
+/* Currentcolor keeps the ring readable on both the dark and the light accent. */
+.spinner {
+  width: 18px; height: 18px; border-radius: 50%;
+  border: 2.5px solid currentColor; border-right-color: transparent;
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 1.6s; } }
+</style>
