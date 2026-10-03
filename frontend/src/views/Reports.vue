@@ -166,7 +166,7 @@ async function download() {
   error.value = "";
   exporting.value = true;
   try {
-    const path = reports.exportPath(isMetrics.value ? "metrics" : "events", filters());
+    const path = reports.exportPath(isMetrics.value ? "metrics" : "events", { ...filters(), delimiter: "semicolon" });
     const response = await fetch(`/api${path}`, { headers: { Authorization: `Bearer ${getToken()}` } });
     if (!response.ok) throw new Error(t("errors.common.requestFailed", { status: response.status }));
     const blob = await response.blob();

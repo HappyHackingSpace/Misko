@@ -177,6 +177,11 @@ func (h handler) csv(w http.ResponseWriter, r *http.Request, name string, header
 	w.Header().Set("Content-Disposition", `attachment; filename="`+name+`"`)
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	out := csv.NewWriter(w)
+	if r.URL.Query().Get("delimiter") == "semicolon" {
+		// Spreadsheet apps in many locales split columns on ";" and need a BOM to read UTF-8.
+		_, _ = w.Write([]byte("\ufeff"))
+		out.Comma = ';'
+	}
 	if err := out.Write(header); err == nil {
 		err = out.WriteAll(records)
 	}
@@ -191,10 +196,15 @@ func (h handler) fail(w http.ResponseWriter, r *http.Request, err error) {
 
 // cell keeps spreadsheet applications from evaluating stored text as a formula.
 func cell(s string) string {
-	if s != "" && strings.ContainsRune("=+-@\t\r", rune(s[0])) {
+	if s != "" && strings.ContainsRune("=+-@\t\r", rune(s[0])) && !isNumber(s) {
 		return "'" + s
 	}
 	return s
+}
+
+func isNumber(s string) bool {
+	_, err := strconv.ParseFloat(s, 64)
+	return err == nil
 }
 
 var provenanceHeader = []string{

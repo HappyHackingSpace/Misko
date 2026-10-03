@@ -165,3 +165,20 @@ func TestSummaryResponses(t *testing.T) {
 		t.Fatalf("incompatible: %d %s", res.StatusCode, body)
 	}
 }
+
+func TestSemicolonCSVHasBOMAndKeepsNegativeNumbers(t *testing.T) {
+	value := -3.5
+	srv := server(t, store{metrics: []domain.MetricRow{
+		{Provenance: provenance("t1", "s1", "g", 1), MetricKey: "distance_cm", Unit: "cm", Value: &value},
+	}})
+	_, body := get(t, srv, "/api/reports/metrics/export?experimentId=01a00000-0000-7000-8000-000000000009&delimiter=semicolon", true)
+	if !strings.HasPrefix(string(body), "\ufeff") {
+		t.Fatalf("missing BOM: %q", body[:10])
+	}
+	r := csv.NewReader(strings.NewReader(strings.TrimPrefix(string(body), "\ufeff")))
+	r.Comma = ';'
+	records, err := r.ReadAll()
+	if err != nil || len(records) != 2 || !strings.Contains(strings.Join(records[1], "|"), "|-3.5|") {
+		t.Fatalf("semicolon csv: %v %q", err, body)
+	}
+}

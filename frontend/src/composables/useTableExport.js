@@ -1,5 +1,9 @@
 import { useI18n } from "vue-i18n";
 
+// Excel in Turkish (and most European) locales splits columns on ";", so a
+// comma-separated file opens as a single column.
+const CSV_DELIMITER = ";";
+
 /**
  * CSV / printable-PDF export for a server-driven table, decoupled from how the
  * table itself renders cells (Naive UI's column `render` returns vnodes, not
@@ -35,15 +39,16 @@ export function useTableExport({ state, columns, exportName, entityLabel }) {
     // a leading tab/CR can be evaluated as a formula by Excel/Sheets. Prefix it
     // with a single quote so it is treated as plain text.
     let v = value;
-    if (/^[=+\-@\t\r]/.test(v)) v = `'${v}`;
-    if (/[",\r\n]/.test(v)) return `"${v.replace(/"/g, '""')}"`;
+    // Plain numbers (e.g. -3.5) are left alone so they stay numeric.
+    if (/^[=+\-@\t\r]/.test(v) && !/^-?\d+([.,]\d+)?$/.test(v)) v = `'${v}`;
+    if (/[";,\r\n]/.test(v)) return `"${v.replace(/"/g, '""')}"`;
     return v;
   }
 
   function exportCsv() {
     if (!state.rows.length) return;
     const { headers, body } = buildMatrix();
-    const lines = [headers, ...body].map((r) => r.map(csvCell).join(","));
+    const lines = [headers, ...body].map((r) => r.map(csvCell).join(CSV_DELIMITER));
     // Prepend a BOM so spreadsheets open the UTF-8 file with the right encoding.
     const content = "﻿" + lines.join("\r\n");
     const blob = new Blob([content], { type: "text/csv;charset=utf-8" });
