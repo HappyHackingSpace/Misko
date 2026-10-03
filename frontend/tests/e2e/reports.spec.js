@@ -145,7 +145,8 @@ test("the rows are taken away as a file the API wrote", async ({ page, request }
   ]);
   expect(download.suggestedFilename()).toContain("metrics");
 
-  const text = await readFile(await download.path(), "utf8");
+  // The export is UTF-16 LE with a BOM and tab separators so Excel opens it in any locale.
+  const text = await readFile(await download.path(), "utf16le");
   const [header, ...rows] = text.trim().split("\n");
   // The header is the provenance a result has to carry to be traceable.
   expect(header).toContain("runId");
@@ -162,7 +163,7 @@ test("the rows are taken away as a file the API wrote", async ({ page, request }
     page.waitForEvent("download", { timeout: 20_000 }),
     page.getByTestId("report-export").click(),
   ]);
-  const narrowedRows = (await readFile(await narrowed.path(), "utf8")).trim().split("\n").slice(1);
+  const narrowedRows = (await readFile(await narrowed.path(), "utf16le")).trim().split("\n").slice(1);
   expect(narrowedRows.length).toBeGreaterThan(0);
   expect(narrowedRows.length).toBeLessThan(rows.length);
   for (const row of narrowedRows) expect(row).toContain("duration_s");

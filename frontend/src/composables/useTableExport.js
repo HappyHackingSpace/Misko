@@ -1,5 +1,18 @@
 import { useI18n } from "vue-i18n";
 
+// Excel picks the column separator from the OS regional settings (";" in Turkish,
+// "," in English) and only trusts a UTF-8 BOM when there is no `sep=` line. A
+// UTF-16 LE file with a BOM and tab separators is read the same way in every
+// locale, with Turkish characters intact.
+const CSV_DELIMITER = "\t";
+
+function encodeUtf16le(text) {
+  const units = new Uint16Array(text.length + 1);
+  units[0] = 0xfeff;
+  for (let i = 0; i < text.length; i++) units[i + 1] = text.charCodeAt(i);
+  return units;
+}
+
 /**
  * CSV / printable-PDF export for a server-driven table, decoupled from how the
  * table itself renders cells (Naive UI's column `render` returns vnodes, not
@@ -35,18 +48,17 @@ export function useTableExport({ state, columns, exportName, entityLabel }) {
     // a leading tab/CR can be evaluated as a formula by Excel/Sheets. Prefix it
     // with a single quote so it is treated as plain text.
     let v = value;
-    if (/^[=+\-@\t\r]/.test(v)) v = `'${v}`;
-    if (/[",\r\n]/.test(v)) return `"${v.replace(/"/g, '""')}"`;
+    // Plain numbers (e.g. -3.5) are left alone so they stay numeric.
+    if (/^[=+\-@\t\r]/.test(v) && !/^-?\d+([.,]\d+)?$/.test(v)) v = `'${v}`;
+    if (/["\t\r\n]/.test(v)) return `"${v.replace(/"/g, '""')}"`;
     return v;
   }
 
   function exportCsv() {
     if (!state.rows.length) return;
     const { headers, body } = buildMatrix();
-    const lines = [headers, ...body].map((r) => r.map(csvCell).join(","));
-    // Prepend a BOM so spreadsheets open the UTF-8 file with the right encoding.
-    const content = "﻿" + lines.join("\r\n");
-    const blob = new Blob([content], { type: "text/csv;charset=utf-8" });
+    const lines = [headers, ...body].map((r) => r.map(csvCell).join(CSV_DELIMITER));
+    const blob = new Blob([encodeUtf16le(lines.join("\r\n"))], { type: "text/csv;charset=utf-16le" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;

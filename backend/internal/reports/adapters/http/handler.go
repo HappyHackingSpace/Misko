@@ -3,17 +3,20 @@
 package reportshttp
 
 import (
+	"bytes"
 	"encoding/csv"
 	"errors"
 	access "github.com/HappyHackingSpace/Misko/backend/internal/access/domain"
 	"github.com/HappyHackingSpace/Misko/backend/internal/platform/httpjson"
 	"github.com/HappyHackingSpace/Misko/backend/internal/reports/application"
 	"github.com/HappyHackingSpace/Misko/backend/internal/reports/domain"
+	"io"
 	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf16"
 )
 
 var failures = []httpjson.Failure{
@@ -176,9 +179,31 @@ func (h handler) csv(w http.ResponseWriter, r *http.Request, name string, header
 	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
 	w.Header().Set("Content-Disposition", `attachment; filename="`+name+`"`)
 	w.Header().Set("X-Content-Type-Options", "nosniff")
-	out := csv.NewWriter(w)
+	var sink io.Writer = w
+	var buf bytes.Buffer
+	excel := r.URL.Query().Get("excel") == "1"
+	if excel {
+		// Excel takes the separator from the OS regional settings and ignores a UTF-8 BOM next
+		// to a sep= line, so the file is UTF-16 LE with a BOM and tab separators: it opens the
+		// same way in every locale with Turkish characters intact.
+		w.Header().Set("Content-Type", "text/csv; charset=utf-16le")
+		sink = &buf
+	}
+	out := csv.NewWriter(sink)
+	if excel {
+		out.Comma = '\t'
+	}
 	if err := out.Write(header); err == nil {
 		err = out.WriteAll(records)
+	}
+	if excel && out.Error() == nil {
+		units := utf16.Encode([]rune(buf.String()))
+		raw := make([]byte, 2, 2+2*len(units))
+		raw[0], raw[1] = 0xFF, 0xFE
+		for _, u := range units {
+			raw = append(raw, byte(u), byte(u>>8))
+		}
+		_, _ = w.Write(raw)
 	}
 	if err := out.Error(); err != nil {
 		h.logger.ErrorContext(r.Context(), "csv export interrupted", "route", r.Pattern, "error", err)
@@ -191,10 +216,15 @@ func (h handler) fail(w http.ResponseWriter, r *http.Request, err error) {
 
 // cell keeps spreadsheet applications from evaluating stored text as a formula.
 func cell(s string) string {
-	if s != "" && strings.ContainsRune("=+-@\t\r", rune(s[0])) {
+	if s != "" && strings.ContainsRune("=+-@\t\r", rune(s[0])) && !isNumber(s) {
 		return "'" + s
 	}
 	return s
+}
+
+func isNumber(s string) bool {
+	_, err := strconv.ParseFloat(s, 64)
+	return err == nil
 }
 
 var provenanceHeader = []string{
