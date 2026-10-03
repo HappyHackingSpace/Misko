@@ -178,8 +178,9 @@ func (h handler) csv(w http.ResponseWriter, r *http.Request, name string, header
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	out := csv.NewWriter(w)
 	if r.URL.Query().Get("delimiter") == "semicolon" {
-		// Spreadsheet apps in many locales split columns on ";" and need a BOM to read UTF-8.
-		_, _ = w.Write([]byte("\ufeff"))
+		// Excel ignores the regional list separator when the file starts with a sep= line, so the
+		// same file opens correctly in every locale. A BOM makes it read the text as UTF-8.
+		_, _ = w.Write([]byte("﻿sep=;\r\n"))
 		out.Comma = ';'
 	}
 	if err := out.Write(header); err == nil {

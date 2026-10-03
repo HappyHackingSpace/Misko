@@ -17,10 +17,6 @@ var (
 	ErrPasswordEncoding = errors.New("password must be valid UTF-8")
 	ErrSelfDeletion     = errors.New("users cannot delete their own account")
 	ErrLastPrivileged   = errors.New("the last privileged user cannot be deleted or demoted")
-	// ErrSuperAdminProtected guards the single SUPERADMIN account bootstrap
-	// creates: nobody, including that account acting on itself through these
-	// routes, may assign the role, or rename, reassign, reset the password of,
-	// or delete that account. It exists only once and answers to no one.
 	ErrSuperAdminProtected = errors.New("the superadmin account cannot be created, changed or removed through this API")
 )
 
