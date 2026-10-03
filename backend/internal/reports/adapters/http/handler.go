@@ -180,7 +180,7 @@ func (h handler) csv(w http.ResponseWriter, r *http.Request, name string, header
 	if r.URL.Query().Get("delimiter") == "semicolon" {
 		// Excel ignores the regional list separator when the file starts with a sep= line, so the
 		// same file opens correctly in every locale. A BOM makes it read the text as UTF-8.
-		_, _ = w.Write([]byte("﻿sep=;\r\n"))
+		_, _ = w.Write([]byte(csvPreamble))
 		out.Comma = ';'
 	}
 	if err := out.Write(header); err == nil {
@@ -202,6 +202,9 @@ func cell(s string) string {
 	}
 	return s
 }
+
+// csvPreamble is a UTF-8 BOM followed by the sep= hint Excel reads.
+const csvPreamble = string(rune(0xFEFF)) + "sep=;\r\n"
 
 func isNumber(s string) bool {
 	_, err := strconv.ParseFloat(s, 64)

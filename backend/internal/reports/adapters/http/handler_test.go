@@ -172,11 +172,10 @@ func TestSemicolonCSVHasBOMAndKeepsNegativeNumbers(t *testing.T) {
 		{Provenance: provenance("t1", "s1", "g", 1), MetricKey: "distance_cm", Unit: "cm", Value: &value},
 	}})
 	_, body := get(t, srv, "/api/reports/metrics/export?experimentId=01a00000-0000-7000-8000-000000000009&delimiter=semicolon", true)
-	const preamble = "\ufeffsep=;\r\n"
-	if !strings.HasPrefix(string(body), preamble) {
+	if !strings.HasPrefix(string(body), csvPreamble) {
 		t.Fatalf("missing BOM and sep line: %q", body[:20])
 	}
-	r := csv.NewReader(strings.NewReader(strings.TrimPrefix(string(body), preamble)))
+	r := csv.NewReader(strings.NewReader(strings.TrimPrefix(string(body), csvPreamble)))
 	r.Comma = ';'
 	records, err := r.ReadAll()
 	if err != nil || len(records) != 2 || !strings.Contains(strings.Join(records[1], "|"), "|-3.5|") {

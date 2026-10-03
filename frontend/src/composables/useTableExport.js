@@ -51,7 +51,7 @@ export function useTableExport({ state, columns, exportName, entityLabel }) {
     const lines = [headers, ...body].map((r) => r.map(csvCell).join(CSV_DELIMITER));
     // Prepend a BOM so spreadsheets open the UTF-8 file with the right encoding.
     // The sep= line makes Excel use ";" whatever the regional list separator is.
-    const content = "﻿" + `sep=${CSV_DELIMITER}\r\n` + lines.join("\r\n");
+    const content = String.fromCharCode(0xfeff) + `sep=${CSV_DELIMITER}\r\n` + lines.join("\r\n");
     const blob = new Blob([content], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
