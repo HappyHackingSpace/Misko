@@ -15,6 +15,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf16"
 )
 
 type store struct {
@@ -166,20 +167,27 @@ func TestSummaryResponses(t *testing.T) {
 	}
 }
 
-func TestSemicolonCSVHasBOMAndKeepsNegativeNumbers(t *testing.T) {
+func TestExcelCSVIsUTF16WithTabsAndKeepsTurkishAndNegatives(t *testing.T) {
 	value := -3.5
 	srv := server(t, store{metrics: []domain.MetricRow{
-		{Provenance: provenance("t1", "s1", "g", 1), MetricKey: "distance_cm", Unit: "cm", Value: &value},
+		{Provenance: provenance("t1", "s1", "Kontrol Grubu ŞğüİıÖç", 1), MetricKey: "distance_cm", Unit: "cm", Value: &value},
 	}})
-	_, body := get(t, srv, "/api/reports/metrics/export?experimentId=01a00000-0000-7000-8000-000000000009&delimiter=semicolon", true)
-	preamble := string(rune(0xFEFF)) + "sep=;\r\n"
-	if !strings.HasPrefix(string(body), preamble) {
-		t.Fatalf("missing BOM and sep line: %q", body[:20])
+	_, body := get(t, srv, "/api/reports/metrics/export?experimentId=01a00000-0000-7000-8000-000000000009&excel=1", true)
+	if len(body) < 4 || body[0] != 0xFF || body[1] != 0xFE || len(body)%2 != 0 {
+		t.Fatalf("not UTF-16 LE with BOM: % x", body[:4])
 	}
-	r := csv.NewReader(strings.NewReader(strings.TrimPrefix(string(body), preamble)))
-	r.Comma = ';'
+	units := make([]uint16, 0, len(body)/2-1)
+	for i := 2; i < len(body); i += 2 {
+		units = append(units, uint16(body[i])|uint16(body[i+1])<<8)
+	}
+	r := csv.NewReader(strings.NewReader(string(utf16.Decode(units))))
+	r.Comma = '\t'
 	records, err := r.ReadAll()
-	if err != nil || len(records) != 2 || !strings.Contains(strings.Join(records[1], "|"), "|-3.5|") {
-		t.Fatalf("semicolon csv: %v %q", err, body)
+	if err != nil || len(records) != 2 {
+		t.Fatalf("excel csv: %v", err)
+	}
+	row := "|" + strings.Join(records[1], "|") + "|"
+	if !strings.Contains(row, "|Kontrol Grubu ŞğüİıÖç|") || !strings.Contains(row, "|-3.5|") {
+		t.Fatalf("row: %q", row)
 	}
 }

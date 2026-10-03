@@ -1864,7 +1864,7 @@ paths:
         - {name: sort, in: query, schema: {type: string, enum: [scheduledAt, subjectCode, experimentCode, metricKey, value, runFinishedAt], default: scheduledAt}}
         - {name: order, in: query, schema: {type: string, enum: [asc, desc], default: asc}}
         - {name: format, in: query, schema: {type: string, enum: [csv, json], default: csv}}
-        - {name: delimiter, in: query, description: "semicolon switches CSV to ; separators with a UTF-8 BOM (for spreadsheet apps in European locales)", schema: {type: string, enum: [comma, semicolon], default: comma}}
+        - {name: excel, in: query, description: "1 returns UTF-16 LE with a BOM and tab separators, which Excel opens correctly in every locale", schema: {type: string, enum: ["1"]}}
       responses:
         '200':
           description: Export; CSV columns are the MetricReportRow properties in schema order
@@ -1918,7 +1918,7 @@ paths:
         - {name: eventType, in: query, schema: {type: string}}
         - {name: selection, in: query, schema: {type: string, enum: [latest, all], default: latest}}
         - {name: format, in: query, schema: {type: string, enum: [csv, json], default: csv}}
-        - {name: delimiter, in: query, description: "semicolon switches CSV to ; separators with a UTF-8 BOM (for spreadsheet apps in European locales)", schema: {type: string, enum: [comma, semicolon], default: comma}}
+        - {name: excel, in: query, description: "1 returns UTF-16 LE with a BOM and tab separators, which Excel opens correctly in every locale", schema: {type: string, enum: ["1"]}}
       responses:
         '200':
           description: Export; CSV columns are the EventReportRow properties in schema order
