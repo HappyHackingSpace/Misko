@@ -111,10 +111,10 @@ const activeKey = computed(() => topLevelKeys.find((k) => route.path.startsWith(
           bordered
           :width="232"
           :collapsed-width="68"
-          :collapsed="isMobile ? !mobileOpen : collapsed"
-          :collapse-mode="isMobile ? 'transform' : 'width'"
+          :collapsed="isMobile ? false : collapsed"
           :show-trigger="false"
           class="app-sider"
+          :class="{ 'mobile-open': isMobile && mobileOpen }"
         >
           <div class="sider-inner">
             <RouterLink to="/dashboard" class="brand" :class="{ collapsed: railCollapsed }">
@@ -193,7 +193,7 @@ const activeKey = computed(() => topLevelKeys.find((k) => route.path.startsWith(
 
 <style scoped>
 .theme-root { display: contents; }
-.app { height: 100vh; }
+.app { height: 100vh; height: 100dvh; }
 /* Naive's layouts paint an opaque bodyColor; make the content area transparent so
    the dotted body background (style.css) shows through. */
 .shell, .main-col, .app-content { background-color: transparent !important; }
@@ -259,7 +259,14 @@ const activeKey = computed(() => topLevelKeys.find((k) => route.path.startsWith(
 @media (max-width: 860px) {
   .menu-btn { display: inline-flex; }
   .topbar { padding: 0 14px; gap: 10px; }
-  :deep(.app-sider) { position: fixed; top: 0; left: 0; bottom: 0; z-index: 35; }
-  .app-content { padding: 16px !important; }
+  /* The drawer leaves the flex flow and slides off-screen; Naive's own
+     "transform" collapse mode left it open and pushed the content aside. */
+  :deep(.app-sider) {
+    position: fixed !important; top: 0; left: 0; bottom: 0; z-index: 35;
+    max-width: 82vw; transform: translateX(-100%); transition: transform 0.2s ease;
+  }
+  :deep(.app-sider.mobile-open) { transform: translateX(0); box-shadow: var(--shadow-md); }
+  /* The padding comes from content-style on the scroll container inside. */
+  :deep(.app-content > .n-layout-scroll-container) { padding: 16px 14px !important; }
 }
 </style>
