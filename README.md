@@ -8,6 +8,8 @@ them, interventions, protocols and environments, the tests themselves, the
 videos recorded for each test, and the measurements a computer vision worker
 produces from those videos.
 
+[![Mişko yayında! 🐭](https://i.ytimg.com/vi/CGzqYK24f88/hqdefault.jpg)](https://youtu.be/CGzqYK24f88)
+
 > **This branch is a rebuild.** The backend is Go, and
 > [backend/README.md](backend/README.md) documents every implemented endpoint in
 > detail. No release or deployment should be made before the
