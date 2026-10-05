@@ -111,6 +111,7 @@ const activeKey = computed(() => topLevelKeys.find((k) => route.path.startsWith(
           bordered
           :width="232"
           :collapsed-width="68"
+          collapse-mode="width"
           :collapsed="isMobile ? false : collapsed"
           :show-trigger="false"
           class="app-sider"
