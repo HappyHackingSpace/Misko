@@ -1,3 +1,5 @@
+> **Partly outdated.** The measurement concepts here (units, QC, normalization) still guide the project, but the implementation details (Node, Prisma, `Test.result`, scenarios) describe the earlier backend. The source of truth is the Go catalog in `backend/internal/paradigms` and [backend/README.md](../backend/README.md).
+
 # Misko - Measurement Architecture
 
 > Status: design. Date: 2026-06-02.

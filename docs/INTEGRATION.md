@@ -1,3 +1,5 @@
+> **Outdated.** This document describes the earlier Node/Prisma implementation (scenarios, `X-Service-Key`, event-based manual entry). The current system is the Go backend with analysis runs and workers. The source of truth is [backend/README.md](../backend/README.md), [worker/README.md](../worker/README.md) and the Go catalog in `backend/internal/paradigms`.
+
 # Mişko ↔ CV Service — Integration Contract
 
 > Status: design. Date: 2026-06-01.

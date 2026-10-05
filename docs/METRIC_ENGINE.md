@@ -1,3 +1,5 @@
+> **Outdated.** This document describes the earlier Node/Prisma implementation (scenarios, `X-Service-Key`, event-based manual entry). The current system is the Go backend with analysis runs and workers. The source of truth is [backend/README.md](../backend/README.md), [worker/README.md](../worker/README.md) and the Go catalog in `backend/internal/paradigms`.
+
 # Mişko - Paradigm-Owned Metric Engine (roadmap)
 
 > Status: implemented (declarative engine). Decided with the team:
