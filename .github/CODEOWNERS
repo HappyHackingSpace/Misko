@@ -1,0 +1,45 @@
+# Code owners are asked to review pull requests that touch their paths.
+# The last matching pattern wins.
+#
+# TEMPLATE: replace each @handle with real GitHub users or teams
+# (for example @HappyHackingSpace/backend) and remove the leading "#".
+# GitHub ignores a CODEOWNERS file that names users without write access, so
+# fill in only people who can review.
+#
+# Fallback for everything not listed below:
+# *                                         @LEAD
+
+# Go API, metric engine and database schema
+# /backend/                                 @BACKEND_OWNER
+# /backend/schema/                          @BACKEND_OWNER @LEAD
+
+# Published paradigm definitions and metric formulas: scientific decisions,
+# the lead reviews these.
+# /backend/internal/paradigms/              @BACKEND_OWNER @LEAD
+# /backend/internal/analysis/               @BACKEND_OWNER @LEAD
+
+# Authentication, roles, worker tokens and storage signing
+# /backend/internal/access/                 @SECURITY_OWNER
+# /backend/internal/identity/               @SECURITY_OWNER
+# /backend/internal/media/                  @SECURITY_OWNER @BACKEND_OWNER
+# /SECURITY.md                              @SECURITY_OWNER
+
+# Panel
+# /frontend/                                @FRONTEND_OWNER
+
+# Video analysis worker
+# /worker/                                  @WORKER_OWNER @LEAD
+
+# Tests that prove measurements and architecture rules
+# /backend/tests/                           @QA_OWNER
+# /frontend/tests/                          @QA_OWNER
+
+# CI, deployment and dependency updates
+# /.github/workflows/                       @LEAD @SECURITY_OWNER
+# /.github/dependabot.yml                   @LEAD
+# /docker-compose*.yml                      @LEAD
+# /Caddyfile                                @LEAD
+
+# Documentation
+# /docs/                                    @LEAD
+# /docs-site/                               @LEAD
