@@ -1,0 +1,41 @@
+name: Feature request
+description: Suggest an improvement or a new capability
+labels: ["enhancement"]
+body:
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Backend (API)
+        - Frontend (panel)
+        - Worker (video analysis)
+        - New paradigm or metric
+        - Deployment / Docker
+        - Documentation
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What can a researcher or an operator not do today, or do with difficulty?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: For a metric or paradigm, give the definition, the formula, the unit and what happens when data is missing.
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Done when
+      description: A short list that tells a reviewer the work is finished.
+      placeholder: |
+        - [ ] ...
+        - [ ] ...
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered

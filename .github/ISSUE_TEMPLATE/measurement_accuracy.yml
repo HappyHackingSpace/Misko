@@ -1,0 +1,59 @@
+name: Wrong or doubtful measurement
+description: A number Mişko reported does not match what you measured by hand
+labels: ["accuracy", "science"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Measurement problems are the most important reports we get. Please give
+        enough detail that someone else can repeat your comparison.
+        Do not attach recordings that show people or that you may not share.
+  - type: dropdown
+    id: paradigm
+    attributes:
+      label: Paradigm
+      options:
+        - OPEN_FIELD
+        - MWM
+        - EPM
+        - ROTAROD
+        - Y_MAZE
+        - NOVEL_OBJECT
+        - BARNES_MAZE
+        - THREE_CHAMBER
+        - LIGHT_DARK
+        - POLE
+        - TREADMILL
+    validations:
+      required: true
+  - type: input
+    id: metric
+    attributes:
+      label: Metric
+      description: For example `distance_cm`, `center_entries_count`, `escape_latency_s`.
+    validations:
+      required: true
+  - type: textarea
+    id: reported
+    attributes:
+      label: What Mişko reported
+      description: The value, the unit, the paradigm version and the run (trigger and time).
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you measured by hand
+      description: How you counted or timed it (stopwatch, frame by frame, another tool) and the clip range you used.
+    validations:
+      required: true
+  - type: textarea
+    id: setup
+    attributes:
+      label: Recording and calibration
+      description: Camera, resolution, frame rate, lighting, where the calibration points were placed, and the QC result of the run.
+  - type: textarea
+    id: notes
+    attributes:
+      label: Anything else
+      description: For example whether the animal rests for long periods, shadows, reflections or a second animal.
