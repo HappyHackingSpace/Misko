@@ -2,7 +2,7 @@ name: Frontend CI
 
 on:
   push:
-    branches: [main, new-backend]
+    branches: [main]
     paths:
       - "frontend/**"
       - "backend/tests/e2e/**"

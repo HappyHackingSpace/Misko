@@ -1,6 +1,6 @@
 # Go backend
 
-Integration branch `new-backend`. The rebuild is incomplete; do not release it.
+The Go rebuild lives on `main`. It is incomplete; do not release it.
 
 | Issue | Implemented |
 |---|---|
@@ -706,10 +706,9 @@ setup, concurrent enrollment and assignment, cross-experiment references,
 overlapping periods, target versus actual group counts, intervention references and
 history, per-kilogram dose conversion, SQL constraints, search escaping, stable paging and the read/write RBAC matrix over HTTP.
 
-CI runs these checks on PRs, including PRs targeting `new-backend`, then builds the
-container without pushing an image. Publication jobs are restricted to `main`;
-this unfinished branch cannot be manually deployed or released. No auto-merge is
-enabled for `new-backend`.
+CI runs these checks on PRs and on pushes to `main`, then builds the container
+without pushing an image. Dependabot opens its updates against `main`, and its
+pull requests are merged automatically once CI is green.
 
 Known limits: login has no rate limiting yet, and there is no server-side logout
 (a client signs out by discarding its token; password changes revoke all tokens).
