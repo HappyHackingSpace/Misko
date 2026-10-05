@@ -2,7 +2,7 @@ name: Worker CI
 
 on:
   push:
-    branches: [new-backend]
+    branches: [main]
     paths: ['worker/**', '.github/workflows/worker-ci.yml']
   pull_request:
     paths: ['worker/**', '.github/workflows/worker-ci.yml']
