@@ -6,6 +6,8 @@ updates:
     directory: /backend
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 3
     open-pull-requests-limit: 10
     labels:
       - dependencies
@@ -20,9 +22,13 @@ updates:
 
   # ── Frontend (npm) ─────────────────────────────────────────────
   - package-ecosystem: npm
-    directory: /frontend
+    directories:
+      - /frontend
+      - /docs-site
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 3
     open-pull-requests-limit: 10
     labels:
       - dependencies
@@ -40,6 +46,8 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 3
     labels:
       - dependencies
       - ci
@@ -56,18 +64,58 @@ updates:
     directory: /backend
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 3
     labels:
       - dependencies
       - docker
     commit-message:
       prefix: "chore(docker-backend)"
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
 
   - package-ecosystem: docker
     directory: /frontend
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 3
     labels:
       - dependencies
       - docker
     commit-message:
       prefix: "chore(docker-frontend)"
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: docker
+    directory: /worker
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 3
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: pip
+    directory: /worker
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 3
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: docker-compose
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 3
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
