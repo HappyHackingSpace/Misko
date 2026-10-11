@@ -54,9 +54,14 @@ func TestSubjectsAndExperimentsOverHTTP(t *testing.T) {
 		c.expect(role+" creates experiment", c.call("POST", "/api/experiments", token, map[string]any{"code": "E-" + role, "title": "Study"}), status, code)
 	}
 
-	subject := c.create("/api/subjects", admin, map[string]any{"code": "F-001", "species": "MOUSE", "sex": "FEMALE", "strain": "C57BL/6J", "birthDate": "2026-05-01"})
-	if subject["birthDate"] != "2026-05-01" || subject["notes"] != nil {
-		t.Fatalf("subject representation: %v", subject)
+	for _, field := range []string{"strain", "birthDate", "notes"} {
+		c.expect("removed subject field "+field, c.call("POST", "/api/subjects", admin, map[string]any{"code": "F-000", "species": "MOUSE", "sex": "FEMALE", field: "x"}), 400, "common.invalidJSON")
+	}
+	subject := c.create("/api/subjects", admin, map[string]any{"code": "F-001", "species": "MOUSE", "sex": "FEMALE"})
+	for _, field := range []string{"strain", "birthDate", "notes"} {
+		if _, ok := subject[field]; ok {
+			t.Fatalf("subject representation still has %s: %v", field, subject)
+		}
 	}
 	spare := c.create("/api/subjects", admin, map[string]any{"code": "F-002", "species": "MOUSE", "sex": "FEMALE"})
 	exp := c.create("/api/experiments", admin, map[string]any{"code": "EXP-1", "title": "Anxiety", "requiresControl": true})
@@ -80,7 +85,7 @@ func TestSubjectsAndExperimentsOverHTTP(t *testing.T) {
 		method, path string
 		body         any
 	}{
-		{"PATCH", "/api/subjects/" + id(subject), map[string]any{"notes": "moved"}},
+		{"PATCH", "/api/subjects/" + id(subject), map[string]any{"sex": "MALE"}},
 		{"DELETE", "/api/subjects/" + id(spare), nil},
 		{"PATCH", base, map[string]any{"title": "Renamed"}},
 		{"POST", base + "/phases", map[string]any{"name": "Post", "position": 2}},

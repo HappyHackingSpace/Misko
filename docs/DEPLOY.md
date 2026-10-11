@@ -36,10 +36,11 @@ a personal access token that has `read:packages`.)
    docker compose -f docker-compose.prod.yml pull
    ```
 
-3. Install the schema into the empty database. This runs once:
+3. Install the schema into the empty database. On later updates run the same
+   command after `pull` and before `up`; it applies only pending migrations:
 
    ```bash
-   docker compose -f docker-compose.prod.yml --profile setup run --rm schema
+   docker compose -f docker-compose.prod.yml --profile setup run --rm migrate
    ```
 
 4. Create the laboratory and the first administrator. This also runs once, and

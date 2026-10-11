@@ -19,9 +19,9 @@ services:
       timeout: 3s
       retries: 20
 
-  schema:
+  migrate:
     build: ./backend
-    entrypoint: ["/bootstrap", "schema"]
+    entrypoint: ["/bootstrap", "migrate"]
     environment:
       DATABASE_URL: *database-url
     depends_on:

@@ -64,8 +64,6 @@ const columns = computed(() => {
           () => sexLabel(row.sex),
         ),
     },
-    { title: t("subjects.strain"), key: "strain", render: (row) => row.strain || "—" },
-    { title: t("common.notes"), key: "notes", ellipsis: { tooltip: true }, render: (row) => row.notes || "—" },
   ];
   if (canWrite.value) {
     cols.push({
@@ -82,8 +80,6 @@ const exportColumns = [
   { key: "code", label: t("subjects.code") },
   { key: "species", label: t("subjects.species"), value: (row) => speciesLabel(row.species) },
   { key: "sex", label: t("subjects.sex"), value: (row) => sexLabel(row.sex) },
-  { key: "strain", label: t("subjects.strain") },
-  { key: "notes", label: t("common.notes") },
 ];
 const { exportCsv, exportPdf } = useTableExport({
   state: table.state,

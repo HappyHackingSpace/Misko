@@ -19,7 +19,7 @@ setup, and what the result was** — without managing raw video by hand.
   Plus Maze, Rotarod). Defined in code; the catalog is fixed and stable.
 - **Environment** — a named, concrete instance of a paradigm: the physical setup
   (geometry in cm, surface color/material for vision contrast, zones).
-- **Subject** — the mouse, kept simple (code, sex, group, birth date, notes).
+- **Subject** — the mouse, kept simple (code, sex, group).
 - **Scenario** — the central object. It bundles one or more environments (whose
   paradigms fix the metrics), so an experiment is defined once.
 - **Test** — a subject measured against a scenario, run environment by environment

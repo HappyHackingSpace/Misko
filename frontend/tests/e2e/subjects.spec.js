@@ -41,8 +41,10 @@ test("a subject can be registered and then corrected", async ({ page, request })
   await page.getByTestId("subject-code").fill(code);
   await chooseOption(page, "subject-species", "subject-species-RAT");
   await chooseOption(page, "subject-sex", "subject-sex-FEMALE");
-  await page.getByTestId("subject-strain").fill("C57BL/6");
-  await page.getByTestId("subject-notes").fill("registered by the browser test");
+  // Strain, birth date and notes were removed from the subject.
+  for (const removed of ["subject-strain", "subject-birth-date", "subject-notes"]) {
+    await expect(page.getByTestId(removed)).toHaveCount(0);
+  }
   await page.getByTestId("subject-save").click();
 
   // Saving returns to the list, and the API has the subject: it comes back

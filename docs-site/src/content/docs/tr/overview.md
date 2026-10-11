@@ -20,7 +20,7 @@ laboratuvarları için.
   Artı Labirent, Rotarod). Kodda tanımlıdır; katalog sabit ve kararlıdır.
 - **Ortam** — bir paradigmanın isimli, somut instance'ı: fiziksel kurulum
   (cm cinsinden geometri, görü kontrastı için yüzey rengi/malzemesi, bölgeler).
-- **Denek** — fare; sade tutulur (kod, cinsiyet, grup, doğum tarihi, not).
+- **Denek** — fare; sade tutulur (kod, cinsiyet, grup).
 - **Senaryo** — merkezî nesne. Bir veya birden çok ortamı (paradigmaları
   metrikleri sabitler) paketler; böylece bir deney bir kez tanımlanır.
 - **Test** — bir deneğin bir senaryoya göre, ortam ortam koşturulması;

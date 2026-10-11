@@ -7,14 +7,12 @@ package sqlcgen
 
 import (
 	"context"
-
-	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const countSubjects = `-- name: CountSubjects :one
 SELECT count(*)
 FROM misko.subjects
-WHERE ($1::text = '' OR code ILIKE '%' || $1::text || '%' ESCAPE '\' OR strain ILIKE '%' || $1::text || '%' ESCAPE '\')
+WHERE ($1::text = '' OR code ILIKE '%' || $1::text || '%' ESCAPE '\')
   AND ($2::text = '' OR species = $2::text)
   AND ($3::text = '' OR sex = $3::text)
 `
@@ -33,38 +31,25 @@ func (q *Queries) CountSubjects(ctx context.Context, arg CountSubjectsParams) (i
 }
 
 const createSubject = `-- name: CreateSubject :one
-INSERT INTO misko.subjects (code, species, sex, strain, birth_date, notes)
-VALUES ($1, $2, $3, $4, $5::date, $6)
-RETURNING id, code, species, sex, strain, birth_date, notes, created_at, updated_at
+INSERT INTO misko.subjects (code, species, sex)
+VALUES ($1, $2, $3)
+RETURNING id, code, species, sex, created_at, updated_at
 `
 
 type CreateSubjectParams struct {
-	Code      string
-	Species   string
-	Sex       string
-	Strain    *string
-	BirthDate pgtype.Date
-	Notes     *string
+	Code    string
+	Species string
+	Sex     string
 }
 
 func (q *Queries) CreateSubject(ctx context.Context, arg CreateSubjectParams) (MiskoSubject, error) {
-	row := q.db.QueryRow(ctx, createSubject,
-		arg.Code,
-		arg.Species,
-		arg.Sex,
-		arg.Strain,
-		arg.BirthDate,
-		arg.Notes,
-	)
+	row := q.db.QueryRow(ctx, createSubject, arg.Code, arg.Species, arg.Sex)
 	var i MiskoSubject
 	err := row.Scan(
 		&i.ID,
 		&i.Code,
 		&i.Species,
 		&i.Sex,
-		&i.Strain,
-		&i.BirthDate,
-		&i.Notes,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -85,7 +70,7 @@ func (q *Queries) DeleteSubject(ctx context.Context, id string) (int64, error) {
 }
 
 const getSubject = `-- name: GetSubject :one
-SELECT id, code, species, sex, strain, birth_date, notes, created_at, updated_at
+SELECT id, code, species, sex, created_at, updated_at
 FROM misko.subjects
 WHERE id = $1
 `
@@ -98,9 +83,6 @@ func (q *Queries) GetSubject(ctx context.Context, id string) (MiskoSubject, erro
 		&i.Code,
 		&i.Species,
 		&i.Sex,
-		&i.Strain,
-		&i.BirthDate,
-		&i.Notes,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -108,9 +90,9 @@ func (q *Queries) GetSubject(ctx context.Context, id string) (MiskoSubject, erro
 }
 
 const listSubjects = `-- name: ListSubjects :many
-SELECT id, code, species, sex, strain, birth_date, notes, created_at, updated_at
+SELECT id, code, species, sex, created_at, updated_at
 FROM misko.subjects
-WHERE ($1::text = '' OR code ILIKE '%' || $1::text || '%' ESCAPE '\' OR strain ILIKE '%' || $1::text || '%' ESCAPE '\')
+WHERE ($1::text = '' OR code ILIKE '%' || $1::text || '%' ESCAPE '\')
   AND ($2::text = '' OR species = $2::text)
   AND ($3::text = '' OR sex = $3::text)
 ORDER BY
@@ -120,8 +102,6 @@ ORDER BY
     CASE WHEN $4::text = 'species' AND $5::boolean THEN species END DESC,
     CASE WHEN $4::text = 'sex' AND NOT $5::boolean THEN sex END ASC,
     CASE WHEN $4::text = 'sex' AND $5::boolean THEN sex END DESC,
-    CASE WHEN $4::text = 'birthDate' AND NOT $5::boolean THEN birth_date END ASC NULLS LAST,
-    CASE WHEN $4::text = 'birthDate' AND $5::boolean THEN birth_date END DESC NULLS LAST,
     CASE WHEN $4::text = 'createdAt' AND NOT $5::boolean THEN created_at END ASC,
     CASE WHEN $4::text = 'createdAt' AND $5::boolean THEN created_at END DESC,
     id ASC
@@ -161,9 +141,6 @@ func (q *Queries) ListSubjects(ctx context.Context, arg ListSubjectsParams) ([]M
 			&i.Code,
 			&i.Species,
 			&i.Sex,
-			&i.Strain,
-			&i.BirthDate,
-			&i.Notes,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -182,35 +159,24 @@ UPDATE misko.subjects
 SET code = coalesce($1, code),
     species = coalesce($2, species),
     sex = coalesce($3, sex),
-    strain = CASE WHEN $4::text IS NULL THEN strain ELSE NULLIF($4::text, '') END,
-    notes = CASE WHEN $5::text IS NULL THEN notes ELSE NULLIF($5::text, '') END,
-    birth_date = CASE WHEN $6::boolean THEN NULL ELSE coalesce($7::date, birth_date) END,
     updated_at = now()
-WHERE id = $8
-RETURNING id, code, species, sex, strain, birth_date, notes, created_at, updated_at
+WHERE id = $4
+RETURNING id, code, species, sex, created_at, updated_at
 `
 
 type UpdateSubjectParams struct {
-	Code           *string
-	Species        *string
-	Sex            *string
-	Strain         *string
-	Notes          *string
-	ClearBirthDate bool
-	BirthDate      pgtype.Date
-	ID             string
+	Code    *string
+	Species *string
+	Sex     *string
+	ID      string
 }
 
-// A NULL argument leaves a column unchanged; an empty strain or notes clears it.
+// A NULL argument leaves a column unchanged.
 func (q *Queries) UpdateSubject(ctx context.Context, arg UpdateSubjectParams) (MiskoSubject, error) {
 	row := q.db.QueryRow(ctx, updateSubject,
 		arg.Code,
 		arg.Species,
 		arg.Sex,
-		arg.Strain,
-		arg.Notes,
-		arg.ClearBirthDate,
-		arg.BirthDate,
 		arg.ID,
 	)
 	var i MiskoSubject
@@ -219,9 +185,6 @@ func (q *Queries) UpdateSubject(ctx context.Context, arg UpdateSubjectParams) (M
 		&i.Code,
 		&i.Species,
 		&i.Sex,
-		&i.Strain,
-		&i.BirthDate,
-		&i.Notes,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)

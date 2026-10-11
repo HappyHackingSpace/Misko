@@ -342,10 +342,10 @@ paths:
       operationId: listSubjects
       summary: List subjects (*:read)
       parameters:
-        - {name: search, in: query, schema: {type: string, maxLength: 100}, description: Case-insensitive match on code or strain}
+        - {name: search, in: query, schema: {type: string, maxLength: 100}, description: Case-insensitive match on code}
         - {name: species, in: query, schema: {$ref: '#/components/schemas/Species'}}
         - {name: sex, in: query, schema: {$ref: '#/components/schemas/Sex'}}
-        - {name: sort, in: query, schema: {type: string, enum: [code, species, sex, birthDate, createdAt], default: createdAt}}
+        - {name: sort, in: query, schema: {type: string, enum: [code, species, sex, createdAt], default: createdAt}}
         - {name: order, in: query, schema: {type: string, enum: [asc, desc]}, description: Defaults to desc for createdAt and asc otherwise}
         - $ref: '#/components/parameters/Page'
         - $ref: '#/components/parameters/PageSize'
@@ -2037,15 +2037,12 @@ components:
       description: Unique ignoring case
     Subject:
       type: object
-      required: [id, code, species, sex, strain, birthDate, notes, createdAt, updatedAt]
+      required: [id, code, species, sex, createdAt, updatedAt]
       properties:
         id: {type: string, format: uuid}
         code: {$ref: '#/components/schemas/Code'}
         species: {$ref: '#/components/schemas/Species'}
         sex: {$ref: '#/components/schemas/Sex'}
-        strain: {type: [string, 'null'], maxLength: 120}
-        birthDate: {type: [string, 'null'], format: date}
-        notes: {type: [string, 'null'], maxLength: 2000}
         createdAt: {type: string, format: date-time}
         updatedAt: {type: string, format: date-time}
     SubjectInput:
@@ -2056,21 +2053,15 @@ components:
         code: {$ref: '#/components/schemas/Code'}
         species: {$ref: '#/components/schemas/Species'}
         sex: {$ref: '#/components/schemas/Sex'}
-        strain: {type: string, maxLength: 120}
-        birthDate: {type: string, format: date, description: Not later than one day after the current UTC date}
-        notes: {type: string, maxLength: 2000}
     SubjectPatch:
       type: object
       additionalProperties: false
       minProperties: 1
-      description: Omitted fields are unchanged; an empty strain, birthDate or notes clears it
+      description: Omitted fields are unchanged
       properties:
         code: {$ref: '#/components/schemas/Code'}
         species: {$ref: '#/components/schemas/Species'}
         sex: {$ref: '#/components/schemas/Sex'}
-        strain: {type: string, maxLength: 120}
-        birthDate: {type: string, description: YYYY-MM-DD or empty}
-        notes: {type: string, maxLength: 2000}
     Experiment:
       type: object
       required: [id, code, title, description, requiresControl, createdAt, updatedAt]

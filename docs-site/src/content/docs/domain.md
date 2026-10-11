@@ -32,8 +32,7 @@ Mişko runs **one laboratory per installation** - a singleton, not multi-tenant.
 
 ## Subject (the mouse)
 
-Kept simple: `code` (unique), `sex`, `groupName` (free-text experiment group),
-`birthDate`, `notes`.
+Kept simple: `code` (unique), `sex`, `groupName` (free-text experiment group).
 
 ## Paradigm and Environment
 

@@ -5,14 +5,14 @@ name: misko
 #
 #   1. Put this file and `.env.prod.example` (copied to `.env`) in a folder.
 #   2. docker compose -f docker-compose.prod.yml pull
-#   3. docker compose -f docker-compose.prod.yml --profile setup run --rm schema
+#   3. docker compose -f docker-compose.prod.yml --profile setup run --rm migrate
 #   4. docker compose -f docker-compose.prod.yml --profile setup run --rm setup
 #      (prints the one-time administrator password to your terminal)
 #   5. docker compose -f docker-compose.prod.yml up -d
 #
-# Steps 3 and 4 are one-time. The API does not install the schema or create the
-# administrator on its own, so starting the stack without them leaves an empty
-# database and no way to sign in.
+# Step 4 is one-time. Step 3 also upgrades an existing database: run it after
+# every pull, before `up`. The API never changes the schema on its own and is
+# not ready while the database is behind the version it was built for.
 #
 # Override IMAGE_OWNER / IMAGE_TAG in `.env` if the images live elsewhere.
 
@@ -34,10 +34,10 @@ services:
       timeout: 5s
       retries: 10
 
-  # One-time: installs the schema into an empty database.
-  schema:
+  # Installs the schema into an empty database or applies pending migrations.
+  migrate:
     image: ghcr.io/${IMAGE_OWNER:-happyhackingspace}/misko-backend:${IMAGE_TAG:-latest}
-    entrypoint: ["/bootstrap", "schema"]
+    entrypoint: ["/bootstrap", "migrate"]
     environment:
       DATABASE_URL: *database-url
     depends_on:

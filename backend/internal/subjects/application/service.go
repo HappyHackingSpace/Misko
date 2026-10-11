@@ -8,7 +8,6 @@ import (
 	"github.com/HappyHackingSpace/Misko/backend/internal/subjects/domain"
 	"slices"
 	"strings"
-	"time"
 	"unicode/utf8"
 )
 
@@ -20,15 +19,11 @@ var (
 	ErrInvalidQuery = errors.New("invalid list query")
 )
 
-// Changes holds validated fields; nil leaves a field unchanged. An empty Strain
-// or Notes clears it, and ClearBirthDate removes the birth date.
+// Changes holds validated fields; nil leaves a field unchanged.
 type Changes struct {
-	Code           *string
-	Species        *domain.Species
-	Sex            *domain.Sex
-	Strain, Notes  *string
-	BirthDate      *time.Time
-	ClearBirthDate bool
+	Code    *string
+	Species *domain.Species
+	Sex     *domain.Sex
 }
 
 // Filter is a validated list query whose sort key is allowlisted.
@@ -51,12 +46,9 @@ type Store interface {
 	Delete(ctx context.Context, id string) error
 }
 
-type Service struct {
-	store Store
-	now   func() time.Time
-}
+type Service struct{ store Store }
 
-func New(store Store, now func() time.Time) *Service { return &Service{store: store, now: now} }
+func New(store Store) *Service { return &Service{store: store} }
 
 func (s *Service) Subject(ctx context.Context, actor access.Actor, id string) (domain.Subject, error) {
 	if err := actor.Require(access.Read); err != nil {
@@ -66,23 +58,23 @@ func (s *Service) Subject(ctx context.Context, actor access.Actor, id string) (d
 }
 
 type Input struct {
-	Code, Species, Sex, Strain, BirthDate, Notes string
+	Code, Species, Sex string
 }
 
 func (s *Service) Create(ctx context.Context, actor access.Actor, in Input) (domain.Subject, error) {
 	if err := actor.Require(access.SubjectWrite); err != nil {
 		return domain.Subject{}, err
 	}
-	subject, err := domain.NewSubject(in.Code, in.Species, in.Sex, in.Strain, in.BirthDate, in.Notes, s.now())
+	subject, err := domain.NewSubject(in.Code, in.Species, in.Sex)
 	if err != nil {
 		return domain.Subject{}, err
 	}
 	return s.store.Create(ctx, subject)
 }
 
-// Patch fields left nil are unchanged; empty strain, notes or birth date clear them.
+// Patch fields left nil are unchanged.
 type Patch struct {
-	Code, Species, Sex, Strain, BirthDate, Notes *string
+	Code, Species, Sex *string
 }
 
 func (s *Service) Update(ctx context.Context, actor access.Actor, id string, p Patch) (domain.Subject, error) {
@@ -109,22 +101,6 @@ func (s *Service) Update(ctx context.Context, actor access.Actor, id string, p P
 			return domain.Subject{}, err
 		}
 	}
-	if p.Strain != nil {
-		if c.Strain, err = validated(domain.NormalizeStrain(*p.Strain)); err != nil {
-			return domain.Subject{}, err
-		}
-	}
-	if p.Notes != nil {
-		if c.Notes, err = validated(domain.NormalizeNotes(*p.Notes)); err != nil {
-			return domain.Subject{}, err
-		}
-	}
-	if p.BirthDate != nil {
-		if c.BirthDate, err = domain.ParseBirthDate(*p.BirthDate, s.now()); err != nil {
-			return domain.Subject{}, err
-		}
-		c.ClearBirthDate = c.BirthDate == nil
-	}
 	return s.store.Update(ctx, id, c)
 }
 
@@ -145,7 +121,7 @@ type Page struct {
 	Total, Page, PageSize int
 }
 
-var sorts = []string{"code", "species", "sex", "birthDate", "createdAt"}
+var sorts = []string{"code", "species", "sex", "createdAt"}
 
 func (s *Service) List(ctx context.Context, actor access.Actor, q Query) (Page, error) {
 	if err := actor.Require(access.Read); err != nil {

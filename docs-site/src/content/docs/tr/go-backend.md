@@ -35,14 +35,14 @@ kök dizininde çalıştırın:
 
 ```bash
 docker compose up -d db
-docker compose --profile setup run --rm schema
+docker compose --profile setup run --rm migrate
 docker compose --profile setup run --rm setup
 docker compose up --build -d backend
 curl --fail http://127.0.0.1:4000/api/ready
 ```
 
 1. `db`, PostgreSQL'i yeni bir volume ile başlatır. Eski kurulumun verisine dokunulmaz.
-2. `schema`, boş veritabanında tabloları oluşturur. Tekrar çalıştırılırsa reddeder ve hiçbir şey silmez.
+2. `migrate`, boş bir veritabanında tabloları oluşturur ya da mevcut bir veritabanında eksik migration'ları uygular. Güncel bir veritabanında hiçbir şey yapmaz.
 3. `setup`, laboratuvarı ve ilk yöneticiyi oluşturur; yöneticinin e-postasını ve
    üretilen şifreyi terminalinize **yalnızca bir kez** yazar. Tekrar
    çalıştırılırsa hiçbir şey oluşturmaz.
@@ -54,7 +54,7 @@ okuyabildiği yeni bir dosyaya yazılır. Şifre hiçbir zaman loglara yazılmaz
 
 Compose veritabanı yerine kendi PostgreSQL sunucunuzu kullanıyorsanız sürüm
 PostgreSQL 18 veya üzeri olmalıdır. Şema, PostgreSQL ile birlikte gelen
-`btree_gist` eklentisini etkinleştirdiği için `schema` komutunu çalıştıran
+`btree_gist` eklentisini etkinleştirdiği için `migrate` komutunu çalıştıran
 kullanıcının veritabanında nesne oluşturma izni olmalıdır.
 
 ### Ayarlar
@@ -133,12 +133,10 @@ Giriş yapmış her kullanıcı denekleri okuyabilir. SUPERADMIN, LAB_MANAGER ve
 RESEARCHER denekleri değiştirebilir.
 
 - `POST /api/subjects`, `code`, `species` (`MOUSE` veya `RAT`), `sex` (`FEMALE`,
-  `MALE` veya `UNKNOWN`) ve isteğe bağlı `strain`, `birthDate` (`YYYY-AA-GG`) ve
-  `notes` ile denek oluşturur. Kodlar büyük/küçük harf farkı gözetmeden benzersizdir.
+  `MALE` veya `UNKNOWN`) ile denek oluşturur. Kodlar büyük/küçük harf farkı gözetmeden benzersizdir.
 - `GET /api/subjects`, denekleri `search`, `species`, `sex`, `sort`, `order`,
   `page` ve `pageSize` ile listeler.
-- `PATCH /api/subjects/{id}`, gönderdiğiniz alanları değiştirir. Boş `strain`,
-  `birthDate` veya `notes` değeri alanı temizler.
+- `PATCH /api/subjects/{id}`, gönderdiğiniz alanları değiştirir.
 - `DELETE /api/subjects/{id}`, hiçbir deneye katılmamış bir deneği siler.
 - `GET /api/subjects/{id}/enrollments`, deneğin katıldığı tüm deneyleri gösterir.
 

@@ -86,7 +86,8 @@ references to objects, never video bytes.
 
 The stack runs with Docker Compose: PostgreSQL, the API, the jobs process that
 queues analysis runs, and Nginx serving the panel. The schema and the first
-administrator are installed by explicit one-time commands (`bootstrap schema`
-and `bootstrap setup`), not on container start, so an existing database is
-never migrated by accident. Backend, frontend and worker each have their own
+administrator are installed by explicit commands (`bootstrap migrate` and the
+one-time `bootstrap setup`), not on container start. `migrate` applies numbered
+SQL migrations in one transaction and records them, and every deploy runs it
+before starting the new containers. Backend, frontend and worker each have their own
 path-filtered GitHub Actions pipeline.

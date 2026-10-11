@@ -344,9 +344,6 @@ type MiskoSubject struct {
 	Code      string
 	Species   string
 	Sex       string
-	Strain    *string
-	BirthDate pgtype.Date
-	Notes     *string
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }

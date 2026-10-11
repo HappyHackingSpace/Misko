@@ -10,9 +10,7 @@ import (
 	"github.com/HappyHackingSpace/Misko/backend/internal/subjects/application"
 	"github.com/HappyHackingSpace/Misko/backend/internal/subjects/domain"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"time"
 )
 
 type Store struct{ queries *sqlcgen.Queries }
@@ -22,7 +20,6 @@ func NewStore(pool *pgxpool.Pool) *Store { return &Store{queries: sqlcgen.New(po
 func (s *Store) Create(ctx context.Context, subject domain.Subject) (domain.Subject, error) {
 	row, err := s.queries.CreateSubject(ctx, sqlcgen.CreateSubjectParams{
 		Code: subject.Code, Species: string(subject.Species), Sex: string(subject.Sex),
-		Strain: optional(subject.Strain), BirthDate: date(subject.BirthDate), Notes: optional(subject.Notes),
 	})
 	if err != nil {
 		return domain.Subject{}, translate(err, "create subject")
@@ -66,8 +63,7 @@ func (s *Store) Update(ctx context.Context, id string, c application.Changes) (d
 		return domain.Subject{}, application.ErrNotFound
 	}
 	row, err := s.queries.UpdateSubject(ctx, sqlcgen.UpdateSubjectParams{
-		ID: id, Code: c.Code, Species: text(c.Species), Sex: text(c.Sex), Strain: c.Strain, Notes: c.Notes,
-		BirthDate: date(c.BirthDate), ClearBirthDate: c.ClearBirthDate,
+		ID: id, Code: c.Code, Species: text(c.Species), Sex: text(c.Sex),
 	})
 	if err != nil {
 		return domain.Subject{}, translate(err, "update subject")
@@ -103,36 +99,10 @@ func translate(err error, operation string) error {
 }
 
 func toSubject(row sqlcgen.MiskoSubject) domain.Subject {
-	s := domain.Subject{
+	return domain.Subject{
 		ID: row.ID, Code: row.Code, Species: domain.Species(row.Species), Sex: domain.Sex(row.Sex),
 		CreatedAt: row.CreatedAt.UTC(), UpdatedAt: row.UpdatedAt.UTC(),
 	}
-	if row.Strain != nil {
-		s.Strain = *row.Strain
-	}
-	if row.Notes != nil {
-		s.Notes = *row.Notes
-	}
-	if row.BirthDate.Valid {
-		birth := time.Date(row.BirthDate.Time.Year(), row.BirthDate.Time.Month(), row.BirthDate.Time.Day(), 0, 0, 0, 0, time.UTC)
-		s.BirthDate = &birth
-	}
-	return s
-}
-
-func date(t *time.Time) pgtype.Date {
-	if t == nil {
-		return pgtype.Date{}
-	}
-	return pgtype.Date{Time: *t, Valid: true}
-}
-
-// optional stores an empty value as NULL.
-func optional(value string) *string {
-	if value == "" {
-		return nil
-	}
-	return &value
 }
 
 func text[T ~string](value *T) *string {
