@@ -33,8 +33,7 @@ değil.
 
 ## Denek (fare)
 
-Sade tutulur: `code` (benzersiz), `sex`, `groupName` (serbest-metin deney grubu),
-`birthDate`, `notes`.
+Sade tutulur: `code` (benzersiz), `sex`, `groupName` (serbest-metin deney grubu).
 
 ## Paradigma ve Ortam
 

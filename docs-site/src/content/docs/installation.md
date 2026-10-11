@@ -36,7 +36,7 @@ git clone https://github.com/HappyHackingSpace/Misko.git
 cd Misko
 
 cp .env.example .env                               # optional: every value has a default
-docker compose --profile setup run --rm schema     # install the schema
+docker compose --profile setup run --rm migrate    # install or upgrade the schema
 docker compose --profile setup run --rm setup      # create the laboratory and the administrator
 docker compose up -d                               # start the API, the jobs process and the panel
 ```
@@ -47,8 +47,10 @@ When it finishes:
 - API: [http://localhost:4000/api](http://localhost:4000/api)
 
 The schema and the administrator are installed by those two explicit commands
-rather than on container start. That is deliberate: starting the stack never
-migrates a database you already have.
+rather than on container start. After updating to a new version, run `migrate`
+again before `docker compose up -d`: it applies only the migrations your database
+does not have yet, all in one transaction, and does nothing when it is up to
+date.
 
 ### The first login password
 
@@ -87,7 +89,7 @@ docker compose down            # stop the containers, keep the data
 docker compose down -v         # stop AND delete the database volume (full reset)
 ```
 
-After a `down -v` the database is empty again, so run the `schema` and `setup`
+After a `down -v` the database is empty again, so run the `migrate` and `setup`
 commands before starting the stack.
 
 ## Option B: Local development
@@ -105,7 +107,7 @@ the variables. `backend/.env.example` lists all of them.
 cd backend
 export DATABASE_URL='postgres://misko:misko_local_only@127.0.0.1:5432/misko_foundation?sslmode=disable'
 export JWT_SECRET="$(openssl rand -base64 48)"
-go run ./cmd/bootstrap schema   # install the schema
+go run ./cmd/bootstrap migrate  # install or upgrade the schema
 go run ./cmd/bootstrap setup    # create the laboratory and the administrator
 go run ./cmd/api                # API on http://localhost:4000
 ```
@@ -157,7 +159,7 @@ described in [DEPLOY.md](https://github.com/HappyHackingSpace/Misko/blob/main/do
 ## Troubleshooting
 
 - **Port already in use**: change `FRONTEND_PORT` in `.env`, or stop whatever holds port 4000, and run `docker compose up -d` again.
-- **Cannot sign in and the password is gone**: the password is shown once and is not recoverable. Reset with `docker compose down -v`, then run the `schema` and `setup` commands again.
+- **Cannot sign in and the password is gone**: the password is shown once and is not recoverable. Reset with `docker compose down -v`, then run the `migrate` and `setup` commands again.
 - **`setup` refuses to run**: it needs a terminal for the password. In a script, pass `-credentials-file` with a path that does not exist yet.
 - **Video upload returns 503**: `GCS_BUCKET` is not set. That is expected without a bucket.
 - **Backend cannot reach the database**: make sure the `db` container is healthy (`docker compose ps`).

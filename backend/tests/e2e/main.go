@@ -64,7 +64,7 @@ func run() int {
 		fmt.Fprintln(os.Stderr, "could not reset the schema:", err)
 		return 1
 	}
-	if err := schema.Install(ctx, pool); err != nil {
+	if _, err := schema.Migrate(ctx, pool); err != nil {
 		fmt.Fprintln(os.Stderr, "schema installation failed:", err)
 		return 1
 	}

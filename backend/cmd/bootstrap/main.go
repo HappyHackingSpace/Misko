@@ -17,14 +17,14 @@ import (
 	_ "time/tzdata" // laboratory time zones must not depend on the container image
 )
 
-const usage = "usage: bootstrap schema | bootstrap setup [-credentials-file PATH]"
+const usage = "usage: bootstrap migrate | bootstrap setup [-credentials-file PATH]"
 
 func main() { os.Exit(run(os.Args[1:])) }
 
 // run logs to stderr so stdout carries only the one-time administrator credentials.
 func run(args []string) int {
 	logger := slog.New(slog.NewJSONHandler(os.Stderr, nil))
-	if len(args) == 0 || (args[0] != "schema" && args[0] != "setup") || (args[0] == "schema" && len(args) != 1) {
+	if len(args) == 0 || (args[0] != "migrate" && args[0] != "setup") || (args[0] == "migrate" && len(args) != 1) {
 		fmt.Fprintln(os.Stderr, usage)
 		return 2
 	}
@@ -46,11 +46,12 @@ func run(args []string) int {
 	if args[0] == "setup" {
 		return setup(ctx, args[1:], pool, logger)
 	}
-	if err := schema.Install(ctx, pool); err != nil {
-		logger.Error("schema installation failed; use an empty database with CREATE permission")
+	applied, err := schema.Migrate(ctx, pool)
+	if err != nil {
+		logger.Error("migration failed; the database was left unchanged", "error", err)
 		return 1
 	}
-	logger.Info("schema installed")
+	logger.Info("schema up to date", "version", schema.Latest(), "applied", applied)
 	return 0
 }
 

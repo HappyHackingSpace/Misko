@@ -22,9 +22,6 @@ var failures = []httpjson.Failure{
 	{Err: domain.ErrInvalidCode, Status: http.StatusBadRequest, Code: "subject.invalidCode"},
 	{Err: domain.ErrInvalidSpecies, Status: http.StatusBadRequest, Code: "subject.invalidSpecies"},
 	{Err: domain.ErrInvalidSex, Status: http.StatusBadRequest, Code: "subject.invalidSex"},
-	{Err: domain.ErrInvalidStrain, Status: http.StatusBadRequest, Code: "subject.invalidStrain"},
-	{Err: domain.ErrInvalidBirthDate, Status: http.StatusBadRequest, Code: "subject.invalidBirthDate"},
-	{Err: domain.ErrInvalidNotes, Status: http.StatusBadRequest, Code: "subject.invalidNotes"},
 }
 
 type handler struct {
@@ -74,12 +71,9 @@ func (h handler) create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Code      string `json:"code"`
-		Species   string `json:"species"`
-		Sex       string `json:"sex"`
-		Strain    string `json:"strain"`
-		BirthDate string `json:"birthDate"`
-		Notes     string `json:"notes"`
+		Code    string `json:"code"`
+		Species string `json:"species"`
+		Sex     string `json:"sex"`
 	}
 	if err := httpjson.Decode(w, r, &body); err != nil {
 		h.fail(w, r, err)
@@ -106,19 +100,16 @@ func (h handler) get(w http.ResponseWriter, r *http.Request) {
 	httpjson.Write(w, http.StatusOK, toJSON(subject))
 }
 
-// update changes provided fields; an empty strain, birthDate or notes clears it.
+// update changes the provided fields.
 func (h handler) update(w http.ResponseWriter, r *http.Request) {
 	actor, ok := h.actor(w, r)
 	if !ok {
 		return
 	}
 	var body struct {
-		Code      *string `json:"code"`
-		Species   *string `json:"species"`
-		Sex       *string `json:"sex"`
-		Strain    *string `json:"strain"`
-		BirthDate *string `json:"birthDate"`
-		Notes     *string `json:"notes"`
+		Code    *string `json:"code"`
+		Species *string `json:"species"`
+		Sex     *string `json:"sex"`
 	}
 	if err := httpjson.Decode(w, r, &body); err != nil {
 		h.fail(w, r, err)
@@ -162,24 +153,10 @@ type subjectJSON struct {
 	Code      string    `json:"code"`
 	Species   string    `json:"species"`
 	Sex       string    `json:"sex"`
-	Strain    *string   `json:"strain"`
-	BirthDate *string   `json:"birthDate"`
-	Notes     *string   `json:"notes"`
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
 }
 
 func toJSON(s domain.Subject) subjectJSON {
-	out := subjectJSON{ID: s.ID, Code: s.Code, Species: string(s.Species), Sex: string(s.Sex), Strain: nullable(s.Strain), Notes: nullable(s.Notes), CreatedAt: s.CreatedAt, UpdatedAt: s.UpdatedAt}
-	if s.BirthDate != nil {
-		out.BirthDate = nullable(s.BirthDate.Format(time.DateOnly))
-	}
-	return out
-}
-
-func nullable(s string) *string {
-	if s == "" {
-		return nil
-	}
-	return &s
+	return subjectJSON{ID: s.ID, Code: s.Code, Species: string(s.Species), Sex: string(s.Sex), CreatedAt: s.CreatedAt, UpdatedAt: s.UpdatedAt}
 }

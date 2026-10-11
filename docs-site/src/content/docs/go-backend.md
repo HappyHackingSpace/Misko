@@ -35,14 +35,14 @@ on the `new-backend` branch:
 
 ```bash
 docker compose up -d db
-docker compose --profile setup run --rm schema
+docker compose --profile setup run --rm migrate
 docker compose --profile setup run --rm setup
 docker compose up --build -d backend
 curl --fail http://127.0.0.1:4000/api/ready
 ```
 
 1. `db` starts PostgreSQL in a new volume. The old installation's data is not touched.
-2. `schema` creates the tables in the empty database. Running it again is refused, and nothing is dropped.
+2. `migrate` creates the tables in an empty database, or applies the migrations an existing one is missing. On an up-to-date database it does nothing.
 3. `setup` creates the laboratory and the first administrator, then prints the
    administrator's email and generated password **once** in your terminal. Run
    it again and it creates nothing.
@@ -53,7 +53,7 @@ unless you pass `-credentials-file PATH`. The password then goes into that new
 file, readable only by its owner. It is never written to logs.
 
 If you use your own PostgreSQL server instead of the Compose database, it must be
-PostgreSQL 18 or later. The user that runs `schema` needs permission to create
+PostgreSQL 18 or later. The user that runs `migrate` needs permission to create
 objects in the database, because the schema enables the bundled `btree_gist`
 extension.
 
@@ -133,13 +133,11 @@ Every signed-in user can read subjects. SUPERADMIN, LAB_MANAGER and RESEARCHER
 can change them.
 
 - `POST /api/subjects` creates a subject with `code`, `species` (`MOUSE` or
-  `RAT`), `sex` (`FEMALE`, `MALE` or `UNKNOWN`) and optional `strain`,
-  `birthDate` (`YYYY-MM-DD`) and `notes`. Codes are unique regardless of upper
-  or lower case.
+  `RAT`) and `sex` (`FEMALE`, `MALE` or `UNKNOWN`). Codes are unique regardless
+  of upper or lower case.
 - `GET /api/subjects` lists subjects with `search`, `species`, `sex`, `sort`,
   `order`, `page` and `pageSize`.
-- `PATCH /api/subjects/{id}` changes the fields you send. An empty `strain`,
-  `birthDate` or `notes` clears it.
+- `PATCH /api/subjects/{id}` changes the fields you send.
 - `DELETE /api/subjects/{id}` deletes a subject that is not enrolled in any experiment.
 - `GET /api/subjects/{id}/enrollments` shows every experiment the subject is enrolled in.
 

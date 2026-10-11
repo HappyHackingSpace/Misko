@@ -23,7 +23,7 @@ business routes return 404. There is no legacy API adapter or data migration.
 ## Layout and boundaries
 
 - `cmd/api`: process entry, signals, exit status.
-- `cmd/bootstrap`: `schema` installs the SQL schema into an empty database; `setup` creates the laboratory and first administrator.
+- `cmd/bootstrap`: `migrate` installs the schema into an empty database or applies pending migrations; `setup` creates the laboratory and first administrator.
 - `cmd/jobs`: the analysis scheduler loop; it serves no HTTP.
 - `internal/bootstrap`: composition root; constructor wiring of concrete adapters.
 - `internal/access/domain`: the shared RBAC kernel (roles, permission matrix, authenticated actor).
@@ -42,7 +42,7 @@ business routes return 404. There is no legacy API adapter or data migration.
 - `internal/reports`: read-only reports, exports and group comparisons over the reporting views.
 - `internal/health`: readiness use case and probes.
 - `internal/platform`: configuration, HTTP server lifecycle, JSON helpers, PostgreSQL transaction and error helpers, the in-memory rate limiter and the integration-test database helper. No business rules.
-- `schema`: embedded SQL files, applied in lexical order in one transaction; never run by the API.
+- `schema`: embedded, numbered SQL migrations recorded in `misko.schema_migrations`; never run by the API (see Migrations).
 - `sqlc.yaml`, `internal/*/adapters/postgres/queries.sql`: SQL sources for the generated `sqlcgen` packages. Do not edit generated code; run `make generate`.
 - `tests/architecture`: source import checks with positive and negative policy fixtures.
 
@@ -143,8 +143,8 @@ A subject's identity does not depend on any experiment; one subject can be
 enrolled in many experiments and later tested many times.
 
 - **Subject**: code (unique ignoring case), species (`MOUSE`, `RAT`), sex
-  (`FEMALE`, `MALE`, `UNKNOWN`), optional strain, birth date (not in the future)
-  and notes. A subject cannot be deleted while it is enrolled.
+  (`FEMALE`, `MALE`, `UNKNOWN`). A subject cannot be deleted while it is
+  enrolled.
 - **Experiment**: code (unique ignoring case), title, description and
   `requiresControl`. The experiment detail reports `controlRequirementMet`.
 - **Phase**: an ordered measurement period such as a healthy baseline. Name
@@ -169,7 +169,7 @@ enrollment serializes concurrent assignments. Routes under
 `/api/experiments/{id}` return 404 for phases, groups and enrollments of another
 experiment. Lists are paginated with `page` and `pageSize` (default 10, maximum
 100): subjects filter by `search`, `species`, `sex` and sort by `code`,
-`species`, `sex`, `birthDate` or `createdAt`; experiments filter by `search` and
+`species`, `sex` or `createdAt`; experiments filter by `search` and
 sort by `code`, `title` or `createdAt`; enrollments filter by `subjectId` and
 current `groupId` and sort by `enrolledAt`.
 
@@ -625,7 +625,7 @@ From the repository root:
 
 ```sh
 docker compose up -d db
-docker compose --profile setup run --rm schema
+docker compose --profile setup run --rm migrate
 docker compose --profile setup run --rm setup
 docker compose up --build -d backend jobs
 curl --fail http://127.0.0.1:4000/api/ready
@@ -648,8 +648,8 @@ curl http://127.0.0.1:4000/api/auth/me -H 'Authorization: Bearer TOKEN'
 The Compose project `misko-new-backend` uses a new `foundation-db` volume; it
 does not mount the old installation's volume. Credentials and `JWT_SECRET` in
 `docker-compose.yml` are development-only and the API binds to loopback. No
-frontend or GCP deployment is started. Re-running `schema` refuses an existing
-`misko` schema; it never drops data.
+frontend or GCP deployment is started. Re-running `migrate` applies only pending
+migrations and does nothing on an up-to-date database.
 
 ## Run Go directly
 
@@ -659,7 +659,7 @@ installing user needs CREATE permission on the database. Export the variables
 below (see `.env.example`), then from `backend/`:
 
 ```sh
-go run ./cmd/bootstrap schema
+go run ./cmd/bootstrap migrate
 go run ./cmd/bootstrap setup
 go run ./cmd/api
 go run ./cmd/jobs
@@ -680,7 +680,28 @@ go run ./cmd/jobs
 | `LAB_TIMEZONE` | `UTC` | setup | IANA time zone |
 | `JOB_INTERVAL` | `10s` | jobs | Time between analysis scheduler ticks, at least 1s |
 
-The processes do not load `.env` files or change the schema on startup.
+The processes do not load `.env` files or change the schema on startup. The API
+reports not ready while the database is behind the newest migration it embeds.
+
+## Migrations
+
+`schema/NNN_name.sql` files are numbered from `001` without gaps. `bootstrap
+migrate` takes an advisory lock, runs every file not yet in
+`misko.schema_migrations` in one transaction and records each file's SHA-256, so
+either all pending migrations apply or none do.
+
+- Add a change as the next numbered file. Never edit an applied file: the
+  recorded checksum no longer matches and `migrate` refuses to run.
+- A database installed before migrations were tracked is adopted on its first
+  run: `001`-`012` are recorded as applied, `013` only if
+  `misko.effective_calibrations` exists, and later files run. A `misko` schema
+  without `misko.report_runs` is refused.
+- Deployments run `migrate` with the new image before `up`, while the old API is
+  still serving. Write migrations the old code survives (add first, remove in a
+  later release) or accept a short error window. A database newer than the code
+  is accepted, so a rollback can start.
+- sqlc reads the same files, so `make generate` sees the schema after every
+  migration.
 Configuration errors never echo the database URL or signing secret. Shutdown
 marks readiness unavailable, stops accepting requests, and drains them for
 `SHUTDOWN_TIMEOUT`; on expiry connections are forced closed and the process fails.
@@ -698,8 +719,7 @@ make build
 editing schema or query SQL, run `make generate` and commit the result.
 
 Integration tests need a PostgreSQL server where the user may create databases.
-`TEST_DATABASE_URL` must name an empty database: the schema tests install into it
-and deliberately leave their fixture. Identity, laboratory, subject, experiment
+Schema tests create their own empty `misko_schema_*` databases. Identity, laboratory, subject, experiment
 and end-to-end HTTP tests create uniquely named `misko_test_*` databases and drop
 only those. They cover concurrent last-administrator protection, concurrent
 setup, concurrent enrollment and assignment, cross-experiment references,

@@ -37,7 +37,7 @@ git clone https://github.com/HappyHackingSpace/Misko.git
 cd Misko
 
 cp .env.example .env                               # opsiyonel: her değerin varsayılanı var
-docker compose --profile setup run --rm schema     # şemayı kurar
+docker compose --profile setup run --rm migrate    # şemayı kurar veya günceller
 docker compose --profile setup run --rm setup      # laboratuvarı ve yöneticiyi oluşturur
 docker compose up -d                               # API'yi, jobs sürecini ve paneli başlatır
 ```
@@ -47,9 +47,10 @@ Tamamlandığında:
 - Web paneli: [http://localhost:8080](http://localhost:8080)
 - API: [http://localhost:4000/api](http://localhost:4000/api)
 
-Şema ve yönetici, konteyner açılışında değil, bu iki açık komutla kurulur. Bu
-bilinçli bir tercih: yığını başlatmak, elinizdeki mevcut bir veritabanını asla
-migrate etmez.
+Şema ve yönetici, konteyner açılışında değil, bu iki açık komutla kurulur. Yeni
+bir sürüme geçtikten sonra `docker compose up -d` öncesinde `migrate` komutunu
+tekrar çalıştırın: veritabanınızda henüz olmayan migration'ları tek bir
+transaction içinde uygular, güncel bir veritabanında hiçbir şey yapmaz.
 
 ### İlk giriş şifresi
 
@@ -89,7 +90,7 @@ docker compose down            # konteynerleri durdurur, veriyi korur
 docker compose down -v         # durdurur VE veritabanı volume'unu siler (tam sıfırlama)
 ```
 
-`down -v` sonrasında veritabanı yeniden boştur; yığını başlatmadan önce `schema`
+`down -v` sonrasında veritabanı yeniden boştur; yığını başlatmadan önce `migrate`
 ve `setup` komutlarını tekrar çalıştırın.
 
 ## Seçenek B: Yerel geliştirme
@@ -107,7 +108,7 @@ değişkenleri dışa aktarın. Tam liste `backend/.env.example` içindedir.
 cd backend
 export DATABASE_URL='postgres://misko:misko_local_only@127.0.0.1:5432/misko_foundation?sslmode=disable'
 export JWT_SECRET="$(openssl rand -base64 48)"
-go run ./cmd/bootstrap schema   # şemayı kurar
+go run ./cmd/bootstrap migrate  # şemayı kurar veya günceller
 go run ./cmd/bootstrap setup    # laboratuvarı ve yöneticiyi oluşturur
 go run ./cmd/api                # API: http://localhost:4000
 ```
@@ -161,7 +162,7 @@ içinde anlatılır.
 ## Sorun giderme
 
 - **Port kullanımda**: `.env` içinde `FRONTEND_PORT` değerini değiştirin ya da 4000 portunu tutan süreci durdurup tekrar `docker compose up -d` çalıştırın.
-- **Giriş yapamıyorum, şifre kayboldu**: şifre bir kez gösterilir ve geri alınamaz. `docker compose down -v` ile sıfırlayıp `schema` ve `setup` komutlarını tekrar çalıştırın.
+- **Giriş yapamıyorum, şifre kayboldu**: şifre bir kez gösterilir ve geri alınamaz. `docker compose down -v` ile sıfırlayıp `migrate` ve `setup` komutlarını tekrar çalıştırın.
 - **`setup` çalışmayı reddediyor**: şifreyi yazmak için bir terminale ihtiyacı var. Betik içinde çalıştırıyorsanız, henüz var olmayan bir yol ile `-credentials-file` verin.
 - **Video yükleme 503 dönüyor**: `GCS_BUCKET` ayarlı değil. Bucket olmadan bu beklenen davranıştır.
 - **Backend veritabanına ulaşamıyor**: `db` konteynerinin sağlıklı olduğundan emin olun (`docker compose ps`).

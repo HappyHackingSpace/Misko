@@ -38,8 +38,6 @@ Kept simple - the rich research-grade subject was dropped from scope.
 - `code` (unique) - lab/cage label
 - `sex` - `M | F`
 - `groupName` - free-text experiment group (e.g. control, model, treated)
-- `birthDate`
-- `notes`
 
 ## 2. Paradigm and Environment
 

@@ -131,12 +131,11 @@ jobs:
           $SCP storage.env "$USER@$HOST:~/misko/storage.env"
           # Güncel imajı çek, worker'ı kaynaktan yeniden build et, değişen
           # container'ları yenile, eski/dangling imajları temizle.
-          # Şemayı kur: sadece boş bir veritabanında işe yarar. `backend/schema`
-          # bilerek IF NOT EXISTS kullanmıyor (bkz. 001_initial.sql), yani ilk
-          # kurulumdan sonraki her deploy'da bu adım *hata verir* - veri
-          # kaybetmez (transaction rollback), sadece "zaten kurulu" der. O
-          # yüzden `|| true`: zinciri kırmasın, ilk deploy'da hâlâ gerçek işi
-          # yapar. Yönetici oluşturma (`setup`) ve worker kaydı
+          # Migration: boş veritabanını kurar, mevcut olanda bekleyen
+          # migration'ları tek transaction'da uygular (bkz. backend/schema).
+          # Yeni imajla ve `up`'tan önce çalışır; başarısız olursa DB değişmez
+          # ve deploy burada durur, eski container'lar çalışmaya devam eder.
+          # Bu yüzden `|| true` yok. Yönetici oluşturma (`setup`) ve worker kaydı
           # (`POST /api/analysis/workers`) buraya dahil değil; ikisi de bir
           # admin oturumu/şifresi gerektiriyor ve bir CI log'una asla
           # yazılmamalı, bu yüzden hâlâ elle yapılıyor (bkz. docs/DEPLOY.md).
@@ -156,7 +155,7 @@ jobs:
             RUN_ENV=""
             PROFILES="--profile worker"
           fi
-          $SSH "$USER@$HOST" "cd ~/misko && $RUN_ENV docker compose -f docker-compose.prod.yml $PROFILES pull --ignore-buildable && ($RUN_ENV docker compose -f docker-compose.prod.yml --profile setup run --rm schema || true) && $RUN_ENV docker compose -f docker-compose.prod.yml $PROFILES up -d --build && docker image prune -f"
+          $SSH "$USER@$HOST" "cd ~/misko && $RUN_ENV docker compose -f docker-compose.prod.yml $PROFILES pull --ignore-buildable && $RUN_ENV docker compose -f docker-compose.prod.yml --profile setup run --rm migrate && $RUN_ENV docker compose -f docker-compose.prod.yml $PROFILES up -d --build && docker image prune -f"
 
       - name: Summary
         env:

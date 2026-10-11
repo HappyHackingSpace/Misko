@@ -86,7 +86,9 @@ referanslarını tutar, video baytlarını değil.
 
 Yığın Docker Compose ile çalışır: PostgreSQL, API, analiz çalıştırmalarını
 kuyruklayan jobs süreci ve paneli sunan Nginx. Şema ve ilk yönetici, konteyner
-açılışında değil, açık ve tek seferlik komutlarla kurulur (`bootstrap schema` ve
-`bootstrap setup`); böylece mevcut bir veritabanı kazara migrate edilmez.
+açılışında değil, açık komutlarla kurulur (`bootstrap migrate` ve tek seferlik
+`bootstrap setup`). `migrate`, numaralı SQL migration'larını tek transaction
+içinde uygulayıp kaydeder; her deploy yeni container'ları başlatmadan önce onu
+çalıştırır.
 Backend, frontend ve worker'ın her birinin kendi path-filtreli GitHub Actions
 pipeline'ı vardır.

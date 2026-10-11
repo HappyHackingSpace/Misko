@@ -31,16 +31,16 @@ produces from those videos.
 
 ```
 Misko/
-├── docker-compose.yml       # local stack: db + schema + setup + backend + jobs + frontend
+├── docker-compose.yml       # local stack: db + migrate + setup + backend + jobs + frontend
 ├── docker-compose.prod.yml  # pull-based deployment from prebuilt images
 ├── .env.example             # variables docker-compose.yml reads
 │
 ├── backend/                 # Go API (modular monolith, clean architecture)
 │   ├── cmd/api              # the HTTP server
-│   ├── cmd/bootstrap        # one-time: install the schema, create the laboratory
+│   ├── cmd/bootstrap        # migrate the schema, create the laboratory (one-time)
 │   ├── cmd/jobs             # queues analysis runs, requeues expired leases
 │   ├── internal/<domain>/   # domain / application / adapters per domain
-│   ├── schema/              # numbered SQL files, installed as a whole
+│   ├── schema/              # numbered SQL migrations, applied in order and recorded
 │   └── tests/               # architecture policy and end to end harness
 │
 ├── frontend/                # Vue 3 panel (Nginx serves it, proxies /api)
@@ -51,11 +51,12 @@ Misko/
 ## Quick start (Docker)
 
 The whole stack with three commands. The schema and the first administrator are
-installed explicitly, so an existing database is never migrated by accident.
+installed explicitly, never on container start. After pulling a new version, run
+`migrate` again before `up`: it applies only the pending migrations.
 
 ```bash
 cp .env.example .env                                        # optional: every value has a default
-docker compose --profile setup run --rm schema              # install the schema
+docker compose --profile setup run --rm migrate             # install or upgrade the schema
 docker compose --profile setup run --rm setup               # create the laboratory and the administrator
 docker compose up -d                                        # start the API, the jobs process and the panel
 ```
@@ -89,7 +90,7 @@ the variables; `backend/.env.example` lists them.
 cd backend
 export DATABASE_URL='postgres://misko:misko_local_only@127.0.0.1:5432/misko_foundation?sslmode=disable'
 export JWT_SECRET="$(openssl rand -base64 48)"
-go run ./cmd/bootstrap schema
+go run ./cmd/bootstrap migrate
 go run ./cmd/bootstrap setup
 go run ./cmd/api                      # http://localhost:4000
 ```

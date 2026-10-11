@@ -55,6 +55,7 @@ import (
 	testshttp "github.com/HappyHackingSpace/Misko/backend/internal/tests/adapters/http"
 	testspostgres "github.com/HappyHackingSpace/Misko/backend/internal/tests/adapters/postgres"
 	testsapp "github.com/HappyHackingSpace/Misko/backend/internal/tests/application"
+	"github.com/HappyHackingSpace/Misko/backend/schema"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"log/slog"
 	"net"
@@ -137,7 +138,7 @@ func NewAPI(pool *pgxpool.Pool, cfg config.Config, auth config.Auth, logger *slo
 	}
 	identity := identityapp.New(identitypostgres.NewStore(pool), tokens, passwords)
 	laboratory := laboratoryapp.New(laboratorypostgres.NewStore(pool))
-	subjects := subjectsapp.New(subjectspostgres.NewStore(pool), time.Now)
+	subjects := subjectsapp.New(subjectspostgres.NewStore(pool))
 	experiments := experimentsapp.New(experimentspostgres.NewStore(pool))
 	interventions := interventionsapp.New(interventionspostgres.NewStore(pool), time.Now)
 	environments := environmentsapp.New(environmentspostgres.NewStore(pool), environmentscatalog.New())
@@ -147,7 +148,7 @@ func NewAPI(pool *pgxpool.Pool, cfg config.Config, auth config.Auth, logger *slo
 	media := mediaapp.New(mediapostgres.NewStore(pool), o.objects, o.mediaSettings, time.Now)
 	calibration := calibrationapp.New(calibrationpostgres.NewStore(pool), calibrationcatalog.New(), time.Now)
 	analysis := newAnalysis(pool, o.objects, o.mediaSettings)
-	readiness := healthapp.New(healthpostgres.New(pool), cfg.ProbeTimeout)
+	readiness := healthapp.New(healthpostgres.New(pool, schema.Latest()), cfg.ProbeTimeout)
 
 	mux := http.NewServeMux()
 	health := healthhttp.New(readiness)

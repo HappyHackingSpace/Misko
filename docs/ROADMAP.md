@@ -126,7 +126,7 @@ that running a test is just "pick a subject and go".
 
 The domain is intentionally small:
 
-- **Subject** - the mouse (kept simple: code, sex, group, birth date, notes).
+- **Subject** - the mouse (kept simple: code, sex, group).
 - **Paradigm** - read-only code catalog (Step 2).
 - **Environment** - a named instance of a paradigm: the physical setup snapshot
   (apparatus + zones). (Step 1)

@@ -16,7 +16,7 @@ import (
 )
 
 // Database creates a uniquely named database on the TEST_DATABASE_URL server,
-// installs the schema and, on cleanup, drops only the database it created.
+// migrates it to the latest schema and, on cleanup, drops only the database it created.
 func Database(t *testing.T) *pgxpool.Pool {
 	t.Helper()
 	dsn := os.Getenv("TEST_DATABASE_URL")
@@ -51,7 +51,7 @@ func Database(t *testing.T) *pgxpool.Pool {
 		}
 		_ = server.Close(ctx)
 	})
-	if err := schema.Install(ctx, pool); err != nil {
+	if _, err := schema.Migrate(ctx, pool); err != nil {
 		t.Fatal(err)
 	}
 	return pool
