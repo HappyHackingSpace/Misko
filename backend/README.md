@@ -645,7 +645,7 @@ curl -X POST http://127.0.0.1:4000/api/auth/login \
 curl http://127.0.0.1:4000/api/auth/me -H 'Authorization: Bearer TOKEN'
 ```
 
-The Compose project `misko-new-backend` uses a new `foundation-db` volume; it
+The Compose project `misko` uses a new `foundation-db` volume; it
 does not mount the old installation's volume. Credentials and `JWT_SECRET` in
 `docker-compose.yml` are development-only and the API binds to loopback. No
 frontend or GCP deployment is started. Re-running `migrate` applies only pending

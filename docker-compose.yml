@@ -1,6 +1,6 @@
 # Isolated new-backend stack: never reuses the old misko/db-data volume.
 # Credentials and the signing secret below are for local development only.
-name: misko-new-backend
+name: misko
 
 x-database-url: &database-url postgres://misko:misko_local_only@db:5432/misko_foundation?sslmode=disable
 
