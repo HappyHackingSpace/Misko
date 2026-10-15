@@ -1,6 +1,7 @@
 // Package domain holds the test protocols of an experiment. A protocol has
-// numbered versions; a version is an ordered list of paradigm steps, each
-// pinned to an environment revision, and never changes once stored.
+// numbered versions; a version is an ordered list of paradigm steps and never
+// changes once stored. The arena (environment) is chosen per animal when a
+// test is planned, not by the step.
 package domain
 
 import (
@@ -27,7 +28,6 @@ var (
 	ErrInvalidStepOrder       = errors.New("step positions must run from 1 to the number of steps without gaps or duplicates")
 	ErrInvalidParadigmKey     = errors.New("paradigm key must contain 1 to 40 capital letters or underscores")
 	ErrInvalidParadigmVersion = errors.New("paradigm version must be positive")
-	ErrMissingEnvironment     = errors.New("every step needs an environment revision")
 	ErrInvalidTrialType       = errors.New("trial type must contain 1 to 40 capital letters or underscores")
 	ErrInvalidTrials          = errors.New("trials must be between 1 and 1000")
 	ErrInvalidInterval        = errors.New("inter-trial interval must be between 0 and 86400 seconds")
@@ -58,16 +58,12 @@ type Version struct {
 	CreatedAt time.Time
 }
 
-// Step runs one paradigm version on one environment revision. Session holds
-// every session parameter of the paradigm version once stored.
+// Step runs trials of one paradigm version. Session holds every session
+// parameter of the paradigm version once stored.
 type Step struct {
-	Position              int
-	ParadigmKey           string
-	ParadigmVersion       int
-	EnvironmentRevisionID string
-	// EnvironmentID and EnvironmentRevision describe the referenced revision.
-	EnvironmentID       string
-	EnvironmentRevision int
+	Position            int
+	ParadigmKey         string
+	ParadigmVersion     int
 	TrialType           string
 	Trials              int
 	InterTrialIntervalS int
@@ -127,8 +123,6 @@ func validateStep(s *Step) error {
 		return ErrInvalidParadigmKey
 	case s.ParadigmVersion < 1:
 		return ErrInvalidParadigmVersion
-	case s.EnvironmentRevisionID == "":
-		return ErrMissingEnvironment
 	case !constantKey.MatchString(s.TrialType):
 		return ErrInvalidTrialType
 	case s.Trials < 1 || s.Trials > 1000:

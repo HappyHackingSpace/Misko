@@ -1,6 +1,8 @@
-// Package domain holds tests, their trials and comments. A test is one session
-// of a subject on one protocol step, which fixes the paradigm and environment
-// revision. Trials are appended repetitions and never replace earlier ones.
+// Package domain holds tests, their animals, trials and comments. A test is
+// one session of a running experiment: one timepoint, one protocol step (which
+// fixes the paradigm and the planned trials) and one video. The animals filmed
+// in it are its test subjects, each in its own arena. Trials belong to one
+// test subject and are appended repetitions that never replace earlier ones.
 // Test status is the session's own lifecycle; analysis status is separate.
 package domain
 
@@ -16,14 +18,24 @@ import (
 // ClockSkew is how far in the future a recorded time may be.
 const ClockSkew = 2 * time.Minute
 
+// MaxSubjects bounds the animals of one session; arenas share a camera frame.
+const MaxSubjects = 12
+
 var (
 	ErrInvalidTransition    = errors.New("the test's status does not allow this change")
 	ErrInvalidStatus        = errors.New("status must be PLANNED, IN_PROGRESS, COMPLETED or CANCELLED")
 	ErrMissingTime          = errors.New("time is required")
 	ErrFutureTime           = errors.New("time cannot be in the future")
-	ErrBeforeEnrollment     = errors.New("time cannot be before the subject's enrollment")
-	ErrGroupChanged         = errors.New("the subject's group at this time differs from the group the test was planned for")
-	ErrNoTrials             = errors.New("a test needs at least one trial before it can be completed")
+	ErrNoSubjects           = errors.New("a test needs at least one animal")
+	ErrTooManySubjects      = errors.New("a test holds at most 12 animals")
+	ErrMissingAllocation    = errors.New("every animal needs an allocation")
+	ErrMissingArena         = errors.New("every animal needs an arena")
+	ErrDuplicateAnimal      = errors.New("an animal can appear only once in a test")
+	ErrDuplicateArena       = errors.New("each animal in a test needs its own arena")
+	ErrNotPlanned           = errors.New("animals can be added or removed only while the test is planned")
+	ErrLastSubject          = errors.New("the last animal of a test cannot be removed; cancel the test instead")
+	ErrSubjectExcluded      = errors.New("an animal of the test has been excluded from the study")
+	ErrNoTrials             = errors.New("every animal in the test needs at least one trial before it can be completed")
 	ErrCompletedBeforeTrial = errors.New("completion cannot be before the test start or the end of a trial")
 	ErrInvalidReason        = errors.New("reason must contain 1 to 2000 characters")
 	ErrInvalidNotes         = errors.New("notes must contain at most 2000 characters")
@@ -63,70 +75,160 @@ func CanTransition(from, to Status) bool {
 	return false
 }
 
-// Context is what a test is recorded against. GroupID is the subject's group
-// at the scheduled time, or empty when it had none.
+// Context is what a test is recorded against: a timepoint of the experiment
+// and one step of one of its protocol versions.
 type Context struct {
-	ExperimentID          string
-	EnrollmentID          string
-	SubjectID             string
-	EnrolledAt            time.Time
-	PhaseID               string
-	GroupID               string
-	ProtocolVersionID     string
-	StepPosition          int
-	ParadigmKey           string
-	ParadigmVersion       int
+	ExperimentID      string
+	TimepointID       string
+	ProtocolVersionID string
+	StepPosition      int
+	ParadigmKey       string
+	ParadigmVersion   int
+	PlannedTrials     int
+}
+
+// Participant is an animal (its allocation) placed in an arena (an
+// environment revision).
+type Participant struct {
+	AllocationID          string
 	EnvironmentRevisionID string
-	PlannedTrials         int
 }
 
 type Test struct {
-	ID                    string
-	ExperimentID          string
-	EnrollmentID          string
-	SubjectID             string
-	PhaseID               string
-	GroupID               string
-	ProtocolVersionID     string
-	StepPosition          int
-	ParadigmKey           string
-	ParadigmVersion       int
-	EnvironmentRevisionID string
-	PlannedTrials         int
-	Status                Status
-	ScheduledAt           time.Time
-	StartedAt             *time.Time
-	CompletedAt           *time.Time
-	CancelledAt           *time.Time
-	CancelReason          string
-	Notes                 string
-	CreatedBy             string
-	CreatedAt             time.Time
-	UpdatedAt             time.Time
+	ID           string
+	ExperimentID string
+	// ExperimentCode, TimepointName, StudyDay, ProtocolID, ProtocolName and
+	// ProtocolVersion describe the referenced records when read back.
+	ExperimentCode    string
+	TimepointID       string
+	TimepointName     string
+	StudyDay          int
+	ProtocolID        string
+	ProtocolName      string
+	ProtocolVersionID string
+	ProtocolVersion   int
+	StepPosition      int
+	ParadigmKey       string
+	ParadigmVersion   int
+	PlannedTrials     int
+	Status            Status
+	ScheduledAt       time.Time
+	StartedAt         *time.Time
+	CompletedAt       *time.Time
+	CancelledAt       *time.Time
+	CancelReason      string
+	Notes             string
+	CreatedBy         string
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
+	Subjects          []TestSubject
 }
 
-func NewTest(c Context, scheduledAt time.Time, notes, createdBy string) (Test, error) {
-	switch {
-	case scheduledAt.IsZero():
+// TestSubject is one animal of a test in its arena. SubjectCode, Excluded and
+// the environment fields describe the referenced records when read back.
+type TestSubject struct {
+	ID                    string
+	TestID                string
+	AllocationID          string
+	SubjectID             string
+	SubjectCode           string
+	Excluded              bool
+	EnvironmentRevisionID string
+	EnvironmentID         string
+	EnvironmentName       string
+	EnvironmentRevision   int
+	CreatedBy             string
+	CreatedAt             time.Time
+}
+
+// NewTest plans a session with its animals.
+func NewTest(c Context, scheduledAt time.Time, notes, createdBy string, participants []Participant) (Test, error) {
+	if scheduledAt.IsZero() {
 		return Test{}, ErrMissingTime
-	case scheduledAt.Before(c.EnrolledAt):
-		return Test{}, ErrBeforeEnrollment
 	}
 	text, err := normalizeText(notes, 2000, false, ErrInvalidNotes)
 	if err != nil {
 		return Test{}, err
 	}
-	return Test{
-		ExperimentID: c.ExperimentID, EnrollmentID: c.EnrollmentID, SubjectID: c.SubjectID, PhaseID: c.PhaseID, GroupID: c.GroupID,
-		ProtocolVersionID: c.ProtocolVersionID, StepPosition: c.StepPosition, ParadigmKey: c.ParadigmKey, ParadigmVersion: c.ParadigmVersion,
-		EnvironmentRevisionID: c.EnvironmentRevisionID, PlannedTrials: c.PlannedTrials,
+	if err := ValidateParticipants(participants); err != nil {
+		return Test{}, err
+	}
+	t := Test{
+		ExperimentID: c.ExperimentID, TimepointID: c.TimepointID, ProtocolVersionID: c.ProtocolVersionID, StepPosition: c.StepPosition,
+		ParadigmKey: c.ParadigmKey, ParadigmVersion: c.ParadigmVersion, PlannedTrials: c.PlannedTrials,
 		Status: Planned, ScheduledAt: scheduledAt, Notes: text, CreatedBy: createdBy,
-	}, nil
+	}
+	for _, p := range participants {
+		t.Subjects = append(t.Subjects, TestSubject{AllocationID: p.AllocationID, EnvironmentRevisionID: p.EnvironmentRevisionID, CreatedBy: createdBy})
+	}
+	return t, nil
 }
 
-// Start begins the session at at. groupAt is the subject's group at that time;
-// it must be the group the test was planned for.
-func (t Test) Start(at, now, enrolledAt time.Time, groupAt string) (Test, error) {
+// ValidateParticipants checks the animals of a new test: at least one, at most
+// MaxSubjects, each animal once and each arena once.
+func ValidateParticipants(participants []Participant) error {
+	switch {
+	case len(participants) == 0:
+		return ErrNoSubjects
+	case len(participants) > MaxSubjects:
+		return ErrTooManySubjects
+	}
+	animals, arenas := map[string]bool{}, map[string]bool{}
+	for _, p := range participants {
+		switch {
+		case p.AllocationID == "":
+			return ErrMissingAllocation
+		case p.EnvironmentRevisionID == "":
+			return ErrMissingArena
+		case animals[p.AllocationID]:
+			return ErrDuplicateAnimal
+		case arenas[p.EnvironmentRevisionID]:
+			return ErrDuplicateArena
+		}
+		animals[p.AllocationID], arenas[p.EnvironmentRevisionID] = true, true
+	}
+	return nil
+}
+
+// AddSubject places another animal in a planned test.
+func (t Test) AddSubject(p Participant, createdBy string) (TestSubject, error) {
+	if t.Status != Planned {
+		return TestSubject{}, ErrNotPlanned
+	}
+	participants := make([]Participant, 0, len(t.Subjects)+1)
+	for _, s := range t.Subjects {
+		participants = append(participants, Participant{s.AllocationID, s.EnvironmentRevisionID})
+	}
+	if err := ValidateParticipants(append(participants, p)); err != nil {
+		return TestSubject{}, err
+	}
+	return TestSubject{TestID: t.ID, AllocationID: p.AllocationID, EnvironmentRevisionID: p.EnvironmentRevisionID, CreatedBy: createdBy}, nil
+}
+
+// Subject returns the test subject with id, or false.
+func (t Test) Subject(id string) (TestSubject, bool) {
+	for _, s := range t.Subjects {
+		if s.ID == id {
+			return s, true
+		}
+	}
+	return TestSubject{}, false
+}
+
+// CanRemoveSubject allows removing an animal while the test is planned and
+// other animals remain.
+func (t Test) CanRemoveSubject() error {
+	switch {
+	case t.Status != Planned:
+		return ErrNotPlanned
+	case len(t.Subjects) <= 1:
+		return ErrLastSubject
+	}
+	return nil
+}
+
+// Start begins the session at at. Excluded animals must be removed first.
+func (t Test) Start(at, now time.Time) (Test, error) {
 	switch {
 	case !CanTransition(t.Status, InProgress):
 		return Test{}, ErrInvalidTransition
@@ -134,36 +236,47 @@ func (t Test) Start(at, now, enrolledAt time.Time, groupAt string) (Test, error)
 		return Test{}, ErrMissingTime
 	case at.After(now.Add(ClockSkew)):
 		return Test{}, ErrFutureTime
-	case at.Before(enrolledAt):
-		return Test{}, ErrBeforeEnrollment
-	case groupAt != t.GroupID:
-		return Test{}, ErrGroupChanged
+	case len(t.Subjects) == 0:
+		return Test{}, ErrNoSubjects
+	}
+	for _, s := range t.Subjects {
+		if s.Excluded {
+			return Test{}, ErrSubjectExcluded
+		}
 	}
 	t.Status, t.StartedAt = InProgress, &at
 	return t, nil
 }
 
 // Complete ends the session at at, after its start and every recorded trial.
+// Every animal needs at least one trial.
 func (t Test) Complete(at, now time.Time, trials []Trial) (Test, error) {
 	switch {
 	case !CanTransition(t.Status, Completed):
 		return Test{}, ErrInvalidTransition
-	case len(trials) == 0:
-		return Test{}, ErrNoTrials
 	case at.IsZero():
 		return Test{}, ErrMissingTime
 	case at.After(now.Add(ClockSkew)):
 		return Test{}, ErrFutureTime
 	case t.StartedAt != nil && at.Before(*t.StartedAt):
 		return Test{}, ErrCompletedBeforeTrial
+	case len(t.Subjects) == 0:
+		return Test{}, ErrNoTrials
 	}
+	tried := map[string]bool{}
 	for _, tr := range trials {
+		tried[tr.TestSubjectID] = true
 		last := tr.StartedAt
 		if tr.EndedAt != nil {
 			last = *tr.EndedAt
 		}
 		if at.Before(last) {
 			return Test{}, ErrCompletedBeforeTrial
+		}
+	}
+	for _, s := range t.Subjects {
+		if !tried[s.ID] {
+			return Test{}, ErrNoTrials
 		}
 	}
 	t.Status, t.CompletedAt = Completed, &at
@@ -182,18 +295,20 @@ func (t Test) Cancel(reason string, now time.Time) (Test, error) {
 	return t, nil
 }
 
-// Trial is one recorded repetition. Repeating a repetition adds an attempt.
+// Trial is one recorded repetition of one animal. Repeating a repetition adds
+// an attempt.
 type Trial struct {
-	ID         string
-	TestID     string
-	Number     int
-	Repetition int
-	Attempt    int
-	StartedAt  time.Time
-	EndedAt    *time.Time
-	Notes      string
-	RecordedBy string
-	CreatedAt  time.Time
+	ID            string
+	TestID        string
+	TestSubjectID string
+	Number        int
+	Repetition    int
+	Attempt       int
+	StartedAt     time.Time
+	EndedAt       *time.Time
+	Notes         string
+	RecordedBy    string
+	CreatedAt     time.Time
 }
 
 type TrialInput struct {
@@ -203,8 +318,9 @@ type TrialInput struct {
 	Notes      string
 }
 
-// NextTrial validates a trial for a test given its earlier trials and numbers it.
-func NextTrial(t Test, earlier []Trial, in TrialInput, recordedBy string, now time.Time) (Trial, error) {
+// NextTrial validates a trial of one test subject given that subject's
+// earlier trials and numbers it.
+func NextTrial(t Test, subjectID string, earlier []Trial, in TrialInput, recordedBy string, now time.Time) (Trial, error) {
 	switch {
 	case t.Status != InProgress:
 		return Trial{}, ErrTestNotInProgress
@@ -225,14 +341,18 @@ func NextTrial(t Test, earlier []Trial, in TrialInput, recordedBy string, now ti
 	if err != nil {
 		return Trial{}, err
 	}
-	attempt := 1
+	number, attempt := 1, 1
 	for _, e := range earlier {
+		if e.TestSubjectID != subjectID {
+			continue
+		}
+		number++
 		if e.Repetition == in.Repetition {
 			attempt++
 		}
 	}
 	return Trial{
-		TestID: t.ID, Number: len(earlier) + 1, Repetition: in.Repetition, Attempt: attempt,
+		TestID: t.ID, TestSubjectID: subjectID, Number: number, Repetition: in.Repetition, Attempt: attempt,
 		StartedAt: in.StartedAt, EndedAt: in.EndedAt, Notes: notes, RecordedBy: recordedBy,
 	}, nil
 }

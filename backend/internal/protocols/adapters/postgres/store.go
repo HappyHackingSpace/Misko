@@ -19,8 +19,9 @@ import (
 var constraintErrors = map[string]error{
 	"protocols_name_key":              application.ErrNameTaken,
 	"protocols_experiment_id_fkey":    application.ErrExperimentNotFound,
+	"protocols_closed":                application.ErrExperimentClosed,
+	"protocol_versions_closed":        application.ErrExperimentClosed,
 	"protocol_versions_protocol_fkey": application.ErrProtocolNotFound,
-	"protocol_steps_environment_fkey": application.ErrIncompatibleEnvironment,
 }
 
 type Store struct {
@@ -95,24 +96,6 @@ func (s *Store) LockProtocol(ctx context.Context, experimentID, protocolID strin
 	return toProtocol(withoutVersion(row)), nil
 }
 
-func (s *Store) EnvironmentRevision(ctx context.Context, id string) (application.RevisionRef, error) {
-	if !pgtx.ValidUUID(id) {
-		return application.RevisionRef{}, application.ErrEnvironmentRevisionNotFound
-	}
-	row, err := s.queries.GetEnvironmentRevision(ctx, id)
-	if err != nil {
-		return application.RevisionRef{}, translate(err, application.ErrEnvironmentRevisionNotFound, "get environment revision")
-	}
-	apparatus, err := decode(row.Apparatus)
-	if err != nil {
-		return application.RevisionRef{}, err
-	}
-	return application.RevisionRef{
-		ID: row.ID, EnvironmentID: row.EnvironmentID, Number: int(row.Number),
-		ParadigmKey: row.ParadigmKey, ParadigmVersion: int(row.ParadigmVersion), Apparatus: apparatus,
-	}, nil
-}
-
 // CreateVersion must run inside Transaction: a deferred constraint checks at
 // commit that the version has exactly its steps.
 func (s *Store) CreateVersion(ctx context.Context, v domain.Version) (domain.Version, error) {
@@ -126,16 +109,13 @@ func (s *Store) CreateVersion(ctx context.Context, v domain.Version) (domain.Ver
 		return domain.Version{}, translate(err, nil, "create version")
 	}
 	for _, step := range v.Steps {
-		if !pgtx.ValidUUID(step.EnvironmentRevisionID) {
-			return domain.Version{}, application.ErrEnvironmentRevisionNotFound
-		}
 		session, err := encode(step.Session)
 		if err != nil {
 			return domain.Version{}, err
 		}
 		err = s.queries.CreateStep(ctx, sqlcgen.CreateStepParams{
 			ProtocolVersionID: row.ID, Position: int32(step.Position), ParadigmKey: step.ParadigmKey, ParadigmVersion: int32(step.ParadigmVersion),
-			EnvironmentRevisionID: step.EnvironmentRevisionID, TrialType: step.TrialType, Trials: int32(step.Trials),
+			TrialType: step.TrialType, Trials: int32(step.Trials),
 			InterTrialIntervalS: int32(step.InterTrialIntervalS), Session: session, Notes: optional(step.Notes),
 		})
 		if err != nil {
@@ -191,7 +171,6 @@ func (s *Store) withSteps(ctx context.Context, rows []sqlcgen.MiskoProtocolVersi
 		}
 		steps[r.ProtocolVersionID] = append(steps[r.ProtocolVersionID], domain.Step{
 			Position: int(r.Position), ParadigmKey: r.ParadigmKey, ParadigmVersion: int(r.ParadigmVersion),
-			EnvironmentRevisionID: r.EnvironmentRevisionID, EnvironmentID: r.EnvironmentID, EnvironmentRevision: int(r.EnvironmentRevision),
 			TrialType: r.TrialType, Trials: int(r.Trials), InterTrialIntervalS: int(r.InterTrialIntervalS), Session: session, Notes: value(r.Notes),
 		})
 	}

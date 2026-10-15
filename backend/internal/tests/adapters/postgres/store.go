@@ -1,5 +1,5 @@
-// Package postgres implements test, trial and comment persistence with
-// sqlc-generated queries.
+// Package postgres implements test, test subject, trial and comment
+// persistence with sqlc-generated queries.
 package postgres
 
 import (
@@ -11,22 +11,31 @@ import (
 	"github.com/HappyHackingSpace/Misko/backend/internal/tests/application"
 	"github.com/HappyHackingSpace/Misko/backend/internal/tests/domain"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"math"
 	"time"
 )
 
-// constraintErrors maps named constraints to the error a violation means.
+// constraintErrors maps named constraints and trigger rules to the error a
+// violation means. They are the last line of defence behind the use cases.
 var constraintErrors = map[string]error{
-	"tests_enrollment_fkey":       application.ErrEnrollmentNotFound,
-	"tests_subject_fkey":          application.ErrEnrollmentNotFound,
-	"tests_phase_fkey":            application.ErrPhaseNotFound,
-	"tests_protocol_version_fkey": application.ErrProtocolVersionNotFound,
-	"tests_step_fkey":             application.ErrStepNotFound,
-	"tests_transition":            domain.ErrInvalidTransition,
-	"trials_test_in_progress":     domain.ErrTestNotInProgress,
-	"test_comments_test_id_fkey":  application.ErrTestNotFound,
-	"trials_test_id_fkey":         application.ErrTestNotFound,
+	"tests_not_running":             application.ErrExperimentNotRunning,
+	"tests_timepoint_fkey":          application.ErrTimepointNotFound,
+	"tests_protocol_version_fkey":   application.ErrProtocolVersionNotFound,
+	"tests_step_fkey":               application.ErrStepNotFound,
+	"tests_transition":              domain.ErrInvalidTransition,
+	"tests_immutable":               domain.ErrInvalidTransition,
+	"test_subjects_test_fkey":       application.ErrTestNotFound,
+	"test_subjects_paradigm_fkey":   application.ErrArenaParadigmMismatch,
+	"test_subjects_allocation_fkey": application.ErrAllocationNotFound,
+	"test_subjects_arena_fkey":      application.ErrArenaParadigmMismatch,
+	"test_subjects_animal_key":      domain.ErrDuplicateAnimal,
+	"test_subjects_arena_key":       domain.ErrDuplicateArena,
+	"test_subjects_frozen":          domain.ErrNotPlanned,
+	"trials_test_in_progress":       domain.ErrTestNotInProgress,
+	"trials_test_subject_fkey":      application.ErrTestSubjectNotFound,
+	"test_comments_test_id_fkey":    application.ErrTestNotFound,
 }
 
 type Store struct {
@@ -42,51 +51,26 @@ func (s *Store) Transaction(ctx context.Context, fn func(application.Store) erro
 	})
 }
 
-func (s *Store) Enrollment(ctx context.Context, experimentID, enrollmentID string) (application.EnrollmentRef, error) {
-	if !pgtx.ValidUUID(experimentID) || !pgtx.ValidUUID(enrollmentID) {
-		return application.EnrollmentRef{}, application.ErrEnrollmentNotFound
+func (s *Store) ExperimentStatus(ctx context.Context, experimentID string) (string, error) {
+	if !pgtx.ValidUUID(experimentID) {
+		return "", application.ErrExperimentNotFound
 	}
-	row, err := s.queries.GetEnrollmentRef(ctx, sqlcgen.GetEnrollmentRefParams{ExperimentID: experimentID, ID: enrollmentID})
+	status, err := s.queries.GetExperimentStatus(ctx, experimentID)
 	if err != nil {
-		return application.EnrollmentRef{}, translate(err, application.ErrEnrollmentNotFound, "get enrollment")
+		return "", translate(err, application.ErrExperimentNotFound, "get experiment status")
 	}
-	return application.EnrollmentRef{ID: row.ID, ExperimentID: row.ExperimentID, SubjectID: row.SubjectID, EnrolledAt: row.EnrolledAt.UTC()}, nil
+	return status, nil
 }
 
-func (s *Store) LockEnrollment(ctx context.Context, experimentID, enrollmentID string) (application.EnrollmentRef, error) {
-	if !pgtx.ValidUUID(experimentID) || !pgtx.ValidUUID(enrollmentID) {
-		return application.EnrollmentRef{}, application.ErrEnrollmentNotFound
+func (s *Store) Timepoint(ctx context.Context, experimentID, timepointID string) (application.TimepointRef, error) {
+	if !pgtx.ValidUUID(experimentID) || !pgtx.ValidUUID(timepointID) {
+		return application.TimepointRef{}, application.ErrTimepointNotFound
 	}
-	row, err := s.queries.LockEnrollmentRef(ctx, sqlcgen.LockEnrollmentRefParams{ExperimentID: experimentID, ID: enrollmentID})
+	row, err := s.queries.GetTimepoint(ctx, sqlcgen.GetTimepointParams{ExperimentID: experimentID, ID: timepointID})
 	if err != nil {
-		return application.EnrollmentRef{}, translate(err, application.ErrEnrollmentNotFound, "lock enrollment")
+		return application.TimepointRef{}, translate(err, application.ErrTimepointNotFound, "get timepoint")
 	}
-	return application.EnrollmentRef{ID: row.ID, ExperimentID: row.ExperimentID, SubjectID: row.SubjectID, EnrolledAt: row.EnrolledAt.UTC()}, nil
-}
-
-func (s *Store) Phase(ctx context.Context, experimentID, phaseID string) error {
-	if !pgtx.ValidUUID(experimentID) || !pgtx.ValidUUID(phaseID) {
-		return application.ErrPhaseNotFound
-	}
-	exists, err := s.queries.PhaseExists(ctx, sqlcgen.PhaseExistsParams{ExperimentID: experimentID, ID: phaseID})
-	if err != nil {
-		return fmt.Errorf("check phase: %w", err)
-	}
-	if !exists {
-		return application.ErrPhaseNotFound
-	}
-	return nil
-}
-
-func (s *Store) GroupAt(ctx context.Context, enrollmentID string, t time.Time) (string, error) {
-	group, err := s.queries.GroupAt(ctx, sqlcgen.GroupAtParams{EnrollmentID: enrollmentID, At: t})
-	if errors.Is(err, pgx.ErrNoRows) {
-		return "", nil
-	}
-	if err != nil {
-		return "", fmt.Errorf("group at: %w", err)
-	}
-	return group, nil
+	return application.TimepointRef{ID: row.ID, StudyDay: int(row.StudyDay), DefaultScheduledAt: row.DefaultScheduledAt.UTC()}, nil
 }
 
 func (s *Store) ProtocolStep(ctx context.Context, experimentID, versionID string, position int) (application.StepRef, error) {
@@ -112,20 +96,109 @@ func (s *Store) ProtocolStep(ctx context.Context, experimentID, versionID string
 	}
 	return application.StepRef{
 		ProtocolVersionID: row.ProtocolVersionID, Position: int(row.Position), ParadigmKey: row.ParadigmKey, ParadigmVersion: int(row.ParadigmVersion),
-		EnvironmentRevisionID: row.EnvironmentRevisionID, Trials: int(row.Trials),
+		Trials: int(row.Trials),
 	}, nil
 }
 
+func (s *Store) LockAllocations(ctx context.Context, experimentID string, ids []string) ([]application.AllocationRef, error) {
+	valid := validIDs(ids)
+	if !pgtx.ValidUUID(experimentID) || len(valid) == 0 {
+		return []application.AllocationRef{}, nil
+	}
+	rows, err := s.queries.LockAllocations(ctx, sqlcgen.LockAllocationsParams{ExperimentID: experimentID, Ids: valid})
+	if err != nil {
+		return nil, fmt.Errorf("lock allocations: %w", err)
+	}
+	out := make([]application.AllocationRef, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, application.AllocationRef{ID: r.ID, SubjectID: r.SubjectID, Excluded: r.Excluded})
+	}
+	return out, nil
+}
+
+func (s *Store) Arenas(ctx context.Context, ids []string) ([]application.ArenaRef, error) {
+	valid := validIDs(ids)
+	if len(valid) == 0 {
+		return []application.ArenaRef{}, nil
+	}
+	rows, err := s.queries.ListArenas(ctx, valid)
+	if err != nil {
+		return nil, fmt.Errorf("list arenas: %w", err)
+	}
+	out := make([]application.ArenaRef, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, application.ArenaRef{ID: r.ID, EnvironmentID: r.EnvironmentID, ParadigmKey: r.ParadigmKey, ParadigmVersion: int(r.ParadigmVersion)})
+	}
+	return out, nil
+}
+
+func (s *Store) ScheduledAllocations(ctx context.Context, slot application.Slot, ids []string, exceptTestID string) ([]string, error) {
+	valid := validIDs(ids)
+	if len(valid) == 0 || !pgtx.ValidUUID(slot.TimepointID) || !pgtx.ValidUUID(slot.ProtocolVersionID) {
+		return []string{}, nil
+	}
+	var except *string
+	if pgtx.ValidUUID(exceptTestID) {
+		except = &exceptTestID
+	}
+	taken, err := s.queries.ScheduledAllocations(ctx, sqlcgen.ScheduledAllocationsParams{
+		TimepointID: slot.TimepointID, ProtocolVersionID: slot.ProtocolVersionID, StepPosition: int32(slot.StepPosition), Ids: valid, ExceptTestID: except,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("scheduled allocations: %w", err)
+	}
+	return taken, nil
+}
+
+// CreateTest stores the test and its subjects; it must run inside
+// Transaction so a rejected subject leaves no test behind.
 func (s *Store) CreateTest(ctx context.Context, t domain.Test) (domain.Test, error) {
-	row, err := s.queries.CreateTest(ctx, sqlcgen.CreateTestParams{
-		ExperimentID: t.ExperimentID, EnrollmentID: t.EnrollmentID, SubjectID: t.SubjectID, PhaseID: optional(t.PhaseID), GroupID: optional(t.GroupID),
-		ProtocolVersionID: t.ProtocolVersionID, StepPosition: int32(t.StepPosition), ParadigmKey: t.ParadigmKey, ParadigmVersion: int32(t.ParadigmVersion),
-		EnvironmentRevisionID: t.EnvironmentRevisionID, PlannedTrials: int32(t.PlannedTrials), ScheduledAt: t.ScheduledAt, Notes: optional(t.Notes), CreatedBy: t.CreatedBy,
+	id, err := s.queries.CreateTest(ctx, sqlcgen.CreateTestParams{
+		ExperimentID: t.ExperimentID, TimepointID: t.TimepointID, ProtocolVersionID: t.ProtocolVersionID, StepPosition: int32(t.StepPosition),
+		ParadigmKey: t.ParadigmKey, ParadigmVersion: int32(t.ParadigmVersion), PlannedTrials: int32(t.PlannedTrials),
+		ScheduledAt: t.ScheduledAt, Notes: optional(t.Notes), CreatedBy: t.CreatedBy,
 	})
 	if err != nil {
 		return domain.Test{}, translate(err, nil, "create test")
 	}
-	return toTest(row), nil
+	for _, subject := range t.Subjects {
+		subject.TestID = id
+		if err := s.AddTestSubject(ctx, t.ExperimentID, subject, t.ParadigmKey, t.ParadigmVersion); err != nil {
+			return domain.Test{}, err
+		}
+	}
+	return s.Test(ctx, id)
+}
+
+func (s *Store) AddTestSubject(ctx context.Context, experimentID string, ts domain.TestSubject, paradigmKey string, paradigmVersion int) error {
+	if !pgtx.ValidUUID(ts.AllocationID) {
+		return application.ErrAllocationNotFound
+	}
+	if !pgtx.ValidUUID(ts.EnvironmentRevisionID) {
+		return application.ErrArenaNotFound
+	}
+	err := s.queries.CreateTestSubject(ctx, sqlcgen.CreateTestSubjectParams{
+		ExperimentID: experimentID, TestID: ts.TestID, AllocationID: ts.AllocationID, EnvironmentRevisionID: ts.EnvironmentRevisionID,
+		ParadigmKey: paradigmKey, ParadigmVersion: int32(paradigmVersion), CreatedBy: ts.CreatedBy,
+	})
+	if err != nil {
+		return translate(err, nil, "create test subject")
+	}
+	return nil
+}
+
+func (s *Store) RemoveTestSubject(ctx context.Context, testID, subjectID string) error {
+	if !pgtx.ValidUUID(testID) || !pgtx.ValidUUID(subjectID) {
+		return application.ErrTestSubjectNotFound
+	}
+	deleted, err := s.queries.DeleteTestSubject(ctx, sqlcgen.DeleteTestSubjectParams{TestID: testID, ID: subjectID})
+	if err != nil {
+		return translate(err, nil, "delete test subject")
+	}
+	if deleted == 0 {
+		return application.ErrTestSubjectNotFound
+	}
+	return nil
 }
 
 func (s *Store) Test(ctx context.Context, id string) (domain.Test, error) {
@@ -136,7 +209,7 @@ func (s *Store) Test(ctx context.Context, id string) (domain.Test, error) {
 	if err != nil {
 		return domain.Test{}, translate(err, application.ErrTestNotFound, "get test")
 	}
-	return toTest(row), nil
+	return s.withSubject(ctx, toTest(row))
 }
 
 func (s *Store) LockTest(ctx context.Context, id string) (domain.Test, error) {
@@ -147,68 +220,61 @@ func (s *Store) LockTest(ctx context.Context, id string) (domain.Test, error) {
 	if err != nil {
 		return domain.Test{}, translate(err, application.ErrTestNotFound, "lock test")
 	}
-	return toTest(row), nil
+	return s.withSubject(ctx, toTest(sqlcgen.GetTestRow(row)))
 }
 
 func (s *Store) UpdateTestStatus(ctx context.Context, t domain.Test, from domain.Status) (domain.Test, error) {
-	row, err := s.queries.UpdateTestStatus(ctx, sqlcgen.UpdateTestStatusParams{
+	updated, err := s.queries.UpdateTestStatus(ctx, sqlcgen.UpdateTestStatusParams{
 		ID: t.ID, FromStatus: string(from), Status: string(t.Status), StartedAt: t.StartedAt, CompletedAt: t.CompletedAt,
 		CancelledAt: t.CancelledAt, CancelReason: optional(t.CancelReason),
 	})
 	if err != nil {
-		return domain.Test{}, translate(err, domain.ErrInvalidTransition, "update test status")
+		return domain.Test{}, translate(err, nil, "update test status")
 	}
-	return toTest(row), nil
+	if updated == 0 {
+		return domain.Test{}, domain.ErrInvalidTransition
+	}
+	return s.Test(ctx, t.ID)
 }
 
-// ListAllTests lists tests across experiments, newest scheduled first. An
-// empty experiment id means every experiment.
-func (s *Store) ListAllTests(ctx context.Context, f application.TestFilter) ([]domain.Test, int, error) {
-	if (f.ExperimentID != "" && !pgtx.ValidUUID(f.ExperimentID)) || (f.SubjectID != "" && !pgtx.ValidUUID(f.SubjectID)) {
-		return []domain.Test{}, 0, nil
-	}
-	experiment, subject := optional(f.ExperimentID), optional(f.SubjectID)
-	rows, err := s.queries.ListAllTests(ctx, sqlcgen.ListAllTestsParams{
-		ExperimentID: experiment, SubjectID: subject, Status: string(f.Status), ParadigmKey: f.ParadigmKey,
-		PageLimit: int32(f.Limit), PageOffset: int32(f.Offset),
-	})
-	if err != nil {
-		return nil, 0, fmt.Errorf("list all tests: %w", err)
-	}
-	total, err := s.queries.CountAllTests(ctx, sqlcgen.CountAllTestsParams{
-		ExperimentID: experiment, SubjectID: subject, Status: string(f.Status), ParadigmKey: f.ParadigmKey,
-	})
-	if err != nil {
-		return nil, 0, fmt.Errorf("count all tests: %w", err)
-	}
-	out := make([]domain.Test, 0, len(rows))
-	for _, row := range rows {
-		out = append(out, toTest(row))
-	}
-	return out, int(total), nil
-}
-
+// ListTests lists tests with their subjects. An empty experiment id means
+// every experiment.
 func (s *Store) ListTests(ctx context.Context, f application.TestFilter) ([]domain.Test, int, error) {
-	if !pgtx.ValidUUID(f.ExperimentID) || (f.SubjectID != "" && !pgtx.ValidUUID(f.SubjectID)) || (f.PhaseID != "" && !pgtx.ValidUUID(f.PhaseID)) {
-		return []domain.Test{}, 0, nil
+	for _, id := range []string{f.ExperimentID, f.TimepointID, f.SubjectID} {
+		if id != "" && !pgtx.ValidUUID(id) {
+			return []domain.Test{}, 0, nil
+		}
 	}
-	subject, phase := optional(f.SubjectID), optional(f.PhaseID)
-	rows, err := s.queries.ListTests(ctx, sqlcgen.ListTestsParams{
-		ExperimentID: f.ExperimentID, SubjectID: subject, PhaseID: phase, Status: string(f.Status), ParadigmKey: f.ParadigmKey,
+	from, err := date(f.From)
+	if err != nil {
+		return nil, 0, err
+	}
+	to, err := date(f.To)
+	if err != nil {
+		return nil, 0, err
+	}
+	params := sqlcgen.ListTestsParams{
+		ExperimentID: optional(f.ExperimentID), TimepointID: optional(f.TimepointID), SubjectID: optional(f.SubjectID),
+		Status: string(f.Status), ParadigmKey: f.ParadigmKey, FromDate: from, ToDate: to, NewestFirst: f.NewestFirst,
 		PageLimit: int32(f.Limit), PageOffset: int32(f.Offset),
-	})
+	}
+	rows, err := s.queries.ListTests(ctx, params)
 	if err != nil {
 		return nil, 0, fmt.Errorf("list tests: %w", err)
 	}
 	total, err := s.queries.CountTests(ctx, sqlcgen.CountTestsParams{
-		ExperimentID: f.ExperimentID, SubjectID: subject, PhaseID: phase, Status: string(f.Status), ParadigmKey: f.ParadigmKey,
+		ExperimentID: params.ExperimentID, TimepointID: params.TimepointID, SubjectID: params.SubjectID,
+		Status: params.Status, ParadigmKey: params.ParadigmKey, FromDate: from, ToDate: to,
 	})
 	if err != nil {
 		return nil, 0, fmt.Errorf("count tests: %w", err)
 	}
 	out := make([]domain.Test, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, toTest(row))
+		out = append(out, toTest(sqlcgen.GetTestRow(row)))
+	}
+	if out, err = s.withSubjects(ctx, out); err != nil {
+		return nil, 0, err
 	}
 	return out, int(total), nil
 }
@@ -230,7 +296,7 @@ func (s *Store) Trials(ctx context.Context, testID string) ([]domain.Trial, erro
 
 func (s *Store) CreateTrial(ctx context.Context, tr domain.Trial) (domain.Trial, error) {
 	row, err := s.queries.CreateTrial(ctx, sqlcgen.CreateTrialParams{
-		TestID: tr.TestID, Number: int32(tr.Number), Repetition: int32(tr.Repetition), Attempt: int32(tr.Attempt),
+		TestID: tr.TestID, TestSubjectID: tr.TestSubjectID, Number: int32(tr.Number), Repetition: int32(tr.Repetition), Attempt: int32(tr.Attempt),
 		StartedAt: tr.StartedAt, EndedAt: tr.EndedAt, Notes: optional(tr.Notes), RecordedBy: tr.RecordedBy,
 	})
 	if err != nil {
@@ -304,6 +370,44 @@ func (s *Store) DeleteComment(ctx context.Context, testID, commentID string) err
 	return nil
 }
 
+func (s *Store) withSubject(ctx context.Context, t domain.Test) (domain.Test, error) {
+	tests, err := s.withSubjects(ctx, []domain.Test{t})
+	if err != nil {
+		return domain.Test{}, err
+	}
+	return tests[0], nil
+}
+
+// withSubjects loads the subjects of all tests with one query.
+func (s *Store) withSubjects(ctx context.Context, tests []domain.Test) ([]domain.Test, error) {
+	if len(tests) == 0 {
+		return tests, nil
+	}
+	ids := make([]string, 0, len(tests))
+	for _, t := range tests {
+		ids = append(ids, t.ID)
+	}
+	rows, err := s.queries.ListTestSubjects(ctx, ids)
+	if err != nil {
+		return nil, fmt.Errorf("list test subjects: %w", err)
+	}
+	subjects := map[string][]domain.TestSubject{}
+	for _, r := range rows {
+		subjects[r.TestID] = append(subjects[r.TestID], domain.TestSubject{
+			ID: r.ID, TestID: r.TestID, AllocationID: r.AllocationID, SubjectID: r.SubjectID, SubjectCode: r.SubjectCode, Excluded: r.Excluded,
+			EnvironmentRevisionID: r.EnvironmentRevisionID, EnvironmentID: r.EnvironmentID, EnvironmentName: r.EnvironmentName,
+			EnvironmentRevision: int(r.EnvironmentRevision), CreatedBy: r.CreatedBy, CreatedAt: r.CreatedAt.UTC(),
+		})
+	}
+	for i := range tests {
+		tests[i].Subjects = subjects[tests[i].ID]
+		if tests[i].Subjects == nil {
+			tests[i].Subjects = []domain.TestSubject{}
+		}
+	}
+	return tests, nil
+}
+
 // translate maps a missing row to notFound and named constraint violations to
 // their errors. Other errors are wrapped so PostgreSQL codes stay inspectable.
 func translate(err, notFound error, operation string) error {
@@ -316,11 +420,12 @@ func translate(err, notFound error, operation string) error {
 	return fmt.Errorf("%s: %w", operation, err)
 }
 
-func toTest(r sqlcgen.MiskoTest) domain.Test {
+func toTest(r sqlcgen.GetTestRow) domain.Test {
 	return domain.Test{
-		ID: r.ID, ExperimentID: r.ExperimentID, EnrollmentID: r.EnrollmentID, SubjectID: r.SubjectID, PhaseID: value(r.PhaseID), GroupID: value(r.GroupID),
-		ProtocolVersionID: r.ProtocolVersionID, StepPosition: int(r.StepPosition), ParadigmKey: r.ParadigmKey, ParadigmVersion: int(r.ParadigmVersion),
-		EnvironmentRevisionID: r.EnvironmentRevisionID, PlannedTrials: int(r.PlannedTrials), Status: domain.Status(r.Status),
+		ID: r.ID, ExperimentID: r.ExperimentID, ExperimentCode: r.ExperimentCode, TimepointID: r.TimepointID, TimepointName: r.TimepointName,
+		StudyDay: int(r.StudyDay), ProtocolID: r.ProtocolID, ProtocolName: r.ProtocolName, ProtocolVersionID: r.ProtocolVersionID,
+		ProtocolVersion: int(r.ProtocolVersion), StepPosition: int(r.StepPosition), ParadigmKey: r.ParadigmKey, ParadigmVersion: int(r.ParadigmVersion),
+		PlannedTrials: int(r.PlannedTrials), Status: domain.Status(r.Status),
 		ScheduledAt: r.ScheduledAt.UTC(), StartedAt: utc(r.StartedAt), CompletedAt: utc(r.CompletedAt), CancelledAt: utc(r.CancelledAt),
 		CancelReason: value(r.CancelReason), Notes: value(r.Notes), CreatedBy: r.CreatedBy, CreatedAt: r.CreatedAt.UTC(), UpdatedAt: r.UpdatedAt.UTC(),
 	}
@@ -328,7 +433,7 @@ func toTest(r sqlcgen.MiskoTest) domain.Test {
 
 func toTrial(r sqlcgen.MiskoTrial) domain.Trial {
 	return domain.Trial{
-		ID: r.ID, TestID: r.TestID, Number: int(r.Number), Repetition: int(r.Repetition), Attempt: int(r.Attempt),
+		ID: r.ID, TestID: r.TestID, TestSubjectID: r.TestSubjectID, Number: int(r.Number), Repetition: int(r.Repetition), Attempt: int(r.Attempt),
 		StartedAt: r.StartedAt.UTC(), EndedAt: utc(r.EndedAt), Notes: value(r.Notes), RecordedBy: r.RecordedBy, CreatedAt: r.CreatedAt.UTC(),
 	}
 }
@@ -337,6 +442,28 @@ func toComment(r sqlcgen.GetCommentRow) domain.Comment {
 	return domain.Comment{
 		ID: r.ID, TestID: r.TestID, AuthorID: r.AuthorID, AuthorName: r.AuthorName, Body: r.Body, CreatedAt: r.CreatedAt.UTC(), UpdatedAt: r.UpdatedAt.UTC(),
 	}
+}
+
+// date parses an inclusive filter date; the use case already validated it.
+func date(raw string) (pgtype.Date, error) {
+	if raw == "" {
+		return pgtype.Date{}, nil
+	}
+	d, err := time.Parse(time.DateOnly, raw)
+	if err != nil {
+		return pgtype.Date{}, application.ErrInvalidQuery
+	}
+	return pgtype.Date{Time: d, Valid: true}, nil
+}
+
+func validIDs(ids []string) []string {
+	out := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if pgtx.ValidUUID(id) {
+			out = append(out, id)
+		}
+	}
+	return out
 }
 
 func utc(t *time.Time) *time.Time {
