@@ -125,7 +125,7 @@ func (s *study) video(t *testing.T, test string, verified bool) string {
 	asset := id(t, s.pool, `INSERT INTO misko.video_assets (kind, bucket, object_name, content_type, size_bytes, crc32c, status, generation, verified_at, created_by)
 		VALUES ('ORIGINAL', 'misko-test-videos', $1, 'video/mp4', 1024, 1, $2, $3, $4, $5) RETURNING id`, "videos/"+s.objects, status, generation, verifiedAt, technician.UserID)
 	return id(t, s.pool, `INSERT INTO misko.test_recordings (experiment_id, test_id, video_asset_id, supersedes_id, created_by)
-		VALUES ($1, $2, $3, (SELECT id FROM misko.current_recordings WHERE test_id = $2), $4) RETURNING id`, s.experiment, test, asset, technician.UserID)
+		VALUES ($1, $2, $3, (SELECT r.id FROM misko.test_recordings r WHERE r.test_id = $2 AND NOT EXISTS (SELECT 1 FROM misko.test_recordings n WHERE n.supersedes_id = r.id)), $4) RETURNING id`, s.experiment, test, asset, technician.UserID)
 }
 
 func TestOverridesGateAnalysis(t *testing.T) {
