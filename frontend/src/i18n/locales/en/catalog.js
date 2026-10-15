@@ -44,7 +44,7 @@ export default {
       inductionType: "Induction",
       allTypes: "All induction types",
       confirmationCriterion: "Confirmation criterion",
-      criterionPlaceholder: "Rotarod latency below 50% of baseline",
+      criterionPlaceholder: "Pole descent time above 150% of baseline",
       namePlaceholder: "MPTP Parkinson model",
       empty: "No disease models yet.",
       confirmDelete: "Delete {name}? This is only possible while no experiment group uses it.",

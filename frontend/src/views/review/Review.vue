@@ -111,7 +111,7 @@ async function bulkAccept() {
 }
 
 // The two metrics a reader looks at first; the drawer has the rest.
-const PREFERRED = ["distance_cm", "immobility_s", "center_time_ratio", "mean_speed_cm_s"];
+const PREFERRED = ["escape_latency_s", "path_length_cm", "target_quadrant_time_ratio", "mean_swim_speed_cm_s"];
 function headline(row) {
   const byKey = Object.fromEntries(row.run.metrics.map((m) => [m.key, m]));
   const chosen = PREFERRED.map((key) => byKey[key]).filter(Boolean);

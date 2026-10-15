@@ -66,7 +66,7 @@ test("a study is designed, started and filled with animals", async ({ page, requ
   await expect(unmet.locator('[data-rule="readiness.primaryEndpointMissing"]')).toBeVisible();
   await expect(page.getByTestId("experiment-start")).toBeDisabled();
 
-  // Timepoints and a protocol of two steps; the rotarod has session settings.
+  // Timepoints and a protocol of two steps; the treadmill has session settings.
   await page.goto(`${studyUrl}?tab=timeline`);
   for (const [name, day, position] of [["Baseline", -1, 1], ["Day 7", 7, 2]]) {
     await page.getByTestId("timepoint-add").click();
@@ -81,24 +81,28 @@ test("a study is designed, started and filled with animals", async ({ page, requ
   await page.getByTestId("protocol-add").click();
   const form = page.getByTestId("protocol-form");
   await fill(form, "protocol-name", "Battery");
-  await chooseValue(page, "step-paradigm", "OPEN_FIELD", { scope: form.getByTestId("step-1"), search: "Open" });
+  await chooseValue(page, "step-paradigm", "MWM", { scope: form.getByTestId("step-1"), search: "Morris" });
+  // The trial types come with the paradigm's manifest; MWM has two to choose from.
+  await expect(form.getByTestId("step-1").getByTestId("step-trial-type").locator(".n-base-selection--disabled")).toHaveCount(0);
+  await chooseValue(page, "step-trial-type", "ACQUISITION", { scope: form.getByTestId("step-1") });
   await form.getByTestId("step-add").click();
-  await chooseValue(page, "step-paradigm", "ROTAROD", { scope: form.getByTestId("step-2"), search: "Rota" });
-  await chooseValue(page, "step-trial-type", "ACCELERATING", { scope: form.getByTestId("step-2") });
-  await fill(form, "step-2-session-start_rpm", "6");
+  await chooseValue(page, "step-paradigm", "TREADMILL", { scope: form.getByTestId("step-2"), search: "Tread" });
+  await expect(form.getByTestId("step-2").getByTestId("step-trial-type").locator(".n-base-selection--disabled")).toHaveCount(0);
+  await chooseValue(page, "step-trial-type", "ENDURANCE", { scope: form.getByTestId("step-2") });
+  await fill(form, "step-2-session-start_speed_cm_s", "6");
   await page.getByTestId("protocol-save").click();
   const protocol = page.getByTestId("protocol-Battery");
   await expect(protocol.getByTestId("protocol-steps").locator("tbody tr")).toHaveCount(2);
-  await expect(protocol.getByTestId("protocol-steps")).toContainText("6 rpm");
+  await expect(protocol.getByTestId("protocol-steps")).toContainText("6 cm/s");
 
   // A second version starts from the first; the first never changes.
   await protocol.getByTestId("protocol-new-version").click();
   await fill(form.getByTestId("step-1"), "step-trials", "3");
-  await fill(form, "protocol-version-notes", "Three open field trials");
+  await fill(form, "protocol-version-notes", "Three water maze trials");
   await page.getByTestId("protocol-save").click();
   await expect(protocol.getByTestId("protocol-version-select")).toBeVisible();
   await expect(protocol).toContainText("2 version(s)");
-  await expect(protocol).toContainText("Three open field trials");
+  await expect(protocol).toContainText("Three water maze trials");
 
   // Endpoints: one primary only.
   const experimentId = studyUrl.split("/").pop();
@@ -106,16 +110,16 @@ test("a study is designed, started and filled with animals", async ({ page, requ
   await page.goto(`${studyUrl}?tab=endpoints`);
   const addEndpoint = async (metric, kind) => {
     await page.getByTestId("endpoint-add").click();
-    await chooseValue(page, "endpoint-paradigm", "OPEN_FIELD");
+    await chooseValue(page, "endpoint-paradigm", "MWM");
     await chooseValue(page, "endpoint-metric", metric);
     await chooseValue(page, "endpoint-timepoint", day7);
     await page.getByTestId(`endpoint-kind-${kind}`).click();
     await page.getByTestId("endpoint-save").click();
   };
-  await addEndpoint("distance_cm", "PRIMARY");
+  await addEndpoint("path_length_cm", "PRIMARY");
   const rows = page.getByTestId("endpoints-table").locator("tbody tr");
   await expect(rows).toHaveCount(1);
-  await addEndpoint("mean_speed_cm_s", "PRIMARY");
+  await addEndpoint("mean_swim_speed_cm_s", "PRIMARY");
   await expect(page.getByTestId("endpoint-error")).toContainText("already has a primary endpoint");
   await page.getByTestId("endpoint-kind-SECONDARY").click();
   await page.getByTestId("endpoint-save").click();

@@ -202,22 +202,10 @@ export default {
       started: "Started",
       openResult: "Open result",
       allMetrics: "All metrics",
-      metricLabels: {
-        distance_cm: "Distance",
-        mean_speed_cm_s: "Mean speed",
-        center_time_ratio: "Time in center",
-        center_time_s: "Time in center",
-        center_entries_count: "Center entries",
-        periphery_time_ratio: "Time at the edge",
-        periphery_time_s: "Time at the edge",
-        immobility_s: "Immobility",
-        duration_s: "Duration",
-      },
     },
     events: {
-      in_center: "In center",
-      immobile: "Immobile",
-      center_entry: "Center entry",
+      in_platform: "On the platform",
+      platform_entry: "Platform entry",
     },
     app: {
       name: "Mişko",
@@ -411,9 +399,7 @@ export default {
       category: "Category",
       categories: {
         learning_memory: "Learning and memory",
-        anxiety: "Anxiety",
         motor: "Motor",
-        social: "Social",
       },
       schemaVersion: "Schema v",
       metricsShort: "metrics",
@@ -487,7 +473,6 @@ export default {
         s: "s",
         count: "count",
         ratio: "%",
-        rpm: "rpm",
         boolean: "",
       },
       qcRules: {

@@ -46,10 +46,10 @@ test("a session with two animals is planned, run and completed", async ({ page, 
   const drawer = page.getByTestId("plan-drawer");
   await chooseValue(page, "plan-timepoint", data.timepoints.day7);
   await chooseValue(page, "plan-animal-0", data.allocations.M05, { search: "M05" });
-  await chooseValue(page, "plan-arena-0", data.arenas.boxA);
+  await chooseValue(page, "plan-arena-0", data.arenas.poolA);
   await drawer.getByTestId("plan-add-animal").click();
   await chooseValue(page, "plan-animal-1", data.allocations.M08, { search: "M08" });
-  await chooseValue(page, "plan-arena-1", data.arenas.boxB);
+  await chooseValue(page, "plan-arena-1", data.arenas.poolB);
   await drawer.getByTestId("plan-save").click();
   await expect(drawer).toBeHidden();
 
@@ -66,7 +66,7 @@ test("a session with two animals is planned, run and completed", async ({ page, 
   await page.getByTestId("edit-animals").click();
   const editor = page.getByTestId("session-animals-editor");
   await chooseValue(page, "add-animal", data.allocations.M01, { search: "M01" });
-  await chooseValue(page, "add-arena", data.arenas.boxC);
+  await chooseValue(page, "add-arena", data.arenas.poolC);
   await editor.getByTestId("add-animal-save").click();
   await expect(editor.getByTestId("session-animal")).toHaveCount(3);
   await editor.locator('[data-test="session-animal"][data-animal="M01"]').getByTestId("remove-animal").click();
@@ -114,6 +114,9 @@ test("a session with two animals is planned, run and completed", async ({ page, 
   await fillCalibration(dialog);
   await dialog.getByTestId("reference-frame").fill("0");
   await dialog.getByTestId("calibration-save").click();
+  // The dialog stays open to show how the calibration came out.
+  await expect(dialog.getByTestId("calibration-summary")).toHaveAttribute("data-calibration-status", "VALID", { timeout: 10_000 });
+  await dialog.getByTestId("calibration-cancel").click();
   await expect(dialog).toBeHidden();
   await expect(calibration.getByTestId("calibration-source")).toHaveAttribute("data-source", "OVERRIDE");
   await expect(m08.getByTestId("calibration-source")).toHaveAttribute("data-source", "ENVIRONMENT");
@@ -133,7 +136,7 @@ test("a planned session is cancelled with a reason", async ({ page, request }) =
     timepointId: data.timepoints.day7,
     protocolVersionId: data.protocolVersionId,
     stepPosition: 1,
-    subjects: [{ allocationId: data.allocations.M03, environmentRevisionId: data.arenas.boxC }],
+    subjects: [{ allocationId: data.allocations.M03, environmentRevisionId: data.arenas.poolC }],
   });
   await page.goto(`/tests/${planned.id}`);
   await page.getByTestId("cancel-open").click();

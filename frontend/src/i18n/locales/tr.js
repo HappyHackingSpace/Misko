@@ -202,22 +202,10 @@ export default {
       started: "Başladı",
       openResult: "Sonucu aç",
       allMetrics: "Tüm metrikler",
-      metricLabels: {
-        distance_cm: "Mesafe",
-        mean_speed_cm_s: "Ortalama hız",
-        center_time_ratio: "Merkezde geçen süre",
-        center_time_s: "Merkezde geçen süre",
-        center_entries_count: "Merkeze giriş",
-        periphery_time_ratio: "Kenarda geçen süre",
-        periphery_time_s: "Kenarda geçen süre",
-        immobility_s: "Hareketsizlik",
-        duration_s: "Süre",
-      },
     },
     events: {
-      in_center: "Merkezde",
-      immobile: "Hareketsiz",
-      center_entry: "Merkeze giriş",
+      in_platform: "Platformda",
+      platform_entry: "Platforma giriş",
     },
     app: {
       name: "Mişko",
@@ -411,9 +399,7 @@ export default {
       category: "Kategori",
       categories: {
         learning_memory: "Öğrenme ve bellek",
-        anxiety: "Anksiyete",
         motor: "Motor",
-        social: "Sosyal",
       },
       schemaVersion: "Şema v",
       metricsShort: "metrik",
@@ -487,7 +473,6 @@ export default {
         s: "sn",
         count: "adet",
         ratio: "%",
-        rpm: "dev/dk",
         boolean: "",
       },
       qcRules: {

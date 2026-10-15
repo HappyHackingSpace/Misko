@@ -44,7 +44,7 @@ export default {
       inductionType: "Oluşturma yöntemi",
       allTypes: "Tüm yöntemler",
       confirmationCriterion: "Doğrulama ölçütü",
-      criterionPlaceholder: "Rotarod süresi başlangıcın %50'sinin altında",
+      criterionPlaceholder: "Direk iniş süresi başlangıcın %150'sinin üzerinde",
       namePlaceholder: "MPTP Parkinson modeli",
       empty: "Henüz hastalık modeli yok.",
       confirmDelete: "{name} silinsin mi? Bu yalnızca hiçbir deney grubu kullanmıyorsa mümkündür.",

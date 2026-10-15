@@ -9,12 +9,9 @@ export default {
       NO_TRACKING: "no tracking",
       TRACKING_LOST: "tracking lost",
       EVENT_NOT_OBSERVED: "event not observed",
-      INSUFFICIENT_ENTRIES: "too few entries",
-      NOT_APPLICABLE: "not applicable",
       NOT_SCORED: "not scored",
       NO_VALID_INTERVALS: "no valid interval",
       ZERO_DENOMINATOR: "nothing to divide by",
-      ZONE_NOT_PROVIDED: "zone not calibrated",
     },
     failureReasons: {
       QC_FAILED: "the tracking failed the quality checks",

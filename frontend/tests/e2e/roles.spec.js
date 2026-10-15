@@ -29,7 +29,7 @@ test("a viewer signs in and sees no write controls", async ({ page, request }) =
   await page.goto("/environments");
   await expect(page.getByTestId("environment").first()).toBeVisible();
   await none("environment-new");
-  await page.goto(`/environments/${data.environments.boxA}`);
+  await page.goto(`/environments/${data.environments.poolA}`);
   await expect(page.getByTestId("calibration-summary")).toBeVisible();
   await none("environment-calibrate", "environment-new-revision");
 

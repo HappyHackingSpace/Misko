@@ -5,9 +5,7 @@
 // Paradigms whose arena is a rectangle from (0, 0) to (width, depth) and the
 // parameters that give its sides.
 const BOXES = {
-  OPEN_FIELD: ["arena_width_cm", "arena_height_cm"],
   NOVEL_OBJECT: ["arena_width_cm", "arena_height_cm"],
-  LIGHT_DARK: ["box_width_cm", "box_height_cm"],
 };
 
 export const emptyPoint = (label = "") => ({ label, pixelX: null, pixelY: null, worldX: null, worldY: null });

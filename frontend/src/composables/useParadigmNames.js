@@ -1,5 +1,5 @@
-// Paradigm names in the panel language, so a session says "Open field" rather
-// than OPEN_FIELD. The catalog answers in the request language, so the names
+// Paradigm names in the panel language, so a session says "Morris water maze"
+// rather than MWM. The catalog answers in the request language, so the names
 // are fetched again when the language changes.
 import { ref, watch } from "vue";
 import { useI18n } from "vue-i18n";

@@ -86,26 +86,36 @@ export async function confirm(page) {
   await page.locator(".n-popconfirm__action").filter({ visible: true }).locator(".n-button").last().click();
 }
 
-// Calibration of the fixture camera: a 320x240 view of a 50 cm square arena.
+// Calibration of the fixture camera: a 320x240 view of a 120 cm water maze
+// tank in tank-centred centimetres (x east, y north).
 const FIT = [
-  { pixel: [52, 28], world: [0, 0] },
-  { pixel: [268, 36], world: [50, 0] },
-  { pixel: [292, 222], world: [50, 50] },
-  { pixel: [30, 214], world: [0, 50] },
+  { pixel: [262, 120], world: [60, 0] },
+  { pixel: [160, 20], world: [0, 60] },
+  { pixel: [58, 124], world: [-60, 0] },
+  { pixel: [162, 224], world: [0, -60] },
 ];
 const CHECK = [
-  { pixel: [160.9466, 116.0652], world: [25, 25] },
-  { pixel: [85.7359, 172.3152], world: [10, 40] },
-  { pixel: [227.6114, 66.2066], world: [40, 10] },
+  { pixel: [160.9998, 121.9804], world: [0, 0] },
+  { pixel: [211.2438, 70.2391], world: [30, 30] },
+  { pixel: [127.5562, 190.8809], world: [-20, -40] },
 ];
 
 export async function fillCalibration(form) {
   await form.getByTestId("camera-id").fill("e2e-camera");
-  await form.getByTestId("frame-width").fill("320");
-  await form.getByTestId("frame-height").fill("240");
-  await form.getByTestId("crop-width").fill("320");
-  await form.getByTestId("crop-height").fill("240");
+  // The frame size and crop are typed in the calibrator's collapsed manual section.
+  if (!(await form.getByTestId("frame-width").isVisible())) {
+    await form.getByTestId("calibration-manual").locator(".n-collapse-item__header").click();
+  }
+  // A calibration on a test's video reads the frame size from the video.
+  if (await form.getByTestId("frame-width").locator("input").isEnabled()) {
+    await form.getByTestId("frame-width").fill("320");
+    await form.getByTestId("frame-height").fill("240");
+  }
+  await form.getByTestId("manual-crop-width").fill("320");
+  await form.getByTestId("manual-crop-height").fill("240");
+  // Fit and check points are listed one mode at a time.
   for (const [kind, points] of [["fit", FIT], ["check", CHECK]]) {
+    await form.getByTestId(`mode-${kind}`).click();
     for (const [index, p] of points.entries()) {
       await form.getByTestId(`${kind}-${index}-pixel-x`).fill(String(p.pixel[0]));
       await form.getByTestId(`${kind}-${index}-pixel-y`).fill(String(p.pixel[1]));

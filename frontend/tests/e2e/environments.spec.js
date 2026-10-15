@@ -13,11 +13,13 @@ test("an arena is created with its parameters, calibrated and revised", async ({
   await expect(page).toHaveURL(/\/environments\/new$/);
   await fill(page, "environment-name", name);
   await page.getByTestId("environment-paradigm").click();
-  await page.getByTestId("environment-paradigm-OPEN_FIELD").click();
+  await page.getByTestId("environment-paradigm-MWM").click();
   // The paradigm decides which physical values exist and fills in defaults.
-  await expect(page.getByTestId("apparatus-arena_width_cm")).toBeVisible({ timeout: 10_000 });
-  await fill(page, "apparatus-arena_width_cm", "50");
-  await fill(page, "apparatus-arena_height_cm", "50");
+  await expect(page.getByTestId("apparatus-tank_diameter_cm")).toBeVisible({ timeout: 10_000 });
+  await fill(page, "apparatus-tank_diameter_cm", "120");
+  await fill(page, "apparatus-platform_diameter_cm", "10");
+  await fill(page, "apparatus-platform_x_cm", "30");
+  await fill(page, "apparatus-platform_y_cm", "30");
   await page.getByTestId("environment-save").click();
   await expect(page).toHaveURL(/\/environments\/[0-9a-f-]{36}$/);
   await expect(page.getByTestId("environment-revision")).toHaveCount(1);
@@ -34,17 +36,17 @@ test("an arena is created with its parameters, calibrated and revised", async ({
   await form.getByTestId("calibration-save").click();
   await expect(section).toHaveAttribute("data-status", "CALIBRATED", { timeout: 10_000 });
   await expect(section.getByTestId("calibration-summary")).toHaveAttribute("data-calibration-status", "VALID");
-  await expect(section.getByTestId("tolerance")).toContainText("2.00");
+  await expect(section.getByTestId("tolerance")).toContainText("2 cm");
 
   // A new revision changes the arena and keeps the first one.
   await page.getByTestId("environment-new-revision").click();
   const revision = page.getByTestId("revision-form");
-  await fill(revision, "revision-arena_width_cm", "60");
-  await revision.getByTestId("revision-notes").fill("Wider floor");
+  await fill(revision, "revision-tank_diameter_cm", "150");
+  await revision.getByTestId("revision-notes").fill("Wider pool");
   await revision.getByTestId("revision-save").click();
   await expect(page.getByTestId("environment-revision")).toHaveCount(2);
   const second = page.locator('[data-test="environment-revision"][data-revision="2"]');
-  await expect(second).toContainText("60");
+  await expect(second).toContainText("150");
   // The new revision is a new physical setup, so it waits for its own calibration.
   await expect(second.getByTestId("environment-calibration")).toHaveAttribute("data-status", "WAITING_FOR_CALIBRATION");
   await expect(page.locator('[data-test="environment-revision"][data-revision="1"]').getByTestId("environment-calibration")).toHaveAttribute("data-status", "CALIBRATED");
@@ -52,5 +54,5 @@ test("an arena is created with its parameters, calibrated and revised", async ({
   await page.goto("/environments");
   const row = page.getByTestId("environment").filter({ hasText: name });
   await expect(row).toHaveCount(1);
-  await expect(row.getByTestId("environment-paradigm")).toHaveAttribute("data-key", "OPEN_FIELD");
+  await expect(row.getByTestId("environment-paradigm")).toHaveAttribute("data-key", "MWM");
 });

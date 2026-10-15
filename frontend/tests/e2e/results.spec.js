@@ -16,8 +16,8 @@ test("the Results tab shows provisional numbers and exports them", async ({ page
   await expect(page.getByTestId("report-review-link")).toHaveAttribute("href", new RegExp(`experimentId=${data.experimentId}.*status=PENDING`));
   const section = page.getByTestId("report-section-PRIMARY");
   const group = (code) => section.locator(`[data-test="report-group"][data-group="${code}"]`);
-  await expect(group("G2")).toContainText(/36[.,]5/);
-  await expect(group("G3")).toContainText(/36[.,]5/);
+  await expect(group("G2")).toContainText(/127[.,]36/);
+  await expect(group("G3")).toContainText(/127[.,]36/);
   // n counts accepted results only: one per group, the pending one waits.
   await expect(group("G2").locator("td").nth(1)).toHaveText("1");
   await expect(group("G3").locator("td").nth(1)).toHaveText("1");

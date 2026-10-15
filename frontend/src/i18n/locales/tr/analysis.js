@@ -9,12 +9,9 @@ export default {
       NO_TRACKING: "izleme yok",
       TRACKING_LOST: "izleme kayboldu",
       EVENT_NOT_OBSERVED: "olay görülmedi",
-      INSUFFICIENT_ENTRIES: "giriş sayısı yetersiz",
-      NOT_APPLICABLE: "uygulanamaz",
       NOT_SCORED: "puanlanmadı",
       NO_VALID_INTERVALS: "geçerli aralık yok",
       ZERO_DENOMINATOR: "bölen sıfır",
-      ZONE_NOT_PROVIDED: "bölge kalibre edilmedi",
     },
     failureReasons: {
       QC_FAILED: "izleme kalite kontrollerini geçemedi",
