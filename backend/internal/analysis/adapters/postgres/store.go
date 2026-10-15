@@ -167,16 +167,15 @@ func (s *Store) ReadyTestSubjects(ctx context.Context, capabilities, calibrated 
 	}
 	out := make([]application.Candidate, 0, len(rows))
 	for _, r := range rows {
-		params, err := parameters(r.Parameters, r.Session)
-		if err != nil {
-			return nil, err
-		}
+		// A row whose parameters cannot be read is returned as invalid so the
+		// scheduler skips it and still enqueues the others.
+		params, invalid := parameters(r.Parameters, r.Session)
 		out = append(out, application.Candidate{
 			ExperimentID: r.ExperimentID, TestID: r.TestID, TestSubjectID: r.TestSubjectID, RecordingID: r.RecordingID, SourceAssetID: r.SourceAssetID,
 			SourceGeneration: r.SourceGeneration, SourceCRC32C: uint32(r.SourceCrc32c), ClipStartUs: r.ClipStartUs, ClipEndUs: r.ClipEndUs,
 			CalibrationID: r.CalibrationID, ParadigmKey: r.ParadigmKey, ParadigmVersion: int(r.ParadigmVersion), Parameters: params,
 			// The query returns eligible candidates only.
-			VideoVerified: true, ExperimentStatus: "RUNNING",
+			VideoVerified: true, ExperimentStatus: "RUNNING", Invalid: invalid,
 		})
 	}
 	return out, nil
@@ -190,15 +189,13 @@ func (s *Store) Candidate(ctx context.Context, testSubjectID string) (applicatio
 	if err != nil {
 		return application.Candidate{}, translate(err, application.ErrTestSubjectNotFound, "get candidate")
 	}
-	params, err := parameters(r.Parameters, r.Session)
-	if err != nil {
-		return application.Candidate{}, err
-	}
+	params, invalid := parameters(r.Parameters, r.Session)
 	return application.Candidate{
 		ExperimentID: r.ExperimentID, TestID: r.TestID, TestSubjectID: r.TestSubjectID, RecordingID: r.RecordingID, SourceAssetID: r.SourceAssetID,
 		SourceGeneration: r.SourceGeneration, SourceCRC32C: uint32(r.SourceCrc32c), ClipStartUs: r.ClipStartUs, ClipEndUs: r.ClipEndUs,
 		CalibrationID: r.CalibrationID, ParadigmKey: r.ParadigmKey, ParadigmVersion: int(r.ParadigmVersion), Parameters: params,
 		VideoVerified: r.VideoStatus == "VERIFIED", TestCancelled: r.TestStatus == "CANCELLED", ExperimentStatus: r.ExperimentStatus, Excluded: r.Excluded,
+		Invalid: invalid,
 	}, nil
 }
 

@@ -92,6 +92,9 @@ type Candidate struct {
 	TestCancelled                                                   bool
 	ExperimentStatus                                                string
 	Excluded                                                        bool
+	// Invalid is set when the candidate's stored inputs cannot be read, such
+	// as arena parameters that are not numbers; it is never planned.
+	Invalid error
 }
 
 // eligible reports whether the animal's video and study state allow an analysis.
@@ -358,6 +361,9 @@ func (s *Service) Tick(ctx context.Context) (TickReport, error) {
 
 // plan decides whether a candidate is ready and pins its inputs.
 func (s *Service) plan(c Candidate, capabilities []domain.Capability, trigger domain.Trigger, createdBy string, now time.Time) (domain.Run, bool, error) {
+	if c.Invalid != nil {
+		return domain.Run{}, false, c.Invalid
+	}
 	if !c.eligible() {
 		return domain.Run{}, false, nil
 	}
@@ -402,7 +408,7 @@ func (s *Service) Reanalyze(ctx context.Context, actor access.Actor, testSubject
 		return domain.Run{}, err
 	}
 	run, ok, err := s.plan(c, capabilities, domain.Manual, actor.UserID, s.clock())
-	if errors.Is(err, ErrUnknownCapability) || (err == nil && !ok) {
+	if c.Invalid != nil || errors.Is(err, ErrUnknownCapability) || (err == nil && !ok) {
 		return domain.Run{}, ErrNotReady
 	}
 	if err != nil {
