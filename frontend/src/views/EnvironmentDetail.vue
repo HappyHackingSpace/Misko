@@ -12,7 +12,8 @@ import { environments, paradigmCatalog as paradigms, revisionParameters } from "
 import { useAuth } from "../stores/auth.js";
 import { useBreadcrumb } from "../stores/breadcrumb.js";
 import PageHead from "../components/PageHead.vue";
-import CalibrationForm from "../components/CalibrationForm.vue";
+import Calibrator from "../components/calibration/Calibrator.vue";
+import CalibrationSummary from "../components/calibration/CalibrationSummary.vue";
 import ParameterFields from "../components/ParameterFields.vue";
 import { defaults, useParameters } from "../composables/useParameters.js";
 
@@ -41,8 +42,6 @@ const latestOf = (number) => {
   const superseded = new Set(chain.map((c) => c.supersedesId).filter(Boolean));
   return chain.findLast((c) => !superseded.has(c.id)) || null;
 };
-const centimetres = (value) => `${Number(value).toFixed(2)} cm`;
-const tagType = (status) => ({ CALIBRATED: "success", VALID: "success", WAITING_FOR_CALIBRATION: "warning", REJECTED: "error" })[status] || "default";
 
 // Paradigm manifests by "KEY/version", for labels, units and defaults.
 const manifests = ref({});
@@ -279,34 +278,11 @@ onUnmounted(() => crumb.clear());
         <template v-else-if="stateOf(revision.number).status">
           <p class="muted">{{ $t("environments.calibration.intro") }}</p>
 
-          <NDescriptions
+          <CalibrationSummary
             v-if="latestOf(revision.number)"
-            :column="1"
-            label-placement="left"
-            size="small"
-            bordered
-            data-test="calibration-summary"
-            :data-calibration-status="latestOf(revision.number).status"
-          >
-            <NDescriptionsItem :label="$t('calibration.camera')">{{ latestOf(revision.number).cameraId }}</NDescriptionsItem>
-            <NDescriptionsItem :label="$t('calibration.fitError')">
-              <span data-test="fit-error">{{ centimetres(latestOf(revision.number).fitRmsErrorCm) }}</span>
-            </NDescriptionsItem>
-            <NDescriptionsItem :label="$t('calibration.checkError')">
-              <span data-test="check-error">{{ centimetres(latestOf(revision.number).checkRmsErrorCm) }}</span>
-            </NDescriptionsItem>
-            <NDescriptionsItem :label="$t('calibration.maxError')">
-              {{ centimetres(latestOf(revision.number).checkMaxErrorCm) }}
-            </NDescriptionsItem>
-            <NDescriptionsItem :label="$t('calibration.tolerance')">
-              <span data-test="tolerance">{{ centimetres(latestOf(revision.number).toleranceCm) }}</span>
-            </NDescriptionsItem>
-            <NDescriptionsItem :label="$t('tests.status')">
-              <NTag size="small" round :bordered="false" :type="tagType(latestOf(revision.number).status)">
-                {{ $t(`statuses.${latestOf(revision.number).status}`) }}
-              </NTag>
-            </NDescriptionsItem>
-          </NDescriptions>
+            :calibration="latestOf(revision.number)"
+            :zones="manifestOf(revision)?.zones || []"
+          />
           <p v-else class="muted" data-test="calibration-waiting">{{ $t("environments.calibration.waiting") }}</p>
           <p class="err" v-if="latestOf(revision.number)?.status === 'REJECTED'" data-test="calibration-rejected">
             {{ $t("environments.calibration.rejected") }}
@@ -324,8 +300,10 @@ onUnmounted(() => crumb.clear());
             {{ $t(latestOf(revision.number) ? "environments.calibration.correct" : "environments.calibration.enter") }}
           </NButton>
 
-          <CalibrationForm
+          <Calibrator
             v-if="calibrating === revision.number"
+            :paradigm="manifestOf(revision)"
+            :parameters="revision.parameters || {}"
             :initial="latestOf(revision.number)"
             :correcting="!!latestOf(revision.number)"
             :note="$t('environments.calibration.note')"
