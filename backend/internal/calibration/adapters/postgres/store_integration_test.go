@@ -233,14 +233,13 @@ func TestOverridesGateAnalysis(t *testing.T) {
 		t.Fatalf("older calibrations stay readable and unchanged: %+v %v", chain, err)
 	}
 
-	// A replacement video waits for verification, then falls back to the arena
-	// default (none here) until the animal is calibrated on it.
+	// While a replacement video is still uploading, the verified video and its
+	// override stay in effect; once verified, the replacement is current and
+	// falls back to the arena default (none here) until the animal is
+	// calibrated on it.
 	st.video(t, st.test, false)
-	if view := status(st.test, st.first); view.Status != application.WaitingForVideo {
+	if view := status(st.test, st.first); view.Status != application.Calibrated || view.Current.ID != created[0].ID {
 		t.Fatalf("pending replacement: %+v", view)
-	}
-	if _, err := s.Calibrate(ctx, technician, st.test, st.first, input(created[0].ID)); !errors.Is(err, application.ErrVideoNotVerified) {
-		t.Fatalf("override on a pending video: %v", err)
 	}
 	replacement := st.video(t, st.test, true)
 	if view := status(st.test, st.first); view.Status != application.Waiting || view.Source != "" || view.RecordingID != replacement {
