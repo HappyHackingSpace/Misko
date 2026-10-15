@@ -1,141 +1,33 @@
-> **Outdated.** This document describes the earlier Node/Prisma implementation (scenarios, `X-Service-Key`, event-based manual entry). The current system is the Go backend with analysis runs and workers. The source of truth is [backend/README.md](../backend/README.md), [worker/README.md](../worker/README.md) and the Go catalog in `backend/internal/paradigms`.
-
 # Mişko - Domain Model
 
-> Scope: the data model Mişko owns as the **system of record**. The CV service
-> (vision, raw telemetry, video) stays independent - see `docs/INTEGRATION.md`.
-> Measurement definitions, metric rules and QC are in `docs/MEASUREMENTS.md`.
+The earlier subject/scenario model (a free-text `groupName` on the subject, a
+`Scenario` bundling environments, a `Test = Subject + Scenario` with a JSON
+result) is gone. The Go backend was rebuilt on a fresh schema around the study
+design of a preclinical efficacy study. The full model, its reasoning and the
+decisions are in [plans/DOMAIN_REDESIGN.md](plans/DOMAIN_REDESIGN.md); the
+implemented rules and routes are in [backend/README.md](../backend/README.md).
 
-Mişko is a **video-only behavioral test platform**. The domain is intentionally
-small. Five concepts, one straight line from setup to result:
+In short:
 
-```
-Subject (mouse)
-Paradigm (read-only code catalog)  ->  Environment (named physical instance)
-                                            |
-                                            v
-                                         Scenario  (the central definition:
-                                                     one or more environments)
-                                            |
-                                            v
-Test = Subject + Scenario  ->  result (events -> derived metrics, per environment)
-```
+- **Catalog:** substances (compounds, reference drugs, vehicles, inducers) and
+  disease models; paradigms are versioned code; environments are physical
+  apparatus with immutable revisions (an arena is one revision).
+- **Design:** an experiment (`DRAFT -> RUNNING -> COMPLETED`, day 0 set on
+  start) has groups with one of five roles (`HEALTHY_CONTROL`, `SHAM`,
+  `DISEASE_CONTROL`, `POSITIVE_CONTROL`, `TREATMENT`) and a disease model,
+  regimen items per group, timepoints in study days, protocols and endpoints.
+  Starting checks the design and freezes it.
+- **Execution:** an animal is allocated to exactly one group, ever, and is
+  excluded with a reason, never deleted. Administrations record every actual
+  dose, including the induction; induction outcomes record whether the model
+  took.
+- **Tests:** a test is one session (timepoint and protocol step) with one video
+  and one or more animals, each in its own arena. Calibration is per arena with
+  per-animal overrides; analysis runs per animal; every result is reviewed by a
+  person before it counts.
+- **Report:** per endpoint, group statistics over accepted results and the
+  comparisons that follow from the group roles.
 
-## 0. Tenancy (single-tenant, on-prem)
-
-Mişko is deployed **on-prem, one installation per laboratory**. There is exactly
-**one `Laboratory`** (a singleton, not multi-tenant). It holds lab-wide
-configuration (`name`, `code`, `timezone`, `settings`). We do not sprinkle a
-`labId` across every table - everything implicitly belongs to the one lab.
-
-The installation wizard (CLI, at Docker startup) creates the `Laboratory` and the
-`SUPERADMIN` user together; a singleton guard refuses a second laboratory.
-
-## 1. Subject (the mouse)
-
-Kept simple - the rich research-grade subject was dropped from scope.
-
-- `code` (unique) - lab/cage label
-- `sex` - `M | F`
-- `groupName` - free-text experiment group (e.g. control, model, treated)
-
-## 2. Paradigm and Environment
-
-These already exist (Steps 1-2).
-
-- **Paradigm**: a scientific test type **defined in code**, not editable DB rows
-  (`backend/src/config/paradigms.js`). It declares the configurable apparatus
-  parameters, zones, the metric dictionary and the event types (each with a CV
-  `detect` spec). Read-only catalog: `GET /api/paradigms`, `GET /api/paradigms/:key`.
-- **Environment** ("Ortam"): a lab's named, persisted instance of a paradigm. It
-  stores a self-contained snapshot `{ paradigmKey, schemaVersion, apparatus,
-  zones }`; apparatus values are validated against the code-fixed parameter
-  ranges and locked at test time. A lab can hold many environments per paradigm
-  (e.g. two distinct Morris water tanks). CRUD under `/api/environments`.
-
-> The physical rig **is** the Environment. There is no separate `Apparatus`
-> model. Camera-to-cm calibration is a later concern (roadmap Step 5).
-
-## 3. Metric vs metric result (signals stay out)
-
-Three distinct layers, deliberately separated:
-
-- **Signal** - the camera's raw, real-time time series (trajectory `(t, x, y)`,
-  timestamps, pose...). Lives in the **CV service**, never in Mişko. The camera
-  does not emit "mean speed"; it emits a trajectory.
-- **Metric (definition)** - what is measured for a paradigm: the code dictionary
-  entry (`key`, `unit`, `valueType`, `validRange`, and the `inputs` it is derived
-  from). Paradigm-level, stable.
-- **Metric result (value)** - the measured/computed value for one test run. The
-  CV service computes it from signals; for manual entry the operator records the
-  observable ones directly. Stored in `Test.result`.
-
-Mişko stores **metric results** (derived values), not signals.
-
-## 4. Scenario (the central experiment definition)
-
-A `Scenario` is the reusable definition of one experiment, built once. It carries:
-
-- `name`, `description`.
-- **environments** (N-N) - one or more environments to run on, so a scenario can
-  span one or more paradigms. Each environment's paradigm fixes its metrics.
-- **session parameters** (optional) - trial count, duration, etc.
-
-A scenario carries **no** pass/fail criteria. A behavioral result is **data, not
-a verdict** - interpretation and comparison happen at the analysis layer.
-
-## 5. Test (one run)
-
-A `Test` is a run of a `Scenario` against a `Subject`. The operator runs it
-**environment by environment**: Start an environment, record its metric results
-(manual now, camera later), Finish. The test is DONE when every environment is.
-
-- `scenarioId`, `subjectId`, `operatorId`.
-- `status` - `PENDING | RUNNING | DONE | FAILED`, `startedAt`, `endedAt`.
-- `result` (JSON) - per environment:
-  `{ schemaVersion, environments: { [envId]: { status, startedAt, endedAt, metrics } } }`.
-  Metric keys/values are validated against the environment's paradigm dictionary
-  (`valueType`, `validRange`, templated zone maps). The exact same shape the CV
-  service will push later - manual entry just fills the observable metrics by hand.
-
-There is **no** `passed`/verdict. Starting a test only asks for a subject and a
-scenario; everything else comes from the scenario's environments.
-
-### 5a. Comment (test discussion)
-
-A `Comment` is a free-form note attached to a `Test` (`backend/src/modules/comments`).
-
-- `testId`, `authorId`, `body` (raw text), `createdAt`, `updatedAt`; both FKs
-  cascade-delete.
-- `body` is validated at the API layer (`comment.validation.js`): control
-  characters stripped, trimmed, non-empty, max 2000 chars. It is stored verbatim
-  and **never** rendered as HTML - the Vue frontend uses text interpolation, so
-  stored content cannot execute (XSS-safe). Prisma parameterizes every query, so
-  the body cannot drive SQL injection.
-- Authorization (in the service, not the permission matrix): read/create for any
-  authenticated user (every role can comment); edit for the author only; delete
-  for the author or a privileged role (`SUPERADMIN`/`LAB_MANAGER`).
-- Writes are rate-limited per user (20/min, `middleware/rateLimit.js`).
-
-## 6. Roles and permissions (RBAC)
-
-Five roles with a **code-defined permission matrix** (no DB-editable permissions);
-see `backend/src/config/permissions.js`.
-
-| Role | Meaning |
-|---|---|
-| `SUPERADMIN` | Bootstrap user. Full control incl. users and lab config. |
-| `LAB_MANAGER` | Runs the lab: manages users, configures the lab, full data access. |
-| `RESEARCHER` | Builds environments and scenarios, creates and runs tests. |
-| `TECHNICIAN` | Executes tests; limited edits. |
-| `VIEWER` | Read-only across everything. |
-
-Writes are gated by permissions (`requirePermission(...)`): `user:manage`,
-`lab:configure`, `subject:write`, `apparatus:write` (environments/scenarios),
-`test:write`, `test:run`, and read access (`*:read`).
-
-## 7. What stays out of Mişko
-
-- Per-frame trajectory/pose telemetry and event rows -> CV service's PostgreSQL.
-- Video / trajectory files -> object storage; Mişko stores only URLs.
-- No editable DB rows for paradigm definitions (they are code).
+Single-tenant tenancy (one laboratory per installation), the five roles and the
+code-defined permission matrix, and test comments are unchanged; see
+`backend/README.md`.

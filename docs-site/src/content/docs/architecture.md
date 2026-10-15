@@ -38,6 +38,26 @@ into the use cases and mounts every route. `internal/access/domain` holds the
 shared permission kernel, and a use case calls `actor.Require(permission)`
 before it touches a store.
 
+The domains follow the study model (see [Domain model](../domain/)):
+
+| Package | Owns |
+|---|---|
+| `identity`, `laboratory` | Users, sign-in, roles, the laboratory singleton |
+| `catalog` | Substances and disease models |
+| `subjects` | Animals and their body weights |
+| `experiments` | Experiments and their lifecycle, groups, regimen items, timepoints, endpoints, allocation and exclusion |
+| `dosing` | Administrations, the daily dosing schedule, induction outcomes |
+| `paradigms` | The versioned paradigm catalog and the metric engine (code only) |
+| `environments`, `protocols` | Arenas with measurement revisions; test batteries of an experiment |
+| `tests` | Sessions, the animals in them with their arenas, trials, comments |
+| `media`, `calibration` | The video of a test; calibration per arena and per-animal overrides |
+| `analysis` | Workers, runs per animal, result publication and review |
+| `reports`, `dashboard` | The read-only study report, CSV export and start-screen counts |
+
+Domains do not import each other. Where one refers to another, for example an
+allocation to a subject, the database enforces it with foreign keys, and the
+reporting views in the schema join the tables for the report.
+
 A policy test in `tests/architecture` enforces the shape: domain and
 application packages may not import adapters, and domain code is limited to a
 small allowlist of standard library packages. A layering mistake fails the
@@ -72,12 +92,17 @@ Panel ──► Go API ──► PostgreSQL (records, metrics, events)
    Cloud Storage (original video, analyzed video, trajectory)
 ```
 
-A worker claims a queued run, reads the pinned source video, and uploads an
-analyzed video and a `misko.trajectory.v1` trajectory. It does not send metrics.
+A test is one session with one video and one or more animals, each in its own
+arena. The jobs process queues one run per animal, and a worker claims it with
+that animal's arena calibration, whose crop is the arena's region of the frame.
+The worker reads the pinned source video and uploads an analyzed video and a
+`misko.trajectory.v1` trajectory. It does not send metrics, and it never learns
+the animal's group or treatment.
 The API verifies every uploaded object against its declared size, checksum and
 content type, applies the paradigm's quality rules, and then the Go metric
 engine computes the metrics and events from the trajectory. That keeps one
 definition of every measurement inside the API, whatever produced the tracking.
+A result counts in the study report only after a person accepts it.
 
 Heavy data stays in the bucket: the database holds records, metrics, events and
 references to objects, never video bytes.
@@ -89,5 +114,7 @@ queues analysis runs, and Nginx serving the panel. The schema and the first
 administrator are installed by explicit commands (`bootstrap migrate` and the
 one-time `bootstrap setup`), not on container start. `migrate` applies numbered
 SQL migrations in one transaction and records them, and every deploy runs it
-before starting the new containers. Backend, frontend and worker each have their own
+before starting the new containers. The schema was rebuilt from scratch for the
+study model; a database installed with the earlier migrations is refused and
+must be reset. Backend, frontend and worker each have their own
 path-filtered GitHub Actions pipeline.

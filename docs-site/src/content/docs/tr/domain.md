@@ -1,103 +1,183 @@
 ---
 title: Alan modeli
-description: Mişko'nun system of record olarak sahip olduğu yalın, senaryo-merkezli veri modeli.
+description: Mişko'nun system of record olarak sahip olduğu çalışma modeli; katalog ve çalışma tasarımından test oturumlarına, onaylanmış sonuçlara ve rapora kadar.
 ---
 
-Mişko, kasıtlı olarak küçük tutulmuş bir alana sahip **video-only davranış testi
-platformudur**. Mişko bu modeli **system of record** olarak sahiplenir; CV servisi
-bağımsız kalır. Metrik tanımları, MWM normalizasyonu ve kalite kontrol semantiği
-[Ölçüm mimarisi](../measurements/) sayfasındadır.
-
-Beş kavram, kurulumdan sonuca tek bir düz çizgi:
+Mişko, kemirgenler üzerindeki preklinik davranış çalışmalarının system of
+record'udur. Bir çalışma tek bir soruyu yanıtlar: X maddesi, D dozunda, M
+hastalık modelinin yarattığı bozukluğu geri çeviriyor mu? Model bu sorudan
+çıkar. Metrik tanımları ve kalite kontrol kuralları
+[Ölçüm mimarisi](../measurements/) sayfasındadır. Gerekçeleri ve kararlarıyla
+tam tasarım `docs/plans/DOMAIN_REDESIGN.md` dosyasındadır.
 
 ```txt
-Denek (fare)
-Paradigma (salt-okunur kod katalog) -> Ortam (isimli fiziksel instance)
-                                          |
-                                          v
-                                       Senaryo  (bir veya birden çok ortam)
-                                          |
-                                          v
-Test = Denek + Senaryo -> ortam-bazlı metrik sonuçları (veri, verdikt yok)
+Katalog:    Madde, Hastalık modeli, Paradigma (kod), Ortam (arena)
+
+Tasarım:    Deney -> Gruplar (rol + hastalık modeli) -> Rejim kalemleri
+                  -> Zaman noktaları, Protokoller, Sonlanım noktaları
+
+Yürütme:    Denek -> Atama (ömür boyu tek grup) -> Uygulamalar,
+                                                   İndüksiyon sonucu
+            Test (oturum: zaman noktası x protokol adımı, tek video)
+              -> Test denekleri (hayvan + arena) -> Denemeler
+                                                 -> Kalibrasyon (arena veya düzeltme)
+                                                 -> Analiz çalıştırmaları -> Onaylanmış sonuç
+
+Rapor:      hayvan başına kabul edilmiş sonuçlar -> gruplar -> rol tabanlı karşılaştırmalar
 ```
 
 ## Kiracılık (tek kiracı, on-prem)
 
-Mişko **kurulum başına bir laboratuvar** çalıştırır - singleton, çok kiracılı
+Mişko **kurulum başına bir laboratuvar** çalıştırır; singleton, çok kiracılı
 değil.
 
-- **`Laboratory`** (singleton): ad, kod, zaman dilimi, ayarlar.
-- **Kurulum sihirbazı (CLI, açılışta):** lab adı + superadmin e-postasını alır ve
-  `Laboratory` ile `SUPERADMIN`'i birlikte oluşturur. Singleton guard ikinci bir
-  lab oluşturmayı reddeder; adım idempotenttir.
+- **`Laboratory`** (singleton): ad, kod, saat dilimi. Gün 0, doz günleri ve
+  varsayılan test saatleri laboratuvarın saat dilimini kullanır.
+- **Kurulum (CLI):** `bootstrap setup` laboratuvar adını ve yönetici e-postasını
+  alır, laboratuvarı ve `SUPERADMIN` kullanıcısını birlikte oluşturur. Tekrar
+  çalıştırılırsa hiçbir şey oluşturmaz.
 
-## Denek (fare)
+## Katalog
 
-Sade tutulur: `code` (benzersiz), `sex`, `groupName` (serbest-metin deney grubu).
+Çalışmalar arasında yeniden kullanılan, laboratuvar genelindeki referans veri.
 
-## Paradigma ve Ortam
-
-- **Paradigma:** kullanıcının düzenlediği bir DB satırı değil, **kodda tanımlı**
-  bilimsel bir test türüdür. Spec (parametreler, bölgeler, metrik sözlüğü,
-  olay tipleri CV detect spec'i ile) mühendislik sahipliğindedir ve kararlıdır; yalnızca değerler
-  kullanıcı verisidir. Salt-okunur katalog (`GET /api/paradigms`). Kayıt defteri:
-  `MWM`, `OPEN_FIELD`, `EPM`, `ROTAROD`, `Y_MAZE`, `NOVEL_OBJECT`, `BARNES_MAZE`,
+- **Madde:** bir hayvana verilen her şey: etkin bir bileşik, referans ilaç,
+  taşıyıcı (serum fizyolojik, %0,5 CMC) ya da bir hastalık modelini indükleyen
+  ajan (MPTP, LPS, skopolamin). `kind` (`COMPOUND`, `REFERENCE_DRUG`, `VEHICLE`,
+  `INDUCER`) yalnızca seçim listelerine yardım eder; bir maddenin çalışmadaki
+  görevi kullanıldığı yerden gelir.
+- **Hastalık modeli:** bozukluğun nasıl oluşturulduğu (`CHEMICAL`, `SURGICAL`,
+  `DIET`, `STRESS`, `OTHER`) ve serbest metin olarak nasıl doğrulandığı. Her
+  model indüklenir.
+- **Paradigma:** düzenlenebilir bir veritabanı satırı değil, **kodda tanımlı**
+  bilimsel bir test türüdür: parametreler, bölgeler, puanlanan olaylar ve metrik
+  tanımları, hiç değişmeyen yayınlanmış sürümler halinde. Kayıt defteri: `MWM`,
+  `OPEN_FIELD`, `EPM`, `ROTAROD`, `Y_MAZE`, `NOVEL_OBJECT`, `BARNES_MAZE`,
   `THREE_CHAMBER`, `LIGHT_DARK`, `POLE`, `TREADMILL`.
-- **Ortam (Environment):** bir lab'ın paradigmadan oluşturduğu isimli, kalıcı
-  instance. Kendine yeten bir snapshot tutar (`{ paradigmKey, schemaVersion,
-  apparatus, zones }`); apparatus değerleri kod tarafından sabit parametre
-  aralıklarına göre doğrulanır ve test anında kilitlenir. Paradigma başına birden
-  çok ortam (ör. iki ayrı Morris su tankı).
+- **Ortam:** tek bir paradigmanın tek bir fiziksel düzeneği; örneğin belirli bir
+  su tankı ya da tek kamera altındaki üç açık alan kutusundan biri. Ölçüleri
+  değişmeyen, numaralı revizyonlardır. Bir testte hayvan bir **arenaya** konur;
+  arena, bir ortam revizyonudur.
 
-Fiziksel düzenek **Ortam'ın kendisidir** - ayrı bir `Apparatus` modeli yoktur.
-Kamera-cm kalibrasyonu sonraki bir konudur (yol haritası Adım 5).
+## Denek
 
-## Senaryo (merkezî deney tanımı)
+Hayvan: kod, tür (`MOUSE`, `RAT`) ve cinsiyet. Bir denek bir çalışmaya
+katılmadan önce kaydedilebilir. Vücut ağırlıkları deneğe aittir, ölçüm zamanıyla
+kaydedilir ve hiç değişmez.
 
-`Scenario`, bir kez kurulan, bir deneyin yeniden kullanılabilir tanımıdır. Taşır:
+## Çalışma tasarımı
 
-- `name`, `description`.
-- **ortamlar** (N-N) - üzerinde koşulacak bir veya birden çok ortam; böylece
-  senaryo bir veya birden çok paradigmayı kapsayabilir. Her ortamın paradigması
-  metriklerini sabitler.
-- **oturum parametreleri** (opsiyonel) - trial sayısı, süre vb.
+Buradaki her şey hiçbir hayvana dokunulmadan önce kararlaştırılır ve çalışma
+başladığında dondurulur.
 
-Senaryoda **geç/kal kriteri yoktur**. Davranışsal sonuç **veridir, verdikt
-değil** - yorum analiz katmanında yapılır.
+- **Deney:** kod, başlık, açıklama, hipotez, randomizasyon yöntemi ve kör olup
+  olmadığı. Yaşam döngüsü `DRAFT -> RUNNING -> COMPLETED`. Başlatmak **gün 0**'ı
+  belirler; tamamlamak deneyi salt okunur yapar.
+- **Grup:** çalışmanın bir kolu; rolü ve hastalık modeliyle tanımlanır:
 
-### Sinyal vs metrik vs metrik sonucu
+  | Rol | Hastalık modeli | Aldığı | Amacı |
+  |---|---|---|---|
+  | `HEALTHY_CONTROL` | yok | varsa taşıyıcı | normal referans |
+  | `SHAM` | var | indüksiyon yerine taşıyıcı | indüksiyon işleminin kendisini kontrol eder |
+  | `DISEASE_CONTROL` | var | indüksiyon ve taşıyıcı | hastalığın yarattığı bozukluk |
+  | `POSITIVE_CONTROL` | var | indüksiyon ve referans ilaç | testin iyileşmeyi yakalayabildiğini gösterir |
+  | `TREATMENT` | var | indüksiyon ve test edilen madde | etkinlik ve doz yanıtı |
 
-Üç ayrı katman: **sinyaller** (kameranın ham gerçek-zamanlı zaman serisi -
-trajectory, timestamp; CV servisinde kalır, Mişko'ya girmez), **metrikler**
-(paradigmanın tanımları - ne ölçülür, birim/aralık/inputs) ve **metrik sonuçları**
-(bir koşunun değerleri; CV sinyalden hesaplar ya da elle girilir). Mişko metrik
-sonuçlarını saklar, sinyalleri değil.
+  Bir grubun hedef sayısı (n) vardır.
+- **Rejim kalemi:** bir grubun aldığı: amaç (`INDUCTION`, `VEHICLE`,
+  `TREATMENT`), madde, doz, birim, uygulama yolu, sıklık, ilk ve son çalışma
+  günü. Bir grubun en fazla bir tedavi kalemi olur; böylece bir tedavi grubu tek
+  bir maddeyi tek bir dozda alır. Aynı maddenin tedavi grupları doz yanıtını
+  oluşturur.
+- **Zaman noktası:** hayvanların test edildiği an; gün 0'a göre çalışma günü
+  olarak (gün -1'de Baseline, gün 14'te Day 14).
+- **Protokol:** test bataryası; sıralı adımlardan oluşan, değişmeyen sürümleri
+  vardır. Bir adım; paradigma sürümü, deneme türü, deneme sayısı ve oturum
+  ayarlarıdır. Düzenek belirtmez.
+- **Sonlanım noktası:** çalışmanın neye göre değerlendirildiği: bir zaman
+  noktasında bir paradigmanın bir metriği, birincil veya ikincil, hangi yönün
+  daha iyi sayıldığı ve isteğe bağlı bir başlangıç zaman noktası. Bir çalışmanın
+  bir birincil sonlanım noktası olur.
 
-## Test (tek koşu)
+Bir çalışma yalnızca tasarımı tamamsa başlar: zaman noktaları, hedef sayılı
+gruplar, bir birincil sonlanım noktası, her role uyan bir rejim ve sham, tedavi
+veya pozitif kontrol gruplarının kullandığı her hastalık modeli için bir
+hastalık kontrolü.
 
-`Test`, bir `Scenario`'nun bir `Subject` üzerinde koşusudur. Operatör **ortam
-ortam** koşturur (Başlat → metrik sonuçlarını gir → Bitir):
+## Yürütme
 
-- `scenarioId`, `subjectId`, `operatorId`.
-- `status` (`PENDING | RUNNING | DONE | FAILED`), `startedAt`, `endedAt`.
-- `result` (JSON) - ortam başına:
-  `{ schemaVersion, environments: { [envId]: { status, startedAt, endedAt, metrics } } }`.
-  Metrik değerleri ortamın paradigma sözlüğüne göre doğrulanır. CV servisinin
-  göndereceği şekille birebir - manuel girişte gözlemlenebilir metrikler elle dolar.
+- **Atama:** bir hayvan **ömür boyu tam olarak bir gruba, dolayısıyla tek bir
+  çalışmaya** aittir. Hayvanlar elle atanabilir ya da hedef sayılarına kadar
+  gruplara rastgele dağıtılabilir. Taslakta atama taşınabilir veya kaldırılabilir;
+  çalışma başladıktan sonra grup sabittir.
+- **Dışlama:** çalışmadan ayrılan bir hayvan (`DIED`, `HUMANE_ENDPOINT`,
+  `INDUCTION_FAILED`, `TECHNICAL`, `OTHER`) bir gerekçeyle dışlanır, asla
+  silinmez. Raporda görünmeye devam eder ve yeniden test veya analiz edilmez.
+- **Uygulama:** gerçekten verilen her doz; hastalık indüksiyonu ve taşıyıcı
+  dahil. İsteğe bağlı olarak karşıladığı rejim kalemine bağlanır. Kilogram başına
+  bir doz, hesaplandığı ağırlığı kaydeder. Günlük doz takvimi rejim
+  kalemlerinden ve gün 0'dan türetilir.
+- **İndüksiyon sonucu:** hayvanın hastalık modelinin doğrulanıp doğrulanmadığı;
+  bir kez kaydedilir.
 
-`passed`/verdikt **yoktur**. Test başlatmak yalnızca denek ve senaryo ister.
+## Test (tek oturum)
+
+`Test`, çalışan bir deneyin tek bir oturumudur: bir zaman noktası, bir protokol
+adımı, **tek bir video**. Her biri kendi arenasında olan bir veya daha fazla
+hayvanı, yani **test deneklerini** kaydeder; genellikle bir, bazen tek kamera
+altında en fazla üç arena.
+
+- Durum: `PLANNED -> IN_PROGRESS -> COMPLETED`, ya da gerekçeyle `CANCELLED`.
+- Hayvanlar yalnızca test planlıyken katılır veya ayrılır. Bir hayvan her zaman
+  noktası ve protokol adımında en fazla bir kez test edilir ve her arena adımın
+  paradigmasını çalıştırmalıdır.
+- Denemeler hayvan başına kaydedilir ve yalnızca eklenir; tekrarlanan bir deneme
+  bir sonraki deneme numarasını alır.
+- Farklı gruplardaki hayvanlar aynı oturumu paylaşabilir. Bir ölçümün grubu her
+  zaman hayvanın atamasından gelir; grupla ilgili hiçbir şey teste kopyalanmaz.
+
+## Video, kalibrasyon ve analiz
+
+- **Video:** bir testin doğrulanmış tek bir güncel videosu vardır. Yeni bir
+  yükleme onun yerini alır; önceki videolar köken kaydı için saklanır.
+- **Kalibrasyon:** pikselleri santimetreye çevirir. Varsayılan olarak her arena
+  (ortam revizyonu) düzenek kurulurken bir kez kalibre edilir; kırpma alanı
+  arenanın kamera karesindeki bölgesidir. Kamera veya arena kaydıysa güncel
+  videoda tek bir test deneğine elle bir **düzeltme** uygulanır.
+- **Analiz çalıştırması:** test deneği başına bir tane. Worker hayvanı arenasının
+  kırpma alanında izler ve yörüngeyi yükler; Mişko her metriği ve olayı bu
+  yörüngeden hesaplar. Girdiler sabitlenir; yeniden analiz yeni bir
+  çalıştırmadır ve eski çalıştırmalar kalır.
+- **Onaylanmış sonuç:** her sonucu bir kişi onaylar. Bir hayvanın ilk başarılı
+  çalıştırması `PENDING` bir sonuç açar; inceleyen kişi kabul eder ya da bir
+  gerekçeyle reddeder. Kör bir çalışmada inceleyen kişi grubu, hastalığı, maddeyi
+  veya dozu görmez. İstatistiklere yalnızca kabul edilen sonuçlar girer.
+
+Davranışsal sonuç **veridir, verdikt değil**: bir testin geçti veya kaldı sonucu
+yoktur.
+
+## Rapor
+
+Deney birimi hayvandır. Her sonlanım noktası için rapor, dışlanmamış hayvanların
+kabul edilmiş sonuçlarını alır ve grup başına n, ortalama, SD, SEM ve başlangıca
+göre değişimi, ayrıca grup rollerinden çıkan karşılaştırmaları verir:
+
+- model geçerliliği: hastalık kontrolü ile sağlıklı kontrol ve sham;
+- test duyarlılığı: pozitif kontrol ile hastalık kontrolü;
+- etkinlik: her tedavi grubu ile kendi hastalık kontrolü, kurtarma yüzdesiyle;
+- doz yanıtı: tek bir maddenin doza göre sıralanmış tedavi grupları.
+
+Farklı paradigma veya metrik motoru sürümlerinin sonuçları hiç birleştirilmez.
 
 ## Yorum (test tartışması)
 
 `Comment`, bir `Test`'e iliştirilen serbest metin notudur ve bir tartışma alanı
 oluşturur.
 
-- `testId`, `authorId`, `body` (ham metin), `createdAt`, `updatedAt`.
+- `testId`, `authorId`, `body` (düz metin), `createdAt`, `updatedAt`.
 - `body` olduğu gibi saklanır ve **asla** HTML olarak yorumlanmaz; API
   katmanında uzunluğu sınırlanır (en fazla 2000 karakter), kırpılır ve kontrol
   karakterlerinden arındırılır.
-- Bir testin silinmesi yorumlarına kademeli yansır; bir kullanıcının silinmesi de
-  onun yorumlarına yansır.
 
 Yetkilendirme bilinçli olarak basittir ve izin matrisinin parçası değildir:
 
@@ -119,16 +199,19 @@ yok):
 |---|:--:|:--:|:--:|:--:|:--:|
 | `user:manage`     | ✅ | ✅ | - | - | - |
 | `lab:configure`   | ✅ | ✅ | - | - | - |
+| `study:write` (katalog, tasarım, atama, protokoller) | ✅ | ✅ | ✅ | - | - |
 | `subject:write`   | ✅ | ✅ | ✅ | - | - |
-| `apparatus:write` (ortamlar & senaryolar) | ✅ | ✅ | ✅ | - | - |
-| `test:write`      | ✅ | ✅ | ✅ | - | - |
-| `test:run`        | ✅ | ✅ | ✅ | ✅ | - |
+| `weight:write`    | ✅ | ✅ | ✅ | ✅ | - |
+| `apparatus:write` (ortamlar, arena kalibrasyonu) | ✅ | ✅ | ✅ | - | - |
+| `test:write` (test planlama) | ✅ | ✅ | ✅ | - | - |
+| `test:run` (test çalıştırma, videolar, dozlar, onay) | ✅ | ✅ | ✅ | ✅ | - |
 | `*:read`          | ✅ | ✅ | ✅ | ✅ | ✅ |
 
-`requirePermission("test:run")` middleware'i birincil kapıdır.
+Her kullanım senaryosu bir store'a dokunmadan önce izni kendisi kontrol eder
+(`actor.Require(...)`).
 
-## Mişko'da durmayanlar
+## Veritabanının dışında kalanlar
 
-Kare kare telemetri ve event satırları CV servisinin PostgreSQL'inde durur. Video
-ve trajektori dosyaları object storage'da durur - Mişko yalnızca URL'leri tutar.
-Mişko'da timeseries tablosu yoktur. Bkz. [Entegrasyon](../integration/).
+Video dosyaları, analiz videoları ve yörüngeler özel nesne depolamasında durur;
+veritabanı bucket, nesne adı ve generation bilgisini tutar, video baytlarını veya
+imzalı URL'leri asla tutmaz. Paradigma tanımları satır değil, koddur.

@@ -39,6 +39,26 @@ senaryolarına bağlar ve tüm rotaları kurar. `internal/access/domain` ortak i
 çekirdeğini tutar; bir kullanım senaryosu bir store'a dokunmadan önce
 `actor.Require(permission)` çağırır.
 
+Alanlar çalışma modelini izler (bkz. [Alan modeli](../domain/)):
+
+| Paket | Sahip olduğu |
+|---|---|
+| `identity`, `laboratory` | Kullanıcılar, giriş, roller, laboratuvar singleton'ı |
+| `catalog` | Maddeler ve hastalık modelleri |
+| `subjects` | Hayvanlar ve vücut ağırlıkları |
+| `experiments` | Deneyler ve yaşam döngüleri, gruplar, rejim kalemleri, zaman noktaları, sonlanım noktaları, atama ve dışlama |
+| `dosing` | Uygulamalar, günlük doz takvimi, indüksiyon sonuçları |
+| `paradigms` | Sürümlü paradigma kataloğu ve metrik motoru (yalnızca kod) |
+| `environments`, `protocols` | Ölçüm revizyonlu arenalar; bir deneyin test bataryaları |
+| `tests` | Oturumlar, arenalarıyla birlikte içlerindeki hayvanlar, denemeler, yorumlar |
+| `media`, `calibration` | Bir testin videosu; arena başına kalibrasyon ve hayvan başına düzeltmeler |
+| `analysis` | Worker'lar, hayvan başına çalıştırmalar, sonuç yayını ve onayı |
+| `reports`, `dashboard` | Salt okunur çalışma raporu, CSV dışa aktarma ve açılış ekranı sayıları |
+
+Alanlar birbirini import etmez. Biri diğerine başvurduğunda, örneğin bir
+atamanın deneğe, bunu veritabanı yabancı anahtarlarla zorlar; şemadaki raporlama
+görünümleri rapor için tabloları birleştirir.
+
 `tests/architecture` içindeki politika testi bu yapıyı zorunlu kılar: domain ve
 application paketleri adaptörleri import edemez ve domain kodu standart
 kütüphanenin küçük bir izin listesiyle sınırlıdır. Katman hatası, incelemeyi
@@ -72,12 +92,16 @@ Panel ──► Go API ──► PostgreSQL (kayıtlar, metrikler, olaylar)
    Cloud Storage (orijinal video, analiz videosu, yörünge)
 ```
 
-Worker kuyruktaki bir çalıştırmayı üstlenir, sabitlenmiş kaynak videoyu okur ve
-bir analiz videosu ile bir `misko.trajectory.v1` yörüngesi yükler. Metrik
-göndermez. API yüklenen her nesneyi bildirilen boyut, sağlama ve içerik türüne
+Bir test, tek videosu ve her biri kendi arenasında olan bir veya daha fazla
+hayvanı olan tek bir oturumdur. Jobs süreci hayvan başına bir çalıştırma kuyruğa
+alır; worker bunu, kırpma alanı arenanın karedeki bölgesi olan o hayvanın arena
+kalibrasyonuyla üstlenir. Worker sabitlenmiş kaynak videoyu okur ve bir analiz
+videosu ile bir `misko.trajectory.v1` yörüngesi yükler. Metrik göndermez ve
+hayvanın grubunu veya tedavisini hiç öğrenmez. API yüklenen her nesneyi bildirilen boyut, sağlama ve içerik türüne
 karşı doğrular, paradigmanın kalite kurallarını uygular; ardından Go metrik
 motoru metrikleri ve olayları yörüngeden hesaplar. Böylece takibi ne üretirse
-üretsin, her ölçümün tek bir tanımı API içinde kalır.
+üretsin, her ölçümün tek bir tanımı API içinde kalır. Bir sonuç, ancak bir kişi
+onu kabul ettikten sonra çalışma raporunda sayılır.
 
 Ağır veri bucket'ta kalır: veritabanı kayıtları, metrikleri, olayları ve nesne
 referanslarını tutar, video baytlarını değil.
@@ -89,6 +113,7 @@ kuyruklayan jobs süreci ve paneli sunan Nginx. Şema ve ilk yönetici, konteyne
 açılışında değil, açık komutlarla kurulur (`bootstrap migrate` ve tek seferlik
 `bootstrap setup`). `migrate`, numaralı SQL migration'larını tek transaction
 içinde uygulayıp kaydeder; her deploy yeni container'ları başlatmadan önce onu
-çalıştırır.
+çalıştırır. Şema çalışma modeli için sıfırdan yeniden yazıldı; önceki
+migration'larla kurulmuş bir veritabanı reddedilir ve sıfırlanmalıdır.
 Backend, frontend ve worker'ın her birinin kendi path-filtreli GitHub Actions
 pipeline'ı vardır.
