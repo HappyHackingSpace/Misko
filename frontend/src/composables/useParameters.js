@@ -30,7 +30,9 @@ export function defaults(parameters) {
 }
 
 export function useParameters() {
-  const { t, n, te } = useI18n();
+  const { t, n, te, locale } = useI18n();
+  // Percent placement follows the language: "%40" in Turkish, "40%" in English.
+  const percent = (raw) => new Intl.NumberFormat(locale.value, { style: "percent", maximumFractionDigits: 4 }).format(Number(raw));
 
   const unit = (parameter) => {
     if (isPercent(parameter)) return "%";
@@ -44,6 +46,7 @@ export function useParameters() {
   const format = (parameter, value) => {
     if (value === null || value === undefined) return "-";
     if (isSwitch(parameter)) return Number(value) === 1 ? t("paradigms.on") : t("paradigms.off");
+    if (isPercent(parameter)) return percent(value);
     const u = unit(parameter);
     return u ? `${number(toDisplay(parameter, value))} ${u}` : number(toDisplay(parameter, value));
   };
@@ -51,6 +54,7 @@ export function useParameters() {
   // "20 - 150 cm"
   const range = (parameter) => {
     if (isSwitch(parameter)) return "";
+    if (isPercent(parameter)) return `${percent(parameter.min)} - ${percent(parameter.max)}`;
     const u = unit(parameter);
     const text = `${number(toDisplay(parameter, parameter.min))} - ${number(toDisplay(parameter, parameter.max))}`;
     return u ? `${text} ${u}` : text;
