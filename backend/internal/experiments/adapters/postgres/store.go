@@ -1,33 +1,55 @@
-// Package postgres implements experiment persistence with sqlc-generated queries.
+// Package postgres implements study design persistence with sqlc-generated
+// queries. Triggers and constraints in schema/006_experiments.sql are the last
+// line of defence; their violations are translated to application errors.
 package postgres
 
 import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
+
 	"github.com/HappyHackingSpace/Misko/backend/internal/experiments/adapters/postgres/sqlcgen"
 	"github.com/HappyHackingSpace/Misko/backend/internal/experiments/application"
 	"github.com/HappyHackingSpace/Misko/backend/internal/experiments/domain"
 	"github.com/HappyHackingSpace/Misko/backend/internal/platform/pgtx"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"time"
 )
 
-// constraintErrors maps named constraints to the error a violation means.
+// constraintErrors maps named constraints, unique indexes and trigger rules to
+// the error a violation means.
 var constraintErrors = map[string]error{
-	"experiments_code_key":                 application.ErrCodeTaken,
-	"experiment_phases_position_key":       application.ErrPhaseConflict,
-	"experiment_phases_name_key":           application.ErrPhaseConflict,
-	"experiment_phases_experiment_id_fkey": application.ErrExperimentNotFound,
-	"experiment_groups_name_key":           application.ErrGroupNameTaken,
-	"experiment_groups_experiment_id_fkey": application.ErrExperimentNotFound,
-	"enrollments_subject_key":              application.ErrAlreadyEnrolled,
-	"enrollments_experiment_id_fkey":       application.ErrExperimentNotFound,
-	"enrollments_subject_id_fkey":          application.ErrSubjectNotFound,
-	"group_assignments_enrollment_fkey":    application.ErrEnrollmentNotFound,
-	"group_assignments_group_fkey":         domain.ErrGroupNotInExperiment,
-	"group_assignments_no_overlap":         application.ErrOverlappingAssignment,
+	"experiments_code_key":                    application.ErrCodeTaken,
+	"experiments_transition":                  application.ErrInvalidTransition,
+	"experiments_lifecycle_check":             application.ErrInvalidTransition,
+	"experiment_groups_code_key":              application.ErrGroupCodeTaken,
+	"experiment_groups_name_key":              application.ErrGroupNameTaken,
+	"experiment_groups_disease_check":         domain.ErrDiseaseModelRequired,
+	"experiment_groups_disease_model_id_fkey": application.ErrDiseaseModelNotFound,
+	"experiment_groups_experiment_id_fkey":    application.ErrExperimentNotFound,
+	"experiment_groups_frozen":                application.ErrDesignFrozen,
+	"regimen_items_group_fkey":                application.ErrGroupNotInExperiment,
+	"regimen_items_substance_id_fkey":         application.ErrSubstanceNotFound,
+	"regimen_items_treatment_key":             application.ErrTreatmentItemTaken,
+	"regimen_items_interval_check":            domain.ErrInvalidInterval,
+	"regimen_items_days_check":                domain.ErrInvalidDays,
+	"regimen_items_frozen":                    application.ErrDesignFrozen,
+	"timepoints_position_key":                 application.ErrTimepointConflict,
+	"timepoints_name_key":                     application.ErrTimepointConflict,
+	"timepoints_experiment_id_fkey":           application.ErrExperimentNotFound,
+	"timepoints_frozen":                       application.ErrDesignFrozen,
+	"endpoints_timepoint_fkey":                application.ErrTimepointNotInExperiment,
+	"endpoints_baseline_fkey":                 application.ErrTimepointNotInExperiment,
+	"endpoints_baseline_check":                domain.ErrBaselineSameTimepoint,
+	"endpoints_measure_key":                   application.ErrEndpointDuplicate,
+	"endpoints_primary_key":                   application.ErrPrimaryEndpointTaken,
+	"endpoints_frozen":                        application.ErrDesignFrozen,
+	"allocations_group_fkey":                  application.ErrGroupNotInExperiment,
+	"allocations_subject_id_fkey":             application.ErrSubjectNotFound,
+	"allocations_subject_key":                 application.ErrAlreadyAllocated,
+	"allocations_exclusion_check":             domain.ErrExclusionBeforeAllocation,
+	"allocations_frozen":                      application.ErrAllocationFrozen,
 }
 
 type Store struct {
@@ -37,14 +59,27 @@ type Store struct {
 
 func NewStore(pool *pgxpool.Pool) *Store { return &Store{pool: pool, queries: sqlcgen.New(pool)} }
 
+// Transaction runs fn in one transaction. Inside it, a nested Transaction call
+// runs fn in the same transaction.
 func (s *Store) Transaction(ctx context.Context, fn func(application.Store) error) error {
 	return pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
-		return fn(&Store{pool: s.pool, queries: s.queries.WithTx(tx)})
+		return fn(&txStore{Store{pool: s.pool, queries: s.queries.WithTx(tx)}})
 	})
 }
 
+type txStore struct{ Store }
+
+func (s *txStore) Transaction(_ context.Context, fn func(application.Store) error) error {
+	return fn(s)
+}
+
+// Experiments
+
 func (s *Store) CreateExperiment(ctx context.Context, e domain.Experiment) (domain.Experiment, error) {
-	row, err := s.queries.CreateExperiment(ctx, sqlcgen.CreateExperimentParams{Code: e.Code, Title: e.Title, Description: optional(e.Description), RequiresControl: e.RequiresControl})
+	row, err := s.queries.CreateExperiment(ctx, sqlcgen.CreateExperimentParams{
+		Code: e.Code, Title: e.Title, Description: optional(e.Description), Hypothesis: optional(e.Hypothesis),
+		Randomisation: optional(e.Randomisation), Blinded: e.Blinded,
+	})
 	if err != nil {
 		return domain.Experiment{}, translate(err, nil, "create experiment")
 	}
@@ -62,128 +97,115 @@ func (s *Store) Experiment(ctx context.Context, id string) (domain.Experiment, e
 	return toExperiment(row), nil
 }
 
+func (s *Store) LockExperiment(ctx context.Context, id string) (domain.Experiment, error) {
+	if !pgtx.ValidUUID(id) {
+		return domain.Experiment{}, application.ErrExperimentNotFound
+	}
+	row, err := s.queries.LockExperiment(ctx, id)
+	if err != nil {
+		return domain.Experiment{}, translate(err, application.ErrExperimentNotFound, "lock experiment")
+	}
+	return toExperiment(row), nil
+}
+
 func (s *Store) ListExperiments(ctx context.Context, f application.ExperimentFilter) ([]domain.Experiment, int, error) {
 	search := pgtx.EscapeLike(f.Search)
 	rows, err := s.queries.ListExperiments(ctx, sqlcgen.ListExperimentsParams{
-		Search: search, SortKey: f.Sort, Descending: f.Descending, PageLimit: int32(f.Limit), PageOffset: int32(f.Offset),
+		Search: search, Status: f.Status, SortKey: f.Sort, Descending: f.Descending, PageLimit: int32(f.Limit), PageOffset: int32(f.Offset),
 	})
 	if err != nil {
 		return nil, 0, fmt.Errorf("list experiments: %w", err)
 	}
-	total, err := s.queries.CountExperiments(ctx, search)
+	total, err := s.queries.CountExperiments(ctx, sqlcgen.CountExperimentsParams{Search: search, Status: f.Status})
 	if err != nil {
 		return nil, 0, fmt.Errorf("count experiments: %w", err)
 	}
-	experiments := make([]domain.Experiment, 0, len(rows))
-	for _, row := range rows {
-		experiments = append(experiments, toExperiment(row))
-	}
-	return experiments, int(total), nil
+	return mapSlice(rows, toExperiment), int(total), nil
 }
 
-func (s *Store) UpdateExperiment(ctx context.Context, id string, c application.ExperimentChanges) (domain.Experiment, error) {
-	if !pgtx.ValidUUID(id) {
-		return domain.Experiment{}, application.ErrExperimentNotFound
-	}
-	row, err := s.queries.UpdateExperiment(ctx, sqlcgen.UpdateExperimentParams{ID: id, Code: c.Code, Title: c.Title, Description: c.Description, RequiresControl: c.RequiresControl})
+func (s *Store) UpdateExperiment(ctx context.Context, e domain.Experiment) (domain.Experiment, error) {
+	row, err := s.queries.UpdateExperiment(ctx, sqlcgen.UpdateExperimentParams{
+		ID: e.ID, Code: e.Code, Title: e.Title, Description: optional(e.Description), Hypothesis: optional(e.Hypothesis),
+		Randomisation: optional(e.Randomisation), Blinded: e.Blinded,
+	})
 	if err != nil {
 		return domain.Experiment{}, translate(err, application.ErrExperimentNotFound, "update experiment")
 	}
 	return toExperiment(row), nil
 }
 
-func (s *Store) Phases(ctx context.Context, experimentID string) ([]domain.Phase, error) {
+func (s *Store) StartExperiment(ctx context.Context, id string, dayZero time.Time) (domain.Experiment, error) {
+	row, err := s.queries.StartExperiment(ctx, sqlcgen.StartExperimentParams{ID: id, DayZero: dayZero})
+	if err != nil {
+		return domain.Experiment{}, translate(err, application.ErrNotDraft, "start experiment")
+	}
+	return toExperiment(row), nil
+}
+
+func (s *Store) CompleteExperiment(ctx context.Context, id string) (domain.Experiment, error) {
+	row, err := s.queries.CompleteExperiment(ctx, id)
+	if err != nil {
+		return domain.Experiment{}, translate(err, application.ErrNotRunning, "complete experiment")
+	}
+	return toExperiment(row), nil
+}
+
+func (s *Store) OpenTests(ctx context.Context, experimentID string) (int, error) {
+	n, err := s.queries.CountOpenTests(ctx, experimentID)
+	if err != nil {
+		return 0, fmt.Errorf("count open tests: %w", err)
+	}
+	return int(n), nil
+}
+
+func (s *Store) ProtocolParadigms(ctx context.Context, experimentID string) ([]application.ParadigmVersion, error) {
 	if !pgtx.ValidUUID(experimentID) {
 		return nil, application.ErrExperimentNotFound
 	}
-	rows, err := s.queries.ListPhases(ctx, experimentID)
+	rows, err := s.queries.ListProtocolParadigms(ctx, experimentID)
 	if err != nil {
-		return nil, fmt.Errorf("list phases: %w", err)
+		return nil, fmt.Errorf("list protocol paradigms: %w", err)
 	}
-	phases := make([]domain.Phase, 0, len(rows))
-	for _, row := range rows {
-		phases = append(phases, toPhase(row))
-	}
-	return phases, nil
+	return mapSlice(rows, func(r sqlcgen.ListProtocolParadigmsRow) application.ParadigmVersion {
+		return application.ParadigmVersion{Key: r.ParadigmKey, Version: int(r.ParadigmVersion)}
+	}), nil
 }
 
-func (s *Store) CreatePhase(ctx context.Context, p domain.Phase) (domain.Phase, error) {
-	if !pgtx.ValidUUID(p.ExperimentID) {
-		return domain.Phase{}, application.ErrExperimentNotFound
-	}
-	row, err := s.queries.CreatePhase(ctx, sqlcgen.CreatePhaseParams{ExperimentID: p.ExperimentID, Name: p.Name, Position: int32(p.Position), Description: optional(p.Description)})
-	if err != nil {
-		return domain.Phase{}, translate(err, nil, "create phase")
-	}
-	return toPhase(row), nil
-}
+// Groups
 
-func (s *Store) UpdatePhase(ctx context.Context, experimentID, phaseID string, c application.PhaseChanges) (domain.Phase, error) {
-	if !pgtx.ValidUUID(experimentID) || !pgtx.ValidUUID(phaseID) {
-		return domain.Phase{}, application.ErrPhaseNotFound
-	}
-	params := sqlcgen.UpdatePhaseParams{ExperimentID: experimentID, ID: phaseID, Name: c.Name, Description: c.Description}
-	if c.Position != nil {
-		position := int32(*c.Position)
-		params.Position = &position
-	}
-	row, err := s.queries.UpdatePhase(ctx, params)
-	if err != nil {
-		return domain.Phase{}, translate(err, application.ErrPhaseNotFound, "update phase")
-	}
-	return toPhase(row), nil
-}
-
-func (s *Store) DeletePhase(ctx context.Context, experimentID, phaseID string) error {
-	if !pgtx.ValidUUID(experimentID) || !pgtx.ValidUUID(phaseID) {
-		return application.ErrPhaseNotFound
-	}
-	deleted, err := s.queries.DeletePhase(ctx, sqlcgen.DeletePhaseParams{ExperimentID: experimentID, ID: phaseID})
-	if code, _ := pgtx.Violation(err); code == "23503" {
-		return application.ErrPhaseInUse
-	}
-	if err != nil {
-		return fmt.Errorf("delete phase: %w", err)
-	}
-	if deleted == 0 {
-		return application.ErrPhaseNotFound
-	}
-	return nil
-}
-
-func (s *Store) GroupSizes(ctx context.Context, experimentID string) ([]application.GroupSize, error) {
+func (s *Store) Groups(ctx context.Context, experimentID string) ([]application.GroupFill, error) {
 	if !pgtx.ValidUUID(experimentID) {
 		return nil, application.ErrExperimentNotFound
 	}
-	rows, err := s.queries.ListGroupSizes(ctx, experimentID)
+	rows, err := s.queries.ListGroupFills(ctx, experimentID)
 	if err != nil {
 		return nil, fmt.Errorf("list groups: %w", err)
 	}
-	sizes := make([]application.GroupSize, 0, len(rows))
-	for _, r := range rows {
-		group := toGroup(sqlcgen.MiskoExperimentGroup{ID: r.ID, ExperimentID: r.ExperimentID, Name: r.Name, Role: r.Role, TargetSize: r.TargetSize, Description: r.Description, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt})
-		sizes = append(sizes, application.GroupSize{Group: group, ActiveSubjects: int(r.ActiveSubjects)})
-	}
-	return sizes, nil
+	return mapSlice(rows, func(r sqlcgen.ListGroupFillsRow) application.GroupFill {
+		g := toGroup(sqlcgen.MiskoExperimentGroup{ID: r.ID, ExperimentID: r.ExperimentID, Code: r.Code, Name: r.Name, Role: r.Role,
+			DiseaseModelID: r.DiseaseModelID, TargetSize: r.TargetSize, Description: r.Description, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt})
+		return application.GroupFill{Group: g, Allocated: int(r.Allocated), Excluded: int(r.Excluded)}
+	}), nil
 }
 
-func (s *Store) Group(ctx context.Context, experimentID, groupID string) (domain.Group, error) {
-	if !pgtx.ValidUUID(experimentID) || !pgtx.ValidUUID(groupID) {
+func (s *Store) LockGroup(ctx context.Context, experimentID, groupID string) (domain.Group, error) {
+	if !pgtx.ValidUUID(groupID) {
 		return domain.Group{}, application.ErrGroupNotFound
 	}
-	row, err := s.queries.GetGroup(ctx, sqlcgen.GetGroupParams{ExperimentID: experimentID, ID: groupID})
+	row, err := s.queries.LockGroup(ctx, sqlcgen.LockGroupParams{ExperimentID: experimentID, ID: groupID})
 	if err != nil {
-		return domain.Group{}, translate(err, application.ErrGroupNotFound, "get group")
+		return domain.Group{}, translate(err, application.ErrGroupNotFound, "lock group")
 	}
 	return toGroup(row), nil
 }
 
 func (s *Store) CreateGroup(ctx context.Context, g domain.Group) (domain.Group, error) {
-	if !pgtx.ValidUUID(g.ExperimentID) {
-		return domain.Group{}, application.ErrExperimentNotFound
+	if g.DiseaseModelID != "" && !pgtx.ValidUUID(g.DiseaseModelID) {
+		return domain.Group{}, application.ErrDiseaseModelNotFound
 	}
 	row, err := s.queries.CreateGroup(ctx, sqlcgen.CreateGroupParams{
-		ExperimentID: g.ExperimentID, Name: g.Name, Role: string(g.Role), TargetSize: target(g.TargetSize), Description: optional(g.Description),
+		ExperimentID: g.ExperimentID, Code: g.Code, Name: g.Name, Role: string(g.Role), DiseaseModelID: optional(g.DiseaseModelID),
+		TargetSize: target(g.TargetSize), Description: optional(g.Description),
 	})
 	if err != nil {
 		return domain.Group{}, translate(err, nil, "create group")
@@ -191,20 +213,14 @@ func (s *Store) CreateGroup(ctx context.Context, g domain.Group) (domain.Group, 
 	return toGroup(row), nil
 }
 
-func (s *Store) UpdateGroup(ctx context.Context, experimentID, groupID string, c application.GroupChanges) (domain.Group, error) {
-	if !pgtx.ValidUUID(experimentID) || !pgtx.ValidUUID(groupID) {
-		return domain.Group{}, application.ErrGroupNotFound
+func (s *Store) UpdateGroup(ctx context.Context, g domain.Group) (domain.Group, error) {
+	if g.DiseaseModelID != "" && !pgtx.ValidUUID(g.DiseaseModelID) {
+		return domain.Group{}, application.ErrDiseaseModelNotFound
 	}
-	params := sqlcgen.UpdateGroupParams{ExperimentID: experimentID, ID: groupID, Name: c.Name, Description: c.Description}
-	if c.Role != nil {
-		role := string(*c.Role)
-		params.Role = &role
-	}
-	if c.TargetSize != nil {
-		size := int32(*c.TargetSize)
-		params.TargetSize = &size
-	}
-	row, err := s.queries.UpdateGroup(ctx, params)
+	row, err := s.queries.UpdateGroup(ctx, sqlcgen.UpdateGroupParams{
+		ExperimentID: g.ExperimentID, ID: g.ID, Code: g.Code, Name: g.Name, Role: string(g.Role), DiseaseModelID: optional(g.DiseaseModelID),
+		TargetSize: target(g.TargetSize), Description: optional(g.Description),
+	})
 	if err != nil {
 		return domain.Group{}, translate(err, application.ErrGroupNotFound, "update group")
 	}
@@ -212,126 +228,276 @@ func (s *Store) UpdateGroup(ctx context.Context, experimentID, groupID string, c
 }
 
 func (s *Store) DeleteGroup(ctx context.Context, experimentID, groupID string) error {
-	if !pgtx.ValidUUID(experimentID) || !pgtx.ValidUUID(groupID) {
+	if !pgtx.ValidUUID(groupID) {
 		return application.ErrGroupNotFound
+	}
+	if err := s.queries.DeleteGroupRegimen(ctx, sqlcgen.DeleteGroupRegimenParams{ExperimentID: experimentID, GroupID: groupID}); err != nil {
+		return translate(err, nil, "delete group regimen")
 	}
 	deleted, err := s.queries.DeleteGroup(ctx, sqlcgen.DeleteGroupParams{ExperimentID: experimentID, ID: groupID})
-	if code, _ := pgtx.Violation(err); code == "23503" {
-		return application.ErrGroupInUse
-	}
-	if err != nil {
-		return fmt.Errorf("delete group: %w", err)
-	}
-	if deleted == 0 {
-		return application.ErrGroupNotFound
-	}
-	return nil
+	return deleteResult(deleted, err, application.ErrGroupNotFound, application.ErrGroupInUse, "delete group")
 }
 
-func (s *Store) CreateEnrollment(ctx context.Context, e domain.Enrollment) (domain.Enrollment, error) {
-	if !pgtx.ValidUUID(e.ExperimentID) {
-		return domain.Enrollment{}, application.ErrExperimentNotFound
+// Regimen items
+
+func (s *Store) RegimenItems(ctx context.Context, experimentID string) ([]domain.RegimenItem, error) {
+	if !pgtx.ValidUUID(experimentID) {
+		return nil, application.ErrExperimentNotFound
 	}
-	if !pgtx.ValidUUID(e.SubjectID) {
-		return domain.Enrollment{}, application.ErrSubjectNotFound
-	}
-	row, err := s.queries.CreateEnrollment(ctx, sqlcgen.CreateEnrollmentParams{ExperimentID: e.ExperimentID, SubjectID: e.SubjectID, EnrolledAt: e.EnrolledAt})
+	rows, err := s.queries.ListRegimenItems(ctx, experimentID)
 	if err != nil {
-		return domain.Enrollment{}, translate(err, nil, "create enrollment")
+		return nil, fmt.Errorf("list regimen items: %w", err)
 	}
-	return toEnrollment(row), nil
+	return mapSlice(rows, toRegimenItem), nil
 }
 
-func (s *Store) LockEnrollment(ctx context.Context, experimentID, enrollmentID string) (domain.Enrollment, error) {
-	if !pgtx.ValidUUID(experimentID) || !pgtx.ValidUUID(enrollmentID) {
-		return domain.Enrollment{}, application.ErrEnrollmentNotFound
+func (s *Store) LockRegimenItem(ctx context.Context, experimentID, itemID string) (domain.RegimenItem, error) {
+	if !pgtx.ValidUUID(itemID) {
+		return domain.RegimenItem{}, application.ErrRegimenItemNotFound
 	}
-	row, err := s.queries.LockEnrollment(ctx, sqlcgen.LockEnrollmentParams{ExperimentID: experimentID, ID: enrollmentID})
+	row, err := s.queries.LockRegimenItem(ctx, sqlcgen.LockRegimenItemParams{ExperimentID: experimentID, ID: itemID})
 	if err != nil {
-		return domain.Enrollment{}, translate(err, application.ErrEnrollmentNotFound, "lock enrollment")
+		return domain.RegimenItem{}, translate(err, application.ErrRegimenItemNotFound, "lock regimen item")
 	}
-	return toEnrollment(row), nil
+	return toRegimenItem(row), nil
 }
 
-func (s *Store) Enrollment(ctx context.Context, experimentID, enrollmentID string) (domain.Enrollment, error) {
-	if !pgtx.ValidUUID(experimentID) || !pgtx.ValidUUID(enrollmentID) {
-		return domain.Enrollment{}, application.ErrEnrollmentNotFound
+func (s *Store) CreateRegimenItem(ctx context.Context, r domain.RegimenItem) (domain.RegimenItem, error) {
+	if err := regimenReferences(r); err != nil {
+		return domain.RegimenItem{}, err
 	}
-	row, err := s.queries.GetEnrollment(ctx, sqlcgen.GetEnrollmentParams{ExperimentID: experimentID, ID: enrollmentID})
-	if err != nil {
-		return domain.Enrollment{}, translate(err, application.ErrEnrollmentNotFound, "get enrollment")
-	}
-	return toEnrollment(row), nil
-}
-
-func (s *Store) ListEnrollments(ctx context.Context, f application.EnrollmentFilter) ([]application.EnrollmentSummary, int, error) {
-	rows, err := s.queries.ListEnrollments(ctx, sqlcgen.ListEnrollmentsParams{
-		ExperimentID: f.ExperimentID, SubjectID: f.SubjectID, GroupID: f.GroupID, Descending: f.Descending,
-		PageLimit: int32(f.Limit), PageOffset: int32(f.Offset),
+	row, err := s.queries.CreateRegimenItem(ctx, sqlcgen.CreateRegimenItemParams{
+		ExperimentID: r.ExperimentID, GroupID: r.GroupID, Purpose: string(r.Purpose), SubstanceID: r.SubstanceID, DoseMicro: r.DoseMicro,
+		Unit: r.Unit, Route: r.Route, Frequency: string(r.Frequency), IntervalDays: target(r.IntervalDays), StartDay: int32(r.StartDay), EndDay: int32(r.EndDay),
 	})
 	if err != nil {
-		return nil, 0, fmt.Errorf("list enrollments: %w", err)
+		return domain.RegimenItem{}, translate(err, nil, "create regimen item")
 	}
-	total, err := s.queries.CountEnrollments(ctx, sqlcgen.CountEnrollmentsParams{ExperimentID: f.ExperimentID, SubjectID: f.SubjectID, GroupID: f.GroupID})
-	if err != nil {
-		return nil, 0, fmt.Errorf("count enrollments: %w", err)
-	}
-	summaries := make([]application.EnrollmentSummary, 0, len(rows))
-	for _, r := range rows {
-		enrollment := toEnrollment(sqlcgen.MiskoEnrollment{ID: r.ID, ExperimentID: r.ExperimentID, SubjectID: r.SubjectID, EnrolledAt: r.EnrolledAt, CreatedAt: r.CreatedAt})
-		summaries = append(summaries, application.EnrollmentSummary{Enrollment: enrollment, CurrentGroupID: r.CurrentGroupID})
-	}
-	return summaries, int(total), nil
+	return toRegimenItem(row), nil
 }
 
-func (s *Store) SubjectEnrollments(ctx context.Context, subjectID string) ([]application.EnrollmentSummary, error) {
-	if !pgtx.ValidUUID(subjectID) {
-		return []application.EnrollmentSummary{}, nil
+func (s *Store) UpdateRegimenItem(ctx context.Context, r domain.RegimenItem) (domain.RegimenItem, error) {
+	if err := regimenReferences(r); err != nil {
+		return domain.RegimenItem{}, err
 	}
-	rows, err := s.queries.ListSubjectEnrollments(ctx, subjectID)
+	row, err := s.queries.UpdateRegimenItem(ctx, sqlcgen.UpdateRegimenItemParams{
+		ExperimentID: r.ExperimentID, ID: r.ID, GroupID: r.GroupID, Purpose: string(r.Purpose), SubstanceID: r.SubstanceID, DoseMicro: r.DoseMicro,
+		Unit: r.Unit, Route: r.Route, Frequency: string(r.Frequency), IntervalDays: target(r.IntervalDays), StartDay: int32(r.StartDay), EndDay: int32(r.EndDay),
+	})
 	if err != nil {
-		return nil, fmt.Errorf("list subject enrollments: %w", err)
+		return domain.RegimenItem{}, translate(err, application.ErrRegimenItemNotFound, "update regimen item")
 	}
-	summaries := make([]application.EnrollmentSummary, 0, len(rows))
-	for _, r := range rows {
-		enrollment := toEnrollment(sqlcgen.MiskoEnrollment{ID: r.ID, ExperimentID: r.ExperimentID, SubjectID: r.SubjectID, EnrolledAt: r.EnrolledAt, CreatedAt: r.CreatedAt})
-		summaries = append(summaries, application.EnrollmentSummary{Enrollment: enrollment, CurrentGroupID: r.CurrentGroupID})
-	}
-	return summaries, nil
+	return toRegimenItem(row), nil
 }
 
-func (s *Store) Assignments(ctx context.Context, enrollmentID string) ([]domain.Assignment, error) {
-	if !pgtx.ValidUUID(enrollmentID) {
-		return nil, application.ErrEnrollmentNotFound
+func (s *Store) DeleteRegimenItem(ctx context.Context, experimentID, itemID string) error {
+	if !pgtx.ValidUUID(itemID) {
+		return application.ErrRegimenItemNotFound
 	}
-	rows, err := s.queries.ListAssignments(ctx, enrollmentID)
-	if err != nil {
-		return nil, fmt.Errorf("list assignments: %w", err)
-	}
-	history := make([]domain.Assignment, 0, len(rows))
-	for _, row := range rows {
-		history = append(history, toAssignment(row))
-	}
-	return history, nil
+	deleted, err := s.queries.DeleteRegimenItem(ctx, sqlcgen.DeleteRegimenItemParams{ExperimentID: experimentID, ID: itemID})
+	return deleteResult(deleted, err, application.ErrRegimenItemNotFound, nil, "delete regimen item")
 }
 
-func (s *Store) CloseAssignment(ctx context.Context, assignmentID string, validTo time.Time) error {
-	closed, err := s.queries.CloseAssignment(ctx, sqlcgen.CloseAssignmentParams{ID: assignmentID, ValidTo: validTo})
-	if err != nil {
-		return translate(err, nil, "close assignment")
+func regimenReferences(r domain.RegimenItem) error {
+	if !pgtx.ValidUUID(r.GroupID) {
+		return application.ErrGroupNotInExperiment
 	}
-	if closed == 0 {
-		return fmt.Errorf("close assignment %s: no open assignment", assignmentID)
+	if !pgtx.ValidUUID(r.SubstanceID) {
+		return application.ErrSubstanceNotFound
 	}
 	return nil
 }
 
-func (s *Store) CreateAssignment(ctx context.Context, a domain.Assignment) (domain.Assignment, error) {
-	row, err := s.queries.CreateAssignment(ctx, sqlcgen.CreateAssignmentParams{ExperimentID: a.ExperimentID, EnrollmentID: a.EnrollmentID, GroupID: a.GroupID, ValidFrom: a.ValidFrom})
-	if err != nil {
-		return domain.Assignment{}, translate(err, nil, "create assignment")
+// Timepoints
+
+func (s *Store) Timepoints(ctx context.Context, experimentID string) ([]domain.Timepoint, error) {
+	if !pgtx.ValidUUID(experimentID) {
+		return nil, application.ErrExperimentNotFound
 	}
-	return toAssignment(row), nil
+	rows, err := s.queries.ListTimepoints(ctx, experimentID)
+	if err != nil {
+		return nil, fmt.Errorf("list timepoints: %w", err)
+	}
+	return mapSlice(rows, toTimepoint), nil
+}
+
+func (s *Store) LockTimepoint(ctx context.Context, experimentID, timepointID string) (domain.Timepoint, error) {
+	if !pgtx.ValidUUID(timepointID) {
+		return domain.Timepoint{}, application.ErrTimepointNotFound
+	}
+	row, err := s.queries.LockTimepoint(ctx, sqlcgen.LockTimepointParams{ExperimentID: experimentID, ID: timepointID})
+	if err != nil {
+		return domain.Timepoint{}, translate(err, application.ErrTimepointNotFound, "lock timepoint")
+	}
+	return toTimepoint(row), nil
+}
+
+func (s *Store) CreateTimepoint(ctx context.Context, t domain.Timepoint) (domain.Timepoint, error) {
+	row, err := s.queries.CreateTimepoint(ctx, sqlcgen.CreateTimepointParams{ExperimentID: t.ExperimentID, Name: t.Name, StudyDay: int32(t.StudyDay), Position: int32(t.Position)})
+	if err != nil {
+		return domain.Timepoint{}, translate(err, nil, "create timepoint")
+	}
+	return toTimepoint(row), nil
+}
+
+func (s *Store) UpdateTimepoint(ctx context.Context, t domain.Timepoint) (domain.Timepoint, error) {
+	row, err := s.queries.UpdateTimepoint(ctx, sqlcgen.UpdateTimepointParams{ExperimentID: t.ExperimentID, ID: t.ID, Name: t.Name, StudyDay: int32(t.StudyDay), Position: int32(t.Position)})
+	if err != nil {
+		return domain.Timepoint{}, translate(err, application.ErrTimepointNotFound, "update timepoint")
+	}
+	return toTimepoint(row), nil
+}
+
+func (s *Store) DeleteTimepoint(ctx context.Context, experimentID, timepointID string) error {
+	if !pgtx.ValidUUID(timepointID) {
+		return application.ErrTimepointNotFound
+	}
+	deleted, err := s.queries.DeleteTimepoint(ctx, sqlcgen.DeleteTimepointParams{ExperimentID: experimentID, ID: timepointID})
+	return deleteResult(deleted, err, application.ErrTimepointNotFound, application.ErrTimepointInUse, "delete timepoint")
+}
+
+// Endpoints
+
+func (s *Store) Endpoints(ctx context.Context, experimentID string) ([]domain.Endpoint, error) {
+	if !pgtx.ValidUUID(experimentID) {
+		return nil, application.ErrExperimentNotFound
+	}
+	rows, err := s.queries.ListEndpoints(ctx, experimentID)
+	if err != nil {
+		return nil, fmt.Errorf("list endpoints: %w", err)
+	}
+	return mapSlice(rows, toEndpoint), nil
+}
+
+func (s *Store) LockEndpoint(ctx context.Context, experimentID, endpointID string) (domain.Endpoint, error) {
+	if !pgtx.ValidUUID(endpointID) {
+		return domain.Endpoint{}, application.ErrEndpointNotFound
+	}
+	row, err := s.queries.LockEndpoint(ctx, sqlcgen.LockEndpointParams{ExperimentID: experimentID, ID: endpointID})
+	if err != nil {
+		return domain.Endpoint{}, translate(err, application.ErrEndpointNotFound, "lock endpoint")
+	}
+	return toEndpoint(row), nil
+}
+
+func (s *Store) CreateEndpoint(ctx context.Context, e domain.Endpoint) (domain.Endpoint, error) {
+	if err := endpointReferences(e); err != nil {
+		return domain.Endpoint{}, err
+	}
+	row, err := s.queries.CreateEndpoint(ctx, sqlcgen.CreateEndpointParams{
+		ExperimentID: e.ExperimentID, TimepointID: e.TimepointID, BaselineTimepointID: optional(e.BaselineTimepointID),
+		ParadigmKey: e.ParadigmKey, MetricKey: e.MetricKey, Kind: string(e.Kind), Direction: string(e.Direction),
+	})
+	if err != nil {
+		return domain.Endpoint{}, translate(err, nil, "create endpoint")
+	}
+	return toEndpoint(row), nil
+}
+
+func (s *Store) UpdateEndpoint(ctx context.Context, e domain.Endpoint) (domain.Endpoint, error) {
+	if err := endpointReferences(e); err != nil {
+		return domain.Endpoint{}, err
+	}
+	row, err := s.queries.UpdateEndpoint(ctx, sqlcgen.UpdateEndpointParams{
+		ExperimentID: e.ExperimentID, ID: e.ID, TimepointID: e.TimepointID, BaselineTimepointID: optional(e.BaselineTimepointID),
+		ParadigmKey: e.ParadigmKey, MetricKey: e.MetricKey, Kind: string(e.Kind), Direction: string(e.Direction),
+	})
+	if err != nil {
+		return domain.Endpoint{}, translate(err, application.ErrEndpointNotFound, "update endpoint")
+	}
+	return toEndpoint(row), nil
+}
+
+func (s *Store) DeleteEndpoint(ctx context.Context, experimentID, endpointID string) error {
+	if !pgtx.ValidUUID(endpointID) {
+		return application.ErrEndpointNotFound
+	}
+	deleted, err := s.queries.DeleteEndpoint(ctx, sqlcgen.DeleteEndpointParams{ExperimentID: experimentID, ID: endpointID})
+	return deleteResult(deleted, err, application.ErrEndpointNotFound, nil, "delete endpoint")
+}
+
+func endpointReferences(e domain.Endpoint) error {
+	if !pgtx.ValidUUID(e.TimepointID) || (e.BaselineTimepointID != "" && !pgtx.ValidUUID(e.BaselineTimepointID)) {
+		return application.ErrTimepointNotInExperiment
+	}
+	return nil
+}
+
+// Allocations
+
+func (s *Store) Allocations(ctx context.Context, f application.AllocationFilter) ([]application.AllocationView, error) {
+	if !pgtx.ValidUUID(f.ExperimentID) {
+		return nil, application.ErrExperimentNotFound
+	}
+	params := sqlcgen.ListAllocationsParams{ExperimentID: f.ExperimentID, Excluded: f.Excluded}
+	if f.GroupID != "" {
+		if !pgtx.ValidUUID(f.GroupID) {
+			return []application.AllocationView{}, nil
+		}
+		params.GroupID = &f.GroupID
+	}
+	rows, err := s.queries.ListAllocations(ctx, params)
+	if err != nil {
+		return nil, fmt.Errorf("list allocations: %w", err)
+	}
+	return mapSlice(rows, func(r sqlcgen.ListAllocationsRow) application.AllocationView {
+		a := toAllocation(sqlcgen.MiskoAllocation{ID: r.ID, ExperimentID: r.ExperimentID, GroupID: r.GroupID, SubjectID: r.SubjectID,
+			AllocatedAt: r.AllocatedAt, Cage: r.Cage, ExcludedAt: r.ExcludedAt, ExclusionReason: r.ExclusionReason, ExclusionNote: r.ExclusionNote,
+			CreatedBy: r.CreatedBy, CreatedAt: r.CreatedAt})
+		return application.AllocationView{Allocation: a, SubjectCode: r.SubjectCode}
+	}), nil
+}
+
+func (s *Store) LockAllocation(ctx context.Context, experimentID, allocationID string) (domain.Allocation, error) {
+	if !pgtx.ValidUUID(allocationID) {
+		return domain.Allocation{}, application.ErrAllocationNotFound
+	}
+	row, err := s.queries.LockAllocation(ctx, sqlcgen.LockAllocationParams{ExperimentID: experimentID, ID: allocationID})
+	if err != nil {
+		return domain.Allocation{}, translate(err, application.ErrAllocationNotFound, "lock allocation")
+	}
+	return toAllocation(row), nil
+}
+
+func (s *Store) CreateAllocation(ctx context.Context, a domain.Allocation) (domain.Allocation, error) {
+	if !pgtx.ValidUUID(a.GroupID) {
+		return domain.Allocation{}, application.ErrGroupNotInExperiment
+	}
+	if !pgtx.ValidUUID(a.SubjectID) {
+		return domain.Allocation{}, application.ErrSubjectNotFound
+	}
+	row, err := s.queries.CreateAllocation(ctx, sqlcgen.CreateAllocationParams{
+		ExperimentID: a.ExperimentID, GroupID: a.GroupID, SubjectID: a.SubjectID, AllocatedAt: a.AllocatedAt, Cage: optional(a.Cage), CreatedBy: a.CreatedBy,
+	})
+	if err != nil {
+		return domain.Allocation{}, translate(err, nil, "create allocation")
+	}
+	return toAllocation(row), nil
+}
+
+func (s *Store) UpdateAllocation(ctx context.Context, a domain.Allocation) (domain.Allocation, error) {
+	if !pgtx.ValidUUID(a.GroupID) {
+		return domain.Allocation{}, application.ErrGroupNotInExperiment
+	}
+	params := sqlcgen.UpdateAllocationParams{ExperimentID: a.ExperimentID, ID: a.ID, GroupID: a.GroupID, Cage: optional(a.Cage),
+		ExcludedAt: a.ExcludedAt, ExclusionNote: optional(a.ExclusionNote)}
+	if a.ExcludedAt != nil {
+		reason := string(a.ExclusionReason)
+		params.ExclusionReason = &reason
+	}
+	row, err := s.queries.UpdateAllocation(ctx, params)
+	if err != nil {
+		return domain.Allocation{}, translate(err, application.ErrAllocationNotFound, "update allocation")
+	}
+	return toAllocation(row), nil
+}
+
+func (s *Store) DeleteAllocation(ctx context.Context, experimentID, allocationID string) error {
+	if !pgtx.ValidUUID(allocationID) {
+		return application.ErrAllocationNotFound
+	}
+	deleted, err := s.queries.DeleteAllocation(ctx, sqlcgen.DeleteAllocationParams{ExperimentID: experimentID, ID: allocationID})
+	return deleteResult(deleted, err, application.ErrAllocationNotFound, application.ErrAllocationFrozen, "delete allocation")
 }
 
 // translate maps a missing row to notFound and named constraint violations to
@@ -346,33 +512,74 @@ func translate(err, notFound error, operation string) error {
 	return fmt.Errorf("%s: %w", operation, err)
 }
 
-func toExperiment(r sqlcgen.MiskoExperiment) domain.Experiment {
-	return domain.Experiment{ID: r.ID, Code: r.Code, Title: r.Title, Description: value(r.Description), RequiresControl: r.RequiresControl, CreatedAt: r.CreatedAt.UTC(), UpdatedAt: r.UpdatedAt.UTC()}
+// deleteResult maps a foreign key violation (a row still referencing the
+// deleted one) to inUse and no deleted row to notFound.
+func deleteResult(deleted int64, err, notFound, inUse error, operation string) error {
+	if code, _ := pgtx.Violation(err); code == "23503" && inUse != nil {
+		return inUse
+	}
+	if err != nil {
+		return translate(err, nil, operation)
+	}
+	if deleted == 0 {
+		return notFound
+	}
+	return nil
 }
 
-func toPhase(r sqlcgen.MiskoExperimentPhase) domain.Phase {
-	return domain.Phase{ID: r.ID, ExperimentID: r.ExperimentID, Name: r.Name, Position: int(r.Position), Description: value(r.Description), CreatedAt: r.CreatedAt.UTC(), UpdatedAt: r.UpdatedAt.UTC()}
+func toExperiment(r sqlcgen.MiskoExperiment) domain.Experiment {
+	e := domain.Experiment{ID: r.ID, Code: r.Code, Title: r.Title, Description: value(r.Description), Hypothesis: value(r.Hypothesis),
+		Randomisation: value(r.Randomisation), Blinded: r.Blinded, Status: domain.Status(r.Status),
+		StartedAt: utc(r.StartedAt), CompletedAt: utc(r.CompletedAt), CreatedAt: r.CreatedAt.UTC(), UpdatedAt: r.UpdatedAt.UTC()}
+	if r.DayZero != nil {
+		day := time.Date(r.DayZero.Year(), r.DayZero.Month(), r.DayZero.Day(), 0, 0, 0, 0, time.UTC)
+		e.DayZero = &day
+	}
+	return e
 }
 
 func toGroup(r sqlcgen.MiskoExperimentGroup) domain.Group {
-	g := domain.Group{ID: r.ID, ExperimentID: r.ExperimentID, Name: r.Name, Role: domain.GroupRole(r.Role), Description: value(r.Description), CreatedAt: r.CreatedAt.UTC(), UpdatedAt: r.UpdatedAt.UTC()}
+	g := domain.Group{ID: r.ID, ExperimentID: r.ExperimentID, Code: r.Code, Name: r.Name, Role: domain.Role(r.Role), DiseaseModelID: value(r.DiseaseModelID),
+		Description: value(r.Description), CreatedAt: r.CreatedAt.UTC(), UpdatedAt: r.UpdatedAt.UTC()}
 	if r.TargetSize != nil {
 		g.TargetSize = int(*r.TargetSize)
 	}
 	return g
 }
 
-func toEnrollment(r sqlcgen.MiskoEnrollment) domain.Enrollment {
-	return domain.Enrollment{ID: r.ID, ExperimentID: r.ExperimentID, SubjectID: r.SubjectID, EnrolledAt: r.EnrolledAt.UTC(), CreatedAt: r.CreatedAt.UTC()}
+func toRegimenItem(r sqlcgen.MiskoRegimenItem) domain.RegimenItem {
+	item := domain.RegimenItem{ID: r.ID, ExperimentID: r.ExperimentID, GroupID: r.GroupID, Purpose: domain.Purpose(r.Purpose), SubstanceID: r.SubstanceID,
+		DoseMicro: r.DoseMicro, Unit: r.Unit, Route: r.Route, Frequency: domain.Frequency(r.Frequency), StartDay: int(r.StartDay), EndDay: int(r.EndDay),
+		CreatedAt: r.CreatedAt.UTC(), UpdatedAt: r.UpdatedAt.UTC()}
+	if r.IntervalDays != nil {
+		item.IntervalDays = int(*r.IntervalDays)
+	}
+	return item
 }
 
-func toAssignment(r sqlcgen.MiskoGroupAssignment) domain.Assignment {
-	a := domain.Assignment{ID: r.ID, ExperimentID: r.ExperimentID, EnrollmentID: r.EnrollmentID, GroupID: r.GroupID, ValidFrom: r.ValidFrom.UTC(), CreatedAt: r.CreatedAt.UTC()}
-	if r.ValidTo.Valid {
-		to := r.ValidTo.Time.UTC()
-		a.ValidTo = &to
+func toTimepoint(r sqlcgen.MiskoTimepoint) domain.Timepoint {
+	return domain.Timepoint{ID: r.ID, ExperimentID: r.ExperimentID, Name: r.Name, StudyDay: int(r.StudyDay), Position: int(r.Position),
+		CreatedAt: r.CreatedAt.UTC(), UpdatedAt: r.UpdatedAt.UTC()}
+}
+
+func toEndpoint(r sqlcgen.MiskoEndpoint) domain.Endpoint {
+	return domain.Endpoint{ID: r.ID, ExperimentID: r.ExperimentID, TimepointID: r.TimepointID, BaselineTimepointID: value(r.BaselineTimepointID),
+		ParadigmKey: r.ParadigmKey, MetricKey: r.MetricKey, Kind: domain.EndpointKind(r.Kind), Direction: domain.Direction(r.Direction),
+		CreatedAt: r.CreatedAt.UTC(), UpdatedAt: r.UpdatedAt.UTC()}
+}
+
+func toAllocation(r sqlcgen.MiskoAllocation) domain.Allocation {
+	return domain.Allocation{ID: r.ID, ExperimentID: r.ExperimentID, GroupID: r.GroupID, SubjectID: r.SubjectID, AllocatedAt: r.AllocatedAt.UTC(),
+		Cage: value(r.Cage), ExcludedAt: utc(r.ExcludedAt), ExclusionReason: domain.ExclusionReason(value(r.ExclusionReason)),
+		ExclusionNote: value(r.ExclusionNote), CreatedBy: r.CreatedBy, CreatedAt: r.CreatedAt.UTC()}
+}
+
+func mapSlice[T, U any](items []T, convert func(T) U) []U {
+	out := make([]U, 0, len(items))
+	for _, item := range items {
+		out = append(out, convert(item))
 	}
-	return a
+	return out
 }
 
 func optional(s string) *string {
@@ -389,11 +596,19 @@ func value(s *string) string {
 	return *s
 }
 
-// target stores "no target" as NULL.
-func target(size int) *int32 {
-	if size == 0 {
+func utc(t *time.Time) *time.Time {
+	if t == nil {
 		return nil
 	}
-	n := int32(size)
-	return &n
+	u := t.UTC()
+	return &u
+}
+
+// target stores 0 as NULL.
+func target(n int) *int32 {
+	if n == 0 {
+		return nil
+	}
+	v := int32(n)
+	return &v
 }
