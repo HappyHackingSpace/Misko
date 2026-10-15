@@ -43,10 +43,15 @@ func (h handler) list(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, err)
 		return
 	}
+	lang := httpjson.Language(r, domain.Languages)
 	data := make([]summaryJSON, 0, len(summaries))
 	for _, s := range summaries {
-		data = append(data, summaryJSON{s.Key, s.Name, string(s.Category), s.Species, s.Versions, s.LatestVersion, s.AutomatedAnalysis})
+		data = append(data, summaryJSON{
+			Key: s.Key, Name: s.Name.In(lang), Description: s.Description.In(lang), Category: string(s.Category), Species: s.Species,
+			Versions: s.Versions, LatestVersion: s.LatestVersion, AutomatedAnalysis: s.AutomatedAnalysis,
+		})
 	}
+	w.Header().Set("Content-Language", lang)
 	httpjson.Write(w, http.StatusOK, struct {
 		Data []summaryJSON `json:"data"`
 	}{data})
@@ -63,7 +68,7 @@ func (h handler) latest(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, err)
 		return
 	}
-	httpjson.Write(w, http.StatusOK, toManifest(m))
+	h.writeManifest(w, r, m)
 }
 
 func (h handler) version(w http.ResponseWriter, r *http.Request) {
@@ -81,7 +86,13 @@ func (h handler) version(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, err)
 		return
 	}
-	httpjson.Write(w, http.StatusOK, toManifest(m))
+	h.writeManifest(w, r, m)
+}
+
+func (h handler) writeManifest(w http.ResponseWriter, r *http.Request, m application.Manifest) {
+	lang := httpjson.Language(r, domain.Languages)
+	w.Header().Set("Content-Language", lang)
+	httpjson.Write(w, http.StatusOK, toManifest(m, lang))
 }
 
 func (h handler) fail(w http.ResponseWriter, r *http.Request, err error) {
@@ -91,6 +102,7 @@ func (h handler) fail(w http.ResponseWriter, r *http.Request, err error) {
 type summaryJSON struct {
 	Key               string   `json:"key"`
 	Name              string   `json:"name"`
+	Description       string   `json:"description"`
 	Category          string   `json:"category"`
 	Species           []string `json:"species"`
 	Versions          []int    `json:"versions"`
@@ -100,7 +112,9 @@ type summaryJSON struct {
 
 type parameterJSON struct {
 	Key       string  `json:"key"`
+	Scope     string  `json:"scope"`
 	Label     string  `json:"label"`
+	Help      string  `json:"help"`
 	Unit      string  `json:"unit"`
 	ValueType string  `json:"valueType"`
 	Min       float64 `json:"min"`
@@ -108,8 +122,14 @@ type parameterJSON struct {
 	Default   float64 `json:"default"`
 }
 
+type trialTypeJSON struct {
+	Key   string `json:"key"`
+	Label string `json:"label"`
+}
+
 type zoneJSON struct {
 	Key        string `json:"key"`
+	Label      string `json:"label"`
 	Role       string `json:"role"`
 	Geometry   string `json:"geometry"`
 	Calibrated bool   `json:"calibrated"`
@@ -118,6 +138,7 @@ type zoneJSON struct {
 
 type eventJSON struct {
 	Type       string   `json:"type"`
+	Label      string   `json:"label"`
 	Kind       string   `json:"kind"`
 	Labels     []string `json:"labels"`
 	Single     bool     `json:"single"`
@@ -127,6 +148,7 @@ type eventJSON struct {
 type metricJSON struct {
 	Key         string   `json:"key"`
 	Label       string   `json:"label"`
+	Description string   `json:"description"`
 	Unit        string   `json:"unit"`
 	ValueType   string   `json:"valueType"`
 	Definition  string   `json:"definition"`
@@ -145,18 +167,20 @@ type qcJSON struct {
 	Unit     string  `json:"unit"`
 }
 
+// manifestJSON lists parameters once, each with the scope it is set in:
+// APPARATUS and ANALYSIS on an environment, SESSION on a protocol step.
 type manifestJSON struct {
 	Key                 string          `json:"key"`
 	Name                string          `json:"name"`
+	Description         string          `json:"description"`
 	Category            string          `json:"category"`
 	Species             []string        `json:"species"`
-	TrialTypes          []string        `json:"trialTypes"`
+	TrialTypes          []trialTypeJSON `json:"trialTypes"`
 	Version             int             `json:"version"`
 	MetricEngineVersion int             `json:"metricEngineVersion"`
 	ResultSchemaVersion int             `json:"resultSchemaVersion"`
 	AutomatedAnalysis   bool            `json:"automatedAnalysis"`
-	ApparatusParameters []parameterJSON `json:"apparatusParameters"`
-	SessionParameters   []parameterJSON `json:"sessionParameters"`
+	Parameters          []parameterJSON `json:"parameters"`
 	Zones               []zoneJSON      `json:"zones"`
 	InputEvents         []eventJSON     `json:"inputEvents"`
 	Events              []eventJSON     `json:"events"`
@@ -164,19 +188,30 @@ type manifestJSON struct {
 	QC                  []qcJSON        `json:"qc"`
 }
 
-func toManifest(m application.Manifest) manifestJSON {
+func toManifest(m application.Manifest, lang string) manifestJSON {
 	p := m.Paradigm
 	out := manifestJSON{
-		Key: p.Key, Name: p.Name, Category: string(p.Category), Species: p.Species, TrialTypes: p.TrialTypes, Version: p.Version,
+		Key: p.Key, Name: p.Name.In(lang), Description: p.Description.In(lang), Category: string(p.Category), Species: p.Species,
+		TrialTypes: []trialTypeJSON{}, Version: p.Version,
 		MetricEngineVersion: m.MetricEngineVersion, ResultSchemaVersion: m.ResultSchemaVersion, AutomatedAnalysis: m.AutomatedAnalysis,
-		ApparatusParameters: parameters(p.ApparatusParameters), SessionParameters: parameters(p.SessionParameters),
-		Zones: []zoneJSON{}, InputEvents: events(p.InputEvents), Events: events(p.Events), Metrics: []metricJSON{}, QC: []qcJSON{},
+		Parameters: []parameterJSON{}, Zones: []zoneJSON{}, InputEvents: events(p.InputEvents, lang), Events: events(p.Events, lang),
+		Metrics: []metricJSON{}, QC: []qcJSON{},
+	}
+	for _, t := range p.TrialTypes {
+		out.TrialTypes = append(out.TrialTypes, trialTypeJSON{t.Key, t.Label.In(lang)})
+	}
+	for _, param := range p.Parameters {
+		out.Parameters = append(out.Parameters, parameterJSON{
+			param.Key, string(param.Scope), param.Label.In(lang), param.Help.In(lang), string(param.Unit), valueType(param.Integer), param.Min, param.Max, param.Default,
+		})
 	}
 	for _, z := range p.Zones {
-		out.Zones = append(out.Zones, zoneJSON{z.Key, z.Role, z.Geometry, z.Calibrated, z.Required})
+		out.Zones = append(out.Zones, zoneJSON{z.Key, z.Label.In(lang), z.Role, z.Geometry, z.Calibrated, z.Required})
 	}
 	for _, mt := range p.Metrics {
-		out.Metrics = append(out.Metrics, metricJSON{mt.Key, mt.Label, string(mt.Unit), valueType(mt.Integer), mt.Definition, mt.Formula, mt.MissingWhen, mt.Inputs, mt.Min, mt.Max, mt.Tolerance})
+		out.Metrics = append(out.Metrics, metricJSON{
+			mt.Key, mt.Label.In(lang), mt.Description.In(lang), string(mt.Unit), valueType(mt.Integer), mt.Definition, mt.Formula, mt.MissingWhen, mt.Inputs, mt.Min, mt.Max, mt.Tolerance,
+		})
 	}
 	for _, q := range p.QC {
 		out.QC = append(out.QC, qcJSON{q.Key, q.Operator, q.Value, string(q.Unit)})
@@ -184,22 +219,14 @@ func toManifest(m application.Manifest) manifestJSON {
 	return out
 }
 
-func parameters(params []domain.Parameter) []parameterJSON {
-	out := make([]parameterJSON, 0, len(params))
-	for _, p := range params {
-		out = append(out, parameterJSON{p.Key, p.Label, string(p.Unit), valueType(p.Integer), p.Min, p.Max, p.Default})
-	}
-	return out
-}
-
-func events(defs []domain.EventDefinition) []eventJSON {
+func events(defs []domain.EventDefinition, lang string) []eventJSON {
 	out := make([]eventJSON, 0, len(defs))
 	for _, e := range defs {
 		labels := e.Labels
 		if labels == nil {
 			labels = []string{}
 		}
-		out = append(out, eventJSON{e.Type, string(e.Kind), labels, e.Single, e.Definition})
+		out = append(out, eventJSON{e.Type, e.Label.In(lang), string(e.Kind), labels, e.Single, e.Definition})
 	}
 	return out
 }

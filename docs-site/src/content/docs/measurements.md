@@ -21,33 +21,53 @@ Every result passes through four layers:
 
 CV tracks the animal. Mişko defines the scientific contract.
 
-## Paradigm spec pages
+## Paradigms are templates
 
-Each paradigm needs a detail page with:
+A paradigm is a versioned template defined in code. Environments are created
+from it, and protocol steps refer to those environments. Every parameter has a
+scope that says where it is set:
 
-- Identity: key, name, category, trial types.
-- Apparatus parameters: physical values with units, validation, defaults, and min/max values.
-- Session parameters: trial duration, start position, trial index, protocol variant.
-- Zones: zone keys, geometry type, coordinate system, and derivation rule.
-- Metrics: required and optional metric keys, units, definitions, and normalization.
-- Event types: the events a run can collect, their payloads, and the CV `detect` spec for each.
-- QC requirements: tracking confidence, dropped frames, calibration error, occlusion, lighting, and contrast.
-- Artifacts: video, trajectory, heatmap, calibration image, and debug overlay URLs.
+| Scope | Set on | Required | Examples |
+|---|---|---|---|
+| `APPARATUS` | Environment | Yes, measured on the physical setup | arena width, tank diameter, pole length |
+| `ANALYSIS` | Environment | No, defaults suit most setups | center zone size, tracking gap tolerance, immobility threshold |
+| `SESSION` | Protocol step | No, defaults apply | trial cut-off, rotarod start and end speed |
+
+Each parameter carries a label and a help text that says what to measure or what
+the value changes. Names, labels, help texts, zone and event names and plain
+metric descriptions are written in every supported language (English and
+Turkish) next to the definition, and the API returns them in the language the
+panel asks for (`Accept-Language`, or `?lang=tr`). Metric definitions,
+formulas and missing-data rules stay English: they are the precise scientific
+contract. The panel shows ratios as percentages and switches as on and off.
 
 ```ts
-interface ParadigmSpec {
-  key: "MWM" | "OPEN_FIELD" | "EPM" | "ROTAROD";
-  name: string;
-  category: "learning_memory" | "anxiety" | "motor" | "social";
-  trialTypes: TrialTypeDef[];
-  apparatusParameters: FieldDef[];
-  sessionParameters: FieldDef[];
-  zones(config: ApparatusConfig): ZoneDef[];
-  metrics: MetricDefinition[];
-  eventTypes: EventTypeDef[];
-  qc: QualityRequirement[];
+interface ParadigmManifest {
+  key: string;
+  name: string;           // in the response language
+  description: string;    // what the test is and what it measures
+  category: "LEARNING_MEMORY" | "ANXIETY" | "MOTOR" | "SOCIAL";
+  trialTypes: { key: string; label: string }[];
+  parameters: {
+    key: string;
+    scope: "APPARATUS" | "ANALYSIS" | "SESSION";
+    label: string;
+    help: string;
+    unit: "cm" | "cm_s" | "s" | "count" | "ratio" | "rpm" | "boolean";
+    valueType: "number" | "integer";
+    min: number;
+    max: number;
+    default: number;
+  }[];
+  zones: { key: string; label: string; role: string; geometry: string }[];
+  metrics: { key: string; label: string; description: string; unit: string;
+             definition: string; formula: string; missingWhen: string }[];
+  qc: { key: string; operator: string; value: number; unit: string }[];
 }
 ```
+
+Changing a calculation, a range or a default publishes a new paradigm version.
+Wording and help texts can be improved without a new version.
 
 ## No pass/fail verdict
 
@@ -89,16 +109,16 @@ the paradigm detail API (`GET /api/paradigms/:key` -> `eventTypes`).
 
 ## Localization
 
-The paradigm and metric vocabulary is the scientific contract and stays
-Turkish-only in the spec source (the default language). The read-only inspection
-API localizes free-text labels and definitions through an optional `?lang=`
-query parameter on `GET /api/paradigms`, `GET /api/paradigms/:key` and
-`GET /api/paradigms/metrics`. Supported values are `tr` (default) and `en`; an
-unknown or missing value falls back to `tr`, and any untranslated label or
-definition falls back to its Turkish source. The backend stays the single source
-of truth (catalog in `backend/src/config/i18n.js`), so the CV service and the
-frontend share the same vocabulary with no drift. Small fixed enums (zone
-type/role, species) are translated by the frontend UI dictionary instead.
+Catalog wording lives in the paradigm definitions in
+`backend/internal/paradigms/domain`, written in English and Turkish side by side
+(`T("Arena width", "Arena genişliği")`). `GET /api/paradigms`,
+`GET /api/paradigms/{key}` and `GET /api/paradigms/{key}/versions/{version}`
+answer in the language of `?lang=` (`en` or `tr`), otherwise of
+`Accept-Language`, otherwise English, and set `Content-Language`. The panel
+sends its chosen language with every request. A test fails when any name,
+label, help text or metric description is missing in a language, looks like a
+key, or uses an em dash. Small fixed enums (units, categories, scopes, quality
+rule names) are translated by the panel's own dictionary.
 
 ## Measurement dictionary
 

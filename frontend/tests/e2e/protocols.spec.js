@@ -52,7 +52,11 @@ test("a protocol can be written for an experiment", async ({ page, request }) =>
   await expect(page.getByTestId("step-revision-badge").first()).toBeVisible();
   await optionsOf(page, "step-revision").first().click();
 
-  await page.getByTestId("step-trial-type-0").fill("STANDARD");
+  // The trial type comes from the paradigm of the chosen revision and starts
+  // at its first type; its options are the paradigm's own, in words.
+  await page.getByTestId("step-trial-type-0").click();
+  await expect(optionsOf(page, "step-trial-type")).not.toHaveCount(0, { timeout: 10_000 });
+  await optionsOf(page, "step-trial-type").first().click();
   await page.getByTestId("step-trials-0").fill("3");
   await page.getByTestId("protocol-save").click();
 

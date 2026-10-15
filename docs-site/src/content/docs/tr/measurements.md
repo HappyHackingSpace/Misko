@@ -22,33 +22,55 @@ Her sonuç dört katmandan geçer:
 
 CV hayvanı takip eder. Bilimsel kontratı Mişko tanımlar.
 
-## Paradigma spec sayfaları
+## Paradigmalar şablondur
 
-Her paradigma için şu bölümleri içeren bir detay sayfası gerekir:
+Paradigma, kodda tanımlı ve sürümlenen bir şablondur. Ortamlar bu şablondan
+oluşturulur, protokol adımları da bu ortamlara bağlanır. Her parametrenin
+nerede girildiğini söyleyen bir kapsamı vardır:
 
-- Kimlik: key, ad, kategori, trial türleri.
-- Apparatus parametreleri: birimli fiziksel değerler, validasyon, varsayılanlar ve min/max değerler.
-- Oturum parametreleri: trial süresi, başlangıç pozisyonu, trial indeksi, protokol varyantı.
-- Bölgeler: zone key'leri, geometri tipi, koordinat sistemi ve türetme kuralı.
-- Metrikler: zorunlu ve opsiyonel metrik key'leri, birimler, tanımlar ve normalizasyon.
-- Olay tipleri: bir koşunun toplayabileceği olaylar, payload'ları ve her biri için CV `detect` spec'i.
-- QC gereksinimleri: takip güveni, düşen kareler, kalibrasyon hatası, occlusion, ışık ve kontrast.
-- Artefaktlar: video, trajectory, heatmap, kalibrasyon görseli ve debug overlay URL'leri.
+| Kapsam | Girildiği yer | Zorunlu mu | Örnekler |
+|---|---|---|---|
+| `APPARATUS` | Ortam | Evet, fiziksel düzenekte ölçülür | arena genişliği, tank çapı, direk uzunluğu |
+| `ANALYSIS` | Ortam | Hayır, varsayılanlar çoğu düzenek için uygundur | merkez bölge boyutu, izleme boşluğu toleransı, hareketsizlik eşiği |
+| `SESSION` | Protokol adımı | Hayır, varsayılan kullanılır | deneme süresi sınırı, rotarod başlangıç ve bitiş hızı |
+
+Her parametrenin bir etiketi ve neyin ölçüleceğini ya da değerin neyi
+değiştirdiğini anlatan bir yardım metni vardır. Adlar, etiketler, yardım
+metinleri, bölge ve olay adları ve metriklerin sade açıklamaları desteklenen
+her dilde (İngilizce ve Türkçe) tanımın hemen yanında yazılır; API bunları
+panelin istediği dilde döner (`Accept-Language` ya da `?lang=tr`). Metrik
+tanımları, formüller ve eksik veri kuralları İngilizce kalır, çünkü kesin
+bilimsel kontrat onlardır. Panel oranları yüzde, açık/kapalı değerleri anahtar
+olarak gösterir.
 
 ```ts
-interface ParadigmSpec {
-  key: "MWM" | "OPEN_FIELD" | "EPM" | "ROTAROD";
-  name: string;
-  category: "learning_memory" | "anxiety" | "motor" | "social";
-  trialTypes: TrialTypeDef[];
-  apparatusParameters: FieldDef[];
-  sessionParameters: FieldDef[];
-  zones(config: ApparatusConfig): ZoneDef[];
-  metrics: MetricDefinition[];
-  eventTypes: EventTypeDef[];
-  qc: QualityRequirement[];
+interface ParadigmManifest {
+  key: string;
+  name: string;           // yanıt dilinde
+  description: string;    // testin ne olduğu ve neyi ölçtüğü
+  category: "LEARNING_MEMORY" | "ANXIETY" | "MOTOR" | "SOCIAL";
+  trialTypes: { key: string; label: string }[];
+  parameters: {
+    key: string;
+    scope: "APPARATUS" | "ANALYSIS" | "SESSION";
+    label: string;
+    help: string;
+    unit: "cm" | "cm_s" | "s" | "count" | "ratio" | "rpm" | "boolean";
+    valueType: "number" | "integer";
+    min: number;
+    max: number;
+    default: number;
+  }[];
+  zones: { key: string; label: string; role: string; geometry: string }[];
+  metrics: { key: string; label: string; description: string; unit: string;
+             definition: string; formula: string; missingWhen: string }[];
+  qc: { key: string; operator: string; value: number; unit: string }[];
 }
 ```
+
+Bir hesaplamayı, aralığı ya da varsayılanı değiştirmek yeni bir paradigma
+sürümü yayımlar. İfadeler ve yardım metinleri yeni sürüm gerektirmeden
+iyileştirilebilir.
 
 ## Geçti/kaldı verdikti yok
 
@@ -92,16 +114,16 @@ Olay tipleri paradigma detay API'sinde sunulur
 
 ## Lokalizasyon
 
-Paradigma ve metrik sözlüğü bilimsel kontrattır ve spec kaynağında yalnızca
-Türkçe tutulur (varsayılan dil). Salt-okunur inceleme API'si serbest-metin
-etiketleri ve tanımları, `GET /api/paradigms`, `GET /api/paradigms/:key` ve
-`GET /api/paradigms/metrics` uçlarındaki opsiyonel `?lang=` parametresiyle
-lokalize eder. Desteklenen değerler `tr` (varsayılan) ve `en`'dir; bilinmeyen
-veya eksik bir değer `tr`'ye, çevirisi olmayan bir etiket veya tanım ise Türkçe
-kaynağına geri düşer. Backend tek kaynak olarak kalır (katalog
-`backend/src/config/i18n.js` içinde), böylece CV servisi ve frontend aynı
-sözlüğü kaymadan paylaşır. Küçük sabit enum'lar (zone tipi/rolü, tür) ise
-frontend UI sözlüğü tarafından çevrilir.
+Katalog metinleri `backend/internal/paradigms/domain` altındaki paradigma
+tanımlarında, İngilizce ve Türkçe yan yana yazılır
+(`T("Arena width", "Arena genişliği")`). `GET /api/paradigms`,
+`GET /api/paradigms/{key}` ve `GET /api/paradigms/{key}/versions/{version}`,
+`?lang=` (`en` ya da `tr`) değerinin, yoksa `Accept-Language` başlığının, o da
+yoksa İngilizcenin dilinde yanıt verir ve `Content-Language` başlığını
+ayarlar. Panel seçili dili her istekte gönderir. Bir ad, etiket, yardım metni
+ya da metrik açıklaması herhangi bir dilde eksikse, anahtar gibi görünüyorsa ya
+da uzun tire içeriyorsa test başarısız olur. Küçük sabit enum'lar (birimler,
+kategoriler, kapsamlar, kalite kuralı adları) panelin kendi sözlüğünde çevrilir.
 
 ## Ölçüm sözlüğü
 

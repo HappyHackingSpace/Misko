@@ -1,23 +1,32 @@
 {
   "key": "BARNES_MAZE",
   "name": "Barnes maze",
+  "description": "A brightly lit round platform with holes around the edge, only one of which leads to an escape box. Measures spatial learning and memory: with training, animals find the escape hole faster and with fewer wrong holes.",
   "category": "LEARNING_MEMORY",
   "species": [
     "MOUSE",
     "RAT"
   ],
   "trialTypes": [
-    "ACQUISITION",
-    "PROBE"
+    {
+      "key": "ACQUISITION",
+      "label": "Acquisition"
+    },
+    {
+      "key": "PROBE",
+      "label": "Probe"
+    }
   ],
   "version": 1,
   "metricEngineVersion": 1,
   "resultSchemaVersion": 1,
   "automatedAnalysis": false,
-  "apparatusParameters": [
+  "parameters": [
     {
       "key": "platform_diameter_cm",
-      "label": "Platform diameter, used to review calibrated zones",
+      "scope": "APPARATUS",
+      "label": "Platform diameter",
+      "help": "Diameter of the round platform, edge to edge. It is only used to check the drawn zones, not in the calculations.",
       "unit": "cm",
       "valueType": "number",
       "min": 60,
@@ -26,18 +35,20 @@
     },
     {
       "key": "hole_count",
-      "label": "Number of holes, used to review calibrated zones",
+      "scope": "APPARATUS",
+      "label": "Number of holes",
+      "help": "Total number of holes around the platform edge, including the escape hole. It is only used to check the drawn zones, not in the calculations.",
       "unit": "count",
       "valueType": "integer",
       "min": 12,
       "max": 40,
       "default": 20
-    }
-  ],
-  "sessionParameters": [
+    },
     {
       "key": "max_sample_gap_s",
-      "label": "Longest gap between samples that still counts as tracked",
+      "scope": "ANALYSIS",
+      "label": "Tracking gap tolerance",
+      "help": "If the animal is lost for longer than this, the movement across the gap is not counted. Raise it only for low frame rate videos.",
       "unit": "s",
       "valueType": "number",
       "min": 0.01,
@@ -48,6 +59,7 @@
   "zones": [
     {
       "key": "target_hole",
+      "label": "Target hole",
       "role": "TARGET",
       "geometry": "The escape hole.",
       "calibrated": true,
@@ -55,6 +67,7 @@
     },
     {
       "key": "holes",
+      "label": "Other holes",
       "role": "ERROR",
       "geometry": "Every other hole, one shape per hole.",
       "calibrated": true,
@@ -65,6 +78,7 @@
   "events": [
     {
       "type": "in_target_hole",
+      "label": "Target hole visit",
       "kind": "INTERVAL",
       "labels": [],
       "single": false,
@@ -72,6 +86,7 @@
     },
     {
       "type": "target_hole_entry",
+      "label": "Target hole entry",
       "kind": "POINT",
       "labels": [],
       "single": false,
@@ -79,6 +94,7 @@
     },
     {
       "type": "hole_error",
+      "label": "Wrong hole visit",
       "kind": "POINT",
       "labels": [],
       "single": false,
@@ -89,6 +105,7 @@
     {
       "key": "duration_s",
       "label": "Analyzed duration",
+      "description": "Time during which the animal could be tracked.",
       "unit": "s",
       "valueType": "number",
       "definition": "Samples and calibrated zone shapes use the same coordinates in centimeters; zones are evaluated independently and include their boundary. A counted interval is a pair of consecutive tracked samples with 0 \u003c dt \u003c= max_sample_gap_s.",
@@ -105,6 +122,7 @@
     {
       "key": "distance_cm",
       "label": "Distance traveled",
+      "description": "Total length of the path the animal walked.",
       "unit": "cm",
       "valueType": "number",
       "definition": "Path length over counted intervals.",
@@ -120,7 +138,8 @@
     },
     {
       "key": "primary_latency_s",
-      "label": "Primary latency",
+      "label": "Latency to target hole",
+      "description": "Time from the start of the trial until the animal first reaches the escape hole; shorter times indicate better learning.",
       "unit": "s",
       "valueType": "number",
       "definition": "Time of the first tracked sample inside the zone, from the trial start. The zone is target_hole.",
@@ -137,7 +156,8 @@
     },
     {
       "key": "primary_errors_count",
-      "label": "Primary errors",
+      "label": "Errors before target",
+      "description": "Visits to wrong holes before the escape hole is first reached; fewer errors indicate better learning.",
       "unit": "count",
       "valueType": "integer",
       "definition": "Entries into non-target holes before the primary latency. Each hole is a separate zone, so re-entering a hole counts again. An entry is a counted interval whose earlier sample is outside the zone and whose later sample is inside.",
@@ -155,6 +175,7 @@
     {
       "key": "total_errors_count",
       "label": "Total errors",
+      "description": "Visits to wrong holes over the whole trial.",
       "unit": "count",
       "valueType": "integer",
       "definition": "Entries into non-target holes over the whole trial.",

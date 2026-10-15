@@ -15,7 +15,14 @@ const (
 	missingNotSeen  = "Missing (EVENT_NOT_OBSERVED) when no tracked sample is inside the zone; missing (NO_VALID_INTERVALS) without counted intervals."
 )
 
-var gapParameter = Parameter{Key: "max_sample_gap_s", Label: "Longest gap between samples that still counts as tracked", Unit: Second, Min: 0.01, Max: 5, Default: 0.5}
+var gapParameter = Parameter{
+	Key: "max_sample_gap_s", Scope: AnalysisScope, Unit: Second, Min: 0.01, Max: 5, Default: 0.5,
+	Label: Text{"Tracking gap tolerance", "İzleme boşluğu toleransı"},
+	Help: Text{
+		"If the animal is lost for longer than this, the movement across the gap is not counted. Raise it only for low frame rate videos.",
+		"Hayvan bundan daha uzun süre kaybolursa, aradaki hareket hesaba katılmaz. Yalnızca düşük kare hızlı videolarda artırın.",
+	},
+}
 
 var trajectoryQC = []QCRule{
 	{Key: "min_tracking_confidence", Operator: ">=", Value: 0.7, Unit: Ratio},
@@ -129,20 +136,38 @@ func (t track) events(intervalZones, pointZones []string) ([]Interval, []Point) 
 	return intervals, points
 }
 
-func occupancyEvents(zones ...string) []EventDefinition {
+// occupancyEvents and entryEvents describe the derived events of the named
+// zones, labelled after the zone.
+func occupancyEvents(zones []Zone, keys ...string) []EventDefinition {
 	var out []EventDefinition
-	for _, z := range zones {
-		out = append(out, EventDefinition{Type: "in_" + z, Kind: IntervalEvent, Definition: "Contiguous counted intervals whose earlier sample is in " + z + "."})
+	for _, k := range keys {
+		z := zoneByKey(zones, k)
+		out = append(out, EventDefinition{
+			Type: "in_" + k, Kind: IntervalEvent, Definition: "Contiguous counted intervals whose earlier sample is in " + k + ".",
+			Label: T(z.Label.EN+" visit", z.Label.TR+" ziyareti"),
+		})
 	}
 	return out
 }
 
-func entryEvents(zones ...string) []EventDefinition {
+func entryEvents(zones []Zone, keys ...string) []EventDefinition {
 	var out []EventDefinition
-	for _, z := range zones {
-		out = append(out, EventDefinition{Type: z + "_entry", Kind: PointEvent, Definition: "Later sample time of a counted interval entering " + z + "."})
+	for _, k := range keys {
+		z := zoneByKey(zones, k)
+		out = append(out, EventDefinition{
+			Type: k + "_entry", Kind: PointEvent, Definition: "Later sample time of a counted interval entering " + k + ".",
+			Label: T(z.Label.EN+" entry", z.Label.TR+" girişi"),
+		})
 	}
 	return out
+}
+
+func zoneByKey(zones []Zone, key string) Zone {
+	i := slices.IndexFunc(zones, func(z Zone) bool { return z.Key == key })
+	if i < 0 {
+		panic("paradigm catalog: unknown zone " + key)
+	}
+	return zones[i]
 }
 
 func validOnly(s Sample) bool { return s.Valid }
@@ -157,18 +182,23 @@ func newComputation() computation {
 	return computation{values: map[string]float64{}, missing: map[string]string{}}
 }
 
-func param(key, label string, unit Unit, min, max, def float64) Parameter {
-	return Parameter{Key: key, Label: label, Unit: unit, Min: min, Max: max, Default: def}
+// T builds a Text from its English and Turkish wording.
+func T(en, tr string) Text { return Text{EN: en, TR: tr} }
+
+func param(key string, scope Scope, label, help Text, unit Unit, min, max, def float64) Parameter {
+	return Parameter{Key: key, Scope: scope, Label: label, Help: help, Unit: unit, Min: min, Max: max, Default: def}
 }
 
-func integerParam(key, label string, unit Unit, min, max, def float64) Parameter {
-	return Parameter{Key: key, Label: label, Unit: unit, Integer: true, Min: min, Max: max, Default: def}
+func integerParam(key string, scope Scope, label, help Text, unit Unit, min, max, def float64) Parameter {
+	return Parameter{Key: key, Scope: scope, Label: label, Help: help, Unit: unit, Integer: true, Min: min, Max: max, Default: def}
 }
+
+func trialType(key string, label Text) TrialType { return TrialType{Key: key, Label: label} }
 
 // metric builds a definition with the tolerance used for its unit: 1e-9 for
 // counts, booleans and ratios, 1e-6 otherwise.
-func metric(key, label string, unit Unit, max float64, inputs []string, definition, formula, missingWhen string) MetricDefinition {
-	m := MetricDefinition{Key: key, Label: label, Unit: unit, Max: max, Inputs: inputs, Definition: definition, Formula: formula, MissingWhen: missingWhen, Tolerance: 1e-6}
+func metric(key string, label, description Text, unit Unit, max float64, inputs []string, definition, formula, missingWhen string) MetricDefinition {
+	m := MetricDefinition{Key: key, Label: label, Description: description, Unit: unit, Max: max, Inputs: inputs, Definition: definition, Formula: formula, MissingWhen: missingWhen, Tolerance: 1e-6}
 	switch unit {
 	case Count, Boolean:
 		m.Integer, m.Tolerance = true, 1e-9

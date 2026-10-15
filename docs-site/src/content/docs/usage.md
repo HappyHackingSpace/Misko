@@ -58,20 +58,31 @@ Mişko runs as a single laboratory per installation. The lab record (its name an
 settings) is created by the installation wizard at first startup and is used for
 branding across the panel.
 
-The **Paradigms** screen is a read-only catalog of the scientific test types
-defined in code. Each paradigm has its own detail page (open it by clicking a
-card), where the operational contract is shown read-only: apparatus parameters,
-zones, metrics, event types and quality control requirements.
-The parameter set and their valid ranges are fixed in code and cannot be edited
-here.
+The **Paradigms** screen lists the test templates defined in code, each with a
+short description of what it measures, in the panel's language. A paradigm's
+detail page shows its parameters grouped by where they are set, each with what
+to measure, its allowed range and default; its metrics with a plain
+explanation (the technical definition and formula open on demand); and its
+zones, events and quality rules. The parameter set and ranges are fixed in code
+and cannot be edited here.
+
+Parameters come in three groups:
+
+- **Apparatus measurements** are measured once on the physical setup and are
+  required when you create an environment.
+- **Analysis settings** tune tracking and scoring. They belong to the
+  environment, start at defaults that suit most setups, and are folded away
+  under **Show analysis settings**.
+- **Session settings** describe how a trial is run, such as the trial cut-off or
+  the rotarod speeds, and are chosen on each protocol step.
 
 To put a paradigm to use, anyone with the `apparatus:write` permission
 (RESEARCHER and above) creates an **environment** from it. An environment is a
 named, persisted test setup based on a paradigm template, and a lab can hold many
 environments for the same paradigm (for example two Morris water tanks, "Tank A"
 and "Tank B"). From a paradigm detail page, use **Create environment from this
-paradigm**, give it a name, and fill in the apparatus values within the
-code-fixed allowed ranges. Manage environments from the **Environments** menu,
+paradigm**, give it a name, and fill in the apparatus measurements within the
+allowed ranges. Ratios are typed as percentages and switches are on or off. Manage environments from the **Environments** menu,
 which supports create, edit and delete; on edit, the paradigm cannot be changed.
 The apparatus values are locked at test time.
 

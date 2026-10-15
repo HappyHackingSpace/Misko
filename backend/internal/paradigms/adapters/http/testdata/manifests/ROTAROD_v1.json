@@ -1,23 +1,43 @@
 {
   "key": "ROTAROD",
   "name": "Rotarod",
+  "description": "The animal walks on a rotating rod, at a fixed or accelerating speed, until it falls. Measures motor coordination, balance and motor learning.",
   "category": "MOTOR",
   "species": [
     "MOUSE",
     "RAT"
   ],
   "trialTypes": [
-    "FIXED_SPEED",
-    "ACCELERATING"
+    {
+      "key": "FIXED_SPEED",
+      "label": "Fixed speed"
+    },
+    {
+      "key": "ACCELERATING",
+      "label": "Accelerating"
+    }
   ],
   "version": 1,
   "metricEngineVersion": 1,
   "resultSchemaVersion": 1,
   "automatedAnalysis": false,
-  "apparatusParameters": [
+  "parameters": [
+    {
+      "key": "accelerating",
+      "scope": "SESSION",
+      "label": "Accelerating rod",
+      "help": "On: the rod speeds up from the start speed to the end speed. Off: the rod turns at the start speed for the whole trial.",
+      "unit": "boolean",
+      "valueType": "integer",
+      "min": 0,
+      "max": 1,
+      "default": 1
+    },
     {
       "key": "start_rpm",
-      "label": "Rod speed at trial start",
+      "scope": "SESSION",
+      "label": "Rod start speed",
+      "help": "Rotation speed of the rod when the trial starts.",
       "unit": "rpm",
       "valueType": "number",
       "min": 0,
@@ -26,27 +46,20 @@
     },
     {
       "key": "end_rpm",
-      "label": "Rod speed after acceleration",
+      "scope": "SESSION",
+      "label": "Rod end speed",
+      "help": "Rotation speed the rod reaches at the end of the acceleration and then keeps. Must not be below the start speed.",
       "unit": "rpm",
       "valueType": "number",
       "min": 1,
       "max": 100,
       "default": 40
-    }
-  ],
-  "sessionParameters": [
-    {
-      "key": "accelerating",
-      "label": "Accelerating mode: 1 accelerating, 0 fixed at start_rpm",
-      "unit": "boolean",
-      "valueType": "integer",
-      "min": 0,
-      "max": 1,
-      "default": 1
     },
     {
       "key": "acceleration_duration_s",
-      "label": "Time from start_rpm to end_rpm",
+      "scope": "SESSION",
+      "label": "Acceleration time",
+      "help": "Time the rod takes to go from the start speed to the end speed.",
       "unit": "s",
       "valueType": "number",
       "min": 1,
@@ -55,7 +68,9 @@
     },
     {
       "key": "max_trial_duration_s",
+      "scope": "SESSION",
       "label": "Trial cut-off",
+      "help": "The trial ends at this time. An animal still on the rod gets this value as its latency to fall.",
       "unit": "s",
       "valueType": "number",
       "min": 30,
@@ -67,6 +82,7 @@
   "inputEvents": [
     {
       "type": "fall",
+      "label": "Fall",
       "kind": "POINT",
       "labels": [],
       "single": true,
@@ -76,6 +92,7 @@
   "events": [
     {
       "type": "fall",
+      "label": "Fall",
       "kind": "POINT",
       "labels": [],
       "single": false,
@@ -86,6 +103,7 @@
     {
       "key": "latency_to_fall_s",
       "label": "Latency to fall",
+      "description": "Time the animal stayed on the rod. Longer latencies indicate better motor coordination.",
       "unit": "s",
       "valueType": "number",
       "definition": "Fall time; without a fall by the cut-off, the latency is censored at max_trial_duration_s.",
@@ -103,6 +121,7 @@
     {
       "key": "fall_detected",
       "label": "Fall detected",
+      "description": "Whether the animal fell before the trial cut-off.",
       "unit": "boolean",
       "valueType": "integer",
       "definition": "1 when a fall occurs by the cut-off, 0 when the whole trial was recorded without one.",
@@ -120,6 +139,7 @@
     {
       "key": "rpm_at_fall",
       "label": "Speed at fall",
+      "description": "Rod speed at the moment the animal fell. Higher speeds indicate better performance on an accelerating rod.",
       "unit": "rpm",
       "valueType": "number",
       "definition": "Rod speed at the fall time; accelerating linearly from start_rpm to end_rpm, then constant.",

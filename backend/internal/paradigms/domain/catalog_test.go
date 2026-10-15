@@ -4,6 +4,7 @@ import (
 	"errors"
 	"math"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -41,11 +42,12 @@ func TestCatalogReturnsCopies(t *testing.T) {
 	p.Species[0] = "zebrafish"
 	p.Metrics[0].Key = "hacked"
 	p.Metrics[0].Inputs[0] = "hacked"
-	p.ApparatusParameters[0].Max = -1
+	p.Parameters[0].Max = -1
+	p.TrialTypes[0].Key = "hacked"
 	p.Zones[0].Key = "hacked"
 	p.InputEvents[0].Type = "hacked"
 	all := All()
-	all[0].Name = "hacked"
+	all[0].Name.EN = "hacked"
 	all[0].Zones = nil
 	result, _ := Evaluate("OPEN_FIELD", 1, Input{})
 	result.Parameters["arena_width_cm"] = -1
@@ -55,10 +57,10 @@ func TestCatalogReturnsCopies(t *testing.T) {
 		t.Fatal(err)
 	}
 	if fresh.Species[0] == "zebrafish" || fresh.Metrics[0].Key == "hacked" || fresh.Metrics[0].Inputs[0] == "hacked" ||
-		fresh.ApparatusParameters[0].Max == -1 || fresh.Zones[0].Key == "hacked" || fresh.InputEvents[0].Type == "hacked" {
+		fresh.Parameters[0].Max == -1 || fresh.TrialTypes[0].Key == "hacked" || fresh.Zones[0].Key == "hacked" || fresh.InputEvents[0].Type == "hacked" {
 		t.Fatal("caller mutated the registry")
 	}
-	if again := All(); again[0].Name == "hacked" || len(again[0].Zones) == 0 {
+	if again := All(); again[0].Name.EN == "hacked" || len(again[0].Zones) == 0 {
 		t.Fatal("caller mutated All()")
 	}
 	if again, _ := Evaluate("OPEN_FIELD", 1, Input{}); again.Parameters["arena_width_cm"] != 50 {
@@ -92,19 +94,19 @@ func TestEveryContractMatchesItsEngine(t *testing.T) {
 	inputs := minimalInputs()
 	for _, p := range All() {
 		t.Run(p.Key, func(t *testing.T) {
-			if len(p.Metrics) == 0 || p.Name == "" || p.Category == "" || len(p.Species) == 0 || len(p.TrialTypes) == 0 {
+			if len(p.Metrics) == 0 || p.Name.EN == "" || p.Category == "" || len(p.Species) == 0 || len(p.TrialTypes) == 0 {
 				t.Errorf("incomplete paradigm %+v", p)
 			}
 			declared := map[string]bool{}
 			for _, m := range p.Metrics {
 				declared[m.Key] = true
-				if m.Label == "" || m.Definition == "" || m.Formula == "" || m.MissingWhen == "" || len(m.Inputs) == 0 ||
+				if m.Label.EN == "" || m.Definition == "" || m.Formula == "" || m.MissingWhen == "" || len(m.Inputs) == 0 ||
 					!slices.Contains(units, m.Unit) || m.Min > m.Max || m.Tolerance <= 0 {
 					t.Errorf("incomplete metric %+v", m)
 				}
 			}
-			for _, param := range append(p.ApparatusParameters, p.SessionParameters...) {
-				if param.Label == "" || param.Default < param.Min || param.Default > param.Max || !slices.Contains(units, param.Unit) ||
+			for _, param := range p.Parameters {
+				if param.Label.EN == "" || param.Default < param.Min || param.Default > param.Max || !slices.Contains(units, param.Unit) ||
 					(param.Integer && param.Default != math.Trunc(param.Default)) {
 					t.Errorf("parameter %+v", param)
 				}
@@ -150,6 +152,61 @@ func TestEveryContractMatchesItsEngine(t *testing.T) {
 				if outputs[pt.Type] != PointEvent {
 					t.Errorf("point %s not declared", pt.Type)
 				}
+			}
+		})
+	}
+}
+
+// Every user-facing text exists in every language, reads as words rather than
+// keys, and every parameter says where it is set and what it means.
+func TestCatalogTextIsCompleteAndReadable(t *testing.T) {
+	scopes := []Scope{ApparatusScope, AnalysisScope, SessionScope}
+	for _, p := range All() {
+		t.Run(p.Key, func(t *testing.T) {
+			check := func(what string, text Text, short bool) {
+				t.Helper()
+				for _, lang := range Languages {
+					value := text.In(lang)
+					if (lang == "tr" && text.TR == "") || value == "" {
+						t.Errorf("%s: missing %s text", what, lang)
+					}
+					if short && strings.Contains(value, "_") {
+						t.Errorf("%s: %s label looks like a key: %q", what, lang, value)
+					}
+					if strings.ContainsRune(value, '\u2014') {
+						t.Errorf("%s: %s text uses an em dash", what, lang)
+					}
+				}
+			}
+			check("name", p.Name, true)
+			check("description", p.Description, false)
+			for _, tt := range p.TrialTypes {
+				check("trial type "+tt.Key, tt.Label, true)
+			}
+			seen := map[string]bool{}
+			lastScope := 0
+			for _, param := range p.Parameters {
+				check("parameter "+param.Key, param.Label, true)
+				check("parameter help "+param.Key, param.Help, false)
+				i := slices.Index(scopes, param.Scope)
+				if i < 0 || i < lastScope {
+					t.Errorf("parameter %s: scope %q missing or out of order (apparatus, analysis, session)", param.Key, param.Scope)
+				}
+				lastScope = max(lastScope, i)
+				if seen[param.Key] {
+					t.Errorf("parameter %s declared twice", param.Key)
+				}
+				seen[param.Key] = true
+			}
+			for _, z := range p.Zones {
+				check("zone "+z.Key, z.Label, true)
+			}
+			for _, e := range append(slices.Clone(p.Events), p.InputEvents...) {
+				check("event "+e.Type, e.Label, true)
+			}
+			for _, m := range p.Metrics {
+				check("metric "+m.Key, m.Label, true)
+				check("metric description "+m.Key, m.Description, false)
 			}
 		})
 	}

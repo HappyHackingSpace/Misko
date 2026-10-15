@@ -1,9 +1,10 @@
 <script setup>
 // A named apparatus, created from a paradigm template. The paradigm decides
-// which physical values exist: the form reads them from the published version
-// manifest rather than hard coding a list, so a new paradigm needs no change
-// here. The API stores whatever values are sent, so the limits the manifest
-// declares are applied as input constraints on this side.
+// which values exist: the form reads them from the published version manifest
+// rather than hard coding a list, so a new paradigm needs no change here.
+// Apparatus measurements are required; analysis settings start at the
+// paradigm's defaults and stay folded away unless someone needs to tune them.
+// Session settings belong to protocol steps, not here.
 import { computed, h, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
@@ -11,8 +12,10 @@ import { NAlert, NButton, NCard, NSelect } from "naive-ui";
 import { environments, paradigms } from "../api/endpoints.js";
 import { useBreadcrumb } from "../stores/breadcrumb.js";
 import PageHead from "../components/PageHead.vue";
+import ParameterFields from "../components/ParameterFields.vue";
+import { defaults } from "../composables/useParameters.js";
 
-const { t } = useI18n();
+const { t, locale } = useI18n();
 const route = useRoute();
 const router = useRouter();
 const crumb = useBreadcrumb();
@@ -24,8 +27,11 @@ const values = ref({});
 const error = ref("");
 const saving = ref(false);
 const loadingManifest = ref(false);
+const showAnalysis = ref(false);
 
-const parameters = computed(() => manifest.value?.apparatusParameters || []);
+const inScope = (scope) => (manifest.value?.parameters || []).filter((parameter) => parameter.scope === scope);
+const apparatusParameters = computed(() => inScope("APPARATUS"));
+const analysisParameters = computed(() => inScope("ANALYSIS"));
 const chosen = computed(() => catalogue.value.find((p) => p.key === form.value.paradigmKey) || null);
 // The label carries a stable test hook: Naive UI's dropdown options are not a
 // native <select>, so the browser suite can no longer address them by value.
@@ -44,9 +50,7 @@ async function loadManifest(key) {
     manifest.value = await paradigms.version(key, summary.latestVersion);
     // Start from what the paradigm considers normal; the laboratory corrects
     // the ones that differ for its own apparatus.
-    for (const parameter of manifest.value.apparatusParameters || []) {
-      values.value[parameter.key] = parameter.default;
-    }
+    values.value = defaults([...apparatusParameters.value, ...analysisParameters.value]);
   } catch (e) {
     error.value = e.message;
   } finally {
@@ -61,7 +65,7 @@ async function save() {
   saving.value = true;
   try {
     const apparatus = {};
-    for (const parameter of parameters.value) {
+    for (const parameter of [...apparatusParameters.value, ...analysisParameters.value]) {
       apparatus[parameter.key] = Number(values.value[parameter.key]);
     }
     // The new environment opens on its own page, where the calibration every
@@ -84,10 +88,24 @@ async function save() {
   }
 }
 
+async function loadCatalogue() {
+  catalogue.value = (await paradigms.list()).data || [];
+}
+
+// Paradigm wording comes from the API in the chosen language; typed values are kept.
+watch(locale, async () => {
+  try {
+    await loadCatalogue();
+    if (manifest.value) manifest.value = await paradigms.version(manifest.value.key, manifest.value.version);
+  } catch (e) {
+    error.value = e.message;
+  }
+});
+
 onMounted(async () => {
   crumb.set([{ label: t("environments.title"), to: "/environments" }, { label: t("environments.new") }]);
   try {
-    catalogue.value = (await paradigms.list()).data || [];
+    await loadCatalogue();
     // Arriving from a paradigm page preselects it.
     const preset = route.query.paradigm;
     if (preset && catalogue.value.some((p) => p.key === preset)) form.value.paradigmKey = preset;
@@ -131,28 +149,30 @@ onUnmounted(() => crumb.clear());
         <textarea v-model="form.notes" rows="2" data-test="environment-notes"></textarea>
       </label>
 
-      <div class="wide" v-if="parameters.length">
-        <h4>{{ $t("environments.apparatus") }}</h4>
-        <div class="params">
-          <label class="fld" v-for="parameter in parameters" :key="parameter.key">
-            <span>{{ parameter.label }} <span class="muted">{{ parameter.unit }}</span></span>
-            <input
-              type="number"
-              step="any"
-              :min="parameter.min"
-              :max="parameter.max"
-              v-model="values[parameter.key]"
-              :data-test="`apparatus-${parameter.key}`"
-              required
-            />
-            <small class="muted">{{ parameter.min }} - {{ parameter.max }}</small>
-          </label>
+      <p class="wide muted" v-if="chosen">{{ chosen.description }}</p>
+
+      <template v-if="manifest">
+        <div class="wide">
+          <h4>{{ $t("environments.apparatus") }}</h4>
+          <ParameterFields v-if="apparatusParameters.length" v-model="values" :parameters="apparatusParameters" test-prefix="apparatus" />
+          <p class="muted" v-else>{{ $t("environments.noApparatus") }}</p>
         </div>
-      </div>
+
+        <div class="wide" v-if="analysisParameters.length">
+          <a href="#" class="link" data-test="toggle-analysis" @click.prevent="showAnalysis = !showAnalysis">
+            {{ showAnalysis ? $t("environments.hideAnalysis") : $t("environments.showAnalysis") }}
+          </a>
+          <div v-show="showAnalysis" class="analysis">
+            <h4>{{ $t("environments.analysis") }}</h4>
+            <p class="muted">{{ $t("environments.analysisHint") }}</p>
+            <ParameterFields v-model="values" :parameters="analysisParameters" test-prefix="analysis" />
+          </div>
+        </div>
+      </template>
       <p class="muted wide" v-else-if="loadingManifest">{{ $t("common.loading") }}</p>
 
       <div class="actions">
-        <NButton type="primary" attr-type="submit" :loading="saving" :disabled="!parameters.length" data-test="environment-save">
+        <NButton type="primary" attr-type="submit" :loading="saving" :disabled="!manifest" data-test="environment-save">
           {{ $t("common.save") }}
         </NButton>
         <RouterLink class="link" to="/environments">{{ $t("common.cancel") }}</RouterLink>
@@ -166,7 +186,7 @@ onUnmounted(() => crumb.clear());
 .fld { display: flex; flex-direction: column; gap: 4px; }
 .fld span { font-size: 12px; color: var(--muted); }
 .fld :deep(.n-select) { width: 100%; }
-.params { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; }
+.analysis { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
 .wide { grid-column: 1 / -1; }
 .actions { grid-column: 1 / -1; display: flex; align-items: center; gap: 12px; }
 h4 { margin: 0 0 8px; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }

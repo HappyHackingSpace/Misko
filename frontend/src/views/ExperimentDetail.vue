@@ -1,18 +1,20 @@
 <script setup>
 // One experiment: its groups, enrolled subjects and tests. Tests link to the
 // workflow screen where video, calibration and analysis live.
-import { computed, h, onMounted, onUnmounted, ref } from "vue";
+import { computed, h, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import { useI18n } from "vue-i18n";
 import { RouterLink } from "vue-router";
 import { NAlert, NButton, NCard, NDataTable, NSelect, NTag } from "naive-ui";
-import { environments, experiments, protocols, subjects } from "../api/endpoints.js";
+import { environments, experiments, paradigms, protocols, subjects } from "../api/endpoints.js";
 import { useAuth } from "../stores/auth.js";
 import { useBreadcrumb } from "../stores/breadcrumb.js";
 import PageHead from "../components/PageHead.vue";
+import ParameterFields from "../components/ParameterFields.vue";
+import { defaults } from "../composables/useParameters.js";
 import { filterByText, selectOption } from "../composables/selectOptions.js";
 
-const { t } = useI18n();
+const { t, locale } = useI18n();
 const route = useRoute();
 const auth = useAuth();
 const crumb = useBreadcrumb();
@@ -39,7 +41,55 @@ const adding = ref(false);
 // A protocol pins apparatus revisions, so writing one needs apparatus:write
 // rather than study:write.
 const canWriteProtocol = computed(() => auth.can("apparatus:write"));
-const emptyStep = () => ({ environmentId: "", environmentRevisionId: "", trialType: "STANDARD", trials: 1 });
+const emptyStep = () => ({ environmentId: "", environmentRevisionId: "", trialType: "", trials: 1, session: {} });
+
+// Manifests of the paradigm versions steps use, by "KEY/version": the trial
+// types a step can run and the session settings it takes come from them.
+const stepManifests = ref({});
+const manifestId = (revision) => `${revision.paradigmKey}/${revision.paradigmVersion}`;
+const stepManifest = (step) => {
+  const revision = revisionOptions.value.find((option) => option.id === step.environmentRevisionId);
+  return revision ? stepManifests.value[manifestId(revision)] || null : null;
+};
+const sessionParameters = (step) => (stepManifest(step)?.parameters || []).filter((p) => p.scope === "SESSION");
+const trialTypeOptions = (step) =>
+  (stepManifest(step)?.trialTypes || []).map((tt) => selectOption("step-trial-type", tt.key, tt.label));
+
+async function fetchManifest(revision, force = false) {
+  const id = manifestId(revision);
+  if (stepManifests.value[id] && !force) return stepManifests.value[id];
+  const manifest = await paradigms.version(revision.paradigmKey, revision.paradigmVersion);
+  stepManifests.value = { ...stepManifests.value, [id]: manifest };
+  return manifest;
+}
+
+// A chosen revision decides the paradigm: its first trial type and its
+// session defaults become the starting point of the step.
+async function chooseRevision(step, id) {
+  step.environmentRevisionId = id || "";
+  step.trialType = "";
+  step.session = {};
+  const revision = revisionOptions.value.find((option) => option.id === id);
+  if (!revision) return;
+  try {
+    const manifest = await fetchManifest(revision);
+    step.trialType = manifest.trialTypes[0]?.key || "";
+    step.session = defaults(manifest.parameters.filter((p) => p.scope === "SESSION"));
+  } catch (e) {
+    error.value = e.message;
+  }
+}
+
+watch(locale, async () => {
+  for (const id of Object.keys(stepManifests.value)) {
+    const [paradigmKey, paradigmVersion] = id.split("/");
+    try {
+      await fetchManifest({ paradigmKey, paradigmVersion: Number(paradigmVersion) }, true);
+    } catch (e) {
+      error.value = e.message;
+    }
+  }
+});
 const newProtocol = ref({ name: "", description: "", steps: [emptyStep()] });
 const savingProtocol = ref(false);
 
@@ -74,10 +124,10 @@ async function createProtocol() {
         paradigmKey: revision?.paradigmKey || "",
         paradigmVersion: revision?.paradigmVersion || 0,
         environmentRevisionId: step.environmentRevisionId,
-        trialType: step.trialType.trim().toUpperCase(),
+        trialType: step.trialType,
         trials: Number(step.trials),
         interTrialIntervalS: 0,
-        session: {},
+        session: Object.fromEntries(sessionParameters(step).map((p) => [p.key, Number(step.session[p.key])])),
         notes: "",
       };
     });
@@ -324,7 +374,9 @@ const planStepOptions = computed(() =>
 
 // A dropdown has no native "required", so what a form cannot be saved without is
 // checked here and the button waits for it.
-const protocolReady = computed(() => !!newProtocol.value.name.trim() && newProtocol.value.steps.every((s) => s.environmentRevisionId));
+const protocolReady = computed(
+  () => !!newProtocol.value.name.trim() && newProtocol.value.steps.every((s) => s.environmentRevisionId && s.trialType),
+);
 const planReady = computed(() => !!(newTest.value.enrollmentId && newTest.value.protocolVersionId && newTest.value.stepPosition));
 
 onMounted(load);
@@ -457,8 +509,9 @@ onUnmounted(() => crumb.clear());
               <label class="fld grow">
                 <span>{{ $t("protocols.revision") }}</span>
                 <NSelect
-                  v-model:value="step.environmentRevisionId"
+                  :value="step.environmentRevisionId"
                   :data-test="`step-revision-${index}`"
+                  @update:value="chooseRevision(step, $event)"
                   :disabled="!step.environmentId"
                   :placeholder="$t(step.environmentId ? 'protocols.pickRevision' : 'protocols.pickEnvironmentFirst')"
                   :options="stepRevisionOptions(step)"
@@ -466,12 +519,21 @@ onUnmounted(() => crumb.clear());
               </label>
               <label class="fld">
                 <span>{{ $t("protocols.trialType") }}</span>
-                <input v-model="step.trialType" :data-test="`step-trial-type-${index}`" required />
+                <NSelect
+                  v-model:value="step.trialType"
+                  :data-test="`step-trial-type-${index}`"
+                  :disabled="!stepManifest(step)"
+                  :options="trialTypeOptions(step)"
+                />
               </label>
               <label class="fld narrow">
                 <span>{{ $t("protocols.trials") }}</span>
                 <input type="number" min="1" max="1000" v-model="step.trials" :data-test="`step-trials-${index}`" required />
               </label>
+              <div class="session" v-if="sessionParameters(step).length">
+                <span class="session-title">{{ $t("paradigms.scopes.SESSION") }}</span>
+                <ParameterFields v-model="step.session" :parameters="sessionParameters(step)" :test-prefix="`step-${index}-session`" />
+              </div>
               <NButton
                 v-if="newProtocol.steps.length > 1"
                 size="tiny"
@@ -583,6 +645,8 @@ onUnmounted(() => crumb.clear());
 .plan-form { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; margin-top: 14px; }
 .steps { display: flex; flex-direction: column; gap: 8px; }
 .step { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; padding: 10px; border-radius: 9px; background: var(--panel2); }
+.session { flex-basis: 100%; display: flex; flex-direction: column; gap: 8px; }
+.session-title { font-size: 12px; color: var(--muted); }
 .grow { flex: 1; min-width: 220px; }
 .narrow { max-width: 110px; }
 .actions { display: flex; gap: 12px; align-items: center; }

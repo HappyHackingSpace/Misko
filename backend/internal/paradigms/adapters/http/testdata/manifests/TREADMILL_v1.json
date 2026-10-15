@@ -1,34 +1,43 @@
 {
   "key": "TREADMILL",
   "name": "Treadmill",
+  "description": "The animal runs on a motorized belt, at a fixed or increasing speed, until it can no longer keep up. Measures endurance and exercise capacity.",
   "category": "MOTOR",
   "species": [
     "MOUSE",
     "RAT"
   ],
   "trialTypes": [
-    "ENDURANCE",
-    "FIXED_SPEED"
+    {
+      "key": "ENDURANCE",
+      "label": "Endurance"
+    },
+    {
+      "key": "FIXED_SPEED",
+      "label": "Fixed speed"
+    }
   ],
   "version": 1,
   "metricEngineVersion": 1,
   "resultSchemaVersion": 1,
   "automatedAnalysis": false,
-  "apparatusParameters": [
+  "parameters": [
     {
       "key": "lane_length_cm",
+      "scope": "APPARATUS",
       "label": "Lane length",
+      "help": "Length of the running lane on the belt, from the front wall to the rear grid.",
       "unit": "cm",
       "valueType": "number",
       "min": 20,
       "max": 80,
       "default": 40
-    }
-  ],
-  "sessionParameters": [
+    },
     {
       "key": "accelerating",
-      "label": "Accelerating belt: 1 accelerating, 0 fixed at start_speed_cm_s",
+      "scope": "SESSION",
+      "label": "Accelerating belt",
+      "help": "On: the belt speeds up from the start speed to the end speed. Off: the belt runs at the start speed for the whole trial.",
       "unit": "boolean",
       "valueType": "integer",
       "min": 0,
@@ -37,7 +46,9 @@
     },
     {
       "key": "start_speed_cm_s",
-      "label": "Belt speed at start",
+      "scope": "SESSION",
+      "label": "Belt start speed",
+      "help": "Belt speed when the trial starts.",
       "unit": "cm_s",
       "valueType": "number",
       "min": 1,
@@ -46,7 +57,9 @@
     },
     {
       "key": "end_speed_cm_s",
-      "label": "Belt speed after acceleration",
+      "scope": "SESSION",
+      "label": "Belt end speed",
+      "help": "Belt speed reached at the end of the acceleration and then kept. Must not be below the start speed.",
       "unit": "cm_s",
       "valueType": "number",
       "min": 5,
@@ -55,7 +68,9 @@
     },
     {
       "key": "acceleration_duration_s",
-      "label": "Time from start to end speed",
+      "scope": "SESSION",
+      "label": "Acceleration time",
+      "help": "Time the belt takes to go from the start speed to the end speed.",
       "unit": "s",
       "valueType": "number",
       "min": 1,
@@ -64,7 +79,9 @@
     },
     {
       "key": "max_trial_duration_s",
+      "scope": "SESSION",
       "label": "Trial cut-off",
+      "help": "The trial ends at this time even if the animal is still running.",
       "unit": "s",
       "valueType": "number",
       "min": 60,
@@ -76,6 +93,7 @@
   "inputEvents": [
     {
       "type": "exhaustion",
+      "label": "Exhaustion",
       "kind": "POINT",
       "labels": [],
       "single": true,
@@ -83,6 +101,7 @@
     },
     {
       "type": "shock",
+      "label": "Shock",
       "kind": "POINT",
       "labels": [],
       "single": false,
@@ -92,6 +111,7 @@
   "events": [
     {
       "type": "exhaustion",
+      "label": "Exhaustion",
       "kind": "POINT",
       "labels": [],
       "single": false,
@@ -99,6 +119,7 @@
     },
     {
       "type": "shock",
+      "label": "Shock",
       "kind": "POINT",
       "labels": [],
       "single": false,
@@ -109,6 +130,7 @@
     {
       "key": "latency_to_exhaustion_s",
       "label": "Latency to exhaustion",
+      "description": "Time until the animal met the exhaustion criterion. Longer latencies indicate greater endurance.",
       "unit": "s",
       "valueType": "number",
       "definition": "Exhaustion time by the cut-off.",
@@ -126,6 +148,7 @@
     {
       "key": "run_time_s",
       "label": "Run time",
+      "description": "Time the animal ran, up to exhaustion or the trial cut-off.",
       "unit": "s",
       "valueType": "number",
       "definition": "Exhaustion time, or max_trial_duration_s when the full trial was recorded without exhaustion.",
@@ -143,6 +166,7 @@
     {
       "key": "run_distance_cm",
       "label": "Run distance",
+      "description": "Distance covered on the belt during the run. Longer distances indicate greater endurance.",
       "unit": "cm",
       "valueType": "number",
       "definition": "Integral of the belt speed over the run time; the speed rises linearly from start to end over acceleration_duration_s, then stays constant.",
@@ -164,6 +188,7 @@
     {
       "key": "shock_count",
       "label": "Shocks",
+      "description": "How many shocks or rear-grid contacts occurred during the run. More shocks suggest lower motivation or fatigue.",
       "unit": "count",
       "valueType": "integer",
       "definition": "Shocks strictly before the end of the run.",

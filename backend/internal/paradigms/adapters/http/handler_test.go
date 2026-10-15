@@ -105,9 +105,9 @@ func TestCatalogIsReadOnlyAndVersioned(t *testing.T) {
 		t.Fatalf("EPM contract: %v %v", zone, input)
 	}
 	_, rotarod := call("GET", "/api/paradigms/ROTAROD", "viewer")
-	session := rotarod["sessionParameters"].([]any)[0].(map[string]any)
+	session := rotarod["parameters"].([]any)[0].(map[string]any)
 	zones, _ := rotarod["zones"].([]any)
-	if session["key"] != "accelerating" || session["valueType"] != "integer" || zones == nil || len(zones) != 0 {
+	if session["key"] != "accelerating" || session["scope"] != "SESSION" || session["valueType"] != "integer" || zones == nil || len(zones) != 0 {
 		t.Fatalf("ROTAROD contract: %v %v", session, rotarod["zones"])
 	}
 	_, novel := call("GET", "/api/paradigms/NOVEL_OBJECT", "viewer")
@@ -120,6 +120,35 @@ func TestCatalogIsReadOnlyAndVersioned(t *testing.T) {
 // TestPublishedManifestsNeverChange pins every published manifest to a golden
 // file. A changed contract must be published as a new version instead; run the
 // test with -update only to add goldens for new versions.
+func TestCatalogTextFollowsTheRequestedLanguage(t *testing.T) {
+	mux := newMux()
+	for _, tc := range []struct{ header, query, name, label string }{
+		{"", "", "Open field", "Arena width"},
+		{"tr-TR,tr;q=0.9", "", "Açık alan testi", "Arena genişliği"},
+		{"en", "?lang=tr", "Açık alan testi", "Arena genişliği"},
+		{"de", "", "Open field", "Arena width"},
+	} {
+		req := httptest.NewRequest("GET", "/api/paradigms/OPEN_FIELD"+tc.query, nil)
+		req.Header.Set("Authorization", "viewer")
+		if tc.header != "" {
+			req.Header.Set("Accept-Language", tc.header)
+		}
+		rr := httptest.NewRecorder()
+		mux.ServeHTTP(rr, req)
+		var m struct {
+			Name       string `json:"name"`
+			Parameters []struct {
+				Label string `json:"label"`
+				Scope string `json:"scope"`
+			} `json:"parameters"`
+		}
+		if err := json.Unmarshal(rr.Body.Bytes(), &m); err != nil || m.Name != tc.name || m.Parameters[0].Label != tc.label ||
+			m.Parameters[0].Scope != "APPARATUS" || rr.Header().Get("Content-Language") == "" {
+			t.Errorf("%+v: %d %+v %v", tc, rr.Code, m, err)
+		}
+	}
+}
+
 func TestPublishedManifestsNeverChange(t *testing.T) {
 	mux := newMux()
 	_, raw := get(mux, "GET", "/api/paradigms", "viewer")

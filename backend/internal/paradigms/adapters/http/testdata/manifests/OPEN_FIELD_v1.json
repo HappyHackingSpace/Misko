@@ -1,22 +1,28 @@
 {
   "key": "OPEN_FIELD",
   "name": "Open field",
+  "description": "Free exploration of an empty square arena. Measures locomotor activity and anxiety-like behaviour: anxious animals stay near the walls and avoid the center.",
   "category": "ANXIETY",
   "species": [
     "MOUSE",
     "RAT"
   ],
   "trialTypes": [
-    "STANDARD"
+    {
+      "key": "STANDARD",
+      "label": "Standard"
+    }
   ],
   "version": 1,
   "metricEngineVersion": 1,
   "resultSchemaVersion": 1,
   "automatedAnalysis": false,
-  "apparatusParameters": [
+  "parameters": [
     {
       "key": "arena_width_cm",
+      "scope": "APPARATUS",
       "label": "Arena width",
+      "help": "Inside width of the arena floor, wall to wall, along the horizontal axis of the camera image.",
       "unit": "cm",
       "valueType": "number",
       "min": 20,
@@ -25,7 +31,9 @@
     },
     {
       "key": "arena_height_cm",
+      "scope": "APPARATUS",
       "label": "Arena depth",
+      "help": "Inside depth of the arena floor, wall to wall, along the vertical axis of the camera image.",
       "unit": "cm",
       "valueType": "number",
       "min": 20,
@@ -34,18 +42,20 @@
     },
     {
       "key": "center_fraction",
-      "label": "Center zone side as a fraction of the arena side",
+      "scope": "ANALYSIS",
+      "label": "Center zone size",
+      "help": "Side of the center square as a share of the arena side. 50% makes the center half as wide and half as deep as the arena.",
       "unit": "ratio",
       "valueType": "number",
       "min": 0.2,
       "max": 0.8,
       "default": 0.5
-    }
-  ],
-  "sessionParameters": [
+    },
     {
       "key": "max_sample_gap_s",
-      "label": "Longest gap between samples that still counts as tracked",
+      "scope": "ANALYSIS",
+      "label": "Tracking gap tolerance",
+      "help": "If the animal is lost for longer than this, the movement across the gap is not counted. Raise it only for low frame rate videos.",
       "unit": "s",
       "valueType": "number",
       "min": 0.01,
@@ -54,7 +64,9 @@
     },
     {
       "key": "immobility_threshold_cm_s",
-      "label": "Speed below which an interval is immobile",
+      "scope": "ANALYSIS",
+      "label": "Immobility speed threshold",
+      "help": "Below this speed the animal counts as immobile.",
       "unit": "cm_s",
       "valueType": "number",
       "min": 0.1,
@@ -63,7 +75,9 @@
     },
     {
       "key": "min_immobility_bout_s",
-      "label": "Shortest immobile bout that counts",
+      "scope": "ANALYSIS",
+      "label": "Shortest immobility period",
+      "help": "Immobile periods shorter than this are not counted.",
       "unit": "s",
       "valueType": "number",
       "min": 0,
@@ -74,6 +88,7 @@
   "zones": [
     {
       "key": "center",
+      "label": "Center",
       "role": "CENTER",
       "geometry": "Axis-aligned rectangle centered in the arena; each side is center_fraction of the arena side. The boundary belongs to the center.",
       "calibrated": false,
@@ -81,6 +96,7 @@
     },
     {
       "key": "periphery",
+      "label": "Periphery",
       "role": "PERIPHERY",
       "geometry": "Arena area outside the center zone.",
       "calibrated": false,
@@ -91,6 +107,7 @@
   "events": [
     {
       "type": "in_center",
+      "label": "In center",
       "kind": "INTERVAL",
       "labels": [],
       "single": false,
@@ -98,6 +115,7 @@
     },
     {
       "type": "immobile",
+      "label": "Immobile",
       "kind": "INTERVAL",
       "labels": [],
       "single": false,
@@ -105,6 +123,7 @@
     },
     {
       "type": "center_entry",
+      "label": "Center entry",
       "kind": "POINT",
       "labels": [],
       "single": false,
@@ -115,6 +134,7 @@
     {
       "key": "duration_s",
       "label": "Analyzed duration",
+      "description": "Time during which the animal could be tracked.",
       "unit": "s",
       "valueType": "number",
       "definition": "Time covered by counted intervals. Samples are arena-local centimeters with the origin at one arena corner; x in [0, width], y in [0, height]. Samples outside the arena count as lost. A counted interval is a pair of consecutive samples that are both tracked and inside the arena, with 0 \u003c dt \u003c= max_sample_gap_s.",
@@ -133,6 +153,7 @@
     {
       "key": "distance_cm",
       "label": "Distance traveled",
+      "description": "Total length of the path the animal walked.",
       "unit": "cm",
       "valueType": "number",
       "definition": "Path length over counted intervals; lost frames are not interpolated.",
@@ -151,6 +172,7 @@
     {
       "key": "mean_speed_cm_s",
       "label": "Mean speed",
+      "description": "Distance traveled divided by the analyzed duration.",
       "unit": "cm_s",
       "valueType": "number",
       "definition": "Distance traveled divided by analyzed duration.",
@@ -167,6 +189,7 @@
     {
       "key": "center_time_s",
       "label": "Time in center",
+      "description": "Less time in the center suggests more anxiety-like behaviour.",
       "unit": "s",
       "valueType": "number",
       "definition": "Counted interval time whose earlier sample is in the center zone.",
@@ -186,6 +209,7 @@
     {
       "key": "periphery_time_s",
       "label": "Time in periphery",
+      "description": "Time spent near the walls, outside the center.",
       "unit": "s",
       "valueType": "number",
       "definition": "Counted interval time whose earlier sample is outside the center zone.",
@@ -204,7 +228,8 @@
     },
     {
       "key": "center_time_ratio",
-      "label": "Center time ratio",
+      "label": "Share of time in center",
+      "description": "Part of the analyzed duration spent in the center.",
       "unit": "ratio",
       "valueType": "number",
       "definition": "Share of analyzed duration spent in the center.",
@@ -220,7 +245,8 @@
     },
     {
       "key": "periphery_time_ratio",
-      "label": "Periphery time ratio",
+      "label": "Share of time in periphery",
+      "description": "Part of the analyzed duration spent near the walls.",
       "unit": "ratio",
       "valueType": "number",
       "definition": "Share of analyzed duration spent in the periphery.",
@@ -237,6 +263,7 @@
     {
       "key": "center_entries_count",
       "label": "Center entries",
+      "description": "How many times the animal walked into the center.",
       "unit": "count",
       "valueType": "integer",
       "definition": "Counted intervals moving from periphery to center. A trajectory starting in the center does not count as an entry; no debounce is applied in version 1.",
@@ -256,6 +283,7 @@
     {
       "key": "immobility_s",
       "label": "Immobility time",
+      "description": "Time spent not moving, such as freezing or resting.",
       "unit": "s",
       "valueType": "number",
       "definition": "Time in immobile bouts. An interval is immobile when hypot(dx, dy) / dt is strictly below the threshold; contiguous immobile intervals form a bout, and bouts shorter than min_immobility_bout_s are ignored.",

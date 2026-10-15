@@ -4,7 +4,7 @@
 // is set up; a single video whose camera or arena moved is calibrated by hand
 // from its own test page. Reading is open to every role, calibrating needs
 // apparatus:write.
-import { computed, onMounted, onUnmounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import { useI18n } from "vue-i18n";
 import { NAlert, NButton, NCard, NDescriptions, NDescriptionsItem, NTag } from "naive-ui";
@@ -13,8 +13,11 @@ import { useAuth } from "../stores/auth.js";
 import { useBreadcrumb } from "../stores/breadcrumb.js";
 import PageHead from "../components/PageHead.vue";
 import CalibrationForm from "../components/CalibrationForm.vue";
+import ParameterFields from "../components/ParameterFields.vue";
+import { defaults, useParameters } from "../composables/useParameters.js";
 
-const { t } = useI18n();
+const { t, locale } = useI18n();
+const { format } = useParameters();
 const route = useRoute();
 const auth = useAuth();
 const crumb = useBreadcrumb();
@@ -40,11 +43,34 @@ const latestOf = (number) => {
 const centimetres = (value) => `${Number(value).toFixed(2)} cm`;
 const tagType = (status) => ({ CALIBRATED: "success", VALID: "success", WAITING_FOR_CALIBRATION: "warning", REJECTED: "error" })[status] || "default";
 
+// Paradigm manifests by "KEY/version", for labels, units and defaults.
+const manifests = ref({});
+const manifestOf = (revision) => manifests.value[`${revision.paradigmKey}/${revision.paradigmVersion}`] || null;
+const environmentParameters = (m) => (m?.parameters || []).filter((p) => p.scope === "APPARATUS" || p.scope === "ANALYSIS");
+// What a revision measures, labelled; analysis settings it does not store run at their default.
+const shownValues = (revision) =>
+  environmentParameters(manifestOf(revision)).map((parameter) => ({
+    parameter,
+    value: revision.apparatus?.[parameter.key] ?? parameter.default,
+  }));
+const paradigmName = computed(() => (latest.value && manifestOf(latest.value)?.name) || environment.value?.paradigmKey || "");
+
+async function loadManifests() {
+  const wanted = new Set(revisions.value.map((r) => `${r.paradigmKey}/${r.paradigmVersion}`));
+  const loaded = {};
+  for (const id of wanted) {
+    const [key, version] = id.split("/");
+    loaded[id] = await paradigms.version(key, Number(version));
+  }
+  manifests.value = loaded;
+}
+
 async function load() {
   error.value = "";
   try {
     environment.value = await environments.get(environmentId.value);
     revisions.value = (await environments.revisions(environmentId.value)).data || [];
+    await loadManifests();
     for (const revision of revisions.value) {
       const status = await environments.calibrationStatus(environmentId.value, revision.number);
       const chain = status.status === "NOT_REQUIRED" ? [] : (await environments.calibrations(environmentId.value, revision.number)).data || [];
@@ -82,7 +108,9 @@ const revising = ref(false);
 const manifest = ref(null);
 const values = ref({});
 const revisionNotes = ref("");
-const parameters = computed(() => manifest.value?.apparatusParameters || []);
+const showAnalysis = ref(false);
+const apparatusParameters = computed(() => (manifest.value?.parameters || []).filter((p) => p.scope === "APPARATUS"));
+const analysisParameters = computed(() => (manifest.value?.parameters || []).filter((p) => p.scope === "ANALYSIS"));
 const newestFirst = computed(() => [...revisions.value].reverse());
 const latest = computed(() => revisions.value[revisions.value.length - 1] || null);
 
@@ -111,7 +139,7 @@ async function openRevision() {
   error.value = "";
   try {
     manifest.value = await paradigms.version(latest.value.paradigmKey, latest.value.paradigmVersion);
-    values.value = { ...latest.value.apparatus };
+    values.value = { ...defaults([...apparatusParameters.value, ...analysisParameters.value]), ...latest.value.apparatus };
     revisionNotes.value = "";
     revising.value = true;
   } catch (e) {
@@ -124,7 +152,7 @@ async function saveRevision() {
   error.value = "";
   try {
     const apparatus = {};
-    for (const parameter of parameters.value) apparatus[parameter.key] = Number(values.value[parameter.key]);
+    for (const parameter of [...apparatusParameters.value, ...analysisParameters.value]) apparatus[parameter.key] = Number(values.value[parameter.key]);
     await environments.addRevision(environmentId.value, {
       paradigmVersion: latest.value.paradigmVersion,
       apparatus,
@@ -140,11 +168,19 @@ async function saveRevision() {
 }
 
 onMounted(load);
+watch(locale, async () => {
+  try {
+    await loadManifests();
+    if (manifest.value) manifest.value = await paradigms.version(manifest.value.key, manifest.value.version);
+  } catch (e) {
+    error.value = e.message;
+  }
+});
 onUnmounted(() => crumb.clear());
 </script>
 
 <template>
-  <PageHead v-if="environment" :title="environment.name" :subtitle="environment.paradigmKey">
+  <PageHead v-if="environment" :title="environment.name" :subtitle="paradigmName">
     <template #actions v-if="canWrite">
       <NButton size="small" secondary data-test="environment-edit" :disabled="editing" @click="openDetails">
         {{ $t("environments.editDetails") }}
@@ -177,27 +213,25 @@ onUnmounted(() => crumb.clear());
   <NCard v-if="revising" :bordered="true" size="small" class="edit-card">
     <form class="edit-form" data-test="revision-form" @submit.prevent="saveRevision">
       <p class="muted">{{ $t("environments.newRevisionHint") }}</p>
-      <div class="params">
-        <label class="fld" v-for="parameter in parameters" :key="parameter.key">
-          <span>{{ parameter.label }} <span class="muted">{{ parameter.unit }}</span></span>
-          <input
-            type="number"
-            step="any"
-            :min="parameter.min"
-            :max="parameter.max"
-            v-model="values[parameter.key]"
-            :data-test="`revision-${parameter.key}`"
-            required
-          />
-          <small class="muted">{{ parameter.min }} - {{ parameter.max }}</small>
-        </label>
-      </div>
+      <h4>{{ $t("environments.apparatus") }}</h4>
+      <ParameterFields v-if="apparatusParameters.length" v-model="values" :parameters="apparatusParameters" test-prefix="revision" />
+      <p class="muted" v-else>{{ $t("environments.noApparatus") }}</p>
+      <template v-if="analysisParameters.length">
+        <a href="#" class="link" data-test="revision-toggle-analysis" @click.prevent="showAnalysis = !showAnalysis">
+          {{ showAnalysis ? $t("environments.hideAnalysis") : $t("environments.showAnalysis") }}
+        </a>
+        <div v-show="showAnalysis">
+          <h4>{{ $t("environments.analysis") }}</h4>
+          <p class="muted">{{ $t("environments.analysisHint") }}</p>
+          <ParameterFields v-model="values" :parameters="analysisParameters" test-prefix="revision-analysis" />
+        </div>
+      </template>
       <label class="fld">
         <span>{{ $t("environments.revisionNotes") }}</span>
         <textarea v-model="revisionNotes" rows="2" data-test="revision-notes"></textarea>
       </label>
       <div class="actions">
-        <NButton type="primary" attr-type="submit" :loading="saving" :disabled="!parameters.length" data-test="revision-save">
+        <NButton type="primary" attr-type="submit" :loading="saving" :disabled="!manifest" data-test="revision-save">
           {{ $t("environments.saveRevision") }}
         </NButton>
         <NButton quaternary data-test="revision-cancel" @click="revising = false">{{ $t("common.cancel") }}</NButton>
@@ -222,7 +256,14 @@ onUnmounted(() => crumb.clear());
       </template>
 
       <NDescriptions :column="2" label-placement="left" size="small" bordered>
-        <NDescriptionsItem v-for="(value, key) in revision.apparatus" :key="key" :label="key">{{ value }}</NDescriptionsItem>
+        <NDescriptionsItem
+          v-for="item in shownValues(revision)"
+          :key="item.parameter.key"
+          :label="item.parameter.label"
+          :data-test="`revision-value-${item.parameter.key}`"
+        >
+          {{ format(item.parameter, item.value) }}
+        </NDescriptionsItem>
       </NDescriptions>
 
       <div class="calibration" data-test="environment-calibration" :data-status="stateOf(revision.number).status">
