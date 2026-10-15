@@ -45,7 +45,10 @@ type Contract struct {
 	TrajectoryAnalyzable bool
 	// RequiredZones are the calibrated zones the pinned calibration must have
 	// a shape for before the paradigm can be analysed.
-	RequiredZones  []string
+	RequiredZones []string
+	// ObserverScored paradigms are scored by a person on the video; no worker
+	// ever analyses them.
+	ObserverScored bool
 	Metrics        []MetricSpec
 	Events         []EventSpec
 	MissingReasons []string

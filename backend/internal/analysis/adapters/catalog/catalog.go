@@ -37,6 +37,7 @@ func (Catalog) Contract(key string, version int) (domain.Contract, error) {
 		// from samples and stay worker-free; optional scored events of a
 		// tracked paradigm (EPM risk assessment) are left missing as unscored.
 		TrajectoryAnalyzable: tracked(p),
+		ObserverScored:       p.ObserverScored(),
 	}
 	for _, z := range p.Zones {
 		if z.Calibrated && z.Required {

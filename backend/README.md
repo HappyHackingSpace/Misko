@@ -48,6 +48,7 @@ no data migration from earlier installations.
 - `internal/media`: video assets and the videos of tests; `adapters/gcs` is the only package that imports the Cloud Storage client.
 - `internal/calibration`: pixel-to-centimeter calibrations, the default of an environment revision and manual overrides per animal of a test on its current video, and the status that gates analysis.
 - `internal/analysis`: analysis workers, runs per animal, leases, result validation, publication of metrics, events, artifacts and video pairs, and the review of results.
+- `internal/scoring`: observer scoring of rotarod, pole, treadmill and novel object tests: scoring sheets per animal, scored events, and completion into a SCORED analysis run.
 - `internal/reports`: the read-only study report and its CSV export over the reporting views.
 - `internal/dashboard`: read-only counts and short lists for the start screen.
 - `internal/health`: readiness use case and probes.
@@ -136,6 +137,8 @@ Route overview (`{e}` is `/api/experiments/{id}`):
 | `GET /api/analysis/capabilities`, `GET /api/tests/{id}/analysis-runs`, `GET /api/analysis-runs/{runId}` and `video-pair`, `GET /api/analysis/results`, `GET /api/analysis/results/{testSubjectId}` | `*:read` |
 | `POST /api/analysis/test-subjects/{testSubjectId}/runs`; `POST /api/analysis/results/{testSubjectId}/accept`, `reject`, `run`; `POST /api/analysis/results/bulk-accept` | `test:run` |
 | `GET, POST /api/analysis/workers`, `POST /api/analysis/workers/{id}/disable` | `lab:configure` |
+| `GET /api/tests/{id}/subjects/{testSubjectId}/scoring` | `*:read` |
+| `POST .../scoring/events`, `PATCH, DELETE .../scoring/events/{eventId}`, `POST .../scoring/complete`, `POST .../scoring/reopen` | `test:run` |
 | `POST /api/worker/claim`, `POST /api/worker/runs/{runId}/heartbeat`, `source-url`, `outputs`, `result`, `failure` | A worker token |
 | `GET {e}/report`, `GET {e}/report/export`, `GET /api/dashboard/summary` | `*:read` |
 
@@ -758,6 +761,36 @@ and overrides, lease expiry and a late attempt, missing and corrupt outputs,
 duplicate delivery, reanalysis next to earlier results, the review with
 blinding and the database triggers, with a fake object store. They do not prove
 real GCS behavior or any tracking accuracy.
+
+## Observer scoring
+
+ROTAROD, POLE, TREADMILL and NOVEL_OBJECT are scored by a person on the
+test's current video instead of being tracked by a worker (a paradigm is
+observer scored when its engine consumes input events and it has no zones).
+The scheduler never queues worker runs for them and workers cannot register
+them as capabilities.
+
+- `GET /api/tests/{id}/subjects/{testSubjectId}/scoring` returns the paradigm's
+  input events (type, POINT or INTERVAL, labels such as novel/familiar, single,
+  label and definition in the request language), the current video clip and the
+  newest scoring sheet with its events.
+- Event times are microseconds from the clip start of the current video
+  (`0 <= startUs`, `endUs <= clip length`). `POST .../scoring/events` with
+  `{type, label?, startUs, endUs?}` adds an event to the draft sheet (the first
+  event starts sheet version 1); `PATCH .../events/{eventId}` replaces it with
+  the full event sent and `DELETE` removes it. Single events are scored once.
+- `POST .../scoring/complete` with `{scoredEventTypes?, durationUs?}` fixes the
+  scored types (default all) and the recording length (default the clip
+  length), runs the engine with the arena and session parameters and stores a
+  SUCCEEDED analysis run with `method: SCORED`, `scoredBy` and no worker,
+  calibration or video pair. Its result opens PENDING in the review queue
+  exactly like an analysed one and, once accepted, enters the reports.
+- `POST .../scoring/reopen` starts the next sheet version with a copy of the
+  events; completing it adds another run the reviewer can choose.
+- Scoring needs a test in progress or completed, a running experiment, an
+  animal that is not excluded and a verified current video. The database keeps
+  completed sheets and their events unchanged, keeps one draft per animal and
+  accepts a SCORED run only with its completed sheet in the same transaction.
 
 ## Reports and exports
 

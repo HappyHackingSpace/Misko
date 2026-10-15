@@ -128,11 +128,12 @@ func TestTickEnqueuesReadyAnimalsAndSkipsFailures(t *testing.T) {
 		expired:      []domain.Run{expired},
 	}
 	report, err := newService(store, &fakeObjects{}).Tick(ctx)
-	if err != nil || report.Enqueued != 3 || report.Requeued != 1 || len(report.Skipped) != 4 {
+	if err != nil || report.Enqueued != 2 || report.Requeued != 1 || len(report.Skipped) != 6 {
 		t.Fatalf("tick: %+v %v", report, err)
 	}
-	// The store is asked only for capabilities the catalog knows, and told which need a calibration.
-	if !slices.Equal(store.askedCapabilities, []domain.Capability{{ParadigmKey: "OPEN_FIELD", ParadigmVersion: 1}, {ParadigmKey: "ROTAROD", ParadigmVersion: 1}}) ||
+	// The store is asked only for capabilities the catalog knows a worker can
+	// analyse (never an observer scored paradigm), and told which need a calibration.
+	if !slices.Equal(store.askedCapabilities, []domain.Capability{{ParadigmKey: "OPEN_FIELD", ParadigmVersion: 1}}) ||
 		!slices.Equal(store.askedCalibrated, []domain.Capability{{ParadigmKey: "OPEN_FIELD", ParadigmVersion: 1}}) {
 		t.Fatalf("asked: %v %v", store.askedCapabilities, store.askedCalibrated)
 	}
@@ -143,10 +144,10 @@ func TestTickEnqueuesReadyAnimalsAndSkipsFailures(t *testing.T) {
 			t.Errorf("created run: %+v", r)
 		}
 	}
-	if !slices.Equal(subjects, []string{"ready", "broken", "observed", "after"}) {
+	if !slices.Equal(subjects, []string{"ready", "broken", "after"}) {
 		t.Fatalf("enqueue attempts: %v", subjects)
 	}
-	if store.created[0].CalibrationID != "cal-1" || store.created[2].CalibrationID != "" {
+	if store.created[0].CalibrationID != "cal-1" || store.created[2].CalibrationID != "cal-4" || store.created[0].Method != domain.Automated {
 		t.Fatalf("pinned calibrations: %+v", store.created)
 	}
 	var skipped []string
@@ -154,7 +155,7 @@ func TestTickEnqueuesReadyAnimalsAndSkipsFailures(t *testing.T) {
 		skipped = append(skipped, e.Error())
 	}
 	joined := strings.Join(skipped, "|")
-	for _, want := range []string{"capability MAZE v1", "test subject uncalibrated", "test subject broken: insert failed", "test subject no worker"} {
+	for _, want := range []string{"capability MAZE v1", "capability ROTAROD v1", "test subject observed", "test subject uncalibrated", "test subject broken: insert failed", "test subject no worker"} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("skipped %q missing from %v", want, skipped)
 		}
@@ -412,7 +413,7 @@ func (*fakeCatalog) Contract(key string, version int) (domain.Contract, error) {
 		zones = []string{"center", "open_arms"}
 	}
 	return domain.Contract{
-		MetricEngineVersion: 1, ResultSchemaVersion: 1, CalibrationRequired: key != "ROTAROD", TrajectoryAnalyzable: key != "ROTAROD", RequiredZones: zones,
+		MetricEngineVersion: 1, ResultSchemaVersion: 1, CalibrationRequired: key != "ROTAROD", TrajectoryAnalyzable: key != "ROTAROD", RequiredZones: zones, ObserverScored: key == "ROTAROD",
 		Metrics: []domain.MetricSpec{{Key: "distance_cm", Unit: "cm", Max: 1e6}},
 		Events:  []domain.EventSpec{{Type: "in_center", Kind: "INTERVAL"}},
 		QC:      []domain.QCRule{{Key: "max_lost_frame_ratio", Operator: "<=", Value: 0.5}},

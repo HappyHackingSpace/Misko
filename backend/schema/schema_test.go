@@ -146,10 +146,20 @@ func TestPendingMigrationRunsAndBlocksReadiness(t *testing.T) {
 	if _, err := schema.Migrate(ctx, pool); err != nil {
 		t.Fatal(err)
 	}
-	// Simulate a database one release behind: undo the last migration (the
-	// calibration zones) and forget it.
-	latest := fmt.Sprintf("%03d_calibration_zones.sql", schema.Latest())
-	if _, err := pool.Exec(ctx, fmt.Sprintf(`DROP TABLE misko.calibration_zones; DROP FUNCTION misko.check_calibration_zone();
+	// Simulate a database one release behind: undo the last migration
+	// (observer scoring) and forget it.
+	latest := fmt.Sprintf("%03d_scoring.sql", schema.Latest())
+	if _, err := pool.Exec(ctx, fmt.Sprintf(`DROP TABLE misko.scored_observations;
+		DROP TABLE misko.scoring_sheets;
+		DROP FUNCTION misko.check_scored_observation_change();
+		DROP FUNCTION misko.check_scoring_sheet_change();
+		DROP TRIGGER analysis_runs_scored_finished ON misko.analysis_runs;
+		DROP FUNCTION misko.check_scored_run_finished();
+		DROP TRIGGER analysis_runs_method_fixed ON misko.analysis_runs;
+		DROP FUNCTION misko.check_analysis_run_method();
+		ALTER TABLE misko.analysis_runs DROP CONSTRAINT analysis_runs_state_check;
+		ALTER TABLE misko.analysis_runs DROP COLUMN method, DROP COLUMN scored_by;
+		ALTER TABLE misko.analysis_runs ADD CONSTRAINT analysis_runs_state_check CHECK (status IS NOT NULL);
 		DELETE FROM misko.schema_migrations WHERE version = %d`, schema.Latest())); err != nil {
 		t.Fatal(err)
 	}

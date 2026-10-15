@@ -109,6 +109,8 @@ type MiskoAnalysisRun struct {
 	CreatedBy           pgtype.UUID
 	CreatedAt           time.Time
 	FinishedAt          pgtype.Timestamptz
+	Method              string
+	ScoredBy            pgtype.UUID
 }
 
 type MiskoAnalysisVideoPair struct {
@@ -420,6 +422,37 @@ type MiskoReportTestSubject struct {
 	EnvironmentRevision    int32
 	ResultStatus           *string
 	ResultRunID            pgtype.UUID
+}
+
+type MiskoScoredObservation struct {
+	ID            string
+	SheetID       string
+	TestSubjectID string
+	EventType     string
+	Kind          string
+	Label         *string
+	StartUs       int64
+	EndUs         int64
+	ScoredBy      string
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+}
+
+type MiskoScoringSheet struct {
+	ID            string
+	ExperimentID  string
+	TestID        string
+	TestSubjectID string
+	Version       int32
+	Status        string
+	ScoredTypes   []string
+	DurationUs    *int64
+	RecordingID   pgtype.UUID
+	RunID         pgtype.UUID
+	CreatedBy     string
+	CreatedAt     time.Time
+	CompletedBy   pgtype.UUID
+	CompletedAt   pgtype.Timestamptz
 }
 
 type MiskoSubject struct {
