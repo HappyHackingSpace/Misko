@@ -243,11 +243,13 @@ func TestTransitionsWorkOnTheLockedTest(t *testing.T) {
 func TestListQueriesAreValidated(t *testing.T) {
 	viewer := access.Actor{UserID: "v", Role: access.Viewer}
 	for name, q := range map[string]TestQuery{
-		"unknown status": {Status: "DONE"},
-		"malformed date": {From: "11/09/2026"},
-		"reversed range": {From: "2026-09-12", To: "2026-09-11"},
-		"negative page":  {Page: -1},
-		"negative size":  {PageSize: -1},
+		"unknown status":  {Status: "DONE"},
+		"unknown in list": {Status: "PLANNED,DONE"},
+		"unknown order":   {Order: "up"},
+		"malformed date":  {From: "11/09/2026"},
+		"reversed range":  {From: "2026-09-12", To: "2026-09-11"},
+		"negative page":   {Page: -1},
+		"negative size":   {PageSize: -1},
 	} {
 		store := newStore()
 		if _, err := New(store, allowAll{}, clock).ListAllTests(ctx, viewer, q); !errors.Is(err, ErrInvalidQuery) || len(store.calls) > 0 {
@@ -257,11 +259,18 @@ func TestListQueriesAreValidated(t *testing.T) {
 	store := newStore()
 	page, err := New(store, allowAll{}, clock).ListTests(ctx, viewer, "exp", TestQuery{ExperimentID: "ignored", Status: "PLANNED", From: "2026-09-01", To: "2026-09-30", PageSize: 500})
 	f := store.filter
-	if err != nil || f.ExperimentID != "exp" || f.Status != domain.Planned || f.From != "2026-09-01" || f.To != "2026-09-30" || f.NewestFirst || f.Limit != 100 || page.PageSize != 100 {
+	if err != nil || f.ExperimentID != "exp" || !slices.Equal(f.Statuses, []domain.Status{domain.Planned}) || f.From != "2026-09-01" || f.To != "2026-09-30" || f.NewestFirst || f.Limit != 100 || page.PageSize != 100 {
 		t.Fatalf("experiment list: %+v %+v %v", f, page, err)
 	}
 	if _, err := New(store, allowAll{}, clock).ListAllTests(ctx, viewer, TestQuery{TimepointID: "day7"}); err != nil || !store.filter.NewestFirst || store.filter.TimepointID != "day7" || store.filter.Limit != 20 {
 		t.Fatalf("worklist: %+v %v", store.filter, err)
+	}
+	// Overdue work is planned or in progress; the worklist can ask for both,
+	// earliest first.
+	q := TestQuery{Status: "PLANNED, IN_PROGRESS", Order: "asc"}
+	if _, err := New(store, allowAll{}, clock).ListAllTests(ctx, viewer, q); err != nil || store.filter.NewestFirst ||
+		!slices.Equal(store.filter.Statuses, []domain.Status{domain.Planned, domain.InProgress}) {
+		t.Fatalf("overdue worklist: %+v %v", store.filter, err)
 	}
 }
 

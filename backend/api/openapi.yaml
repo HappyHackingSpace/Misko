@@ -1523,7 +1523,8 @@ paths:
       parameters:
         - {name: timepointId, in: query, schema: {type: string, format: uuid}}
         - {name: subjectId, in: query, schema: {type: string, format: uuid}, description: Tests that include this animal}
-        - {name: status, in: query, schema: {$ref: '#/components/schemas/TestStatus'}}
+        - {name: status, in: query, schema: {type: string}, description: 'One status or several separated by commas'}
+        - {name: order, in: query, schema: {type: string, enum: [asc, desc]}, description: By scheduled time; earliest first by default}
         - {name: paradigmKey, in: query, schema: {$ref: '#/components/schemas/ConstantKey'}}
         - {name: from, in: query, schema: {type: string, format: date}, description: Inclusive first scheduled date in the laboratory's time zone}
         - {name: to, in: query, schema: {type: string, format: date}, description: Inclusive last scheduled date in the laboratory's time zone}
@@ -1555,12 +1556,13 @@ paths:
   /api/tests:
     get:
       operationId: listAllTests
-      summary: Worklist of tests across every experiment, newest scheduled first (*:read)
+      summary: Worklist of tests across every experiment, newest scheduled first unless order=asc (*:read)
       parameters:
         - {name: experimentId, in: query, schema: {type: string, format: uuid}}
         - {name: timepointId, in: query, schema: {type: string, format: uuid}}
         - {name: subjectId, in: query, schema: {type: string, format: uuid}, description: Tests that include this animal}
-        - {name: status, in: query, schema: {$ref: '#/components/schemas/TestStatus'}}
+        - {name: status, in: query, schema: {type: string}, description: 'One status or several separated by commas, for example PLANNED,IN_PROGRESS'}
+        - {name: order, in: query, schema: {type: string, enum: [asc, desc]}, description: By scheduled time}
         - {name: paradigmKey, in: query, schema: {$ref: '#/components/schemas/ConstantKey'}}
         - {name: from, in: query, schema: {type: string, format: date}, description: Inclusive first scheduled date in the laboratory's time zone}
         - {name: to, in: query, schema: {type: string, format: date}, description: Inclusive last scheduled date in the laboratory's time zone}

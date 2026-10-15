@@ -255,7 +255,7 @@ func (s *Store) ListTests(ctx context.Context, f application.TestFilter) ([]doma
 	}
 	params := sqlcgen.ListTestsParams{
 		ExperimentID: optional(f.ExperimentID), TimepointID: optional(f.TimepointID), SubjectID: optional(f.SubjectID),
-		Status: string(f.Status), ParadigmKey: f.ParadigmKey, FromDate: from, ToDate: to, NewestFirst: f.NewestFirst,
+		Statuses: statuses(f.Statuses), ParadigmKey: f.ParadigmKey, FromDate: from, ToDate: to, NewestFirst: f.NewestFirst,
 		PageLimit: int32(f.Limit), PageOffset: int32(f.Offset),
 	}
 	rows, err := s.queries.ListTests(ctx, params)
@@ -264,7 +264,7 @@ func (s *Store) ListTests(ctx context.Context, f application.TestFilter) ([]doma
 	}
 	total, err := s.queries.CountTests(ctx, sqlcgen.CountTestsParams{
 		ExperimentID: params.ExperimentID, TimepointID: params.TimepointID, SubjectID: params.SubjectID,
-		Status: params.Status, ParadigmKey: params.ParadigmKey, FromDate: from, ToDate: to,
+		Statuses: params.Statuses, ParadigmKey: params.ParadigmKey, FromDate: from, ToDate: to,
 	})
 	if err != nil {
 		return nil, 0, fmt.Errorf("count tests: %w", err)
@@ -487,4 +487,12 @@ func value(s *string) string {
 		return ""
 	}
 	return *s
+}
+
+func statuses(in []domain.Status) []string {
+	out := make([]string, 0, len(in))
+	for _, s := range in {
+		out = append(out, string(s))
+	}
+	return out
 }

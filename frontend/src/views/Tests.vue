@@ -55,14 +55,10 @@ function range(name) {
   return {};
 }
 
-// Overdue means not finished: planned or in progress, from an earlier day. The
-// API filters one status at a time, so both are read and merged.
-async function overdue(query) {
-  const statuses = filters.value.status ? [filters.value.status] : OPEN;
-  const pages = await Promise.all(statuses.map((status) => tests.worklist({ ...query, status, page: 1, pageSize: 100 })));
-  const merged = pages.flatMap((p) => p.data || []).sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt));
-  return { data: merged, total: pages.reduce((sum, p) => sum + p.total, 0) };
-}
+// Overdue means not finished: planned or in progress, from an earlier day.
+const overdueStatus = () => filters.value.status || OPEN.join(",");
+// Today, overdue and upcoming work reads best earliest first; "all" newest first.
+const order = (name) => (name === "all" ? "desc" : "asc");
 
 let seq = 0;
 async function load() {
@@ -72,15 +68,10 @@ async function load() {
   error.value = "";
   try {
     const base = { experimentId: filters.value.experimentId, paradigmKey: filters.value.paradigmKey };
-    let result;
-    if (view.value === "overdue") {
-      const all = await overdue({ ...base, ...range("overdue") });
-      result = { data: all.data.slice((page.value - 1) * pageSize.value, page.value * pageSize.value), total: all.data.length };
-    } else {
-      result = await tests.worklist({ ...base, ...range(view.value), status: filters.value.status, page: page.value, pageSize: pageSize.value });
-      // Today and what comes next read best earliest first.
-      if (view.value !== "all") result.data = [...(result.data || [])].sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt));
-    }
+    const status = view.value === "overdue" ? overdueStatus() : filters.value.status;
+    const result = await tests.worklist({
+      ...base, ...range(view.value), status, order: order(view.value), page: page.value, pageSize: pageSize.value,
+    });
     if (mine !== seq) return;
     rows.value = result.data || [];
     total.value = result.total || 0;
@@ -97,7 +88,7 @@ async function loadCounts(base) {
     const status = filters.value.status;
     const [todayPage, overduePage, upcomingPage] = await Promise.all([
       tests.worklist({ ...base, ...range("today"), status, pageSize: 1 }),
-      overdue({ ...base, ...range("overdue") }),
+      tests.worklist({ ...base, ...range("overdue"), status: overdueStatus(), pageSize: 1 }),
       tests.worklist({ ...base, ...range("upcoming"), status, pageSize: 1 }),
     ]);
     counts.value = { today: todayPage.total, overdue: overduePage.total, upcoming: upcomingPage.total };

@@ -110,7 +110,7 @@ WHERE (sqlc.narg(experiment_id)::uuid IS NULL OR t.experiment_id = sqlc.narg(exp
   AND (sqlc.narg(subject_id)::uuid IS NULL OR EXISTS (
         SELECT 1 FROM misko.test_subjects ts JOIN misko.allocations a ON a.id = ts.allocation_id
         WHERE ts.test_id = t.id AND a.subject_id = sqlc.narg(subject_id)::uuid))
-  AND (@status::text = '' OR t.status = @status::text)
+  AND (cardinality(@statuses::text[]) = 0 OR t.status = ANY(@statuses::text[]))
   AND (@paradigm_key::text = '' OR t.paradigm_key = @paradigm_key::text)
   AND (sqlc.narg(from_date)::date IS NULL OR t.scheduled_at >= (sqlc.narg(from_date)::date)::timestamp AT TIME ZONE lab.timezone)
   AND (sqlc.narg(to_date)::date IS NULL OR t.scheduled_at < (sqlc.narg(to_date)::date + 1)::timestamp AT TIME ZONE lab.timezone)
@@ -129,7 +129,7 @@ WHERE (sqlc.narg(experiment_id)::uuid IS NULL OR t.experiment_id = sqlc.narg(exp
   AND (sqlc.narg(subject_id)::uuid IS NULL OR EXISTS (
         SELECT 1 FROM misko.test_subjects ts JOIN misko.allocations a ON a.id = ts.allocation_id
         WHERE ts.test_id = t.id AND a.subject_id = sqlc.narg(subject_id)::uuid))
-  AND (@status::text = '' OR t.status = @status::text)
+  AND (cardinality(@statuses::text[]) = 0 OR t.status = ANY(@statuses::text[]))
   AND (@paradigm_key::text = '' OR t.paradigm_key = @paradigm_key::text)
   AND (sqlc.narg(from_date)::date IS NULL OR t.scheduled_at >= (sqlc.narg(from_date)::date)::timestamp AT TIME ZONE lab.timezone)
   AND (sqlc.narg(to_date)::date IS NULL OR t.scheduled_at < (sqlc.narg(to_date)::date + 1)::timestamp AT TIME ZONE lab.timezone);

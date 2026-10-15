@@ -22,7 +22,7 @@ WHERE ($1::uuid IS NULL OR t.experiment_id = $1::uuid)
   AND ($3::uuid IS NULL OR EXISTS (
         SELECT 1 FROM misko.test_subjects ts JOIN misko.allocations a ON a.id = ts.allocation_id
         WHERE ts.test_id = t.id AND a.subject_id = $3::uuid))
-  AND ($4::text = '' OR t.status = $4::text)
+  AND (cardinality($4::text[]) = 0 OR t.status = ANY($4::text[]))
   AND ($5::text = '' OR t.paradigm_key = $5::text)
   AND ($6::date IS NULL OR t.scheduled_at >= ($6::date)::timestamp AT TIME ZONE lab.timezone)
   AND ($7::date IS NULL OR t.scheduled_at < ($7::date + 1)::timestamp AT TIME ZONE lab.timezone)
@@ -32,7 +32,7 @@ type CountTestsParams struct {
 	ExperimentID *string
 	TimepointID  *string
 	SubjectID    *string
-	Status       string
+	Statuses     []string
 	ParadigmKey  string
 	FromDate     pgtype.Date
 	ToDate       pgtype.Date
@@ -43,7 +43,7 @@ func (q *Queries) CountTests(ctx context.Context, arg CountTestsParams) (int64, 
 		arg.ExperimentID,
 		arg.TimepointID,
 		arg.SubjectID,
-		arg.Status,
+		arg.Statuses,
 		arg.ParadigmKey,
 		arg.FromDate,
 		arg.ToDate,
@@ -562,7 +562,7 @@ WHERE ($1::uuid IS NULL OR t.experiment_id = $1::uuid)
   AND ($3::uuid IS NULL OR EXISTS (
         SELECT 1 FROM misko.test_subjects ts JOIN misko.allocations a ON a.id = ts.allocation_id
         WHERE ts.test_id = t.id AND a.subject_id = $3::uuid))
-  AND ($4::text = '' OR t.status = $4::text)
+  AND (cardinality($4::text[]) = 0 OR t.status = ANY($4::text[]))
   AND ($5::text = '' OR t.paradigm_key = $5::text)
   AND ($6::date IS NULL OR t.scheduled_at >= ($6::date)::timestamp AT TIME ZONE lab.timezone)
   AND ($7::date IS NULL OR t.scheduled_at < ($7::date + 1)::timestamp AT TIME ZONE lab.timezone)
@@ -576,7 +576,7 @@ type ListTestsParams struct {
 	ExperimentID *string
 	TimepointID  *string
 	SubjectID    *string
-	Status       string
+	Statuses     []string
 	ParadigmKey  string
 	FromDate     pgtype.Date
 	ToDate       pgtype.Date
@@ -619,7 +619,7 @@ func (q *Queries) ListTests(ctx context.Context, arg ListTestsParams) ([]ListTes
 		arg.ExperimentID,
 		arg.TimepointID,
 		arg.SubjectID,
-		arg.Status,
+		arg.Statuses,
 		arg.ParadigmKey,
 		arg.FromDate,
 		arg.ToDate,
