@@ -36,8 +36,6 @@ var constraintErrors = map[string]error{
 	"subject_results_run_fkey":             domain.ErrRunNotChosen,
 	"subject_results_rejection_check":      domain.ErrInvalidRejection,
 	"subject_results_note_check":           domain.ErrInvalidNote,
-	"subject_results_review_check":         application.ErrResultNotFound,
-	"subject_results_pkey":                 application.ErrResultNotFound,
 	"subject_results_test_subject_id_fkey": application.ErrTestSubjectNotFound,
 }
 
