@@ -30,33 +30,8 @@ export const experiments = {
   planTest: (id, body) => api(`/experiments/${id}/tests`, { method: "POST", body }),
 };
 
-export const tests = {
-  get: (id) => api(`/tests/${id}`),
-  // An empty body means "now"; the API fills the instant in.
-  start: (id, body = {}) => api(`/tests/${id}/start`, { method: "POST", body }),
-  complete: (id, body = {}) => api(`/tests/${id}/complete`, { method: "POST", body }),
-  cancel: (id, reason) => api(`/tests/${id}/cancel`, { method: "POST", body: { reason } }),
-  trials: (id) => api(`/tests/${id}/trials`),
-  recordTrial: (id, body) => api(`/tests/${id}/trials`, { method: "POST", body }),
-  comments: (id) => api(`/tests/${id}/comments`),
-  createComment: (id, body) => api(`/tests/${id}/comments`, { method: "POST", body: { body } }),
-  updateComment: (id, commentId, body) => api(`/tests/${id}/comments/${commentId}`, { method: "PATCH", body: { body } }),
-  deleteComment: (id, commentId) => api(`/tests/${id}/comments/${commentId}`, { method: "DELETE" }),
-};
 
-export const recordings = {
-  list: (testId) => api(`/tests/${testId}/recordings`),
-  // Declares the upload and returns { recording, upload }.
-  start: (testId, body) => api(`/tests/${testId}/recordings`, { method: "POST", body }),
-  finalize: (testId, recordingId) => api(`/tests/${testId}/recordings/${recordingId}/finalize`, { method: "POST", body: {} }),
-  readUrl: (testId, recordingId) => api(`/tests/${testId}/recordings/${recordingId}/read-url`),
-};
 
-export const calibration = {
-  status: (testId, recordingId) => api(`/tests/${testId}/recordings/${recordingId}/calibration-status`),
-  list: (testId, recordingId) => api(`/tests/${testId}/recordings/${recordingId}/calibrations`),
-  create: (testId, recordingId, body) => api(`/tests/${testId}/recordings/${recordingId}/calibrations`, { method: "POST", body }),
-};
 
 export const analysis = {
   runsOfTest: (testId) => api(`/tests/${testId}/analysis-runs`),
