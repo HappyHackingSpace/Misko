@@ -1,24 +1,32 @@
 # Go backend
 
-The Go rebuild lives on `main`. It is incomplete; do not release it.
+The Go rebuild is incomplete; do not release it.
+
+The study model was rebuilt on a fresh schema (`schema/001`-`012`) following
+[DOMAIN_REDESIGN.md](../docs/plans/DOMAIN_REDESIGN.md): an experiment is
+designed as groups with a role, a disease model and a regimen, animals are
+allocated to one group, and a test is one filmed session of one or more animals.
+Phases, enrollments, dated group assignments, intervention plans, subject
+conditions and per-recording calibration no longer exist.
 
 | Issue | Implemented |
 |---|---|
-| [#124](https://github.com/HappyHackingSpace/Misko/issues/124) | Liveness/readiness, graceful shutdown, fresh schema installation, architecture checks |
+| [#124](https://github.com/HappyHackingSpace/Misko/issues/124) | Liveness/readiness, graceful shutdown, schema installation, architecture checks |
 | [#125](https://github.com/HappyHackingSpace/Misko/issues/125) | Login, current user, own password change, user management, laboratory singleton, RBAC, idempotent setup |
-| [#126](https://github.com/HappyHackingSpace/Misko/issues/126) | Subjects, experiments, phases, groups, enrollments and dated group assignments |
-| [#127](https://github.com/HappyHackingSpace/Misko/issues/127) | Disease models, substances, intervention plans, weights, subject conditions and actual administrations |
+| [#126](https://github.com/HappyHackingSpace/Misko/issues/126), [#127](https://github.com/HappyHackingSpace/Misko/issues/127) | Rebuilt as: catalog (substances, disease models), subjects and weights, experiments with groups, regimens, timepoints, endpoints and allocations, dosing and induction outcomes |
 | [#128](https://github.com/HappyHackingSpace/Misko/issues/128) | Read-only versioned paradigm catalog and the OPEN_FIELD metric engine |
 | [#129](https://github.com/HappyHackingSpace/Misko/issues/129) | The other ten paradigm contracts and metric engines, calibrated zones, scored events and pinned manifests |
 | [#130](https://github.com/HappyHackingSpace/Misko/issues/130) | Environments with immutable measurement revisions and experiment test protocols with immutable versions |
-| [#131](https://github.com/HappyHackingSpace/Misko/issues/131) | Tests of enrolled subjects on protocol steps, their lifecycle, appended trials and test comments |
-| [#132](https://github.com/HappyHackingSpace/Misko/issues/132) | Video assets and test recordings in private Google Cloud Storage: signed resumable uploads, server-side verification, pinned read URLs (live GCS smoke test pending) |
-| [#133](https://github.com/HappyHackingSpace/Misko/issues/133) | Versioned per-video calibration: normalized DLT homography from FIT points, independent CHECK validation, correction chains and the waiting-for-calibration status |
-| [#134](https://github.com/HappyHackingSpace/Misko/issues/134) | Analysis workers, pinned analysis runs with leases and fencing attempts, the scheduler process, verified output publication and the original/analyzed video pair |
-| [#137](https://github.com/HappyHackingSpace/Misko/issues/137) | Read-only metric and event reports with provenance, latest-run selection, CSV/JSON exports and subject-level group comparisons |
+| [#131](https://github.com/HappyHackingSpace/Misko/issues/131) | Tests as sessions with one or more animals in arenas, their lifecycle, trials per animal and test comments |
+| [#132](https://github.com/HappyHackingSpace/Misko/issues/132) | Video assets in private Google Cloud Storage with one current verified video per test: signed resumable uploads, server-side verification, pinned read URLs (live GCS smoke test pending) |
+| [#133](https://github.com/HappyHackingSpace/Misko/issues/133) | Calibration per arena (environment revision) with manual overrides per animal of a test: normalized DLT homography from FIT points, independent CHECK validation, correction chains and the waiting-for-calibration status |
+| [#134](https://github.com/HappyHackingSpace/Misko/issues/134) | Analysis workers, analysis runs per animal with leases and fencing attempts, the scheduler process, verified output publication, the original/analyzed video pair and human review of every result |
+| [#137](https://github.com/HappyHackingSpace/Misko/issues/137) | The study report per endpoint with role-based comparisons, CSV export and the dashboard summary |
 
-No computer vision worker ships with this repository yet. The Vue application is not wired to this API yet; its old
-business routes return 404. There is no legacy API adapter or data migration.
+The Open Field worker in [`worker/`](../worker/README.md) is tested only on
+synthetic video. The Vue panel is being moved to this API; its screens for the
+study model are scaffolded but not complete. There is no legacy API adapter and
+no data migration from earlier installations.
 
 ## Layout and boundaries
 
@@ -29,17 +37,19 @@ business routes return 404. There is no legacy API adapter or data migration.
 - `internal/access/domain`: the shared RBAC kernel (roles, permission matrix, authenticated actor).
 - `internal/identity`: users, passwords, tokens and user administration.
 - `internal/laboratory`: the laboratory singleton.
-- `internal/subjects`: laboratory animals, independent of experiments.
-- `internal/experiments`: experiments, measurement phases, groups, enrollments and group assignments.
-- `internal/interventions`: disease models, substances, intervention plans, body weights, subject conditions and actual administrations.
+- `internal/catalog`: laboratory-wide substances and disease models.
+- `internal/subjects`: laboratory animals and their body weights.
+- `internal/experiments`: experiments and their lifecycle, groups, regimen items, timepoints, endpoints and allocations (with exclusion).
+- `internal/dosing`: actual administrations, the daily dosing schedule derived from regimens, and induction outcomes.
 - `internal/paradigms`: the hardcoded, versioned paradigm catalog and pure metric engine.
-- `internal/environments`: physical apparatus and their immutable measurement revisions.
+- `internal/environments`: physical apparatus (arenas) and their immutable measurement revisions.
 - `internal/protocols`: test protocols of an experiment with immutable versions of ordered paradigm steps.
-- `internal/tests`: tests of enrolled subjects, their trials and comments.
-- `internal/media`: video assets and test recordings; `adapters/gcs` is the only package that imports the Cloud Storage client.
+- `internal/tests`: tests (sessions), the animals in them (test subjects) with their arenas, trials per animal and comments.
+- `internal/media`: video assets and the videos of tests; `adapters/gcs` is the only package that imports the Cloud Storage client.
 - `internal/calibration`: pixel-to-centimeter calibrations, the default of an environment revision and manual overrides per animal of a test on its current video, and the status that gates analysis.
-- `internal/analysis`: analysis workers, runs, leases, result validation and publication of metrics, events, artifacts and video pairs.
-- `internal/reports`: read-only reports, exports and group comparisons over the reporting views.
+- `internal/analysis`: analysis workers, runs per animal, leases, result validation, publication of metrics, events, artifacts and video pairs, and the review of results.
+- `internal/reports`: the read-only study report and its CSV export over the reporting views.
+- `internal/dashboard`: read-only counts and short lists for the start screen.
 - `internal/health`: readiness use case and probes.
 - `internal/platform`: configuration, HTTP server lifecycle, JSON helpers, PostgreSQL transaction and error helpers, the in-memory rate limiter and the integration-test database helper. No business rules.
 - `schema`: embedded, numbered SQL migrations recorded in `misko.schema_migrations`; never run by the API (see Migrations).
@@ -53,11 +63,12 @@ import, so every use case authorizes against the same matrix. Adapters may use
 any domain or application package but never another domain's adapters: other
 HTTP adapters resolve the caller through `identityhttp.Authenticator`, a function
 wired in the composition root. Relationships between domains, such as an
-enrollment's subject, are enforced with foreign keys rather than cross-domain
-imports. Environments and protocols check parameters through small `catalog`
-adapters that call `internal/paradigms/domain`. `net/http`, `database/sql`, JWT, bcrypt, pgx and GCP packages cannot
-enter inner layers. The architecture test scans every Go file under `internal`,
-including inactive build tags.
+allocation's subject, are enforced with foreign keys rather than cross-domain
+imports. Environments, protocols and experiment endpoints check parameters and
+metrics through small `catalog` adapters that call `internal/paradigms/domain`.
+`net/http`, `database/sql`, JWT, bcrypt, pgx and GCP packages cannot enter inner
+layers. The architecture test scans every Go file under `internal`, including
+inactive build tags.
 
 ## Roles and permissions
 
@@ -75,37 +86,58 @@ The five roles and their permissions are static code, not database rows.
 | `test:run` | Yes | Yes | Yes | Yes | No |
 | `*:read` | Yes | Yes | Yes | Yes | Yes |
 
+What each permission covers:
+
+| Permission | Covers |
+|---|---|
+| `study:write` | Catalog (substances, disease models), experiment design and lifecycle, allocation and exclusion, protocols |
+| `apparatus:write` | Environments, their revisions and arena calibrations |
+| `subject:write` | Subjects |
+| `weight:write` | Body weights |
+| `test:write` | Planning tests: creating them, adding or removing animals, cancelling |
+| `test:run` | Running tests and trials, videos, per-animal calibration overrides, doses, induction outcomes, manual analysis runs and result review |
+| `*:read` | Reading everything |
+
+Route overview (`{e}` is `/api/experiments/{id}`):
+
 | Route | Required access |
 |---|---|
 | `GET /api/health`, `GET /api/ready`, `GET /api/meta`, `POST /api/auth/login` | Public |
 | `GET /api/auth/me`, `POST /api/auth/password` | Any signed-in user |
 | `GET, POST /api/users`; `GET, PATCH, DELETE /api/users/{id}`; `POST /api/users/{id}/reset-password` | `user:manage` |
-| `GET /api/lab` | `*:read` |
-| `GET /api/paradigms`, `GET /api/paradigms/{key}`, `GET /api/paradigms/{key}/versions/{version}` | `*:read` |
+| `GET /api/lab`; `GET /api/paradigms`, `/api/paradigms/{key}`, `/api/paradigms/{key}/versions/{version}` | `*:read` |
 | `PATCH /api/lab` | `lab:configure` |
-| `GET /api/subjects`, `GET /api/subjects/{id}`, `GET /api/subjects/{id}/enrollments` | `*:read` |
+| `GET /api/catalog/substances`, `/api/catalog/disease-models` and `/{id}` of each | `*:read` |
+| `POST`, `PATCH /{id}`, `DELETE /{id}` on `/api/catalog/substances` and `/api/catalog/disease-models` | `study:write` |
+| `GET /api/subjects`, `GET /api/subjects/{id}`, `GET /api/subjects/{id}/weights` | `*:read` |
 | `POST /api/subjects`, `PATCH, DELETE /api/subjects/{id}` | `subject:write` |
-| `GET /api/experiments`, `GET /api/experiments/{id}` and its `phases`, `groups`, `enrollments`, `enrollments/{enrollmentId}` | `*:read` |
-| `POST, PATCH` experiments; `POST, PATCH, DELETE` phases and groups; `POST` enrollments and `enrollments/{enrollmentId}/assignments` | `study:write` |
-| `GET /api/disease-models`, `/api/substances`, `/api/conditions`, `/api/administrations`; `GET /api/experiments/{id}/intervention-plans`; `GET /api/subjects/{id}/weights`, `conditions`, `administrations` | `*:read` |
-| `POST, PATCH` disease models, substances and intervention plans | `study:write` |
 | `POST /api/subjects/{id}/weights` | `weight:write` |
-| `POST /api/subjects/{id}/conditions`, `POST /api/experiments/{id}/enrollments/{enrollmentId}/administrations` | `test:run` |
-| `GET /api/environments`, `GET /api/environments/{id}`, its `revisions` and `revisions/{number}`; `GET /api/experiments/{id}/protocols`, `protocols/{protocolId}`, its `versions` and `versions/{number}` | `*:read` |
-| `POST, PATCH` environments; `POST` environment revisions; `POST, PATCH` protocols; `POST` protocol versions | `apparatus:write` |
-| `GET /api/experiments/{id}/tests`, `GET /api/tests/{id}`, `GET /api/tests/{id}/trials` | `*:read` |
-| `POST /api/experiments/{id}/tests`, `POST /api/tests/{id}/cancel` | `test:write` |
-| `POST /api/tests/{id}/start`, `POST /api/tests/{id}/complete`, `POST /api/tests/{id}/trials` | `test:run` |
+| `GET /api/experiments`, `GET {e}`, `{e}/readiness`, `{e}/metric-options`, `{e}/groups`, `{e}/regimen-items`, `{e}/timepoints`, `{e}/endpoints`, `{e}/allocations` | `*:read` |
+| `POST /api/experiments`, `PATCH {e}`, `POST {e}/start`, `POST {e}/complete`; `POST`, `PATCH`, `DELETE` on groups, regimen items, timepoints and endpoints; `POST {e}/allocations`, `POST {e}/allocations/randomise`, `PATCH, DELETE {e}/allocations/{allocationId}`, `POST {e}/allocations/{allocationId}/exclusion` | `study:write` |
+| `GET {e}/administrations`, `GET {e}/dosing?date=`, `GET {e}/induction-outcomes`, `GET /api/subjects/{id}/administrations` | `*:read` |
+| `POST {e}/allocations/{allocationId}/administrations`, `POST {e}/allocations/{allocationId}/induction-outcome` | `test:run` |
+| `GET /api/environments`, `GET /api/environments/{id}`, its `revisions` and `revisions/{number}`, `GET /api/environment-revisions` | `*:read` |
+| `POST, PATCH` environments; `POST` environment revisions | `apparatus:write` |
+| `GET {e}/protocols`, `protocols/{protocolId}`, its `versions` and `versions/{number}` | `*:read` |
+| `POST, PATCH` protocols; `POST` protocol versions | `study:write` |
+| `GET /api/tests` (worklist across experiments), `GET {e}/tests`, `GET /api/tests/{id}`, `GET /api/tests/{id}/subjects/{subjectId}/trials` | `*:read` |
+| `POST {e}/tests`, `POST /api/tests/{id}/subjects`, `DELETE /api/tests/{id}/subjects/{subjectId}`, `POST /api/tests/{id}/cancel` | `test:write` |
+| `POST /api/tests/{id}/start`, `POST /api/tests/{id}/complete`, `POST /api/tests/{id}/subjects/{subjectId}/trials` | `test:run` |
 | `GET, POST /api/tests/{id}/comments` | Any signed-in user |
 | `PATCH /api/tests/{id}/comments/{commentId}` | The comment's author |
 | `DELETE /api/tests/{id}/comments/{commentId}` | The comment's author, SUPERADMIN or LAB_MANAGER |
 | `GET /api/tests/{id}/recordings`, `GET /api/tests/{id}/recordings/current`, `GET /api/tests/{id}/recordings/{recordingId}/read-url` | `*:read` |
 | `POST /api/tests/{id}/recordings` | `test:run` |
 | `POST /api/tests/{id}/recordings/{recordingId}/finalize` | `test:run`, and the uploader, SUPERADMIN or LAB_MANAGER |
-| `GET /api/tests/{id}/calibration-status`, `GET /api/tests/{id}/subjects/{testSubjectId}/calibrations`, `GET ./../calibration-status` | `*:read` |
+| `GET /api/tests/{id}/calibration-status`, `GET /api/tests/{id}/subjects/{testSubjectId}/calibrations` and `calibration-status` | `*:read` |
 | `POST /api/tests/{id}/subjects/{testSubjectId}/calibrations` (manual override for one animal on the current video) | `test:run` |
-| `GET /api/environments/{id}/revisions/{number}/calibrations`, `GET ./../calibration-status` | `*:read` |
+| `GET /api/environments/{id}/revisions/{number}/calibrations` and `calibration-status` | `*:read` |
 | `POST /api/environments/{id}/revisions/{number}/calibrations` | `apparatus:write` |
+| `GET /api/analysis/capabilities`, `GET /api/tests/{id}/analysis-runs`, `GET /api/analysis-runs/{runId}` and `video-pair`, `GET /api/analysis/results`, `GET /api/analysis/results/{testSubjectId}` | `*:read` |
+| `POST /api/analysis/test-subjects/{testSubjectId}/runs`; `POST /api/analysis/results/{testSubjectId}/accept`, `reject`, `run`; `POST /api/analysis/results/bulk-accept` | `test:run` |
+| `GET, POST /api/analysis/workers`, `POST /api/analysis/workers/{id}/disable` | `lab:configure` |
+| `POST /api/worker/claim`, `POST /api/worker/runs/{runId}/heartbeat`, `source-url`, `outputs`, `result`, `failure` | A worker token |
+| `GET {e}/report`, `GET {e}/report/export`, `GET /api/dashboard/summary` | `*:read` |
 
 Use cases check the actor and permission themselves; HTTP handlers only translate.
 Rules enforced by tests:
@@ -123,11 +155,11 @@ Rules enforced by tests:
   transaction with bounded retries, verified with concurrent requests.
 - The SUPERADMIN account is the lab's founding account, created once by the
   setup command and never again: no request may create a second one, and none
-  may rename, role-change, reset the password of, or delete the existing one —
-  not a LAB_MANAGER (despite otherwise holding identical permissions), and not
-  that account acting on itself through these routes. It changes its own
-  password only through `POST /api/auth/password`, which proves the current
-  one. Every such attempt returns 403 `user.superAdminProtected`.
+  may rename, role-change, reset the password of, or delete the existing one,
+  whether made by a LAB_MANAGER (despite otherwise holding identical
+  permissions) or by that account acting on itself through these routes. It
+  changes its own password only through `POST /api/auth/password`, which proves
+  the current one. Every such attempt returns 403 `user.superAdminProtected`.
 - Passwords need at least 8 characters and at most 72 UTF-8 bytes (the bcrypt
   limit; longer input is rejected, never truncated). They are compared byte for
   byte without normalization. Generated passwords are 26 random base32 characters.
@@ -137,75 +169,154 @@ Rules enforced by tests:
 - Unexpected errors log the route pattern and error only, never headers, bodies,
   tokens or passwords. Clients receive a stable `code` and a generic message.
 
-## Subjects and experiments
+## Catalog
 
-A subject's identity does not depend on any experiment; one subject can be
-enrolled in many experiments and later tested many times.
+Substances and disease models are laboratory-wide and reused across studies.
+Names are unique ignoring case.
+
+- **Substance**: name, `kind` (`COMPOUND`, `REFERENCE_DRUG`, `VEHICLE`,
+  `INDUCER`) and description. The kind only guides pickers; what a substance
+  does in a study comes from the regimen item that uses it.
+- **Disease model**: name, `inductionType` (`CHEMICAL`, `SURGICAL`, `DIET`,
+  `STRESS`, `OTHER`), an optional free-text `confirmationCriterion` and a
+  description. Every model is induced; the inducing agent and its dose are part
+  of each study's regimen.
+- Lists filter by `search`, substances by `kind` and disease models by
+  `inductionType`. Deleting a substance that a regimen item or administration
+  uses returns 409 `substance.inUse`; deleting a disease model that a group
+  uses returns 409 `diseaseModel.inUse`.
+
+## Subjects and weights
 
 - **Subject**: code (unique ignoring case), species (`MOUSE`, `RAT`), sex
-  (`FEMALE`, `MALE`, `UNKNOWN`). A subject cannot be deleted while it is
-  enrolled.
-- **Experiment**: code (unique ignoring case), title, description and
-  `requiresControl`. The experiment detail reports `controlRequirementMet`.
-- **Phase**: an ordered measurement period such as a healthy baseline. Name
-  (ignoring case) and position are unique within the experiment. A phase never
-  implies a group.
-- **Group**: an arm with role `CONTROL` or `TREATMENT` and an optional
-  `targetSize`. The group list returns `activeSubjects`, the assignments active
-  at the database clock, so target and actual counts can be compared. A group
-  with assignments cannot be deleted.
-- **Enrollment**: one per subject per experiment, with `enrolledAt`. An initial
-  `groupId` may be given; the assignment then starts at enrollment.
-- **Group assignment**: a dated period `[validFrom, validTo)`. Moving a subject
-  closes its open assignment at `effectiveFrom` and opens a new one, so crossover
-  keeps full history. A new assignment must start after the current one and not
-  before enrollment, and cannot repeat the current group. A future assignment is
-  stored but does not change today's counts.
+  (`FEMALE`, `MALE`, `UNKNOWN`). An animal can be registered before it joins a
+  study. The subject JSON carries a read-only `allocation` summary (experiment,
+  group code and role, excluded) or null. A subject that is allocated or has
+  weights cannot be deleted (`subject.inUse`).
+- **Weight**: body weight in grams with up to 3 decimals and at most 5000 g,
+  with the time it was measured. Weights belong to the animal, not to a study,
+  and never change.
+- `GET /api/subjects` filters by `search`, `species`, `sex` and
+  `unallocated=true`, and sorts by `code`, `species`, `sex` or `createdAt`.
 
-The database enforces these relationships as well: composite foreign keys keep
-an assignment's enrollment and group in the same experiment, a GiST exclusion
-constraint forbids overlapping periods for one enrollment, and a row lock on the
-enrollment serializes concurrent assignments. Routes under
-`/api/experiments/{id}` return 404 for phases, groups and enrollments of another
-experiment. Lists are paginated with `page` and `pageSize` (default 10, maximum
-100): subjects filter by `search`, `species`, `sex` and sort by `code`,
-`species`, `sex` or `createdAt`; experiments filter by `search` and
-sort by `code`, `title` or `createdAt`; enrollments filter by `subjectId` and
-current `groupId` and sort by `enrolledAt`.
+## Experiments
 
-## Interventions
+An experiment is designed before any animal is touched, then runs, then
+completes.
 
-A plan is not an administration, and induction is not a confirmed disease.
+- **Experiment**: code (unique ignoring case), title, description,
+  `hypothesis`, `randomisation` (text) and `blinded`. `status` is `DRAFT`,
+  `RUNNING` or `COMPLETED` and moves only forward. Code, title and description
+  can be edited until completion; hypothesis, randomisation and blinding only in
+  a draft.
+- **Group**: code (such as `G1`), name, optional `targetSize` and a `role`:
+  `HEALTHY_CONTROL`, `SHAM`, `DISEASE_CONTROL`, `POSITIVE_CONTROL` or
+  `TREATMENT`. Every group except a healthy control names a disease model; a
+  healthy control has none (database check). The group list reports how many
+  animals are allocated against the target.
+- **Regimen item**: what a group receives. `purpose` (`INDUCTION`, `VEHICLE`,
+  `TREATMENT`), substance, dose (decimal text, stored exactly in millionths),
+  unit, route, `frequency` (`ONCE`, `DAILY`, `TWICE_DAILY`, `WEEKLY`,
+  `EVERY_N_DAYS` with `intervalDays`) and `startDay`/`endDay` in study days
+  relative to day 0. A group has at most one `TREATMENT` item, so a treatment
+  group has one substance at one dose level; dose response is the set of
+  treatment groups that share a substance.
+- **Timepoint**: name, `studyDay` (baseline days are negative or zero) and
+  position, both unique in the experiment.
+- **Endpoint**: what the study is judged on: one metric of one paradigm at one
+  timepoint, `kind` `PRIMARY` or `SECONDARY` (at most one primary), `direction`
+  (`HIGHER_IS_BETTER`, `LOWER_IS_BETTER`) and an optional baseline timepoint for
+  change from baseline. `GET {e}/metric-options` lists the metrics of the
+  paradigm versions the experiment's protocol steps use; an endpoint must name
+  one of them.
 
-- **Disease model** and **substance**: named catalog entries, unique ignoring case.
-- **Intervention plan**: what a group of an experiment is meant to receive
-  (substance, dose, route, schedule and optional phase). Creating or changing a
-  plan never records an administration.
-- **Weight measurement**: a subject's body weight in grams, with up to 3
-  decimals and at most 5000 g.
-- **Subject condition**: an append-only observation of a disease model with
-  status `INDUCED`, `CONFIRMED`, `NOT_CONFIRMED` or `RESOLVED`, optionally linked
-  to one of the same subject's enrollments. The current status per model is the
-  latest observation; `GET /api/conditions?current=true` filters on it.
-- **Administration**: an actual administration recorded against an enrollment,
-  with substance, amount, unit, route and time. It cannot precede enrollment or
-  lie in the future (5 minutes of clock skew are tolerated). Per-kilogram units
-  (`mg/kg`, `ug/kg`, `IU/kg`) need a weight of the same subject measured within
-  the 7 days before, and the response includes `absoluteDose` (dose times body
-  mass, rounded half up to 6 decimals). A linked plan must belong to the same
-  experiment, use the same substance and match the subject's group at that time.
+Lifecycle:
 
-Amounts are decimal strings with up to 6 decimals and are stored as exact
-integers. Doses and dates are never inferred from plans. Records copy the
-substance or disease model name, dose, route and body weight when saved, so
-renaming a definition or editing a plan does not change history. Units: `mg`,
-`ug`, `g`, `mL`, `uL`, `IU`, `mg/kg`, `ug/kg`, `IU/kg`. Routes: `ORAL`,
-`INTRAPERITONEAL`, `SUBCUTANEOUS`, `INTRAVENOUS`, `INTRAMUSCULAR`, `INTRANASAL`,
-`INTRACEREBROVENTRICULAR`, `TOPICAL`, `INHALATION`. Composite foreign keys tie
-an administration's subject to its enrollment and its weight to the same
-subject, and a check constraint requires a weight for per-kilogram doses.
-Phases and groups referenced by plans cannot be deleted. Weights, conditions and
-administrations cannot be edited or deleted yet.
+- `GET {e}/readiness` lists the start rules the design breaks, each with a
+  stable code (`readiness.noTimepoints`, `readiness.noGroups`,
+  `readiness.targetSizeMissing`, `readiness.primaryEndpointMissing`,
+  `readiness.endpointMetricUnavailable`, `readiness.treatmentItemMissing`,
+  `readiness.treatmentItemNotAllowed`, `readiness.inductionItemMissing`,
+  `readiness.inductionItemNotAllowed`, `readiness.vehicleItemMissing`,
+  `readiness.diseaseControlMissing`) and the group or endpoint it concerns.
+  The rules: at least one timepoint and one group, a target size on every
+  group, one primary endpoint, every endpoint metric available; treatment and
+  positive control groups have exactly one `TREATMENT` item and an `INDUCTION`
+  item; a disease control has an `INDUCTION` and a `VEHICLE` item and no
+  treatment; a sham has a `VEHICLE` item and no induction or treatment; a
+  healthy control has no induction or treatment; every sham, treatment and
+  positive control group has a disease control with the same disease model.
+- `POST {e}/start` with `dayZero` (a date) runs the same check and answers 422
+  `experiment.notReady` with the unmet rules, or moves the experiment to
+  `RUNNING`. Day 0 never changes afterwards. Starting freezes groups, regimen
+  items, timepoints and endpoints: database triggers reject changes with
+  `*_frozen` constraints, answered as 409 `experiment.designFrozen`.
+- `POST {e}/complete` needs every test of the experiment completed or cancelled
+  (`experiment.testsOpen`). A completed experiment accepts no new rows anywhere,
+  and analysis decisions return `analysis.experimentClosed`.
+
+Allocation and exclusion:
+
+- An animal belongs to exactly one group, so to one experiment, ever
+  (`UNIQUE (subject_id)` on allocations). `POST {e}/allocations` takes
+  `subjectId`, `groupId`, optional `cage` and `allocatedAt`.
+  `POST {e}/allocations/randomise` takes up to 1000 `subjectIds`, optional
+  `groupIds` and a cage, and distributes the animals at random over the groups
+  up to each group's target size, filling them evenly; either every animal is
+  allocated or none (`allocation.notEnoughPlaces`). Groups without a target take
+  no animals.
+- Animals can be allocated in `DRAFT` and `RUNNING`. In a draft an allocation
+  can move to another group or be removed. Once the study runs the group is
+  fixed: only the cage can change, and the animal can be excluded once with
+  `POST .../exclusion` (`reason`: `DIED`, `HUMANE_ENDPOINT`,
+  `INDUCTION_FAILED`, `TECHNICAL`, `OTHER`, optional note and time). Excluded
+  animals stay allocated, so the report shows them; they join no new test and
+  get no new analysis run.
+- `GET {e}/allocations` filters by `groupId` and `excluded` and also returns
+  every group's fill against its target.
+
+Experiments are listed with `search`, `status`, `sort`, `order`, `page` and
+`pageSize`. Routes under `/api/experiments/{id}` return 404 for groups,
+timepoints, allocations and other rows of another experiment, and composite
+foreign keys enforce the same scoping in the schema. Experiments cannot be
+deleted through the API.
+
+## Dosing
+
+A regimen item is a plan; only an administration records that a dose was given.
+Records need a running experiment.
+
+- **Administration**: `POST {e}/allocations/{allocationId}/administrations`
+  (`test:run`). With `regimenItemId` the purpose, substance, dose and route
+  default to the item's, and a different actual amount or route may be given;
+  the item must belong to the animal's own group. An unplanned dose names all of
+  them. The time cannot lie in the future (5 minutes of clock skew are
+  tolerated), before the allocation or after an exclusion.
+- Per-kilogram units (`mg/kg`, `ug/kg`, `mL/kg`, `IU/kg`) need a weight of the
+  same animal measured within the 7 days before the dose: the named
+  `weightMeasurementId`, or by default the latest one. The response includes
+  `absoluteDose` (dose times body mass, rounded half up to 6 decimals).
+  Records copy the substance name, dose, route and body weight, so later edits
+  of the catalog do not change history. Administrations never change.
+- `GET {e}/dosing?date=YYYY-MM-DD` (default: today in the laboratory's time
+  zone) lists every dose due that day from the regimen items and day 0, per
+  animal, with how many were given and the absolute dose for the latest weight.
+  `TWICE_DAILY` is due twice a day; `WEEKLY` and `EVERY_N_DAYS` are due on the
+  start day and every 7 or `intervalDays` days after.
+- `GET {e}/administrations` and `GET /api/subjects/{id}/administrations` filter
+  by animal, substance, purpose and time range.
+- **Induction outcome**: `POST {e}/allocations/{allocationId}/induction-outcome`
+  records once whether the animal's disease model was `CONFIRMED` or
+  `NOT_CONFIRMED`, with the assessment time and a note. The induction itself is
+  an administration with purpose `INDUCTION`. `GET {e}/induction-outcomes` lists
+  them.
+
+Units: `mg`, `ug`, `g`, `mL`, `uL`, `IU`, `mg/kg`, `ug/kg`, `mL/kg`, `IU/kg`.
+Routes: `ORAL`, `INTRAPERITONEAL`, `SUBCUTANEOUS`, `INTRAVENOUS`,
+`INTRAMUSCULAR`, `INTRANASAL`, `INTRACEREBROVENTRICULAR`, `TOPICAL`,
+`INHALATION`. Composite foreign keys tie an administration's group and subject
+to its allocation, its regimen item to the same group and its weight to the same
+animal, and a check constraint requires a weight for per-kilogram doses.
 
 ## Paradigm catalog and metric engine
 
@@ -294,63 +405,76 @@ goldens for versions that do not have one yet.
 ## Environments and protocols
 
 An environment is a physical apparatus set up for one paradigm, such as a
-particular water tank. Its measurements are stored as numbered revisions.
+particular water tank or one of three open field boxes filmed by one camera. In
+a test, each animal is placed in an arena, which is one environment revision.
+Its measurements are stored as numbered revisions.
 
 - Creating an environment stores revision 1; `POST /api/environments/{id}/revisions`
   adds the next number. The environment row is locked while a revision is
   numbered, so concurrent revisions get consecutive numbers.
-- A revision gives every apparatus parameter of its paradigm version, because no
-  physical measurement is defaulted. Values must be within range and satisfy the
+- A revision's `parameters` give every apparatus parameter of its paradigm
+  version, because no physical measurement is defaulted, plus optional analysis
+  parameters, which default. Values must be within range and satisfy the
   version's rules across parameters, such as an MWM platform inside the tank.
 - Revisions are immutable: a trigger rejects `UPDATE` and `DELETE`, and a
   composite foreign key stops the environment's paradigm from changing. Only an
-  environment's name and notes can be edited.
+  environment's name and notes can be edited. `GET /api/environment-revisions`
+  lists every revision with its environment name, for arena pickers.
 
 A protocol belongs to one experiment and has numbered versions. A version is an
-ordered list of 1 to 50 steps, and the steps may use different paradigms.
+ordered list of 1 to 50 steps, and the steps may use different paradigms. It is
+the test battery of the experiment; its steps name no apparatus, because the
+arena is chosen per animal in each test.
 
-- A step names a paradigm key and version, an environment revision of the same
-  paradigm and version, a trial type defined by that version, 1 to 1000 trials,
-  an inter-trial interval of 0 to 86400 seconds and session parameter values.
-  Positions run from 1 without gaps or duplicates.
-- Session values are validated together with the revision's apparatus values and
-  stored with defaults filled in.
-- Versions and steps are immutable. Triggers reject `UPDATE` and `DELETE`, a
-  composite foreign key keeps each step's paradigm and version equal to its
-  revision's, and a deferred constraint trigger rejects steps added to a version
-  after it was committed.
-- A new environment revision never changes a version that references an earlier
-  revision; publish a new protocol version to use it. Tests will reference a
-  fixed protocol version and, through its steps, fixed environment revisions.
+- A step names a paradigm key and version, a trial type defined by that version,
+  1 to 1000 trials, an inter-trial interval of 0 to 86400 seconds and session
+  parameter values. Positions run from 1 without gaps or duplicates.
+- Session values are validated against the paradigm version and stored with
+  defaults filled in.
+- Versions and steps are immutable. Triggers reject `UPDATE` and `DELETE`, and a
+  deferred constraint trigger rejects steps added to a version after it was
+  committed. Protocols and versions can be added while the experiment is a draft
+  or running, not after it completed (`protocol.experimentClosed`).
 - Protocol routes are scoped to their experiment, so another experiment's
   protocol id returns 404.
 
 ## Tests, trials and comments
 
-A test is one session of an enrolled subject on one step of a protocol version
-in the same experiment. The step fixes the paradigm, its version, the
-environment revision and the planned number of trials.
+A test is one session of a running experiment: one timepoint, one step of a
+protocol version, one video, and one or more animals (test subjects), each in
+its own arena. Usually one animal; sometimes several arenas share the camera
+frame. Animals of different groups may share a session. The group of a
+measurement always comes from the animal's allocation; nothing about the group
+is copied onto the test.
 
-- `POST /api/experiments/{id}/tests` takes an enrollment, an optional phase, a
-  protocol version, a step position and the scheduled time. The subject comes
-  from the enrollment and the group is the one assigned at the scheduled time.
-  An enrollment, phase or protocol version of another experiment, a missing step
-  or a time before the enrollment is rejected, and composite foreign keys
-  enforce the same combinations in the schema.
+- `POST {e}/tests` takes the timepoint, protocol version, step position,
+  optional `scheduledAt` and `notes`, and `subjects`: 1 to 12 pairs of
+  `allocationId` and `environmentRevisionId`. The paradigm, its version and the
+  planned trials come from the step. `scheduledAt` defaults to day 0 plus the
+  timepoint's study day at midnight in the laboratory's time zone.
+- Every arena must run the step's paradigm version, each animal and each arena
+  appears once per test, an animal must be allocated in the experiment and not
+  excluded, and an animal cannot be in another non-cancelled test of the same
+  timepoint and step (`test.animalAlreadyScheduled`). Composite foreign keys and
+  unique keys enforce the same in the schema.
+- While a test is `PLANNED`, `POST /api/tests/{id}/subjects` adds an animal and
+  `DELETE /api/tests/{id}/subjects/{subjectId}` removes one; the last animal
+  stays (`test.lastSubject`).
 - Status moves only forward: `PLANNED` to `IN_PROGRESS` (start) or `CANCELLED`,
-  and `IN_PROGRESS` to `COMPLETED` or `CANCELLED`. Transitions lock the test row,
-  so concurrent requests get one success and `test.invalidTransition` (409) for
-  the rest. A trigger rejects other status changes, edits of the context columns
-  and deletes.
-- Starting locks the enrollment and requires the subject's group at the start
-  time to equal the planned group; otherwise the API returns `test.groupChanged`
-  and the test should be cancelled and planned again.
-- Trials are appended while a test is in progress. `repetition` runs from 1 to
+  and `IN_PROGRESS` to `COMPLETED` or `CANCELLED` (with a reason). Transitions
+  lock the test row, so concurrent requests get one success and
+  `test.invalidTransition` (409) for the rest. A trigger rejects other status
+  changes, edits of the context columns and deletes. A test cannot start while
+  one of its animals is excluded; remove it first.
+- Trials are recorded per animal while the test is in progress, with
+  `POST /api/tests/{id}/subjects/{subjectId}/trials`. `repetition` runs from 1 to
   the planned trials; recording a repetition again adds the next `attempt` and
-  never replaces an earlier trial. Trials are immutable, and completing a test
-  needs at least one trial and a time after its start and every trial.
-- Test status is the session's lifecycle only. Analysis runs get their own
-  status in a later issue.
+  never replaces an earlier trial. Trials are immutable. Completing a test needs
+  at least one trial for every animal and a time after its start and every trial.
+- `GET /api/tests` is the worklist across experiments, filtered by
+  `experimentId`, `status`, `timepointId` and a `from`/`to` date range in the
+  laboratory's time zone. Test status is the session's lifecycle only; analysis
+  has its own status per animal.
 
 Comments belong to a test and are plain text of 1 to 2000 characters; control
 characters other than tab and line breaks are removed. Every signed-in role,
@@ -687,13 +811,15 @@ The Compose project `misko` uses a new `foundation-db` volume; it
 does not mount the old installation's volume. Credentials and `JWT_SECRET` in
 `docker-compose.yml` are development-only and the API binds to loopback. No
 frontend or GCP deployment is started. Re-running `migrate` applies only pending
-migrations and does nothing on an up-to-date database.
+migrations and does nothing on an up-to-date database. A `foundation-db` volume
+installed with the migrations before the schema rebuild is refused; see
+Migrations for the reset.
 
 ## Run Go directly
 
-Use the version in `go.mod` and a dedicated empty PostgreSQL 18 database. The
-schema creates the `btree_gist` extension, a trusted contrib extension, so the
-installing user needs CREATE permission on the database. Export the variables
+Use the version in `go.mod` and a dedicated empty PostgreSQL 18 database (the
+schema uses `uuidv7()`). The installing user needs CREATE permission on the
+database, because `migrate` creates the `misko` schema. Export the variables
 below (see `.env.example`), then from `backend/`:
 
 ```sh
@@ -728,18 +854,26 @@ migrate` takes an advisory lock, runs every file not yet in
 `misko.schema_migrations` in one transaction and records each file's SHA-256, so
 either all pending migrations apply or none do.
 
+The schema was rebuilt from scratch for the study model: `001_foundation` to
+`012_reports` replace every earlier migration, and there is no legacy adoption
+any more.
+
+- A database installed with the old migrations is refused: its recorded
+  checksums no longer match (`an applied migration was changed`), and a `misko`
+  schema without `misko.schema_migrations` is refused as not installed by these
+  migrations. Nothing is changed in either case. Reset such a database before
+  migrating: drop and recreate the database (with Compose,
+  `docker compose down -v` removes the `foundation-db` volume), then run
+  `migrate` and `setup` again. Earlier study data is not carried over.
 - Add a change as the next numbered file. Never edit an applied file: the
   recorded checksum no longer matches and `migrate` refuses to run.
-- A database installed before migrations were tracked is adopted on its first
-  run: `001`-`012` are recorded as applied, `013` only if
-  `misko.effective_calibrations` exists, and later files run. A `misko` schema
-  without `misko.report_runs` is refused.
 - Deployments run `migrate` with the new image before `up`, while the old API is
   still serving. Write migrations the old code survives (add first, remove in a
   later release) or accept a short error window. A database newer than the code
   is accepted, so a rollback can start.
 - sqlc reads the same files, so `make generate` sees the schema after every
   migration.
+
 Configuration errors never echo the database URL or signing secret. Shutdown
 marks readiness unavailable, stops accepting requests, and drains them for
 `SHUTDOWN_TIMEOUT`; on expiry connections are forced closed and the process fails.
@@ -757,12 +891,15 @@ make build
 editing schema or query SQL, run `make generate` and commit the result.
 
 Integration tests need a PostgreSQL server where the user may create databases.
-Schema tests create their own empty `misko_schema_*` databases. Identity, laboratory, subject, experiment
-and end-to-end HTTP tests create uniquely named `misko_test_*` databases and drop
+Schema tests create their own empty `misko_schema_*` databases and cover a
+fresh install, a repeated run, a refused unknown schema, a changed migration and
+the database rules (lifecycle, frozen design, allocation, test subjects,
+immutability). HTTP tests create uniquely named `misko_test_*` databases and drop
 only those. They cover concurrent last-administrator protection, concurrent
-setup, concurrent enrollment and assignment, cross-experiment references,
-overlapping periods, target versus actual group counts, intervention references and
-history, per-kilogram dose conversion, SQL constraints, search escaping, stable paging and the read/write RBAC matrix over HTTP.
+setup, the experiment lifecycle and start rules, allocation and randomisation,
+cross-experiment references, dosing and the due schedule, per-kilogram dose
+conversion, tests with several animals, SQL constraints, search escaping, stable
+paging and the read/write RBAC matrix over HTTP.
 
 CI runs these checks on PRs and on pushes to `main`, then builds the container
 without pushing an image. Dependabot opens its updates against `main`, and its
@@ -770,7 +907,8 @@ pull requests are merged automatically once CI is green.
 
 Known limits: login has no rate limiting yet, and there is no server-side logout
 (a client signs out by discarding its token; password changes revoke all tokens).
-Experiments and enrollments cannot be deleted yet; research records are kept.
+Experiments cannot be deleted through the API, and allocations of a running
+study are excluded, never deleted; research records are kept.
 
 [OpenAPI](api/openapi.yaml) describes only implemented endpoints.
 [Dependencies](DEPENDENCIES.md) records pinned versions and verification sources.
