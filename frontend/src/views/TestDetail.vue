@@ -105,11 +105,6 @@ function animalsUpdated(updated) {
   loadCalibration();
 }
 
-function calibrated() {
-  calibrating.value = null;
-  loadCalibration();
-}
-
 onMounted(load);
 watch(testId, load);
 onUnmounted(() => crumb.clear());
@@ -212,11 +207,11 @@ onUnmounted(() => crumb.clear());
 
     <CalibrationDialog
       v-if="calibrating"
-      :test-id="test.id"
+      :test="test"
       :subject="calibrating"
       :status="calibrationBySubject[calibrating.id]"
       @close="calibrating = null"
-      @saved="calibrated"
+      @saved="loadCalibration"
     />
   </div>
 </template>
