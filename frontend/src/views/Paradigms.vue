@@ -16,6 +16,10 @@ const paradigms = ref([]);
 const error = ref("");
 const search = ref("");
 const loading = ref(true);
+// The API answers in the chosen language and falls back to the English
+// article when no Turkish one exists; say so on the link.
+const referenceLabel = (url) =>
+  locale.value !== "en" && url.startsWith("https://en.") ? t("paradigms.referenceEnglish") : t("paradigms.reference");
 
 async function load() {
   try {
@@ -48,6 +52,8 @@ const columns = computed(() => [
       h("div", { class: "cell" }, [
         h(RouterLink, { class: "link", to: `/paradigms/${row.key}`, "data-test": `paradigm-${row.key}` }, () => row.name),
         h("small", { class: "muted" }, row.description),
+        row.reference &&
+          h("a", { class: "link small", href: row.reference, target: "_blank", rel: "noopener noreferrer", "data-test": `paradigm-reference-${row.key}` }, referenceLabel(row.reference)),
       ]),
   },
   { title: t("paradigms.category"), key: "category", sorter: "default", width: 170, render: (row) => category(row.category) },

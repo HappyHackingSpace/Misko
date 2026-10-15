@@ -48,7 +48,7 @@ func (h handler) list(w http.ResponseWriter, r *http.Request) {
 	for _, s := range summaries {
 		data = append(data, summaryJSON{
 			Key: s.Key, Name: s.Name.In(lang), Description: s.Description.In(lang), Category: string(s.Category), Species: s.Species,
-			Versions: s.Versions, LatestVersion: s.LatestVersion, AutomatedAnalysis: s.AutomatedAnalysis,
+			Versions: s.Versions, LatestVersion: s.LatestVersion, AutomatedAnalysis: s.AutomatedAnalysis, Reference: s.Reference.In(lang),
 		})
 	}
 	w.Header().Set("Content-Language", lang)
@@ -108,6 +108,7 @@ type summaryJSON struct {
 	Versions          []int    `json:"versions"`
 	LatestVersion     int      `json:"latestVersion"`
 	AutomatedAnalysis bool     `json:"automatedAnalysis"`
+	Reference         string   `json:"reference,omitempty"`
 }
 
 type parameterJSON struct {

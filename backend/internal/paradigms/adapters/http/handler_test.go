@@ -204,3 +204,29 @@ func TestPublishedManifestsNeverChange(t *testing.T) {
 		t.Errorf("%d goldens for %d published versions", len(goldens), len(published))
 	}
 }
+
+func TestListLinksEachParadigmToAnArticleInTheRequestedLanguage(t *testing.T) {
+	mux := newMux()
+	for _, tc := range []struct{ query, yMaze, epm string }{
+		{"", "https://en.wikipedia.org/wiki/Spontaneous_alternation", "https://en.wikipedia.org/wiki/Elevated_plus_maze"},
+		{"?lang=tr", "https://tr.wikipedia.org/wiki/Kendili%C4%9Finden_de%C4%9Fi%C5%9Fim", "https://en.wikipedia.org/wiki/Elevated_plus_maze"},
+	} {
+		_, raw := get(mux, "GET", "/api/paradigms"+tc.query, "viewer")
+		var list struct {
+			Data []struct {
+				Key       string `json:"key"`
+				Reference string `json:"reference"`
+			} `json:"data"`
+		}
+		if err := json.Unmarshal(raw, &list); err != nil {
+			t.Fatal(err)
+		}
+		links := map[string]string{}
+		for _, p := range list.Data {
+			links[p.Key] = p.Reference
+		}
+		if links["Y_MAZE"] != tc.yMaze || links["EPM"] != tc.epm || links["POLE"] != "" {
+			t.Errorf("%q: %v", tc.query, links)
+		}
+	}
+}

@@ -18,6 +18,8 @@ type Summary struct {
 	Versions          []int
 	LatestVersion     int
 	AutomatedAnalysis bool
+	// Reference is an introductory article per language, if one exists.
+	Reference domain.Text
 }
 
 type Service struct {
@@ -73,6 +75,7 @@ func (s *Service) List(ctx context.Context, actor access.Actor) ([]Summary, erro
 		out = append(out, Summary{
 			Key: p.Key, Name: p.Name, Description: p.Description, Category: p.Category, Species: p.Species,
 			Versions: versions, LatestVersion: p.Version, AutomatedAnalysis: supported[Capability{p.Key, p.Version}],
+			Reference: domain.Reference(p.Key),
 		})
 	}
 	return out, nil

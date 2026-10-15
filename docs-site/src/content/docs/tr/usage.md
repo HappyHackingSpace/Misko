@@ -102,6 +102,10 @@ Kodlar benzersizdir. Bir gruptaki veya ağırlığı olan hayvan silinemez.
 
 ## Ortamlar ve kalibrasyon
 
+**Paradigmalar** sayfası Mişko'nun bildiği testleri listeler; çoğu testi
+anlatan bir Wikipedia makalesine bağlanır (Türkçesi varsa Türkçe, yoksa
+İngilizce).
+
 Ortam, bir paradigmadan (açık alan, rotarod, Morris su labirenti gibi)
 oluşturulan fiziksel bir arenadır. **Ortamlar**'ı açıp **Yeni ortam**'a
 tıklayın:

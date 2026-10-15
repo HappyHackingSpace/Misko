@@ -100,6 +100,10 @@ Codes are unique. An animal that is in a group or has weights cannot be deleted.
 
 ## Environments and calibration
 
+The **Paradigms** page lists the tests Mişko knows; most link to a Wikipedia
+article that explains the test (in Turkish when one exists, otherwise in
+English).
+
 An environment is a physical arena built from a paradigm (open field, rotarod,
 Morris water maze and so on). Open **Environments** and click **New
 environment**:
