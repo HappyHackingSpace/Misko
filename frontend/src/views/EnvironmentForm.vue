@@ -1,15 +1,16 @@
 <script setup>
-// A named apparatus, created from a paradigm template. The paradigm decides
-// which values exist: the form reads them from the published version manifest
-// rather than hard coding a list, so a new paradigm needs no change here.
-// Apparatus measurements are required; analysis settings start at the
-// paradigm's defaults and stay folded away unless someone needs to tune them.
-// Session settings belong to protocol steps, not here.
+// A named arena (environment), created from a paradigm template. The paradigm
+// decides which parameters exist: the form reads them from the published
+// version manifest rather than hard coding a list, so a new paradigm needs no
+// change here. APPARATUS measurements are required; ANALYSIS settings start at
+// the paradigm's defaults and stay folded away unless someone needs to tune
+// them, and only the ones that differ are sent. Session settings belong to
+// protocol steps, not here.
 import { computed, h, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
-import { NAlert, NButton, NCard, NSelect } from "naive-ui";
-import { environments, paradigms } from "../api/endpoints.js";
+import { NAlert, NButton, NCard, NSelect, useMessage } from "naive-ui";
+import { environments, paradigmCatalog as paradigms, revisionParameters } from "../api/catalog.js";
 import { useBreadcrumb } from "../stores/breadcrumb.js";
 import PageHead from "../components/PageHead.vue";
 import ParameterFields from "../components/ParameterFields.vue";
@@ -18,6 +19,7 @@ import { defaults } from "../composables/useParameters.js";
 const { t, locale } = useI18n();
 const route = useRoute();
 const router = useRouter();
+const message = useMessage();
 const crumb = useBreadcrumb();
 
 const catalogue = ref([]);
@@ -64,22 +66,19 @@ async function save() {
   error.value = "";
   saving.value = true;
   try {
-    const apparatus = {};
-    for (const parameter of [...apparatusParameters.value, ...analysisParameters.value]) {
-      apparatus[parameter.key] = Number(values.value[parameter.key]);
-    }
     // The new environment opens on its own page, where the calibration every
-    // video of it will use is entered once.
+    // animal tested in it will use is entered once.
     const created = await environments.create({
       name: form.value.name.trim(),
       paradigmKey: form.value.paradigmKey,
       notes: form.value.notes.trim(),
       revision: {
         paradigmVersion: chosen.value?.latestVersion || 1,
-        apparatus,
+        parameters: revisionParameters(apparatusParameters.value, analysisParameters.value, values.value),
         notes: "",
       },
     });
+    message.success(t("environments.created", { name: created.environment.name }));
     router.push(`/environments/${created.environment.id}`);
   } catch (e) {
     error.value = e.message;

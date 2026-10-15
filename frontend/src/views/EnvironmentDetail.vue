@@ -1,14 +1,14 @@
 <script setup>
-// One apparatus with its measurement revisions and, for each revision, the
-// calibration every video of that revision uses. It is entered once when the rig
-// is set up; a single video whose camera or arena moved is calibrated by hand
-// from its own test page. Reading is open to every role, calibrating needs
+// One arena (environment) with its revisions and, for each revision, the
+// default calibration every animal tested in it uses. It is entered once when
+// the rig is set up; an animal whose camera or arena moved is calibrated by
+// hand from its test. Reading is open to every role, writing needs
 // apparatus:write.
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import { useI18n } from "vue-i18n";
-import { NAlert, NButton, NCard, NDescriptions, NDescriptionsItem, NTag } from "naive-ui";
-import { environments, paradigms } from "../api/endpoints.js";
+import { NAlert, NButton, NCard, NDescriptions, NDescriptionsItem, NForm, NFormItem, NInput, NModal, NSpace, NTag, useMessage } from "naive-ui";
+import { environments, paradigmCatalog as paradigms, revisionParameters } from "../api/catalog.js";
 import { useAuth } from "../stores/auth.js";
 import { useBreadcrumb } from "../stores/breadcrumb.js";
 import PageHead from "../components/PageHead.vue";
@@ -21,6 +21,7 @@ const { format } = useParameters();
 const route = useRoute();
 const auth = useAuth();
 const crumb = useBreadcrumb();
+const message = useMessage();
 const canWrite = computed(() => auth.can("apparatus:write"));
 
 const environment = ref(null);
@@ -47,11 +48,11 @@ const tagType = (status) => ({ CALIBRATED: "success", VALID: "success", WAITING_
 const manifests = ref({});
 const manifestOf = (revision) => manifests.value[`${revision.paradigmKey}/${revision.paradigmVersion}`] || null;
 const environmentParameters = (m) => (m?.parameters || []).filter((p) => p.scope === "APPARATUS" || p.scope === "ANALYSIS");
-// What a revision measures, labelled; analysis settings it does not store run at their default.
+// A revision's parameters, labelled; analysis settings it does not store run at their default.
 const shownValues = (revision) =>
   environmentParameters(manifestOf(revision)).map((parameter) => ({
     parameter,
-    value: revision.apparatus?.[parameter.key] ?? parameter.default,
+    value: revision.parameters?.[parameter.key] ?? parameter.default,
   }));
 const paradigmName = computed(() => (latest.value && manifestOf(latest.value)?.name) || environment.value?.paradigmKey || "");
 
@@ -92,6 +93,7 @@ async function save(number, body) {
     // corrected rather than repeated from scratch.
     await environments.calibrate(environmentId.value, number, { ...body, supersedesId: latestOf(number)?.id || "" });
     calibrating.value = 0;
+    message.success(t("environments.calibration.saved"));
     await load();
   } catch (e) {
     error.value = e.message;
@@ -104,6 +106,7 @@ async function save(number, body) {
 // a revision, so every test keeps the values it was run with.
 const editing = ref(false);
 const details = ref({ name: "", notes: "" });
+const detailsError = ref("");
 const revising = ref(false);
 const manifest = ref(null);
 const values = ref({});
@@ -116,18 +119,20 @@ const latest = computed(() => revisions.value[revisions.value.length - 1] || nul
 
 function openDetails() {
   details.value = { name: environment.value.name, notes: environment.value.notes || "" };
+  detailsError.value = "";
   editing.value = true;
 }
 
 async function saveDetails() {
   saving.value = true;
-  error.value = "";
+  detailsError.value = "";
   try {
     await environments.update(environmentId.value, { name: details.value.name.trim(), notes: details.value.notes.trim() });
     editing.value = false;
+    message.success(t("environments.detailsSaved"));
     await load();
   } catch (e) {
-    error.value = e.message;
+    detailsError.value = e.message;
   } finally {
     saving.value = false;
   }
@@ -139,7 +144,7 @@ async function openRevision() {
   error.value = "";
   try {
     manifest.value = await paradigms.version(latest.value.paradigmKey, latest.value.paradigmVersion);
-    values.value = { ...defaults([...apparatusParameters.value, ...analysisParameters.value]), ...latest.value.apparatus };
+    values.value = { ...defaults([...apparatusParameters.value, ...analysisParameters.value]), ...latest.value.parameters };
     revisionNotes.value = "";
     revising.value = true;
   } catch (e) {
@@ -151,14 +156,13 @@ async function saveRevision() {
   saving.value = true;
   error.value = "";
   try {
-    const apparatus = {};
-    for (const parameter of [...apparatusParameters.value, ...analysisParameters.value]) apparatus[parameter.key] = Number(values.value[parameter.key]);
     await environments.addRevision(environmentId.value, {
       paradigmVersion: latest.value.paradigmVersion,
-      apparatus,
+      parameters: revisionParameters(apparatusParameters.value, analysisParameters.value, values.value),
       notes: revisionNotes.value.trim(),
     });
     revising.value = false;
+    message.success(t("environments.revisionSaved"));
     await load();
   } catch (e) {
     error.value = e.message;
@@ -193,22 +197,23 @@ onUnmounted(() => crumb.clear());
   <NAlert v-if="error" type="error" :title="error" data-test="error" style="margin-bottom: 16px" />
   <p v-if="environment?.notes" class="muted notes">{{ environment.notes }}</p>
 
-  <NCard v-if="editing" :bordered="true" size="small" class="edit-card">
-    <form class="edit-form" data-test="environment-edit-form" @submit.prevent="saveDetails">
-      <label class="fld">
-        <span>{{ $t("common.name") }}</span>
-        <input v-model="details.name" data-test="environment-edit-name" required />
-      </label>
-      <label class="fld">
-        <span>{{ $t("common.notes") }}</span>
-        <textarea v-model="details.notes" rows="2" data-test="environment-edit-notes"></textarea>
-      </label>
-      <div class="actions">
-        <NButton type="primary" attr-type="submit" :loading="saving" data-test="environment-edit-save">{{ $t("common.save") }}</NButton>
-        <NButton quaternary data-test="environment-edit-cancel" @click="editing = false">{{ $t("common.cancel") }}</NButton>
-      </div>
-    </form>
-  </NCard>
+  <NModal v-model:show="editing" preset="card" :title="$t('environments.editDetails')" class="details-modal" :bordered="false">
+    <NForm data-test="environment-edit-form" @submit.prevent="saveDetails">
+      <NFormItem :label="$t('common.name')" required>
+        <NInput v-model:value="details.name" maxlength="120" data-test="environment-edit-name" />
+      </NFormItem>
+      <NFormItem :label="$t('common.notes')">
+        <NInput v-model:value="details.notes" type="textarea" maxlength="2000" :autosize="{ minRows: 2, maxRows: 6 }" data-test="environment-edit-notes" placeholder="" />
+      </NFormItem>
+      <NAlert v-if="detailsError" type="error" :title="detailsError" data-test="environment-edit-error" />
+    </NForm>
+    <template #footer>
+      <NSpace justify="end">
+        <NButton data-test="environment-edit-cancel" @click="editing = false">{{ $t("common.cancel") }}</NButton>
+        <NButton type="primary" :loading="saving" :disabled="!details.name.trim()" data-test="environment-edit-save" @click="saveDetails">{{ $t("common.save") }}</NButton>
+      </NSpace>
+    </template>
+  </NModal>
 
   <NCard v-if="revising" :bordered="true" size="small" class="edit-card">
     <form class="edit-form" data-test="revision-form" @submit.prevent="saveRevision">
@@ -339,6 +344,7 @@ onUnmounted(() => crumb.clear());
 <style scoped>
 .notes { margin: -8px 0 16px; }
 .edit-card { margin-bottom: 16px; }
+.details-modal { width: min(520px, calc(100vw - 32px)); }
 .edit-form { display: flex; flex-direction: column; gap: 12px; }
 .params { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; }
 .fld { display: flex; flex-direction: column; gap: 4px; }
