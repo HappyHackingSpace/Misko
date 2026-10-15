@@ -41,6 +41,10 @@ const playing = ref(null);
 const closed = computed(() => props.item.experimentStatus === "COMPLETED");
 const writable = computed(() => props.canReview && !closed.value);
 const underReview = computed(() => viewRunId.value === props.item.run.id);
+// A run scored by an observer has no analysed video and no calibration; its
+// recording is shown in the scoring player instead.
+const viewedRun = computed(() => (props.item.runs || []).find((run) => run.id === viewRunId.value) || (underReview.value ? props.item.run : null));
+const scored = computed(() => (detail.value?.id === viewRunId.value ? detail.value.method : viewedRun.value?.method) === "SCORED");
 const metrics = computed(() => detail.value?.result?.metrics || (underReview.value ? props.item.run.metrics : []));
 const events = computed(() => detail.value?.result?.events || []);
 const missing = computed(() => metrics.value.filter((m) => m.value === null));
@@ -81,11 +85,13 @@ const checks = computed(() => {
     const reasons = [...new Set(failedRuns.value.map((run) => failureText(run.failureReason)))].join(", ");
     list.push({ tone: "warning", key: "failed", text: t("review.checks.failedRuns", { count: failedRuns.value.length, reasons }) });
   }
-  list.push({
-    tone: "default",
-    key: "calibration",
-    text: props.item.run.calibrationId ? t("review.checks.calibrated") : t("review.checks.noCalibration"),
-  });
+  if (!scored.value) {
+    list.push({
+      tone: "default",
+      key: "calibration",
+      text: props.item.run.calibrationId ? t("review.checks.calibrated") : t("review.checks.noCalibration"),
+    });
+  }
   return list;
 });
 const failureText = (reason) => (reason && te(`analysis.failureReasons.${reason}`) ? t(`analysis.failureReasons.${reason}`) : reason || "");
@@ -231,7 +237,7 @@ const groupDose = computed(() => (group.value?.doseMicro != null ? fmt.dose(grou
           </div>
         </div>
       </section>
-      <VideoPairPanel v-if="viewRunId" :run-id="viewRunId" :play="playing" />
+      <VideoPairPanel v-if="viewRunId && !scored" :run-id="viewRunId" :play="playing" />
       <NCollapse v-if="events.length" class="events">
         <NCollapseItem :title="`${$t('analysis.events')} (${events.length})`" name="events">
           <EventTimeline :events="events" :selected="playing" :labels="eventLabels" @play="playing = $event" />
