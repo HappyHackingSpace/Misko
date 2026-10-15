@@ -77,6 +77,7 @@ export default {
       unscoredEvent: "Every scored event must be of a ticked event type",
       invalidDuration: "The recording length must be positive and within the clip",
       eventAfterDuration: "An event ends after the recording length",
+      invalidEvents: "The events break an ordering rule of this paradigm, for example a turn after reaching the base",
       notDraft: "The scoring is completed; reopen it to change it",
       notCompleted: "Only a completed scoring can be reopened",
       rejectedByEngine: "The events break an ordering rule of this test",

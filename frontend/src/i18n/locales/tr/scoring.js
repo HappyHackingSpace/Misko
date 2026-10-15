@@ -77,6 +77,7 @@ export default {
       unscoredEvent: "Puanlanan her olay işaretli bir türde olmalı",
       invalidDuration: "Kayıt süresi pozitif ve klibin içinde olmalı",
       eventAfterDuration: "Bir olay kayıt süresinden sonra bitiyor",
+      invalidEvents: "Olaylar bu paradigmanın sıra kuralını bozuyor, örneğin tabana ulaştıktan sonra dönüş",
       notDraft: "Puanlama tamamlandı; değiştirmek için yeniden açın",
       notCompleted: "Yalnızca tamamlanmış puanlama yeniden açılabilir",
       rejectedByEngine: "Olaylar bu testin bir sıralama kuralına uymuyor",
