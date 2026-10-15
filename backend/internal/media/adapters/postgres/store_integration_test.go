@@ -145,7 +145,7 @@ func TestUploadsAreVerifiedAndPinned(t *testing.T) {
 	}
 	rec := upload.Recording
 	if rec.Asset.Status != domain.Pending || rec.Asset.Bucket != "misko-test-videos" || rec.Asset.ObjectName != "tests/"+test+"/originals/"+rec.Asset.ID ||
-		rec.Clip.StartUs != 250_000 || rec.TestID != test || !rec.Current || rec.SupersedesID != "" || !strings.HasSuffix(upload.Request.URL, rec.Asset.ObjectName) ||
+		rec.Clip.StartUs != 250_000 || rec.TestID != test || rec.Current || rec.SupersedesID != "" || !strings.HasSuffix(upload.Request.URL, rec.Asset.ObjectName) ||
 		upload.Request.Headers["x-goog-content-length-range"] != "0,4096" {
 		t.Fatalf("started: %+v %+v", rec, upload.Request)
 	}
@@ -222,13 +222,14 @@ func TestUploadsAreVerifiedAndPinned(t *testing.T) {
 	if _, err := s.ReadURL(ctx, viewer, test, corrupt.Recording.ID); !errors.Is(err, application.ErrNotVerified) {
 		t.Fatalf("read a rejected video: %v", err)
 	}
-	// The corrupt upload replaced the verified video; both stay, the newer is current.
+	// The corrupt upload extends the chain but is rejected, so the verified
+	// video stays current; both stay readable in the list.
 	list, err := s.Recordings(ctx, viewer, test)
-	if err != nil || len(list) != 2 || list[0].ID != rec.ID || list[0].Current || list[1].Asset.Status != domain.Rejected ||
-		!list[1].Current || list[1].SupersedesID != rec.ID {
+	if err != nil || len(list) != 2 || list[0].ID != rec.ID || !list[0].Current || list[1].Asset.Status != domain.Rejected ||
+		list[1].Current || list[1].SupersedesID != rec.ID {
 		t.Fatalf("recordings: %+v %v", list, err)
 	}
-	if current, err := s.Current(ctx, viewer, test); err != nil || current.ID != corrupt.Recording.ID || current.SupersedesID != rec.ID {
+	if current, err := s.Current(ctx, viewer, test); err != nil || current.ID != rec.ID {
 		t.Fatalf("current recording: %+v %v", current, err)
 	}
 	if _, err := s.Current(ctx, viewer, first.planned); !errors.Is(err, application.ErrRecordingNotFound) {
@@ -341,7 +342,8 @@ func TestConcurrentUploadsFormOneChain(t *testing.T) {
 			current++
 		}
 	}
-	if len(superseded) != 5 || current != 1 {
+	// Every upload joins one linear chain; none is verified, so none is current.
+	if len(superseded) != 5 || current != 0 {
 		t.Fatalf("chain: %d superseded, %d current", len(superseded), current)
 	}
 }

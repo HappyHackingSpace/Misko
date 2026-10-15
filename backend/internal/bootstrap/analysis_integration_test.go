@@ -137,6 +137,10 @@ func newStudyObjects() *studyObjects {
 
 func (s *studyObjects) Bucket() string { return "misko-test-videos" }
 
+func (s *studyObjects) SizedUploadURL(ctx context.Context, object, contentType string, _ int64, expires time.Time) (mediaapp.SignedRequest, error) {
+	return s.UploadURL(ctx, object, contentType, expires)
+}
+
 func (s *studyObjects) UploadURL(_ context.Context, object, contentType string, expires time.Time) (mediaapp.SignedRequest, error) {
 	return mediaapp.SignedRequest{Method: "POST", URL: "https://storage.test/" + object, ExpiresAt: expires, Headers: map[string]string{"Content-Type": contentType}}, nil
 }
