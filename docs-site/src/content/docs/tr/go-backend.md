@@ -26,7 +26,8 @@ Canlıya almayın.
 | Arenalarda bir veya birden çok hayvanla oturum olarak testler, denemeler ve yorumlar | Hazır |
 | Google Cloud Storage'a video yükleme, test başına tek güncel video | Hazır, gerçek depolama testi bekliyor |
 | Arena başına kalibrasyon ve hayvan başına düzeltme | Hazır |
-| Hayvan başına analiz çalıştırmaları ve her sonucun insan onayı | Hazır, Open Field worker'ı yalnızca sentetik videoyla test edildi |
+| Hayvan başına analiz çalıştırmaları ve her sonucun insan onayı | Hazır; worker takip edilen yedi paradigmanın hepsini izler, yalnızca sentetik videoyla test edildi |
+| Rotarod, direk, koşu bandı ve yeni nesne için gözlemci puanlaması | Hazır |
 | Rol tabanlı karşılaştırmalarla çalışma raporu, CSV dışa aktarma, gösterge paneli | Hazır |
 | Yeni API üzerinde Vue paneli | İskeleti var, tamamlanmadı |
 
@@ -291,8 +292,11 @@ tanımlıdır; API üzerinden oluşturulamaz, düzenlenemez veya silinemez.
   analizinin olup olmadığıyla (`automatedAnalysis`) listeler. On bir paradigma
   yayınlanmıştır: `BARNES_MAZE`, `EPM`, `LIGHT_DARK`, `MWM`, `NOVEL_OBJECT`,
   `OPEN_FIELD`, `POLE`, `ROTAROD`, `THREE_CHAMBER`, `TREADMILL` ve `Y_MAZE`.
-  Otomatik analiz yalnızca paradigma sürümü için bir analiz worker'ı kayıtlıysa
-  vardır.
+  Yedisi bir analiz worker'ı tarafından takip edilir (`OPEN_FIELD`, `EPM`,
+  `Y_MAZE`, `BARNES_MAZE`, `THREE_CHAMBER`, `MWM`, `LIGHT_DARK`) ve paradigma
+  sürümü için bir worker kaydedildiğinde bunlarda otomatik analiz vardır. Diğer
+  dördü (`ROTAROD`, `POLE`, `TREADMILL`, `NOVEL_OBJECT`) videoda bir gözlemci
+  tarafından puanlanır (aşağıdaki Gözlemci puanlaması bölümüne bakın).
 - `GET /api/paradigms/{key}` en son sürümü, `GET /api/paradigms/{key}/versions/{version}`
   ise belirli bir sürümü döndürür. Her sürüm; parametrelerini kapsamı (ortamda
   `APPARATUS` ve `ANALYSIS`, protokol adımında `SESSION`), etiketi, yardım metni,
@@ -443,7 +447,18 @@ gerekir.
   anahtarın iki açık kol gibi birden çok şekli olabilir. Her zorunlu bölgenin bir
   şekli olmalı ve her şekil karenin içinde kalmalıdır. Misko bunları kalibrasyonla
   santimetreye çevirir ve her bölgeyi iki birimde de döndürür. Worker bölgeleri
-  işiyle birlikte alır; metrikler santimetre şekilleriyle hesaplanır.
+  işiyle birlikte alır; metrikler santimetre şekilleriyle hesaplanır. Panelde
+  görsel kalibratör noktaları, kırpma alanını ve bölgeleri bir videonun karesi
+  üzerine yerleştirir: ortam varsayılanı için bilgisayarda seçilen bir video
+  dosyası (tarayıcıda okunur, asla yüklenmez), düzeltme için testin güncel
+  videosu.
+- Dünya noktaları, paradigmanın bölgelerinin tanımlandığı çerçeveyi kullanmalıdır.
+  Su labirentinde bu çerçeve tank merkezlidir: (0, 0) tankın merkezi, x doğuyu,
+  y kuzeyi gösterir; duvar noktaları r = tank çapı / 2 olmak üzere (r, 0),
+  (0, r), (-r, 0) ve (0, -r) olur. Açık alan bir taban köşesinden başlayan arena
+  yerel noktaları, aydınlık/karanlık aydınlık taraftaki bir köşeden başlayıp x'i
+  karanlık uç duvara doğru ilerleyen kutu yerel noktaları, kalibre edilen
+  bölgeleri olan paradigmalar ise herhangi bir çerçeveyi kullanır.
 - Bir kalibrasyonu düzeltmek için, `supersedesId` alanına aynı arenanın ya da
   hayvanın en son kalibrasyonunu yazarak yeni bir kalibrasyon gönderin. Önceki
   kalibrasyonlar saklanır.
@@ -452,30 +467,41 @@ gerekir.
   kalibrasyon uygulanana kadar `WAITING_FOR_CALIBRATION`, sonra `CALIBRATED`. Rotarod gibi video ölçümü
   olmayan paradigmalar `NOT_REQUIRED` gösterir.
 
-### Video analizi ve onay
+### Video analizi
 
-Takip, API ile konuşan ayrı analiz worker'larında çalışır. Sabit kameradan
-kaydedilmiş Open Field videosu için ilk worker `worker/` klasöründedir. Şimdiye
-kadar yalnızca sentetik videoyla test edildi; elle işaretlenmiş bir kayda karşı
-doğrulanana kadar sonuçlarını araştırmada kullanmayın.
+Takip, API ile konuşan ayrı analiz worker'larında çalışır. `worker/`
+klasöründeki worker, takip edilen her paradigmanın sabit kameradan kaydedilmiş
+videosunu izler: `OPEN_FIELD`, `EPM`, `Y_MAZE`, `BARNES_MAZE`,
+`THREE_CHAMBER`, `MWM` ve `LIGHT_DARK`, sürüm 1. Şimdiye kadar yalnızca
+sentetik videoyla test edildi; elle işaretlenmiş bir kayda karşı doğrulanana
+kadar sonuçlarını araştırmada kullanmayın.
 
 - LAB_MANAGER bir worker'ı `POST /api/analysis/workers` ile kaydeder; adını, model
-  sürümünü ve desteklediği paradigma sürümlerini verir. Yanıt worker'ın
-  token'ını yalnızca bir kez gösterir; bunu worker'ın gizli yapılandırmasında
-  saklayın. `POST /api/analysis/workers/{id}/disable` token'ı iptal eder.
+  sürümünü ve desteklediği paradigma sürümlerini verir. Paketle gelen worker'ı
+  `misko-tracker-bgsub 2.0.0` model sürümüyle ve takip edilen yedi paradigmanın
+  hepsiyle, sürüm 1 olarak kaydedin (bkz. [Kurulum](../installation/)). Gözlemci
+  puanlamalı paradigmalar `worker.unknownCapability` ile reddedilir. Yanıt
+  worker'ın token'ını yalnızca bir kez gösterir; bunu worker'ın gizli
+  yapılandırmasında saklayın. `POST /api/analysis/workers/{id}/disable` token'ı iptal eder.
   Worker'ı `MISKO_WORKER_TOKEN` ayarlıyken başlatın, örneğin
   `docker compose --profile worker up -d worker`.
 - `jobs` süreci her `JOB_INTERVAL` aralığında (varsayılan 10 saniye) bir
   testteki her hayvan için bir çalıştırma kuyruğa alır: deney çalışıyor veya
   tamamlanmış, hayvan dışlanmamış, testin videosu doğrulanmış, hayvanın
   kalibrasyonu (paradigma gerektiriyorsa) geçerli ve paradigmayı destekleyen bir
-  worker varsa.
+  worker varsa. Gözlemci puanlamalı paradigmalar asla böyle bir çalıştırma
+  almaz.
 - Worker hayvanı her karede arenasının kırpma alanında bulur, konumunu
   santimetreye çevirir ve konumları (yörüngeyi) ve işaretlenmiş bir videoyu
   yükler. Hayvanın grubunu veya tedavisini hiç öğrenmez. Mişko her metriği ve
   olayı yörüngeden hesaplar; worker kendi sayılarını gönderemez. Çok fazla kare
   kaybedilirse veya takip güveni çok düşükse çalıştırma `QC_FAILED` gerekçesiyle
-  `FAILED` olur ve hiçbir şey yayınlanmaz.
+  `FAILED` olur ve hiçbir şey yayınlanmaz. Aydınlık/karanlık kutuda hayvanın
+  karanlık bölmede gizli olduğu kareler çıkarımlı örnek olarak gönderilir:
+  takip edilmiş sayılırlar ama güven ortalamasına girmezler.
+- Her çalıştırmanın bir `method` alanı vardır: worker çalıştırması için
+  `AUTOMATED`, bir gözlemcinin puanlamasından hesaplanan çalıştırma için
+  `SCORED` (`scoredBy` ile; worker, kalibrasyon ve video çifti olmadan).
 - Bir çalıştırma neyin analiz edildiğini tam olarak kaydeder: video sürümü, klip,
   kalibrasyon, paradigma sürümü ve parametreler. Bir hayvanı yeniden analiz
   etmek için TECHNICIAN (veya üstü bir rol)
@@ -487,8 +513,36 @@ doğrulanana kadar sonuçlarını araştırmada kullanmayın.
   süreli bağlantıları, ikisini eş zamanlı oynatmak için gereken kaymalarla
   döndürür.
 
+### Gözlemci puanlaması
+
+Rotarod, direk, koşu bandı ve yeni nesne testleri testin güncel videosunda bir
+kişi tarafından puanlanır. TECHNICIAN ve üstü roller puanlayabilir; giriş yapmış
+herkes okuyabilir.
+
+- `GET /api/tests/{id}/subjects/{testSubjectId}/scoring` paradigmanın girdi
+  olaylarını (tür, `POINT` ya da `INTERVAL`, `novel` ve `familiar` gibi
+  etiketler, bir kez puanlanıp puanlanmadığı), güncel videonun klibini ve en
+  yeni puanlama sayfasını olaylarıyla döndürür.
+- `POST .../scoring/events`, `{type, label?, startUs, endUs?}` ile taslak
+  sayfaya bir olay ekler (ilk olay sürüm 1'i başlatır). Zamanlar klip
+  başlangıcından itibaren mikrosaniyedir. `PATCH .../events/{eventId}` bir olayı
+  değiştirir, `DELETE` kaldırır.
+- `POST .../scoring/complete`, `{scoredEventTypes?, durationUs?}` ile hangi olay
+  türlerinin izlendiğini (varsayılan hepsi) ve kayıt uzunluğunu (varsayılan
+  klip) sabitler. Motor metrikleri hesaplar ve `SCORED` yöntemli `SUCCEEDED` bir
+  çalıştırma saklanır; sonucu diğerleri gibi onay kuyruğunda `PENDING` olarak
+  açılır.
+- `POST .../scoring/reopen`, olayların bir kopyasıyla bir sonraki sayfa
+  sürümünü başlatır; tamamlanması, inceleyenin seçebileceği başka bir
+  çalıştırma ekler. Tamamlanmış sayfalar asla değişmez.
+- Puanlama için test sürüyor ya da tamamlanmış, deney çalışıyor, hayvan
+  dışlanmamış ve video doğrulanmış olmalıdır.
+
+### Onay
+
 Her sonuç sayılmadan önce bir kişi tarafından onaylanır. Bir hayvanın ilk
-başarılı çalıştırması sonucunu `PENDING` olarak açar.
+başarılı çalıştırması, otomatik ya da puanlanmış, sonucunu `PENDING` olarak
+açar.
 
 - `GET /api/analysis/results` onay kuyruğudur (`status`, `experimentId`). Kör
   bir deneyde grup, hastalık, madde veya doz göstermez.

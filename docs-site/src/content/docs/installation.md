@@ -87,6 +87,50 @@ To use a private Google Cloud Storage bucket instead, set `GCS_BUCKET` (and
 `GCS_SIGNER_EMAIL`). When a bucket is set it takes precedence over the local
 directory.
 
+### Analysis worker
+
+The worker is optional: without it, tests can still be recorded and the
+observer-scored paradigms (rotarod, pole, treadmill, novel object) are scored
+in the panel, but tracked paradigms are not analysed. It tracks the seven
+tracked paradigms: `OPEN_FIELD`, `EPM`, `Y_MAZE`, `BARNES_MAZE`,
+`THREE_CHAMBER`, `MWM` and `LIGHT_DARK`. It has been tested on synthetic video
+only.
+
+1. Sign in as a lab manager or the administrator and register the worker with
+   model version `misko-tracker-bgsub 2.0.0` and every tracked capability at
+   version 1. Observer-scored paradigms cannot be capabilities.
+
+   ```bash
+   TOKEN=$(curl -s http://localhost:4000/api/auth/login \
+     -H 'Content-Type: application/json' \
+     -d '{"email": "admin@misko.local", "password": "YOUR_PASSWORD"}' | jq -r .token)
+   curl -s http://localhost:4000/api/analysis/workers \
+     -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+     -d '{
+    "name": "worker-1",
+    "modelVersion": "misko-tracker-bgsub 2.0.0",
+    "capabilities": [
+      {"paradigmKey": "OPEN_FIELD", "paradigmVersion": 1},
+      {"paradigmKey": "EPM", "paradigmVersion": 1},
+      {"paradigmKey": "Y_MAZE", "paradigmVersion": 1},
+      {"paradigmKey": "BARNES_MAZE", "paradigmVersion": 1},
+      {"paradigmKey": "THREE_CHAMBER", "paradigmVersion": 1},
+      {"paradigmKey": "MWM", "paradigmVersion": 1},
+      {"paradigmKey": "LIGHT_DARK", "paradigmVersion": 1}
+    ]
+  }'
+   ```
+
+2. The response shows the worker token (`mw_...`) once. Put it in `.env` as
+   `MISKO_WORKER_TOKEN` and start the worker:
+
+   ```bash
+   docker compose --profile worker up -d worker
+   ```
+
+`GET /api/analysis/capabilities` lists what the enabled workers can analyse.
+The worker's own settings and limits are in `worker/README.md`.
+
 ### Upgrading from an earlier version
 
 The database volume is now called `postgres-data`. The older `foundation-db` and

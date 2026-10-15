@@ -20,8 +20,10 @@ disease model? Everything in the panel follows that question:
    what it receives), timepoints, protocols and endpoints, then started.
 5. Animals are **allocated** to groups, **dosed** every day and filmed in
    **test sessions**.
-6. An analysis worker measures every animal on the session video. A person
-   **reviews** each result, and only accepted results enter the **report**.
+6. Every animal is measured on the session video: an analysis worker tracks it
+   in tracked paradigms, and a person scores it in observer-scored ones. A
+   person **reviews** each result, and only accepted results enter the
+   **report**.
 
 The panel is in Turkish by default. Use the language switch in the top bar to
 change it to English; your choice is remembered.
@@ -45,7 +47,7 @@ hides buttons the API would refuse.
 |---|---|
 | `SUPERADMIN`, `LAB_MANAGER` | Everything, including users and lab settings. |
 | `RESEARCHER` | Everything except users and lab settings: catalog, subjects, environments, study design, planning sessions, dosing, running sessions, review. |
-| `TECHNICIAN` | The lab day: record doses and weights, start and complete sessions, record trials, upload videos, calibrate an animal on a video, review results. Cannot plan or cancel sessions or change a study. |
+| `TECHNICIAN` | The lab day: record doses and weights, start and complete sessions, record trials, upload videos, calibrate an animal on a video, score observer-scored tests, review results. Cannot plan or cancel sessions or change a study. |
 | `VIEWER` | Reads everything, changes nothing. |
 
 When you create a user on the **Users** screen you may leave the password blank
@@ -110,15 +112,61 @@ environment**:
 4. Click **Save**. The environment's page opens.
 
 **Default calibration.** A camera that does not move is calibrated once per
-arena, and every video filmed in that arena uses it:
+arena, and every video filmed in that arena uses it. Calibration tells Mişko how
+camera pixels map to centimetres on the apparatus, and for some paradigms where
+the zones (arms, holes, chambers) are. Observer-scored paradigms (rotarod, pole,
+treadmill, novel object) need no calibration.
 
-1. On the environment's page click **Calibrate this revision**.
-2. Fill in the camera, the frame size and the crop of this arena in the frame.
-3. Enter four fit points (pixel position and real position in cm, usually the
-   corners) and at least three check points.
-4. Click **Save**. The panel shows the fit and check errors and the tolerance.
-   A calibration whose check error is above the tolerance is rejected; enter it
-   again with better points.
+1. On the environment's page click **Calibrate this revision**. The visual
+   calibrator opens.
+2. Under **Video for the frame** click **Choose a video file** and pick a video
+   filmed with this camera. The file is only read in your browser to show a
+   frame; it is never uploaded. The frame size is read from the video. Use the
+   scrubber and the frame step buttons to pick a frame where the apparatus is
+   clearly visible.
+3. Type the **Camera** name and check the **Measurement plane** (arena floor,
+   or water surface for the water maze).
+4. With the **Fit points** tool, click each fit point on the frame, then drag it
+   to adjust. The highlighted row is the point the next click places; click a
+   row to choose another one. For open field, light/dark and the water maze,
+   **Use the apparatus points** fills in the real positions from the
+   environment's measurements, so you only click them in turn:
+   - open field and light/dark: the four inside corners of the floor, from the
+     origin corner (0, 0) along the width and the depth. For light/dark the
+     origin is a corner on the light side and x runs toward the dark end wall.
+   - water maze: the north, east, south and west points of the tank wall,
+     measured from the tank centre (x grows east, y north).
+
+   For the other paradigms type the real position in cm of every point you
+   click, in any frame you like (for example centred on the maze).
+5. With the **Check points** tool, place at least three check points at
+   places other than the fit points (the presets use the middles of the sides,
+   or the diagonal wall points of the tank).
+6. With the **Crop** tool, drag a rectangle around this arena. Points and zones
+   must lie inside it. **Whole frame** resets it.
+7. If the paradigm has drawn zones (elevated plus maze, Y maze, Barnes maze,
+   three-chamber), open the **Zones** tool. Every zone is listed as
+   **Required** or **Optional**. Click **Draw polygon** or **Draw circle** next
+   to a zone and draw it on the frame:
+   - a polygon: click each corner, then click the first corner again (or
+     **Close polygon**) to close it; **Undo last corner** removes the last one;
+   - a circle: press at the centre and drag to the edge.
+
+   A zone may need several shapes, for example one per open arm of the plus
+   maze or one per hole of the Barnes maze; draw them one after another under
+   the same zone. While drawing, a click on a corner or centre of a shape
+   already drawn snaps to it, so neighbouring zones share their edges exactly.
+   Drag the handles of a finished shape to adjust it, or use **Redraw** and
+   **Delete**. **Stop drawing** ends the current zone.
+8. Every value can also be typed under **Enter numbers by hand**. The list
+   under the frame says what is still missing.
+9. Click **Save the calibration**. The panel shows the fit and check errors,
+   the tolerance and each zone in pixels and in cm. A calibration whose check
+   error is above the tolerance is rejected; save it again with better points.
+
+Analyses in this arena wait until a valid calibration with every required zone
+exists. A saved calibration never changes: **Correct calibration** saves a new
+one that replaces it, and earlier calibrations are kept.
 
 **Revisions.** Measurements are never edited in place, so every test keeps the
 values it was run with. Click **Change the measurements** to create a new
@@ -241,8 +289,13 @@ The view and filters are kept in the address.
    a confirmation; earlier videos stay listed under **Earlier videos**.
 4. Each animal's card shows which calibration its part of the frame uses:
    normally the **Arena default**. If the camera or an arena moved, click
-   **Calibrate on this video** on that animal and enter the points for this
-   video only. The other animals keep their arena default.
+   **Calibrate on this video** on that animal. The same calibrator opens on a
+   frame of the session's own video, starting from the arena's points and
+   zones: move the points and zones to where they are in this video and save.
+   The frame you used is kept with the calibration. It applies to this animal
+   on this video only; the other animals keep their arena default. If it is
+   rejected, the animal waits for a new one instead of falling back to the
+   arena default.
 5. Click **Complete** when every animal has at least one trial; until then the
    button stays disabled and the page says why.
 
@@ -251,10 +304,50 @@ can comment; you can edit your own, and lab managers can delete any.
 
 ## Analysis and result review
 
-When a running session's video is verified, the analysis worker measures each
-animal in its arena. The **Analysis** block of the session page shows the state
-of each animal, and **Analyse again** queues a new run (for example after a new
+How an animal is measured depends on the paradigm:
+
+| Paradigm | How it is measured |
+|---|---|
+| Open field, elevated plus maze, Y maze, Barnes maze, three-chamber, water maze, light/dark | **Tracked**: an analysis worker follows the animal on the video. |
+| Rotarod, pole, treadmill, novel object | **Observer scored**: a person marks the events on the video. |
+
+**Tracked paradigms.** When a running session's video is verified and the
+animal's calibration is valid, the analysis worker measures each animal in its
+arena. The **Analysis** block of the session page shows the state of each
+animal, and **Analyse again** queues a new run (for example after a new
 calibration).
+
+**Scoring an observer-scored test.** Technicians and the roles above them score
+each animal on the session's verified video:
+
+1. Upload the session video first; scoring is done on it.
+2. On the animal's card, under **Observer scoring**, click **Score video**. The
+   scoring player opens.
+3. Play the video or step through it. **Space** plays and pauses, the **left
+   and right arrows** step one frame (with **Shift** one second), and the speed
+   list slows playback down to 0.25x.
+4. Score each event at the moment it happens with its button or the number
+   shown on it (1 to 9, then 0):
+   - a point event (a rotarod fall, a pole turn or arrival at the base, a
+     treadmill shock or exhaustion) is marked at the current time;
+   - an interval event (novel object exploration) is started with one press
+     and stopped with the next. Each label has its own button, for example
+     exploration of the **novel** and of the **familiar** object.
+
+   An event that can happen only once (a fall) is moved to the new time if you
+   score it again.
+5. The scored events appear on a timeline and in a list. Click an event to jump
+   to it, **Edit** its times or label, or **Delete** it.
+6. Under **Scored event types**, tick every event you watched for. A ticked
+   event that never happened counts as not observed (for example a rotarod trial
+   without a fall); an unticked one is reported as not scored.
+7. Click **Complete scoring** and confirm. Mişko computes the metrics from the
+   events and the result appears in the review queue as pending, like any
+   analysed result.
+
+To correct a completed scoring, click **Reopen for corrections**. It opens a new
+version with a copy of the events; completing it again adds a new run the
+reviewer can choose. The earlier version and its result are kept.
 
 Every result must be approved by a person before it counts. Open **Result
 review**:
@@ -262,6 +355,8 @@ review**:
 1. The list shows results waiting for review, filtered by experiment and status
    (pending, accepted, rejected, all). The filters are kept in the address.
 2. Click a row to open the analysed video, the quality checks and the metrics.
+   A scored result has no analysed video or calibration check; its metrics and
+   events are shown, and the video is watched in the scoring player.
 3. Click **Accept**, or choose a reason (tracking lost, wrong animal, video
    defect, protocol deviation, other), add a note and click **Reject**. The
    drawer then moves to the next pending result.

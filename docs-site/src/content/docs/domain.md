@@ -20,8 +20,10 @@ Execution:  Subject -> Allocation (one group, ever) -> Administrations,
                                                        Induction outcome
             Test (session: timepoint x protocol step, one video)
               -> Test subjects (animal + arena) -> Trials
-                                                -> Calibration (arena or override)
-                                                -> Analysis runs -> Reviewed result
+                                                -> Calibration (arena or override, with zones)
+                                                -> Scoring sheets (observer-scored paradigms)
+                                                -> Analysis runs (AUTOMATED or SCORED)
+                                                   -> Reviewed result
 
 Report:     accepted results per animal -> groups -> role-based comparisons
 ```
@@ -141,9 +143,24 @@ its own arena; usually one, sometimes up to three arenas under one camera.
   (environment revision) is calibrated once when the rig is set up, with its
   crop as the arena's region of the camera frame. When the camera or arena moved,
   a manual **override** applies to one test subject on the current video.
-- **Analysis run:** one per test subject. A worker tracks the animal inside its
-  arena's crop and uploads the trajectory; Mişko computes every metric and event
-  from it. Inputs are pinned, so reanalysis is a new run and old runs stay.
+  Paradigms whose zones are not derived from parameters (elevated plus maze,
+  Y maze, Barnes maze, three-chamber) carry their **zones** with the
+  calibration, drawn on the frame in pixels and stored in centimetres too; a
+  calibration and its zones never change. Observer-scored paradigms need no
+  calibration.
+- **Scoring sheet:** for an observer-scored paradigm (`ROTAROD`, `POLE`,
+  `TREADMILL`, `NOVEL_OBJECT`), the events a person marks for one test subject
+  on the current video, in microseconds from the clip start. A sheet is a
+  `DRAFT` while it is scored and `COMPLETED` once its scored event types and
+  recording length are fixed; reopening starts the next version and completed
+  sheets never change.
+- **Analysis run:** one per test subject. Its `method` is `AUTOMATED` when a
+  worker tracks the animal inside its arena's crop and uploads the trajectory
+  (`OPEN_FIELD`, `EPM`, `Y_MAZE`, `BARNES_MAZE`, `THREE_CHAMBER`, `MWM`,
+  `LIGHT_DARK`), or `SCORED` when it is computed from a completed scoring sheet,
+  with the scorer and no worker, calibration or video pair. Either way Mişko
+  computes every metric and event itself. Inputs are pinned, so reanalysis or
+  rescoring is a new run and old runs stay.
 - **Reviewed result:** every result is approved by a person. The first
   successful run of an animal opens a `PENDING` result; a reviewer accepts it or
   rejects it with a reason. In a blinded study the reviewer does not see the

@@ -1,6 +1,6 @@
 # Analysis for every paradigm
 
-Status: in progress. Date: 2026-10-15. Goal: every published paradigm can be
+Status: done. Date: 2026-10-15. Goal: every published paradigm can be
 analysed end to end and its results reviewed and reported.
 
 The metric engine (`backend/internal/paradigms/domain`) already computes all
@@ -83,3 +83,15 @@ inputs:
 Register the worker with every tracked capability, rebuild the local stack,
 and run one real study per paradigm group end to end (tracked with zones,
 MWM, light/dark, observer scored), then extend the Playwright suite.
+
+## Verified (2026-10-15)
+
+All five work packages are merged into `feat/fresh-schema`. An end-to-end study
+on the local stack passed for EPM, Y_MAZE, MWM and LIGHT_DARK (tracked by the
+worker registered with every tracked capability, model version
+`misko-tracker-bgsub 2.0.0`) and for ROTAROD and NOVEL_OBJECT (observer
+scored). BARNES_MAZE and
+THREE_CHAMBER are covered by the worker's layout tests only, not by a study on
+the local stack. The documentation (usage, measurements, installation, domain,
+Go backend, English and Turkish) describes the calibrator, zones, scoring and
+the worker capabilities.

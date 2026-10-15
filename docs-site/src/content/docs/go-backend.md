@@ -26,7 +26,8 @@ current release. Do not deploy it.
 | Tests as sessions with one or more animals in arenas, trials and comments | Implemented |
 | Video uploads to Google Cloud Storage, one current video per test | Implemented, live storage test pending |
 | Calibration per arena with per-animal overrides | Implemented |
-| Analysis runs per animal and human review of every result | Implemented, Open Field worker tested on synthetic video only |
+| Analysis runs per animal and human review of every result | Implemented; the worker tracks all seven tracked paradigms, tested on synthetic video only |
+| Observer scoring of rotarod, pole, treadmill and novel object | Implemented |
 | Study report with role-based comparisons, CSV export, dashboard | Implemented |
 | Vue panel on the new API | Scaffolded, not complete |
 
@@ -285,8 +286,11 @@ code and cannot be created, edited or deleted through the API.
   automated video analysis is available (`automatedAnalysis`). Eleven
   paradigms are published: `BARNES_MAZE`, `EPM`, `LIGHT_DARK`, `MWM`,
   `NOVEL_OBJECT`, `OPEN_FIELD`, `POLE`, `ROTAROD`, `THREE_CHAMBER`, `TREADMILL`
-  and `Y_MAZE`. Automated analysis is available only where an analysis worker
-  is registered for the paradigm version.
+  and `Y_MAZE`. Seven are tracked by an analysis worker (`OPEN_FIELD`, `EPM`,
+  `Y_MAZE`, `BARNES_MAZE`, `THREE_CHAMBER`, `MWM`, `LIGHT_DARK`), and automated
+  analysis is available for them once a worker is registered for the paradigm
+  version. The other four (`ROTAROD`, `POLE`, `TREADMILL`, `NOVEL_OBJECT`) are
+  scored by an observer on the video (see [Observer scoring](#observer-scoring)).
 - `GET /api/paradigms/{key}` returns the latest version, and
   `GET /api/paradigms/{key}/versions/{version}` returns one exact version. Each
   version lists its parameters, each with its scope (`APPARATUS` and `ANALYSIS`
@@ -434,7 +438,17 @@ to know how camera pixels map to centimeters in each arena.
   have several shapes, such as the two open arms. Every required zone needs a
   shape and every shape must lie inside the frame. Misko converts them to
   centimeters with the calibration and returns each zone in both. The worker
-  receives them with its job, and the metrics use the centimeter shapes.
+  receives them with its job, and the metrics use the centimeter shapes. In the
+  panel the visual calibrator places the points, the crop and the zones on a
+  frame of a video: for an environment default a video file chosen on the
+  computer (read in the browser, never uploaded), for an override the test's
+  current video.
+- World points must use the frame the paradigm's zones are defined in. For the
+  water maze that frame is tank-centred: (0, 0) is the tank centre, x points
+  east and y north, so the wall points are (r, 0), (0, r), (-r, 0) and (0, -r)
+  with r = tank diameter / 2. Open field uses arena-local points from one floor
+  corner, light/dark box-local points from a light-side corner with x toward
+  the dark end wall, and paradigms with calibrated zones any frame.
 - To fix a calibration, send a new one with `supersedesId` set to the latest
   calibration of the same arena or animal. Earlier calibrations are kept.
 - `GET /api/tests/{id}/calibration-status` lists every animal of a test:
@@ -442,17 +456,22 @@ to know how camera pixels map to centimeters in each arena.
   with every required zone applies, then `CALIBRATED`. Paradigms without video measurements, such as the
   rotarod, show `NOT_REQUIRED`.
 
-### Video analysis and review
+### Video analysis
 
-Tracking runs in separate analysis workers that talk to the API. The first
-worker, for recorded Open Field video from a fixed camera, is in the `worker/`
-folder. It has only been tested on synthetic video so far; do not use its
-results for research until it has been checked against a manually annotated
-recording.
+Tracking runs in separate analysis workers that talk to the API. The worker in
+the `worker/` folder tracks recorded fixed-camera video of every tracked
+paradigm: `OPEN_FIELD`, `EPM`, `Y_MAZE`, `BARNES_MAZE`, `THREE_CHAMBER`, `MWM`
+and `LIGHT_DARK`, version 1. It has only been tested on synthetic video so far;
+do not use its results for research until it has been checked against a
+manually annotated recording.
 
 - A lab manager registers a worker with `POST /api/analysis/workers`, giving its
-  name, model version and the paradigm versions it supports. The response shows
-  the worker's token only once; store it in the worker's secret configuration.
+  name, model version and the paradigm versions it supports. Register the
+  bundled worker with model version `misko-tracker-bgsub 2.0.0` and all seven
+  tracked paradigms at version 1 (see [Installation](../installation/#analysis-worker)).
+  Observer-scored paradigms are refused with `worker.unknownCapability`. The
+  response shows the worker's token only once; store it in the worker's secret
+  configuration.
   `POST /api/analysis/workers/{id}/disable` revokes it. Start the worker with
   `MISKO_WORKER_TOKEN` set, for example
   `docker compose --profile worker up -d worker`.
@@ -460,12 +479,19 @@ recording.
   per animal of a test, when the experiment is running or completed, the animal
   is not excluded, the test's video is verified, the animal's calibration is
   valid (when the paradigm needs one) and a worker supports the paradigm.
+  Observer-scored paradigms never get such runs.
 - The worker finds the animal inside its arena's crop in every frame, converts
   its position to centimeters, and uploads the positions (the trajectory) and an
   annotated video. It never learns the animal's group or treatment. Misko
   computes every metric and event from the trajectory; a worker cannot send its
   own numbers. If too many frames are lost or the tracking confidence is too
   low, the run is `FAILED` with a `QC_FAILED` reason and nothing is published.
+  In the light/dark box, frames where the animal is hidden in the dark
+  compartment are sent as inferred samples: they count as tracked, but not in
+  the confidence mean.
+- Every run has a `method`: `AUTOMATED` for a worker run, `SCORED` for a run
+  computed from an observer's scoring (with `scoredBy` and no worker,
+  calibration or video pair).
 - A run records exactly what was analyzed: the video version, the clip, the
   calibration, the paradigm version and the parameters. To analyze an animal
   again, a technician (or a role above) calls
@@ -475,8 +501,35 @@ recording.
   returns short-lived links to the original and analyzed video with the offsets
   needed to play them in sync.
 
+### Observer scoring
+
+Rotarod, pole, treadmill and novel object tests are scored by a person on the
+test's current video. Technicians and the roles above them can score; everyone
+signed in can read.
+
+- `GET /api/tests/{id}/subjects/{testSubjectId}/scoring` returns the paradigm's
+  input events (type, `POINT` or `INTERVAL`, labels such as `novel` and
+  `familiar`, whether it is scored once), the current video's clip and the
+  newest scoring sheet with its events.
+- `POST .../scoring/events` with `{type, label?, startUs, endUs?}` adds an event
+  to the draft sheet (the first event starts version 1). Times are microseconds
+  from the clip start. `PATCH .../events/{eventId}` replaces an event and
+  `DELETE` removes it.
+- `POST .../scoring/complete` with `{scoredEventTypes?, durationUs?}` fixes which
+  event types were watched for (default all) and the recording length (default
+  the clip). The engine computes the metrics and a `SUCCEEDED` run with method
+  `SCORED` is stored; its result opens `PENDING` in the review queue like any
+  other.
+- `POST .../scoring/reopen` starts the next sheet version with a copy of the
+  events; completing it adds another run the reviewer can choose. Completed
+  sheets never change.
+- Scoring needs a test in progress or completed, a running experiment, an
+  animal that is not excluded and a verified video.
+
+### Review
+
 Every result is approved by a person before it counts. The first successful run
-of an animal opens its result as `PENDING`.
+of an animal, automated or scored, opens its result as `PENDING`.
 
 - `GET /api/analysis/results` is the review queue (`status`, `experimentId`).
   In a blinded experiment it shows no group, disease, substance or dose.

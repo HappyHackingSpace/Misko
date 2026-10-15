@@ -89,7 +89,7 @@ services:
       db:
         condition: service_healthy
 
-  # Open Field analysis worker; start it with --profile worker after registering
+  # Analysis worker for every tracked paradigm; start it with --profile worker after registering
   # a worker and setting MISKO_WORKER_TOKEN. It reads sources and writes outputs
   # through signed URLs, from local storage on the API or from GCS.
   worker:

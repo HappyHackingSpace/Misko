@@ -88,6 +88,49 @@ Bunun yerine özel bir Google Cloud Storage bucket'ı kullanmak için `GCS_BUCKE
 (ve `GCS_SIGNER_EMAIL`) değerlerini verin. Bucket ayarlıysa yerel klasörün önüne
 geçer.
 
+### Analiz worker'ı
+
+Worker opsiyoneldir: o olmadan da testler kaydedilebilir ve gözlemci puanlamalı
+paradigmalar (rotarod, direk, koşu bandı, yeni nesne) panelde puanlanır, ama
+takip edilen paradigmalar analiz edilmez. Worker takip edilen yedi paradigmayı
+izler: `OPEN_FIELD`, `EPM`, `Y_MAZE`, `BARNES_MAZE`, `THREE_CHAMBER`, `MWM` ve
+`LIGHT_DARK`. Yalnızca sentetik videoyla test edildi.
+
+1. Laboratuvar yöneticisi ya da yönetici olarak giriş yapın ve worker'ı
+   `misko-tracker-bgsub 2.0.0` model sürümüyle ve takip edilen her yeteneği
+   sürüm 1 olarak kaydedin. Gözlemci puanlamalı paradigmalar yetenek olamaz.
+
+   ```bash
+   TOKEN=$(curl -s http://localhost:4000/api/auth/login \
+     -H 'Content-Type: application/json' \
+     -d '{"email": "admin@misko.local", "password": "SIFRENIZ"}' | jq -r .token)
+   curl -s http://localhost:4000/api/analysis/workers \
+     -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+     -d '{
+    "name": "worker-1",
+    "modelVersion": "misko-tracker-bgsub 2.0.0",
+    "capabilities": [
+      {"paradigmKey": "OPEN_FIELD", "paradigmVersion": 1},
+      {"paradigmKey": "EPM", "paradigmVersion": 1},
+      {"paradigmKey": "Y_MAZE", "paradigmVersion": 1},
+      {"paradigmKey": "BARNES_MAZE", "paradigmVersion": 1},
+      {"paradigmKey": "THREE_CHAMBER", "paradigmVersion": 1},
+      {"paradigmKey": "MWM", "paradigmVersion": 1},
+      {"paradigmKey": "LIGHT_DARK", "paradigmVersion": 1}
+    ]
+  }'
+   ```
+
+2. Yanıt worker token'ını (`mw_...`) yalnızca bir kez gösterir. Bunu `.env`
+   içine `MISKO_WORKER_TOKEN` olarak yazın ve worker'ı başlatın:
+
+   ```bash
+   docker compose --profile worker up -d worker
+   ```
+
+`GET /api/analysis/capabilities` etkin worker'ların neyi analiz edebildiğini
+listeler. Worker'ın kendi ayarları ve sınırları `worker/README.md` içindedir.
+
 ### Önceki bir sürümden yükseltme
 
 Veritabanı volume'unun adı artık `postgres-data`. Eski `foundation-db` ve `db-data`

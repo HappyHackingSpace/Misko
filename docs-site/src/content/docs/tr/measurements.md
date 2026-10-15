@@ -74,6 +74,79 @@ Bir hesaplamayı, aralığı ya da varsayılanı değiştirmek yeni bir paradigm
 sürümü yayımlar. İfadeler ve yardım metinleri yeni sürüm gerektirmeden
 iyileştirilebilir.
 
+## Takip edilen ve gözlemci puanlamalı paradigmalar
+
+On bir paradigmanın her biri girdilerini iki yoldan biriyle alır. Metrikleri her
+iki durumda da `backend/internal/paradigms/domain` içindeki metrik motoru
+hesaplar; böylece bir ölçümün, girdisini ne üretmiş olursa olsun tek bir tanımı
+vardır.
+
+| Paradigma | Yöntem | Girdi | Bölgeler |
+|---|---|---|---|
+| `OPEN_FIELD` | Takip edilir (`AUTOMATED` çalıştırma) | yörünge | parametrelerden (arena, merkez) |
+| `LIGHT_DARK` | Takip edilir | yörünge, çıkarımlı örneklerle | parametrelerden (aydınlık, karanlık) |
+| `MWM` | Takip edilir | tank merkezli cm cinsinden yörünge | parametrelerden (platform, hedef çeyrek, duvar kenarı bölgesi) |
+| `EPM` | Takip edilir | yörünge | kalibre edilen, zorunlu: `center`, `open_arms`, `closed_arms` |
+| `Y_MAZE` | Takip edilir | yörünge | kalibre edilen, zorunlu: `arm_a`, `arm_b`, `arm_c` |
+| `BARNES_MAZE` | Takip edilir | yörünge | kalibre edilen, zorunlu: `target_hole`, `holes` |
+| `THREE_CHAMBER` | Takip edilir | yörünge | kalibre edilen, zorunlu: `social_chamber`, `object_chamber`, `center_chamber`; isteğe bağlı: `social_interaction`, `object_interaction` |
+| `ROTAROD` | Gözlemci puanlar (`SCORED` çalıştırma) | `fall` (an, bir kez) | yok |
+| `POLE` | Gözlemci puanlar | `turn_complete`, `base_reached`, `fall` (anlar, her biri bir kez) | yok |
+| `TREADMILL` | Gözlemci puanlar | `exhaustion` (an, bir kez), `shock` (anlar) | yok |
+| `NOVEL_OBJECT` | Gözlemci puanlar | `exploration` (`novel` ya da `familiar` etiketli aralıklar) | yok |
+
+- **Takip edilen paradigmaları** bir işçi analiz eder. Testin videosu
+  doğrulandığında, hayvanın kalibrasyonu geçerli olduğunda ve etkin bir işçinin
+  yetenekleri arasında paradigma sürümü bulunduğunda jobs süreci hayvan başına
+  bir `AUTOMATED` çalıştırma kuyruğa ekler. İşçi, kalibrasyonun santimetre
+  çerçevesinde bir yörünge yükler; API ondan asla metrik kabul etmez.
+- **Gözlemci puanlamalı paradigmalar** asla işçi çalıştırması almaz ve bir işçi
+  bunları yetenek olarak kaydedemez. Bir kişi girdi olaylarını testin güncel
+  videosunda işaretler; puanlama sayfasının tamamlanması motoru çalıştırır ve
+  puanlayanı kaydeden, işçisi, kalibrasyonu ve video çifti olmayan bir `SCORED`
+  çalıştırma saklar. Olay zamanları klip başlangıcından itibaren
+  mikrosaniyedir. Puanlandı olarak işaretlenip hiç gerçekleşmeyen bir olay türü
+  gözlenmedi sayılır; puanlanmamış bir olay türünün metrikleri sıfır değil,
+  eksik olur.
+
+Her iki çalıştırma türü de aynı hayvan başına sonucu besler; bu sonuç insan
+onayı için `PENDING` olarak açılır ve yalnızca kabul edilen sonuçlar rapora
+girer.
+
+### Bölge gereksinimleri
+
+Bölgeler iki yerden birinden gelir:
+
+- **Parametrelerden.** Açık alan, aydınlık/karanlık ve su labirenti
+  bölgelerini ortamın ölçülerinden türetir (örneğin `center_fraction`,
+  `light_fraction`, platform konumu). Kalibrasyonlarının dünya noktaları bu
+  bölgelerin tanımlandığı çerçeveyi kullanmalıdır: açık alanda bir taban
+  köşesinden başlayan arena yerel çerçeve, aydınlık/karanlıkta aydınlık
+  taraftaki bir köşeden başlayıp x'i karanlık uç duvara doğru ilerleyen kutu
+  yerel çerçeve, su labirentinde ise **tank merkezli** çerçeve ((0, 0) tankın
+  merkezi, x doğu, y kuzey; duvar noktaları r = tank çapı / 2 olmak üzere
+  (r, 0), (0, r), (-r, 0) ve (0, -r)).
+- **Kalibre edilen.** EPM, Y labirenti, Barnes labirenti ve üç bölmeli test
+  bölgeleri, kalibrasyonla birlikte kamera karesi üzerine daire ya da çokgen
+  olarak çizilir. Bir anahtarın birden çok şekli olabilir (iki açık kol, Barnes
+  deliklerinin her biri için bir şekil). Şekiller çizildiği gibi piksel olarak
+  saklanır ve kalibrasyonun uydurulan dönüşümüyle santimetreye çevrilir; karenin
+  içinde kalmaları gerekir ve kalibrasyon kaydedildikten sonra asla değişmezler
+  (`014_calibration_zones.sql` migrasyonu). Her zorunlu bölgesi olan geçerli bir
+  kalibrasyon uygulanana kadar hayvan `WAITING_FOR_CALIBRATION` durumunda kalır
+  ve analiz edilmez. İşçi takibi bölgelerin dışbükey zarfıyla (bir payla)
+  sınırlar; böylece Y labirentinin merkezi gibi hiçbir bölgeye ait olmayan
+  kavşaklar da takip edilir.
+
+### Çıkarımlı örnekler
+
+Aydınlık/karanlık kutuda hayvan karanlık bölmenin kapağı altında kaybolur.
+Hiçbir tespitin olmadığı bir kare dizisi, hayvan en son karanlık bölmede ya da
+kapısında görüldüyse ve bir sonraki görülüşü yine orada olursa (ya da klip
+biterse) doldurulur. Bu örnekler `misko.trajectory.v1` içinde `tracked` ve
+`inferred: true` olarak işaretlenir; böylece motor karanlıkta geçen süreyi ve
+geçişleri sayar. Başka bir yerdeki kayboluş kayıp olarak kalır.
+
 ## Geçti/kaldı verdikti yok
 
 Bir lab test sonucu **veridir, verdikt değil**. Mişko davranışsal bir `passed`
@@ -231,6 +304,25 @@ kendisidir.
 | `contrast_warning` | `boolean` | Manuel inceleme. |
 
 QC durumları: `PASS`, `WARN`, `REVIEW_REQUIRED`, `FAIL`.
+
+### Bugün uygulanan kurallar
+
+Yukarıdaki tablo hedef modeldir. API'nin bugün takip edilen bir çalıştırmaya
+uyguladığı kurallar paradigma sürümünün kurallarıdır (`trajectoryQC`):
+
+| Kural | Sınır | Neyle ölçülür |
+|---|---|---|
+| `min_tracking_confidence` | `>= 0.7` | gözlenen örneklerin (takip edilen ve çıkarımlı olmayan) ortalama güveni |
+| `max_lost_frame_ratio` | `<= 0.1` | takip edilmeyen örneklerin payı; çıkarımlı örnekler takip edilmiş sayılır |
+| `max_calibration_error_cm` | `<= 2` cm | kalibrasyon kaydedilirken kontrol noktaları |
+
+Çıkarımlı örnekler güven ortalamasını asla yükseltmez ya da düşürmez. İşçi
+bunların payını yörüngenin tanılama bilgisine (`worker.inferredRatio`) yazar ve
+bir paradigma sürümü bunu `max_inferred_ratio` ile sınırlayabilir; yayımlanmış
+hiçbir sürüm henüz bu kuralı koymuyor. Bir kuralı çiğneyen çalıştırma
+`QC_FAILED` nedeniyle başarısız olur ve hiçbir şey yayımlamaz. Puanlanmış
+çalıştırmaların yörüngesi yoktur, bu yüzden bu takip kuralları onlara
+uygulanmaz; onun yerine inceleyen kişi puanlanan olayları kontrol eder.
 
 ## Sonuç şekli
 

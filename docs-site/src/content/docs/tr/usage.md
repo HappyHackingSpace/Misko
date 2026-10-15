@@ -20,8 +20,10 @@ bozukluğu geri çeviriyor mu? Paneldeki her şey bu soruyu izler:
    zaman noktaları, protokoller ve ölçütler olarak tasarlanır ve başlatılır.
 5. Hayvanlar gruplara **atanır**, her gün **dozlanır** ve **test oturumlarında**
    filme alınır.
-6. Bir analiz işçisi oturum videosunda her hayvanı ölçer. Her sonucu bir kişi
-   **inceler** ve yalnızca kabul edilen sonuçlar **rapora** girer.
+6. Her hayvan oturum videosunda ölçülür: takip edilen paradigmalarda bir analiz
+   işçisi hayvanı izler, gözlemci puanlamalı paradigmalarda bir kişi puanlar.
+   Her sonucu bir kişi **inceler** ve yalnızca kabul edilen sonuçlar **rapora**
+   girer.
 
 Panel varsayılan olarak Türkçedir. Üst çubuktaki dil seçiciyle İngilizceye
 geçebilirsiniz; seçiminiz hatırlanır.
@@ -45,7 +47,7 @@ reddedeceği düğmeleri gizler.
 |---|---|
 | `SUPERADMIN`, `LAB_MANAGER` | Kullanıcılar ve laboratuvar ayarları dahil her şey. |
 | `RESEARCHER` | Kullanıcılar ve laboratuvar ayarları dışında her şey: katalog, denekler, ortamlar, çalışma tasarımı, oturum planlama, dozlama, oturum yürütme, sonuç onayı. |
-| `TECHNICIAN` | Laboratuvar günü: doz ve ağırlık kaydı, oturumu başlatma ve tamamlama, deneme kaydı, video yükleme, bir hayvanı bir videoda kalibre etme, sonuç onayı. Oturum planlayamaz, iptal edemez ve çalışmayı değiştiremez. |
+| `TECHNICIAN` | Laboratuvar günü: doz ve ağırlık kaydı, oturumu başlatma ve tamamlama, deneme kaydı, video yükleme, bir hayvanı bir videoda kalibre etme, gözlemci puanlamalı testleri puanlama, sonuç onayı. Oturum planlayamaz, iptal edemez ve çalışmayı değiştiremez. |
 | `VIEWER` | Her şeyi okur, hiçbir şeyi değiştirmez. |
 
 **Kullanıcılar** ekranında kullanıcı oluştururken şifreyi boş bırakıp sistemin
@@ -112,15 +114,63 @@ tıklayın:
 4. **Kaydet**'e tıklayın. Ortamın sayfası açılır.
 
 **Varsayılan kalibrasyon.** Yeri değişmeyen bir kamera her arena için bir kez
-kalibre edilir ve o arenada çekilen her video bunu kullanır:
+kalibre edilir ve o arenada çekilen her video bunu kullanır. Kalibrasyon,
+kamera piksellerinin düzenek üzerinde santimetreye nasıl karşılık geldiğini ve
+bazı paradigmalarda bölgelerin (kollar, delikler, bölmeler) nerede olduğunu
+Mişko'ya söyler. Gözlemci puanlamalı paradigmalar (rotarod, direk, koşu bandı,
+yeni nesne) kalibrasyon gerektirmez.
 
-1. Ortamın sayfasında **Bu revizyonu kalibre et**'e tıklayın.
-2. Kamerayı, görüntü boyutunu ve bu arenanın görüntüdeki kırpma alanını girin.
-3. Dört uydurma noktası (piksel konumu ve cm cinsinden gerçek konum, genellikle
-   köşeler) ve en az üç kontrol noktası girin.
-4. **Kaydet**'e tıklayın. Panel uydurma ve kontrol hatalarını ve toleransı
-   gösterir. Kontrol hatası toleransı aşan kalibrasyon reddedilir; daha iyi
-   noktalarla yeniden girin.
+1. Ortamın sayfasında **Bu revizyonu kalibre et**'e tıklayın. Görsel
+   kalibratör açılır.
+2. **Kare için video** altında **Video dosyası seç**'e tıklayıp bu kamerayla
+   çekilmiş bir video seçin. Dosya yalnızca bir kare göstermek için
+   tarayıcınızda okunur; asla yüklenmez. Kare boyutu videodan okunur. Düzeneğin
+   açıkça göründüğü bir kareyi kaydırıcıyla ve kare adımı düğmeleriyle seçin.
+3. **Kamera** adını yazın ve **Ölçüm düzlemi**'ni kontrol edin (arena tabanı,
+   su labirentinde su yüzeyi).
+4. **Uyum noktaları** aracıyla her uyum noktasına karede tıklayın, sonra
+   sürükleyerek ayarlayın. Vurgulanan satır, bir sonraki tıklamanın
+   yerleştireceği noktadır; başka bir nokta seçmek için satırına tıklayın. Açık
+   alan, aydınlık/karanlık ve su labirentinde **Düzenek noktalarını kullan**
+   gerçek konumları ortamın ölçülerinden doldurur, siz yalnızca sırayla
+   tıklarsınız:
+   - açık alan ve aydınlık/karanlık: tabanın dört iç köşesi, (0, 0) başlangıç
+     köşesinden genişlik ve derinlik boyunca. Aydınlık/karanlıkta başlangıç
+     aydınlık taraftaki bir köşedir ve x karanlık uç duvara doğru ilerler.
+   - su labirenti: tank duvarının kuzey, doğu, güney ve batı noktaları, tankın
+     merkezinden ölçülür (x doğuya, y kuzeye doğru artar).
+
+   Diğer paradigmalarda tıkladığınız her noktanın cm cinsinden gerçek konumunu,
+   istediğiniz bir çerçevede (örneğin labirentin merkezine göre) yazın.
+5. **Kontrol noktaları** aracıyla uyum noktalarından farklı yerlere en az üç
+   kontrol noktası koyun (hazır noktalar kenarların ortalarını ya da tankın
+   çapraz duvar noktalarını kullanır).
+6. **Kırpma** aracıyla bu arenanın çevresine bir dikdörtgen sürükleyin.
+   Noktalar ve bölgeler bunun içinde kalmalıdır. **Tüm kare** onu sıfırlar.
+7. Paradigmanın çizilen bölgeleri varsa (yükseltilmiş artı labirenti, Y
+   labirenti, Barnes labirenti, üç bölmeli test) **Bölgeler** aracını açın. Her
+   bölge **Zorunlu** ya da **İsteğe bağlı** olarak listelenir. Bir bölgenin
+   yanındaki **Çokgen çiz** ya da **Daire çiz**'e tıklayıp onu karede çizin:
+   - çokgen: her köşeye tıklayın, kapatmak için ilk köşeye yeniden tıklayın (ya
+     da **Çokgeni kapat**); **Son köşeyi geri al** son köşeyi kaldırır;
+   - daire: merkeze basıp kenara kadar sürükleyin.
+
+   Bir bölge birden çok şekil gerektirebilir, örneğin artı labirentinin her
+   açık kolu ya da Barnes labirentinin her deliği için bir tane; bunları aynı
+   bölge altında art arda çizin. Çizerken önceden çizilmiş bir şeklin köşesine
+   ya da merkezine tıklamak oraya yapışır, böylece komşu bölgeler kenarlarını
+   tam olarak paylaşır. Biten bir şekli tutamaçlarını sürükleyerek ayarlayın ya
+   da **Yeniden çiz** ve **Sil**'i kullanın. **Çizimi bitir** o anki bölgeyi
+   bitirir.
+8. Her değer **Değerleri elle gir** altında elle de yazılabilir. Karenin
+   altındaki liste neyin eksik olduğunu söyler.
+9. **Kalibrasyonu kaydet**'e tıklayın. Panel uyum ve kontrol hatalarını,
+   toleransı ve her bölgeyi piksel ve cm cinsinden gösterir. Kontrol hatası
+   toleransı aşan kalibrasyon reddedilir; daha iyi noktalarla yeniden kaydedin.
+
+Bu arenadaki analizler, her zorunlu bölgesi olan geçerli bir kalibrasyon olana
+kadar bekler. Kaydedilmiş bir kalibrasyon asla değişmez: **Kalibrasyonu
+düzelt** onun yerini alan yenisini kaydeder ve önceki kalibrasyonlar saklanır.
 
 **Revizyonlar.** Ölçüler yerinde değiştirilmez, böylece her test çalıştırıldığı
 değerlerle kalır. Yeni bir revizyon oluşturmak için **Ölçüleri değiştir**'e
@@ -251,8 +301,13 @@ Görünüm ve filtreler adreste tutulur.
    listelenir.
 4. Her hayvanın kartı, görüntüdeki kendi bölümünün hangi kalibrasyonu
    kullandığını gösterir: normalde **Arena varsayılanı**. Kamera veya bir arena
-   kaydıysa o hayvanda **Bu videoda kalibre et**'e tıklayıp noktaları yalnızca
-   bu video için girin. Diğer hayvanlar arena varsayılanını korur.
+   kaydıysa o hayvanda **Bu videoda kalibre et**'e tıklayın. Aynı kalibratör,
+   arenanın noktaları ve bölgeleriyle başlayarak oturumun kendi videosunun bir
+   karesinde açılır: noktaları ve bölgeleri bu videodaki yerlerine taşıyıp
+   kaydedin. Kullandığınız kare kalibrasyonla birlikte saklanır. Bu kalibrasyon
+   yalnızca bu videodaki bu hayvan için geçerlidir; diğer hayvanlar arena
+   varsayılanını korur. Reddedilirse hayvan arena varsayılanına dönmez, yeni
+   bir kalibrasyon bekler.
 5. Her hayvanın en az bir denemesi olduğunda **Tamamla**'ya tıklayın; o zamana
    kadar düğme pasif kalır ve sayfa nedenini söyler.
 
@@ -262,10 +317,52 @@ laboratuvar yöneticileri herhangi bir yorumu silebilir.
 
 ## Analiz ve sonuç onayı
 
-Süren bir oturumun videosu doğrulandığında analiz işçisi her hayvanı kendi
+Bir hayvanın nasıl ölçüldüğü paradigmaya bağlıdır:
+
+| Paradigma | Nasıl ölçülür |
+|---|---|
+| Açık alan, yükseltilmiş artı labirenti, Y labirenti, Barnes labirenti, üç bölmeli test, su labirenti, aydınlık/karanlık | **Takip edilir**: bir analiz işçisi hayvanı videoda izler. |
+| Rotarod, direk, koşu bandı, yeni nesne | **Gözlemci puanlar**: bir kişi olayları videoda işaretler. |
+
+**Takip edilen paradigmalar.** Süren bir oturumun videosu doğrulandığında ve
+hayvanın kalibrasyonu geçerli olduğunda analiz işçisi her hayvanı kendi
 arenasında ölçer. Oturum sayfasının **Analiz** bölümü her hayvanın durumunu
 gösterir; **Yeniden analiz et** yeni bir çalıştırma kuyruğa ekler (örneğin yeni
 bir kalibrasyondan sonra).
+
+**Gözlemci puanlamalı bir testi puanlama.** Teknisyenler ve üstündeki roller her
+hayvanı oturumun doğrulanmış videosunda puanlar:
+
+1. Önce oturum videosunu yükleyin; puanlama onun üzerinde yapılır.
+2. Hayvanın kartında, **Gözlemci puanlaması** altında **Videoyu puanla**'ya
+   tıklayın. Puanlama oynatıcısı açılır.
+3. Videoyu oynatın ya da adım adım ilerleyin. **Boşluk** oynatır ve duraklatır,
+   **sol ve sağ oklar** bir kare ilerletir (**Shift** ile bir saniye), hız
+   listesi oynatmayı 0,25x'e kadar yavaşlatır.
+4. Her olayı gerçekleştiği anda kendi düğmesiyle ya da üzerindeki rakamla (1'den
+   9'a, sonra 0) puanlayın:
+   - bir an olayı (rotarod düşmesi, direkte dönüş ya da tabana ulaşma, koşu
+     bandında şok ya da tükenme) o anki zamanda işaretlenir;
+   - bir aralık olayı (yeni nesne keşfi) bir basışla başlar, sonrakiyle biter.
+     Her etiketin kendi düğmesi vardır, örneğin **yeni** ve **tanıdık** nesnenin
+     keşfi.
+
+   Yalnızca bir kez olabilen bir olay (düşme) yeniden puanlanırsa yeni zamana
+   taşınır.
+5. Puanlanan olaylar bir zaman çizelgesinde ve bir listede görünür. Bir olaya
+   gitmek için ona tıklayın, zamanlarını ya da etiketini **Düzenle**'yle
+   değiştirin ya da **Sil**'le kaldırın.
+6. **Puanlanan olay türleri** altında izlediğiniz her olayı işaretleyin.
+   İşaretli olup hiç olmayan olay gözlenmedi sayılır (örneğin düşmesiz bir
+   rotarod denemesi); işaretsiz olan puanlanmadı olarak raporlanır.
+7. **Puanlamayı tamamla**'ya tıklayıp onaylayın. Mişko metrikleri olaylardan
+   hesaplar ve sonuç, analiz edilmiş her sonuç gibi onay kuyruğunda bekleyen
+   olarak görünür.
+
+Tamamlanmış bir puanlamayı düzeltmek için **Düzeltme için yeniden aç**'a
+tıklayın. Olayların bir kopyasıyla yeni bir sürüm açılır; yeniden
+tamamlandığında incelemecinin seçebileceği yeni bir çalıştırma eklenir. Önceki
+sürüm ve sonucu saklanır.
 
 Her sonuç sayılmadan önce bir kişi tarafından onaylanmalıdır. **Sonuç onayı**'nı
 açın:
@@ -273,7 +370,9 @@ açın:
 1. Liste, deneye ve duruma (bekleyen, kabul edilen, reddedilen, tümü) göre
    filtrelenmiş, onay bekleyen sonuçları gösterir. Filtreler adreste tutulur.
 2. Analiz edilmiş videoyu, kalite kontrollerini ve metrikleri açmak için bir
-   satıra tıklayın.
+   satıra tıklayın. Puanlanmış bir sonucun analiz edilmiş videosu ve
+   kalibrasyon kontrolü yoktur; metrikleri ve olayları gösterilir, video
+   puanlama oynatıcısında izlenir.
 3. **Kabul et**'e tıklayın ya da bir neden seçin (takip kaybedildi, yanlış
    hayvan, video kusuru, protokol sapması, diğer), not ekleyip **Reddet**'e
    tıklayın. Çekmece ardından bir sonraki bekleyen sonuca geçer.

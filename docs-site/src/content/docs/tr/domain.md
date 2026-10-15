@@ -20,8 +20,10 @@ Yürütme:    Denek -> Atama (ömür boyu tek grup) -> Uygulamalar,
                                                    İndüksiyon sonucu
             Test (oturum: zaman noktası x protokol adımı, tek video)
               -> Test denekleri (hayvan + arena) -> Denemeler
-                                                 -> Kalibrasyon (arena veya düzeltme)
-                                                 -> Analiz çalıştırmaları -> Onaylanmış sonuç
+                                                 -> Kalibrasyon (arena veya düzeltme, bölgelerle)
+                                                 -> Puanlama sayfaları (gözlemci puanlamalı paradigmalar)
+                                                 -> Analiz çalıştırmaları (AUTOMATED veya SCORED)
+                                                    -> Onaylanmış sonuç
 
 Rapor:      hayvan başına kabul edilmiş sonuçlar -> gruplar -> rol tabanlı karşılaştırmalar
 ```
@@ -143,10 +145,25 @@ altında en fazla üç arena.
 - **Kalibrasyon:** pikselleri santimetreye çevirir. Varsayılan olarak her arena
   (ortam revizyonu) düzenek kurulurken bir kez kalibre edilir; kırpma alanı
   arenanın kamera karesindeki bölgesidir. Kamera veya arena kaydıysa güncel
-  videoda tek bir test deneğine elle bir **düzeltme** uygulanır.
-- **Analiz çalıştırması:** test deneği başına bir tane. Worker hayvanı arenasının
-  kırpma alanında izler ve yörüngeyi yükler; Mişko her metriği ve olayı bu
-  yörüngeden hesaplar. Girdiler sabitlenir; yeniden analiz yeni bir
+  videoda tek bir test deneğine elle bir **düzeltme** uygulanır. Bölgeleri
+  parametrelerden türetilmeyen paradigmalar (yükseltilmiş artı labirent, Y
+  labirenti, Barnes labirenti, üç bölmeli test) **bölgelerini** kalibrasyonla
+  birlikte taşır; bölgeler kare üzerinde piksel olarak çizilir ve santimetre
+  olarak da saklanır. Bir kalibrasyon ve bölgeleri asla değişmez. Gözlemci
+  puanlamalı paradigmalar kalibrasyon gerektirmez.
+- **Puanlama sayfası:** gözlemci puanlamalı bir paradigmada (`ROTAROD`, `POLE`,
+  `TREADMILL`, `NOVEL_OBJECT`) bir kişinin güncel videoda bir test deneği için
+  işaretlediği olaylar, klip başlangıcından itibaren mikrosaniye cinsinden. Bir
+  sayfa puanlanırken `DRAFT`, puanlanan olay türleri ve kayıt uzunluğu
+  sabitlendiğinde `COMPLETED` olur; yeniden açmak bir sonraki sürümü başlatır ve
+  tamamlanmış sayfalar asla değişmez.
+- **Analiz çalıştırması:** test deneği başına bir tane. Bir worker hayvanı
+  arenasının kırpma alanında izleyip yörüngeyi yüklediğinde `method` alanı
+  `AUTOMATED` olur (`OPEN_FIELD`, `EPM`, `Y_MAZE`, `BARNES_MAZE`,
+  `THREE_CHAMBER`, `MWM`, `LIGHT_DARK`); tamamlanmış bir puanlama sayfasından
+  hesaplandığında ise puanlayanla birlikte, worker, kalibrasyon ve video çifti
+  olmadan `SCORED` olur. Her iki durumda da Mişko her metriği ve olayı kendisi
+  hesaplar. Girdiler sabitlenir; yeniden analiz ya da yeniden puanlama yeni bir
   çalıştırmadır ve eski çalıştırmalar kalır.
 - **Onaylanmış sonuç:** her sonucu bir kişi onaylar. Bir hayvanın ilk başarılı
   çalıştırması `PENDING` bir sonuç açar; inceleyen kişi kabul eder ya da bir

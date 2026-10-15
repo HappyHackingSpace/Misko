@@ -72,6 +72,74 @@ interface ParadigmManifest {
 Changing a calculation, a range or a default publishes a new paradigm version.
 Wording and help texts can be improved without a new version.
 
+## Tracked and observer-scored paradigms
+
+Each of the eleven paradigms gets its inputs in one of two ways. The metric
+engine in `backend/internal/paradigms/domain` computes the metrics in both
+cases, so a measurement has one definition whatever produced its inputs.
+
+| Paradigm | Method | Input | Zones |
+|---|---|---|---|
+| `OPEN_FIELD` | Tracked (`AUTOMATED` run) | trajectory | from parameters (arena, center) |
+| `LIGHT_DARK` | Tracked | trajectory, with inferred samples | from parameters (light, dark) |
+| `MWM` | Tracked | trajectory in tank-centred cm | from parameters (platform, target quadrant, wall zone) |
+| `EPM` | Tracked | trajectory | calibrated, required: `center`, `open_arms`, `closed_arms` |
+| `Y_MAZE` | Tracked | trajectory | calibrated, required: `arm_a`, `arm_b`, `arm_c` |
+| `BARNES_MAZE` | Tracked | trajectory | calibrated, required: `target_hole`, `holes` |
+| `THREE_CHAMBER` | Tracked | trajectory | calibrated, required: `social_chamber`, `object_chamber`, `center_chamber`; optional: `social_interaction`, `object_interaction` |
+| `ROTAROD` | Observer scored (`SCORED` run) | `fall` (point, once) | none |
+| `POLE` | Observer scored | `turn_complete`, `base_reached`, `fall` (points, each once) | none |
+| `TREADMILL` | Observer scored | `exhaustion` (point, once), `shock` (points) | none |
+| `NOVEL_OBJECT` | Observer scored | `exploration` (intervals labelled `novel` or `familiar`) | none |
+
+- **Tracked paradigms** are analysed by a worker. The jobs process queues one
+  `AUTOMATED` run per animal once the test's video is verified, the animal's
+  calibration is valid and an enabled worker has the paradigm version as a
+  capability. The worker uploads a trajectory in the calibration's centimetre
+  frame; the API never accepts metrics from it.
+- **Observer-scored paradigms** never get worker runs, and a worker cannot
+  register them as capabilities. A person marks the input events on the test's
+  current video; completing the scoring sheet runs the engine and stores a
+  `SCORED` run with the scorer and no worker, calibration or video pair. Event
+  times are microseconds from the clip start. An event type that was ticked as
+  scored but never occurred counts as not observed; an event type that was not
+  scored makes its metrics missing, not zero.
+
+Both kinds of run feed the same per-animal result, which opens `PENDING` for
+human review; only accepted results enter the report.
+
+### Zone requirements
+
+Zones come from one of two places:
+
+- **From parameters.** Open field, light/dark and the water maze derive their
+  zones from the environment's measurements (for example `center_fraction`,
+  `light_fraction`, the platform position). Their calibration world points
+  must use the frame those zones are defined in: arena-local from one floor
+  corner for open field, box-local from a light-side corner with x toward the
+  dark end wall for light/dark, and **tank-centred** for the water maze
+  ((0, 0) at the tank centre, x east, y north, so the wall points are (r, 0),
+  (0, r), (-r, 0) and (0, -r) with r = tank diameter / 2).
+- **Calibrated.** EPM, Y maze, Barnes maze and three-chamber zones are drawn as
+  circles or polygons on the camera frame with the calibration. A key may have
+  several shapes (two open arms, one shape per Barnes hole). Shapes are stored
+  as drawn in pixels and converted to centimetres with the calibration's fitted
+  transform; they must lie inside the frame and never change after the
+  calibration is saved (migration `014_calibration_zones.sql`). Until a valid
+  calibration with every required zone applies, the animal stays
+  `WAITING_FOR_CALIBRATION` and is not analysed. The worker limits tracking to
+  the convex hull of the zones (plus a margin), so junctions that belong to no
+  zone, such as the Y maze centre, are still tracked.
+
+### Inferred samples
+
+In the light/dark box the animal disappears under the dark compartment's lid. A
+stretch of frames without any detection is filled when the animal was last seen
+in the dark compartment or at its doorway and is next seen there again (or the
+clip ends). Those samples are `tracked` with `inferred: true` in
+`misko.trajectory.v1`, so the engine counts dark time and transitions. A
+disappearance anywhere else stays lost.
+
 ## No pass/fail verdict
 
 A lab test result is **data, not a verdict**. Mişko does not compute a behavioral
@@ -227,6 +295,24 @@ reliability status.
 | `contrast_warning` | `boolean` | Manual review. |
 
 QC statuses: `PASS`, `WARN`, `REVIEW_REQUIRED`, `FAIL`.
+
+### Rules applied today
+
+The table above is the target model. The rules the API applies to a tracked run
+today are those of the paradigm version (`trajectoryQC`):
+
+| Rule | Limit | Measured on |
+|---|---|---|
+| `min_tracking_confidence` | `>= 0.7` | mean confidence of observed samples (tracked and not inferred) |
+| `max_lost_frame_ratio` | `<= 0.1` | share of samples that are not tracked; inferred samples count as tracked |
+| `max_calibration_error_cm` | `<= 2` cm | the calibration's check points, when it is saved |
+
+Inferred samples never raise or lower the confidence mean. The worker records
+their share in the trajectory's diagnostics (`worker.inferredRatio`), and a
+paradigm version may cap it with `max_inferred_ratio`; no published version sets
+that rule yet. A run that breaks a rule fails with a `QC_FAILED` reason and publishes
+nothing. Scored runs have no trajectory, so these tracking rules do not apply
+to them; the reviewer checks the scored events instead.
 
 ## Result shape
 
