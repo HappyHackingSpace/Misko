@@ -125,6 +125,7 @@ export default {
       invalidZone: "A zone is not a valid shape: a circle needs a radius above 0 and a polygon at least 3 corners",
       zoneOutsideFrame: "Every zone has to lie inside the frame",
       invalidZones: "The zones are not valid for this paradigm",
+      zonesFrozen: "Zones of a saved calibration cannot change; save a new calibration instead",
     },
   },
 };

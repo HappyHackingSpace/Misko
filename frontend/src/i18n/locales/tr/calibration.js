@@ -125,6 +125,7 @@ export default {
       invalidZone: "Bir bölge geçerli bir şekil değil: daire için yarıçap 0'dan büyük, çokgen için en az 3 köşe gerekir",
       zoneOutsideFrame: "Her bölge karenin içinde kalmalı",
       invalidZones: "Bölgeler bu paradigma için geçerli değil",
+      zonesFrozen: "Kaydedilmiş bir kalibrasyonun bölgeleri değişmez; yeni bir kalibrasyon kaydedin",
     },
   },
 };
