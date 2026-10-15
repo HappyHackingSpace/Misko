@@ -10,7 +10,7 @@
 // Signed URLs expire. When one does, the panel fetches a new pair and restores
 // the position it was at, so a refresh does not send the viewer back to zero.
 import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
-import { analysis } from "../api/endpoints.js";
+import { runs } from "../api/analysis.js";
 
 const props = defineProps({
   runId: { type: String, required: true },
@@ -23,6 +23,8 @@ const pair = ref(null);
 const original = ref(null);
 const analyzed = ref(null);
 const loading = ref(false);
+// Why the videos cannot be shown (storage not configured, video missing), in words.
+const unavailable = ref("");
 const showAnalyzed = ref(true);
 let stopAt = null;
 // Where the reader last was, in analyzed video time. A player whose source
@@ -36,8 +38,9 @@ const outputOffset = computed(() => (pair.value?.outputOffsetUs ?? 0) / 1_000_00
 async function loadPair(keepPosition = false) {
   const position = keepPosition ? lastPosition : null;
   loading.value = true;
+  unavailable.value = "";
   try {
-    pair.value = await analysis.videoPair(props.runId);
+    pair.value = await runs.videoPair(props.runId);
     // Wait for the new sources to be on the elements. Before that the players
     // still hold the old ones, and a position set now would be thrown away.
     await nextTick();
@@ -48,6 +51,8 @@ async function loadPair(keepPosition = false) {
     for (const video of [original.value, analyzed.value]) video?.load();
     if (position != null) restore(position);
   } catch (error) {
+    pair.value = null;
+    unavailable.value = error.message;
     emit("error", error.message);
   } finally {
     loading.value = false;
@@ -145,6 +150,7 @@ defineExpose({ playEvent, seek });
       </label>
     </div>
     <p v-if="loading && !pair" class="muted">{{ $t("common.loading") }}</p>
+    <p v-else-if="unavailable" class="muted" data-test="video-unavailable">{{ unavailable }}</p>
     <div v-else-if="pair" class="videos">
       <figure>
         <video

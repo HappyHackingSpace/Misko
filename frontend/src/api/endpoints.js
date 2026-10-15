@@ -94,22 +94,3 @@ export const environments = {
   calibrationStatus: (id, number) => api(`/environments/${id}/revisions/${number}/calibration-status`),
   calibrate: (id, number, body) => api(`/environments/${id}/revisions/${number}/calibrations`, { method: "POST", body }),
 };
-
-export const reports = {
-  metrics: (query) => api("/reports/metrics", { query }),
-  events: (query) => api("/reports/events", { query }),
-  summary: (query) => api("/reports/metric-summary", { query }),
-  // The export returns every matching row rather than the page on screen, and
-  // the session token travels in a header, so it is fetched rather than linked.
-  exportPath: (kind, query) => {
-    const search = new URLSearchParams();
-    for (const [key, value] of Object.entries(query || {})) {
-      if (value !== null && value !== undefined && value !== "") search.set(key, value);
-    }
-    return `/reports/${kind}/export${search.size ? `?${search}` : ""}`;
-  },
-};
-
-export const dashboard = {
-  summary: () => api("/dashboard/summary"),
-};
