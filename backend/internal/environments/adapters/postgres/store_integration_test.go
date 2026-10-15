@@ -29,7 +29,7 @@ func newService(t *testing.T) (*application.Service, *pgxpool.Pool) {
 }
 
 func arena(width float64) application.RevisionInput {
-	return application.RevisionInput{ParadigmVersion: 1, Apparatus: map[string]float64{"arena_width_cm": width, "arena_height_cm": 40, "center_fraction": 0.5}}
+	return application.RevisionInput{ParadigmVersion: 1, Parameters: map[string]float64{"arena_width_cm": width, "arena_height_cm": 40, "center_fraction": 0.5}}
 }
 
 func TestRevisionsAreNumberedAndNeverChange(t *testing.T) {
@@ -39,11 +39,11 @@ func TestRevisionsAreNumberedAndNeverChange(t *testing.T) {
 		t.Fatal(err)
 	}
 	env, first := created.Environment, created.Revision
-	if env.LatestRevision != 1 || first.Number != 1 || first.Apparatus["arena_width_cm"] != 50 || first.CreatedBy != manager.UserID || first.EnvironmentID != env.ID {
+	if env.LatestRevision != 1 || first.Number != 1 || first.Parameters["arena_width_cm"] != 50 || first.CreatedBy != manager.UserID || first.EnvironmentID != env.ID {
 		t.Fatalf("created: %+v", created)
 	}
 	second, err := s.AddRevision(ctx, manager, env.ID, arena(60))
-	if err != nil || second.Number != 2 || second.Apparatus["arena_width_cm"] != 60 {
+	if err != nil || second.Number != 2 || second.Parameters["arena_width_cm"] != 60 {
 		t.Fatalf("second revision: %+v %v", second, err)
 	}
 	if got, err := s.Get(ctx, manager, env.ID); err != nil || got.LatestRevision != 2 || got.Notes != "north room" {
@@ -81,7 +81,7 @@ func TestRevisionsAreNumberedAndNeverChange(t *testing.T) {
 	// another paradigm, even with direct SQL.
 	for _, sql := range []string{
 		"UPDATE misko.environment_revisions SET notes = 'edited' WHERE environment_id = $1",
-		"UPDATE misko.environment_revisions SET apparatus = '{}' WHERE environment_id = $1",
+		"UPDATE misko.environment_revisions SET parameters = '{}' WHERE environment_id = $1",
 		"DELETE FROM misko.environment_revisions WHERE environment_id = $1",
 		"UPDATE misko.environments SET paradigm_key = 'EPM' WHERE id = $1",
 		"DELETE FROM misko.environments WHERE id = $1",
@@ -90,17 +90,17 @@ func TestRevisionsAreNumberedAndNeverChange(t *testing.T) {
 			t.Errorf("%s succeeded", sql)
 		}
 	}
-	_, err = pool.Exec(ctx, `INSERT INTO misko.environment_revisions (environment_id, paradigm_key, number, paradigm_version, apparatus, created_by)
+	_, err = pool.Exec(ctx, `INSERT INTO misko.environment_revisions (environment_id, paradigm_key, number, paradigm_version, parameters, created_by)
 		VALUES ($1, 'OPEN_FIELD', 2, 1, '{}', $2)`, env.ID, manager.UserID)
 	if _, constraint := pgtx.Violation(err); constraint != "environment_revisions_number_key" {
 		t.Errorf("duplicate revision number: %v", err)
 	}
-	_, err = pool.Exec(ctx, `INSERT INTO misko.environment_revisions (environment_id, paradigm_key, number, paradigm_version, apparatus, created_by)
+	_, err = pool.Exec(ctx, `INSERT INTO misko.environment_revisions (environment_id, paradigm_key, number, paradigm_version, parameters, created_by)
 		VALUES ($1, 'EPM', 11, 1, '{}', $2)`, env.ID, manager.UserID)
 	if _, constraint := pgtx.Violation(err); constraint != "environment_revisions_environment_fkey" {
 		t.Errorf("revision of another paradigm: %v", err)
 	}
-	if again, err := s.Revision(ctx, manager, env.ID, 1); err != nil || again.ID != first.ID || again.Apparatus["arena_width_cm"] != 50 || again.Notes != "" {
+	if again, err := s.Revision(ctx, manager, env.ID, 1); err != nil || again.ID != first.ID || again.Parameters["arena_width_cm"] != 50 || again.Notes != "" {
 		t.Fatalf("revision 1 changed: %+v %v", again, err)
 	}
 }
@@ -117,26 +117,28 @@ func TestEnvironmentsAreValidatedAgainstTheCatalog(t *testing.T) {
 		want error
 	}{
 		"name taken ignoring case": {application.EnvironmentInput{Name: "arena a", ParadigmKey: "OPEN_FIELD", Revision: arena(50)}, application.ErrNameTaken},
-		"geometry out of range":    {application.EnvironmentInput{Name: "Small", ParadigmKey: "OPEN_FIELD", Revision: arena(10)}, application.ErrInvalidApparatus},
+		"geometry out of range":    {application.EnvironmentInput{Name: "Small", ParadigmKey: "OPEN_FIELD", Revision: arena(10)}, application.ErrInvalidParameters},
 		"missing measurement": {application.EnvironmentInput{Name: "Partial", ParadigmKey: "OPEN_FIELD",
-			Revision: application.RevisionInput{ParadigmVersion: 1, Apparatus: map[string]float64{"arena_width_cm": 50}}}, application.ErrInvalidApparatus},
-		"session value as apparatus": {application.EnvironmentInput{Name: "Session", ParadigmKey: "OPEN_FIELD",
-			Revision: application.RevisionInput{ParadigmVersion: 1, Apparatus: map[string]float64{"arena_width_cm": 50, "arena_height_cm": 40, "center_fraction": 0.5, "max_sample_gap_s": 1}}}, application.ErrInvalidApparatus},
+			Revision: application.RevisionInput{ParadigmVersion: 1, Parameters: map[string]float64{"arena_width_cm": 50}}}, application.ErrInvalidParameters},
+		"parameter of another paradigm": {application.EnvironmentInput{Name: "Session", ParadigmKey: "OPEN_FIELD",
+			Revision: application.RevisionInput{ParadigmVersion: 1, Parameters: map[string]float64{"arena_width_cm": 50, "arena_height_cm": 40, "center_fraction": 0.5, "max_trial_duration_s": 60}}}, application.ErrInvalidParameters},
+		"session value in parameters": {application.EnvironmentInput{Name: "Rod", ParadigmKey: "ROTAROD",
+			Revision: application.RevisionInput{ParadigmVersion: 1, Parameters: map[string]float64{"max_trial_duration_s": 60}}}, application.ErrInvalidParameters},
 		"platform outside the tank": {application.EnvironmentInput{Name: "Tank", ParadigmKey: "MWM",
-			Revision: application.RevisionInput{ParadigmVersion: 1, Apparatus: tank}}, application.ErrInvalidApparatus},
+			Revision: application.RevisionInput{ParadigmVersion: 1, Parameters: tank}}, application.ErrInvalidParameters},
 		"unknown paradigm": {application.EnvironmentInput{Name: "Maze", ParadigmKey: "RADIAL_MAZE", Revision: arena(50)}, application.ErrUnknownParadigm},
 		"unknown version": {application.EnvironmentInput{Name: "Future", ParadigmKey: "OPEN_FIELD",
-			Revision: application.RevisionInput{ParadigmVersion: 9, Apparatus: arena(50).Apparatus}}, application.ErrUnknownParadigmVersion},
+			Revision: application.RevisionInput{ParadigmVersion: 9, Parameters: arena(50).Parameters}}, application.ErrUnknownParadigmVersion},
 	} {
 		if _, err := s.Create(ctx, manager, tc.in); !errors.Is(err, tc.want) {
 			t.Errorf("%s: err=%v want %v", name, err, tc.want)
 		}
 	}
-	if _, err := s.AddRevision(ctx, manager, a.Environment.ID, arena(151)); !errors.Is(err, application.ErrInvalidApparatus) {
+	if _, err := s.AddRevision(ctx, manager, a.Environment.ID, arena(151)); !errors.Is(err, application.ErrInvalidParameters) {
 		t.Errorf("invalid revision: %v", err)
 	}
 	maze, err := s.Create(ctx, manager, application.EnvironmentInput{Name: "Maze", ParadigmKey: "EPM",
-		Revision: application.RevisionInput{ParadigmVersion: 1, Apparatus: map[string]float64{"arm_length_cm": 35, "arm_width_cm": 6}}})
+		Revision: application.RevisionInput{ParadigmVersion: 1, Parameters: map[string]float64{"arm_length_cm": 35, "arm_width_cm": 6}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -150,10 +152,15 @@ func TestEnvironmentsAreValidatedAgainstTheCatalog(t *testing.T) {
 	if mazes, err := s.List(ctx, manager, "EPM"); err != nil || len(mazes) != 1 || mazes[0].ID != maze.Environment.ID {
 		t.Fatalf("filtered list: %+v %v", mazes, err)
 	}
+	tuned, err := s.AddRevision(ctx, manager, a.Environment.ID, application.RevisionInput{ParadigmVersion: 1,
+		Parameters: map[string]float64{"arena_width_cm": 50, "arena_height_cm": 40, "max_sample_gap_s": 1}})
+	if err != nil || tuned.Number != 2 || tuned.Parameters["max_sample_gap_s"] != 1 || len(tuned.Parameters) != 3 {
+		t.Fatalf("apparatus and analysis values in one revision: %+v %v", tuned, err)
+	}
 
 	renamed, empty := "Arena B", ""
 	updated, err := s.Update(ctx, manager, a.Environment.ID, application.Patch{Name: &renamed, Notes: &empty})
-	if err != nil || updated.Name != "Arena B" || updated.Notes != "" || updated.ParadigmKey != "OPEN_FIELD" || updated.LatestRevision != 1 {
+	if err != nil || updated.Name != "Arena B" || updated.Notes != "" || updated.ParadigmKey != "OPEN_FIELD" || updated.LatestRevision != 2 {
 		t.Fatalf("update: %+v %v", updated, err)
 	}
 	taken := "MAZE"
@@ -167,7 +174,7 @@ func TestEnvironmentsAreValidatedAgainstTheCatalog(t *testing.T) {
 		"revise unknown":         second(s.AddRevision(ctx, manager, unknown, arena(50))),
 		"revisions of unknown":   second(s.Revisions(ctx, manager, unknown)),
 		"revision of malformed":  second(s.Revision(ctx, manager, "arena", 1)),
-		"revision out of bounds": second(s.Revision(ctx, manager, a.Environment.ID, 2)),
+		"revision out of bounds": second(s.Revision(ctx, manager, a.Environment.ID, 3)),
 	} {
 		want := application.ErrEnvironmentNotFound
 		if name == "revision out of bounds" || name == "revision of malformed" {

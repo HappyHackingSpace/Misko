@@ -345,6 +345,7 @@ paths:
         - {name: search, in: query, schema: {type: string, maxLength: 100}, description: Case-insensitive match on code}
         - {name: species, in: query, schema: {$ref: '#/components/schemas/Species'}}
         - {name: sex, in: query, schema: {$ref: '#/components/schemas/Sex'}}
+        - {name: unallocated, in: query, schema: {type: string, enum: ['true', 'false']}, description: 'true keeps only animals not allocated to any group; false does not filter'}
         - {name: sort, in: query, schema: {type: string, enum: [code, species, sex, createdAt], default: createdAt}}
         - {name: order, in: query, schema: {type: string, enum: [asc, desc]}, description: Defaults to desc for createdAt and asc otherwise}
         - $ref: '#/components/parameters/Page'
@@ -417,13 +418,37 @@ paths:
         '409': {$ref: '#/components/responses/Problem'}
     delete:
       operationId: deleteSubject
-      summary: Delete a subject that is not enrolled (subject:write)
+      summary: Delete a subject that is not allocated and has no recorded weights (subject:write)
       responses:
         '204': {description: Deleted}
         '401': {$ref: '#/components/responses/Problem'}
         '403': {$ref: '#/components/responses/Problem'}
         '404': {$ref: '#/components/responses/Problem'}
         '409': {$ref: '#/components/responses/Problem'}
+  /api/subjects/{id}/weights:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      operationId: listWeights
+      summary: Body weights of a subject, newest first (*:read)
+      responses:
+        '200':
+          description: Weights
+          content:
+            application/json:
+              schema: {type: object, required: [data], properties: {data: {type: array, items: {$ref: '#/components/schemas/WeightMeasurement'}}}}
+        '401': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+    post:
+      operationId: recordWeight
+      summary: Record a body weight (weight:write); weights never change once recorded
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/WeightInput'}}}}
+      responses:
+        '201': {description: Recorded, content: {application/json: {schema: {$ref: '#/components/schemas/WeightMeasurement'}}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
   /api/subjects/{id}/enrollments:
     parameters:
       - $ref: '#/components/parameters/ID'
@@ -441,6 +466,116 @@ paths:
                 properties:
                   data: {type: array, items: {$ref: '#/components/schemas/Enrollment'}}
         '401': {$ref: '#/components/responses/Problem'}
+  /api/catalog/substances:
+    get:
+      operationId: listSubstances
+      summary: Substances ordered by name (*:read)
+      parameters:
+        - {name: search, in: query, schema: {type: string, maxLength: 100}, description: Case-insensitive match on name}
+        - {name: kind, in: query, schema: {$ref: '#/components/schemas/SubstanceKind'}}
+      responses:
+        '200':
+          description: Substances
+          content:
+            application/json:
+              schema: {type: object, required: [data], properties: {data: {type: array, items: {$ref: '#/components/schemas/Substance'}}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+    post:
+      operationId: createSubstance
+      summary: Create a substance (study:write)
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/SubstanceInput'}}}}
+      responses:
+        '201': {description: Created, content: {application/json: {schema: {$ref: '#/components/schemas/Substance'}}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/catalog/substances/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      operationId: getSubstance
+      summary: One substance (*:read)
+      responses:
+        '200': {description: Substance, content: {application/json: {schema: {$ref: '#/components/schemas/Substance'}}}}
+        '401': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+    patch:
+      operationId: updateSubstance
+      summary: Update provided substance fields (study:write)
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/SubstancePatch'}}}}
+      responses:
+        '200': {description: Updated, content: {application/json: {schema: {$ref: '#/components/schemas/Substance'}}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+    delete:
+      operationId: deleteSubstance
+      summary: Delete a substance no regimen item or administration uses (study:write)
+      responses:
+        '204': {description: Deleted}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/catalog/disease-models:
+    get:
+      operationId: listDiseaseModels
+      summary: Disease models ordered by name (*:read)
+      parameters:
+        - {name: search, in: query, schema: {type: string, maxLength: 100}, description: Case-insensitive match on name}
+        - {name: inductionType, in: query, schema: {$ref: '#/components/schemas/InductionType'}}
+      responses:
+        '200':
+          description: Disease models
+          content:
+            application/json:
+              schema: {type: object, required: [data], properties: {data: {type: array, items: {$ref: '#/components/schemas/DiseaseModel'}}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+    post:
+      operationId: createDiseaseModel
+      summary: Create a disease model (study:write)
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/DiseaseModelInput'}}}}
+      responses:
+        '201': {description: Created, content: {application/json: {schema: {$ref: '#/components/schemas/DiseaseModel'}}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/catalog/disease-models/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      operationId: getDiseaseModel
+      summary: One disease model (*:read)
+      responses:
+        '200': {description: Disease model, content: {application/json: {schema: {$ref: '#/components/schemas/DiseaseModel'}}}}
+        '401': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+    patch:
+      operationId: updateDiseaseModel
+      summary: Update provided disease model fields (study:write)
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/DiseaseModelPatch'}}}}
+      responses:
+        '200': {description: Updated, content: {application/json: {schema: {$ref: '#/components/schemas/DiseaseModel'}}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+    delete:
+      operationId: deleteDiseaseModel
+      summary: Delete a disease model no experiment group uses (study:write)
+      responses:
+        '204': {description: Deleted}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
   /api/experiments:
     get:
       operationId: listExperiments
@@ -846,29 +981,6 @@ paths:
         '401': {$ref: '#/components/responses/Problem'}
         '403': {$ref: '#/components/responses/Problem'}
         '404': {$ref: '#/components/responses/Problem'}
-  /api/subjects/{id}/weights:
-    parameters:
-      - $ref: '#/components/parameters/ID'
-    get:
-      operationId: listWeights
-      summary: Body weights of a subject, newest first (*:read)
-      responses:
-        '200':
-          description: Weights
-          content:
-            application/json:
-              schema: {type: object, required: [data], properties: {data: {type: array, items: {$ref: '#/components/schemas/WeightMeasurement'}}}}
-        '401': {$ref: '#/components/responses/Problem'}
-    post:
-      operationId: recordWeight
-      summary: Record a body weight (weight:write)
-      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/WeightInput'}}}}
-      responses:
-        '201': {description: Recorded, content: {application/json: {schema: {$ref: '#/components/schemas/WeightMeasurement'}}}}
-        '400': {$ref: '#/components/responses/Problem'}
-        '401': {$ref: '#/components/responses/Problem'}
-        '403': {$ref: '#/components/responses/Problem'}
-        '404': {$ref: '#/components/responses/Problem'}
   /api/subjects/{id}/conditions:
     parameters:
       - $ref: '#/components/parameters/ID'
@@ -1081,7 +1193,7 @@ paths:
         '404': {$ref: '#/components/responses/Problem'}
     post:
       operationId: createEnvironmentRevision
-      summary: Store new measurements as the next revision (apparatus:write); earlier revisions never change
+      summary: Store new parameters as the next revision (apparatus:write); earlier revisions never change
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/EnvironmentRevisionInput'}}}}
       responses:
         '201': {description: Created, content: {application/json: {schema: {$ref: '#/components/schemas/EnvironmentRevision'}}}}
@@ -2043,14 +2155,27 @@ components:
       description: Unique ignoring case
     Subject:
       type: object
-      required: [id, code, species, sex, createdAt, updatedAt]
+      required: [id, code, species, sex, allocation, createdAt, updatedAt]
       properties:
         id: {type: string, format: uuid}
         code: {$ref: '#/components/schemas/Code'}
         species: {$ref: '#/components/schemas/Species'}
         sex: {$ref: '#/components/schemas/Sex'}
+        allocation:
+          oneOf: [{$ref: '#/components/schemas/SubjectAllocation'}, {type: 'null'}]
+          description: The group the animal belongs to, or null before it is allocated. Read-only; allocations are managed per experiment.
         createdAt: {type: string, format: date-time}
         updatedAt: {type: string, format: date-time}
+    SubjectAllocation:
+      type: object
+      required: [experimentId, experimentCode, groupId, groupCode, groupRole, excluded]
+      properties:
+        experimentId: {type: string, format: uuid}
+        experimentCode: {$ref: '#/components/schemas/Code'}
+        groupId: {type: string, format: uuid}
+        groupCode: {type: string}
+        groupRole: {type: string, enum: [HEALTHY_CONTROL, SHAM, DISEASE_CONTROL, POSITIVE_CONTROL, TREATMENT]}
+        excluded: {type: boolean, description: True once the animal was excluded from its study}
     SubjectInput:
       type: object
       additionalProperties: false
@@ -2211,6 +2336,70 @@ components:
       properties:
         groupId: {type: string, format: uuid}
         effectiveFrom: {type: string, format: date-time}
+    SubstanceKind:
+      type: string
+      enum: [COMPOUND, REFERENCE_DRUG, VEHICLE, INDUCER]
+      description: Guides pickers only; the role of a substance in a study comes from the regimen item that uses it
+    Substance:
+      type: object
+      required: [id, name, kind, description, createdAt, updatedAt]
+      properties:
+        id: {type: string, format: uuid}
+        name: {type: string, description: Unique ignoring case}
+        kind: {$ref: '#/components/schemas/SubstanceKind'}
+        description: {type: [string, 'null']}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+    SubstanceInput:
+      type: object
+      additionalProperties: false
+      required: [name, kind]
+      properties:
+        name: {type: string, minLength: 1, maxLength: 120}
+        kind: {$ref: '#/components/schemas/SubstanceKind'}
+        description: {type: string, maxLength: 5000}
+    SubstancePatch:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      description: Omitted fields are unchanged; an empty description clears it
+      properties:
+        name: {type: string, minLength: 1, maxLength: 120}
+        kind: {$ref: '#/components/schemas/SubstanceKind'}
+        description: {type: string, maxLength: 5000}
+    InductionType:
+      type: string
+      enum: [CHEMICAL, SURGICAL, DIET, STRESS, OTHER]
+    DiseaseModel:
+      type: object
+      required: [id, name, inductionType, confirmationCriterion, description, createdAt, updatedAt]
+      properties:
+        id: {type: string, format: uuid}
+        name: {type: string, description: Unique ignoring case}
+        inductionType: {$ref: '#/components/schemas/InductionType'}
+        confirmationCriterion: {type: [string, 'null'], description: 'How the model is confirmed, e.g. "rotarod latency < 50% of baseline"'}
+        description: {type: [string, 'null']}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+    DiseaseModelInput:
+      type: object
+      additionalProperties: false
+      required: [name, inductionType]
+      properties:
+        name: {type: string, minLength: 1, maxLength: 120}
+        inductionType: {$ref: '#/components/schemas/InductionType'}
+        confirmationCriterion: {type: string, maxLength: 2000}
+        description: {type: string, maxLength: 5000}
+    DiseaseModelPatch:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      description: Omitted fields are unchanged; an empty criterion or description clears it
+      properties:
+        name: {type: string, minLength: 1, maxLength: 120}
+        inductionType: {$ref: '#/components/schemas/InductionType'}
+        confirmationCriterion: {type: string, maxLength: 2000}
+        description: {type: string, maxLength: 5000}
     CatalogEntry:
       type: object
       required: [id, name, description, createdAt, updatedAt]
@@ -2494,15 +2683,17 @@ components:
         updatedAt: {type: string, format: date-time}
     EnvironmentRevision:
       type: object
-      required: [id, environmentId, number, paradigmKey, paradigmVersion, apparatus, notes, createdBy, createdAt]
-      description: Immutable measurements validated against one paradigm version
+      required: [id, environmentId, number, paradigmKey, paradigmVersion, parameters, notes, createdBy, createdAt]
+      description: Immutable apparatus measurements and analysis settings validated against one paradigm version
       properties:
         id: {type: string, format: uuid}
         environmentId: {type: string, format: uuid}
         number: {type: integer, minimum: 1}
         paradigmKey: {$ref: '#/components/schemas/ConstantKey'}
         paradigmVersion: {type: integer, minimum: 1}
-        apparatus: {$ref: '#/components/schemas/ParameterValues'}
+        parameters:
+          allOf: [{$ref: '#/components/schemas/ParameterValues'}]
+          description: APPARATUS and ANALYSIS values as given; omitted analysis values take their defaults when used
         notes: {type: [string, 'null']}
         createdBy: {type: string, format: uuid}
         createdAt: {type: string, format: date-time}
@@ -2519,10 +2710,10 @@ components:
     EnvironmentRevisionInput:
       type: object
       additionalProperties: false
-      required: [paradigmVersion, apparatus]
+      required: [paradigmVersion, parameters]
       properties:
         paradigmVersion: {type: integer, minimum: 1}
-        apparatus:
+        parameters:
           allOf: [{$ref: '#/components/schemas/ParameterValues'}]
           description: Every APPARATUS parameter of the paradigm version, within range and consistent (no measurement is defaulted), plus any ANALYSIS parameters; omitted analysis values take their defaults
         notes: {type: string, maxLength: 2000}

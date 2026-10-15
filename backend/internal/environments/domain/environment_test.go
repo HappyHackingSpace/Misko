@@ -33,19 +33,19 @@ func TestEnvironmentFieldsAreValidated(t *testing.T) {
 }
 
 func TestRevisionCopiesItsMeasurements(t *testing.T) {
-	apparatus := map[string]float64{"arena_width_cm": 50, "arena_height_cm": 40}
-	r, err := NewRevision("env", "OPEN_FIELD", 1, apparatus, " re-measured ", "user")
+	parameters := map[string]float64{"arena_width_cm": 50, "arena_height_cm": 40}
+	r, err := NewRevision("env", "OPEN_FIELD", 1, parameters, " re-measured ", "user")
 	if err != nil || r.Notes != "re-measured" || r.ParadigmVersion != 1 || r.CreatedBy != "user" {
 		t.Fatalf("revision: %+v %v", r, err)
 	}
-	apparatus["arena_width_cm"] = 99
-	if r.Apparatus["arena_width_cm"] != 50 {
+	parameters["arena_width_cm"] = 99
+	if r.Parameters["arena_width_cm"] != 50 {
 		t.Fatal("a revision must not share its measurements with the caller")
 	}
-	if _, err := NewRevision("env", "OPEN_FIELD", 0, apparatus, "", "user"); !errors.Is(err, ErrInvalidParadigmVersion) {
+	if _, err := NewRevision("env", "OPEN_FIELD", 0, parameters, "", "user"); !errors.Is(err, ErrInvalidParadigmVersion) {
 		t.Fatalf("version 0: %v", err)
 	}
-	if _, err := NewRevision("env", "OPEN_FIELD", 1, apparatus, strings.Repeat("n", 2001), "user"); !errors.Is(err, ErrInvalidNotes) {
+	if _, err := NewRevision("env", "OPEN_FIELD", 1, parameters, strings.Repeat("n", 2001), "user"); !errors.Is(err, ErrInvalidNotes) {
 		t.Fatalf("notes: %v", err)
 	}
 }

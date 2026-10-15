@@ -25,7 +25,7 @@ func guard(fn func() error) (err error) {
 }
 
 func validEnvironment() EnvironmentInput {
-	return EnvironmentInput{Name: "Arena A", ParadigmKey: "OPEN_FIELD", Revision: RevisionInput{ParadigmVersion: 1, Apparatus: map[string]float64{"arena_width_cm": 50}}}
+	return EnvironmentInput{Name: "Arena A", ParadigmKey: "OPEN_FIELD", Revision: RevisionInput{ParadigmVersion: 1, Parameters: map[string]float64{"arena_width_cm": 50}}}
 }
 
 func TestEveryOperationRequiresItsPermission(t *testing.T) {
@@ -85,8 +85,8 @@ func TestInvalidEnvironmentsNeverReachTheStore(t *testing.T) {
 			return second(s.Create(ctx, manager, input(func(in *EnvironmentInput) { in.ParadigmKey = "open field" })))
 		}, domain.ErrInvalidParadigmKey},
 		"geometry rejected by the catalog": {func(s *Service) error {
-			return second(s.Create(ctx, manager, input(func(in *EnvironmentInput) { in.Revision.Apparatus = map[string]float64{"arena_width_cm": 999} })))
-		}, ErrInvalidApparatus},
+			return second(s.Create(ctx, manager, input(func(in *EnvironmentInput) { in.Revision.Parameters = map[string]float64{"arena_width_cm": 999} })))
+		}, ErrInvalidParameters},
 		"unknown paradigm version": {func(s *Service) error {
 			return second(s.Create(ctx, manager, input(func(in *EnvironmentInput) { in.Revision.ParadigmVersion = 7 })))
 		}, ErrUnknownParadigmVersion},
@@ -113,7 +113,7 @@ func TestCreateStoresTheFirstRevisionInOneTransaction(t *testing.T) {
 		t.Fatalf("store calls: %v", store.calls)
 	}
 	r := created.Revision
-	if r.EnvironmentID != "env" || r.ParadigmKey != "OPEN_FIELD" || r.CreatedBy != "user-1" || r.Apparatus["arena_width_cm"] != 50 {
+	if r.EnvironmentID != "env" || r.ParadigmKey != "OPEN_FIELD" || r.CreatedBy != "user-1" || r.Parameters["arena_width_cm"] != 50 {
 		t.Fatalf("revision: %+v", r)
 	}
 	if !slices.Equal(catalog.checked, []string{"OPEN_FIELD"}) {
@@ -125,7 +125,7 @@ func TestCreateStoresTheFirstRevisionInOneTransaction(t *testing.T) {
 // the environment is locked.
 func TestAddRevisionUsesTheEnvironmentParadigmUnderLock(t *testing.T) {
 	store, catalog := &fakeStore{paradigm: "EPM"}, &fakeCatalog{}
-	r, err := New(store, catalog).AddRevision(ctx, access.Actor{UserID: "user-1", Role: access.SuperAdmin}, "env", RevisionInput{ParadigmVersion: 1, Apparatus: map[string]float64{"arm_length_cm": 35}})
+	r, err := New(store, catalog).AddRevision(ctx, access.Actor{UserID: "user-1", Role: access.SuperAdmin}, "env", RevisionInput{ParadigmVersion: 1, Parameters: map[string]float64{"arm_length_cm": 35}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -133,8 +133,8 @@ func TestAddRevisionUsesTheEnvironmentParadigmUnderLock(t *testing.T) {
 		t.Fatalf("calls=%v revision=%+v catalog=%v", store.calls, r, catalog.checked)
 	}
 	store = &fakeStore{paradigm: "EPM"}
-	_, err = New(store, &fakeCatalog{}).AddRevision(ctx, access.Actor{UserID: "user-1", Role: access.SuperAdmin}, "env", RevisionInput{ParadigmVersion: 1, Apparatus: map[string]float64{"arm_length_cm": 999}})
-	if !errors.Is(err, ErrInvalidApparatus) || slices.Contains(store.calls, "CreateRevision") {
+	_, err = New(store, &fakeCatalog{}).AddRevision(ctx, access.Actor{UserID: "user-1", Role: access.SuperAdmin}, "env", RevisionInput{ParadigmVersion: 1, Parameters: map[string]float64{"arm_length_cm": 999}})
+	if !errors.Is(err, ErrInvalidParameters) || slices.Contains(store.calls, "CreateRevision") {
 		t.Fatalf("invalid revision: err=%v calls=%v", err, store.calls)
 	}
 }
@@ -142,14 +142,14 @@ func TestAddRevisionUsesTheEnvironmentParadigmUnderLock(t *testing.T) {
 // fakeCatalog accepts version 1 with values up to 100.
 type fakeCatalog struct{ checked []string }
 
-func (c *fakeCatalog) CheckApparatus(key string, version int, apparatus map[string]float64) error {
+func (c *fakeCatalog) CheckParameters(key string, version int, parameters map[string]float64) error {
 	c.checked = append(c.checked, key)
 	if version != 1 {
 		return ErrUnknownParadigmVersion
 	}
-	for v := range maps.Values(apparatus) {
+	for v := range maps.Values(parameters) {
 		if v > 100 {
-			return ErrInvalidApparatus
+			return ErrInvalidParameters
 		}
 	}
 	return nil
