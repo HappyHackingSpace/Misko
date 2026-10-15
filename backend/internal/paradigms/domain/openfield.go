@@ -3,10 +3,13 @@ package domain
 import "math"
 
 // Shared wording for trajectory-based metric definitions.
-const (
-	arenaFrame     = "Samples are arena-local centimeters with the origin at one arena corner; x in [0, width], y in [0, height]. Samples outside the arena count as lost."
-	countedPair    = "A counted interval is a pair of consecutive samples that are both tracked and inside the arena, with 0 < dt <= max_sample_gap_s."
-	missingNoPairs = "Missing (NO_VALID_INTERVALS) when there is no counted interval."
+var (
+	arenaFrame = T("Samples are arena-local centimeters with the origin at one arena corner; x in [0, width], y in [0, height]. Samples outside the arena count as lost.",
+		"Örnekler, başlangıcı arenanın bir köşesinde olan arena içi santimetre koordinatlarıdır; x [0, genişlik], y [0, derinlik] aralığındadır. Arena dışındaki örnekler kayıp sayılır.")
+	countedPair = T("A counted interval is a pair of consecutive samples that are both tracked and inside the arena, with 0 < dt <= max_sample_gap_s.",
+		"Sayılan aralık, ikisi de izlenmiş ve arena içinde olan, 0 < dt <= max_sample_gap_s koşulunu sağlayan iki ardışık örnekten oluşur.")
+	missingNoPairs = T("Missing (NO_VALID_INTERVALS) when there is no counted interval.",
+		"Sayılan aralık yoksa eksik (NO_VALID_INTERVALS).")
 )
 
 func openFieldV1() definition {
@@ -14,8 +17,8 @@ func openFieldV1() definition {
 	zones := append(trajectory, "center_fraction")
 	zoneList := []Zone{
 		{Key: "center", Role: "CENTER", Label: T("Center", "Merkez"),
-			Geometry: "Axis-aligned rectangle centered in the arena; each side is center_fraction of the arena side. The boundary belongs to the center."},
-		{Key: "periphery", Role: "PERIPHERY", Label: T("Periphery", "Çevre"), Geometry: "Arena area outside the center zone."},
+			Geometry: T("Axis-aligned rectangle centered in the arena; each side is center_fraction of the arena side. The boundary belongs to the center.", "Arenanın ortasına yerleşen, kenarları eksenlere paralel dikdörtgen; her kenarı, karşılık gelen arena kenarının center_fraction katıdır. Sınır merkez bölgeye dahildir.")},
+		{Key: "periphery", Role: "PERIPHERY", Label: T("Periphery", "Çevre"), Geometry: T("Arena area outside the center zone.", "Arenanın merkez bölge dışında kalan alanı.")},
 	}
 	return definition{
 		paradigm: Paradigm{
@@ -50,42 +53,42 @@ func openFieldV1() definition {
 			Zones: zoneList,
 			Events: []EventDefinition{
 				{Type: "in_center", Kind: IntervalEvent, Label: T("In center", "Merkezde"),
-					Definition: "Contiguous counted intervals whose earlier sample is in the center."},
+					Definition: T("Contiguous counted intervals whose earlier sample is in the center.", "Önceki örneği merkezde olan, kesintisiz ardışık sayılan aralıklar.")},
 				{Type: "immobile", Kind: IntervalEvent, Label: T("Immobile", "Hareketsiz"),
-					Definition: "Contiguous counted intervals with speed below immobility_threshold_cm_s, lasting at least min_immobility_bout_s."},
+					Definition: T("Contiguous counted intervals with speed below immobility_threshold_cm_s, lasting at least min_immobility_bout_s.", "Hızı immobility_threshold_cm_s değerinin altında kalan ve en az min_immobility_bout_s süren, kesintisiz ardışık sayılan aralıklar.")},
 				{Type: "center_entry", Kind: PointEvent, Label: T("Center entry", "Merkeze giriş"),
-					Definition: "Time of the later sample of a counted interval that moves from periphery to center."},
+					Definition: T("Time of the later sample of a counted interval that moves from periphery to center.", "Çevreden merkeze geçen bir sayılan aralığın sonraki örneğinin zamanı.")},
 			},
 			Metrics: []MetricDefinition{
 				metric("duration_s", T("Analyzed duration", "Analiz edilen süre"),
 					T("Time during which the animal could be tracked.", "Hayvanın izlenebildiği toplam süre."),
-					Second, 86400, trajectory, "Time covered by counted intervals. "+arenaFrame+" "+countedPair, "sum(dt over counted intervals)", missingNoPairs),
+					Second, 86400, trajectory, J(T("Time covered by counted intervals.", "Sayılan aralıkların kapsadığı süre."), arenaFrame, countedPair), "sum(dt over counted intervals)", missingNoPairs),
 				metric("distance_cm", T("Distance traveled", "Kat edilen mesafe"),
 					T("Total length of the path the animal walked.", "Hayvanın yürüdüğü yolun toplam uzunluğu."),
-					Centimeter, 1e6, trajectory, "Path length over counted intervals; lost frames are not interpolated.", "sum(hypot(dx, dy) over counted intervals)", missingNoPairs),
+					Centimeter, 1e6, trajectory, T("Path length over counted intervals; lost frames are not interpolated.", "Sayılan aralıklar boyunca kat edilen yolun uzunluğu; kayıp kareler için enterpolasyon yapılmaz."), "sum(hypot(dx, dy) over counted intervals)", missingNoPairs),
 				metric("mean_speed_cm_s", T("Mean speed", "Ortalama hız"),
 					T("Distance traveled divided by the analyzed duration.", "Kat edilen mesafenin analiz edilen süreye bölümü."),
-					CentimeterPerSecond, 1e4, []string{"distance_cm", "duration_s"}, "Distance traveled divided by analyzed duration.", "distance_cm / duration_s", missingNoPairs),
+					CentimeterPerSecond, 1e4, []string{"distance_cm", "duration_s"}, T("Distance traveled divided by analyzed duration.", "Kat edilen mesafenin analiz edilen süreye bölümü."), "distance_cm / duration_s", missingNoPairs),
 				metric("center_time_s", T("Time in center", "Merkezde geçen süre"),
 					T("Less time in the center suggests more anxiety-like behaviour.", "Merkezde daha az süre, daha fazla anksiyete benzeri davranışa işaret eder."),
-					Second, 86400, zones, "Counted interval time whose earlier sample is in the center zone.", "sum(dt where earlier sample in center)", missingNoPairs),
+					Second, 86400, zones, T("Counted interval time whose earlier sample is in the center zone.", "Önceki örneği merkez bölgede olan sayılan aralıkların toplam süresi."), "sum(dt where earlier sample in center)", missingNoPairs),
 				metric("periphery_time_s", T("Time in periphery", "Çevrede geçen süre"),
 					T("Time spent near the walls, outside the center.", "Merkez dışında, duvarlara yakın geçen süre."),
-					Second, 86400, zones, "Counted interval time whose earlier sample is outside the center zone.", "sum(dt where earlier sample in periphery)", missingNoPairs),
+					Second, 86400, zones, T("Counted interval time whose earlier sample is outside the center zone.", "Önceki örneği merkez bölgenin dışında olan sayılan aralıkların toplam süresi."), "sum(dt where earlier sample in periphery)", missingNoPairs),
 				metric("center_time_ratio", T("Share of time in center", "Merkezde geçen süre oranı"),
 					T("Part of the analyzed duration spent in the center.", "Analiz edilen sürenin merkezde geçen kısmı."),
-					Ratio, 1, []string{"center_time_s", "duration_s"}, "Share of analyzed duration spent in the center.", "center_time_s / duration_s", missingNoPairs),
+					Ratio, 1, []string{"center_time_s", "duration_s"}, T("Share of analyzed duration spent in the center.", "Analiz edilen sürenin merkezde geçen kısmının oranı."), "center_time_s / duration_s", missingNoPairs),
 				metric("periphery_time_ratio", T("Share of time in periphery", "Çevrede geçen süre oranı"),
 					T("Part of the analyzed duration spent near the walls.", "Analiz edilen sürenin duvar yakınında geçen kısmı."),
-					Ratio, 1, []string{"periphery_time_s", "duration_s"}, "Share of analyzed duration spent in the periphery.", "periphery_time_s / duration_s", missingNoPairs),
+					Ratio, 1, []string{"periphery_time_s", "duration_s"}, T("Share of analyzed duration spent in the periphery.", "Analiz edilen sürenin çevrede geçen kısmının oranı."), "periphery_time_s / duration_s", missingNoPairs),
 				metric("center_entries_count", T("Center entries", "Merkeze giriş sayısı"),
 					T("How many times the animal walked into the center.", "Hayvanın merkeze kaç kez girdiği."),
-					Count, 1e6, zones, "Counted intervals moving from periphery to center. A trajectory starting in the center does not count as an entry; no debounce is applied in version 1.",
+					Count, 1e6, zones, T("Counted intervals moving from periphery to center. A trajectory starting in the center does not count as an entry; no debounce is applied in version 1.", "Çevreden merkeze geçen sayılan aralıklar. Merkezde başlayan bir yörünge giriş sayılmaz; sürüm 1'de tekrarlı girişleri ayıklayan bir filtre (debounce) uygulanmaz."),
 					"count(counted intervals with earlier sample in periphery and later sample in center)", missingNoPairs),
 				metric("immobility_s", T("Immobility time", "Hareketsizlik süresi"),
 					T("Time spent not moving, such as freezing or resting.", "Donma ya da dinlenme gibi, hareket etmeden geçen süre."),
 					Second, 86400, append(trajectory, "immobility_threshold_cm_s", "min_immobility_bout_s"),
-					"Time in immobile bouts. An interval is immobile when hypot(dx, dy) / dt is strictly below the threshold; contiguous immobile intervals form a bout, and bouts shorter than min_immobility_bout_s are ignored.",
+					T("Time in immobile bouts. An interval is immobile when hypot(dx, dy) / dt is strictly below the threshold; contiguous immobile intervals form a bout, and bouts shorter than min_immobility_bout_s are ignored.", "Hareketsizlik dönemlerinde geçen süre. hypot(dx, dy) / dt eşiğin kesin olarak altındaysa aralık hareketsizdir; kesintisiz ardışık hareketsiz aralıklar bir dönem oluşturur ve min_immobility_bout_s değerinden kısa dönemler yok sayılır."),
 					"sum(bout duration where bout duration >= min_immobility_bout_s)", missingNoPairs),
 			},
 			QC: trajectoryQC,

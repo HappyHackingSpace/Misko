@@ -36,12 +36,14 @@ nerede girildiğini söyleyen bir kapsamı vardır:
 
 Her parametrenin bir etiketi ve neyin ölçüleceğini ya da değerin neyi
 değiştirdiğini anlatan bir yardım metni vardır. Adlar, etiketler, yardım
-metinleri, bölge ve olay adları ve metriklerin sade açıklamaları desteklenen
-her dilde (İngilizce ve Türkçe) tanımın hemen yanında yazılır; API bunları
-panelin istediği dilde döner (`Accept-Language` ya da `?lang=tr`). Metrik
-tanımları, formüller ve eksik veri kuralları İngilizce kalır, çünkü kesin
-bilimsel kontrat onlardır. Panel oranları yüzde, açık/kapalı değerleri anahtar
-olarak gösterir.
+metinleri, bölge ve olay adları, metriklerin sade açıklamaları ve teknik
+tanımlar (metrik tanımları, eksik veri kuralları, bölge geometrisi, olay
+tanımları) desteklenen her dilde (İngilizce ve Türkçe) tanımın hemen yanında
+yazılır; API bunları panelin istediği dilde döner (`Accept-Language` ya da
+`?lang=tr`). Formüller düzyazı değil ifade oldukları için olduğu gibi kalır.
+Yayınlanmış manifestler İngilizce olarak sabitlendiğinden bir çeviri
+kontratı fark edilmeden değiştiremez. Panel oranları yüzde, açık/kapalı
+değerleri anahtar olarak gösterir.
 
 ```ts
 interface ParadigmManifest {

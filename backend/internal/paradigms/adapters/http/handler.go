@@ -206,11 +206,11 @@ func toManifest(m application.Manifest, lang string) manifestJSON {
 		})
 	}
 	for _, z := range p.Zones {
-		out.Zones = append(out.Zones, zoneJSON{z.Key, z.Label.In(lang), z.Role, z.Geometry, z.Calibrated, z.Required})
+		out.Zones = append(out.Zones, zoneJSON{z.Key, z.Label.In(lang), z.Role, z.Geometry.In(lang), z.Calibrated, z.Required})
 	}
 	for _, mt := range p.Metrics {
 		out.Metrics = append(out.Metrics, metricJSON{
-			mt.Key, mt.Label.In(lang), mt.Description.In(lang), string(mt.Unit), valueType(mt.Integer), mt.Definition, mt.Formula, mt.MissingWhen, mt.Inputs, mt.Min, mt.Max, mt.Tolerance,
+			mt.Key, mt.Label.In(lang), mt.Description.In(lang), string(mt.Unit), valueType(mt.Integer), mt.Definition.In(lang), mt.Formula, mt.MissingWhen.In(lang), mt.Inputs, mt.Min, mt.Max, mt.Tolerance,
 		})
 	}
 	for _, q := range p.QC {
@@ -226,7 +226,7 @@ func events(defs []domain.EventDefinition, lang string) []eventJSON {
 		if labels == nil {
 			labels = []string{}
 		}
-		out = append(out, eventJSON{e.Type, e.Label.In(lang), string(e.Kind), labels, e.Single, e.Definition})
+		out = append(out, eventJSON{e.Type, e.Label.In(lang), string(e.Kind), labels, e.Single, e.Definition.In(lang)})
 	}
 	return out
 }

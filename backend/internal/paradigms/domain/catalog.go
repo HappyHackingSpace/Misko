@@ -69,9 +69,23 @@ const (
 // Languages lists the languages every user-facing Text is written in.
 var Languages = []string{"en", "tr"}
 
-// Text is user-facing wording in every supported language. Technical
-// definitions and formulas stay English: they are the scientific contract.
+// Text is wording in every supported language. Formulas stay as written:
+// they are expressions, not prose.
 type Text struct{ EN, TR string }
+
+// J joins texts with a space in every language.
+func J(parts ...Text) Text {
+	var out Text
+	for i, p := range parts {
+		if i > 0 {
+			out.EN += " "
+			out.TR += " "
+		}
+		out.EN += p.EN
+		out.TR += p.TR
+	}
+	return out
+}
 
 // In returns the wording for a language, falling back to English.
 func (t Text) In(language string) string {
@@ -111,8 +125,8 @@ type Parameter struct {
 // Zone is derived from parameters, or Calibrated when its shapes come with the
 // input (for example from per-video calibration).
 type Zone struct {
-	Key, Role, Geometry  string
-	Label                Text
+	Key, Role            string
+	Label, Geometry      Text
 	Calibrated, Required bool
 }
 
@@ -136,7 +150,7 @@ type EventDefinition struct {
 	Kind       EventKind
 	Labels     []string
 	Single     bool
-	Definition string
+	Definition Text
 	Label      Text
 }
 
@@ -149,7 +163,8 @@ type MetricDefinition struct {
 	Label, Description               Text
 	Unit                             Unit
 	Integer                          bool
-	Definition, Formula, MissingWhen string
+	Definition, MissingWhen          Text
+	Formula                          string
 	Inputs                           []string
 	Min, Max, Tolerance              float64
 }

@@ -34,12 +34,15 @@ scope that says where it is set:
 | `SESSION` | Protocol step | No, defaults apply | trial cut-off, rotarod start and end speed |
 
 Each parameter carries a label and a help text that says what to measure or what
-the value changes. Names, labels, help texts, zone and event names and plain
-metric descriptions are written in every supported language (English and
-Turkish) next to the definition, and the API returns them in the language the
-panel asks for (`Accept-Language`, or `?lang=tr`). Metric definitions,
-formulas and missing-data rules stay English: they are the precise scientific
-contract. The panel shows ratios as percentages and switches as on and off.
+the value changes. Names, labels, help texts, zone and event names, plain metric
+descriptions and the technical definitions (metric definitions, missing-data
+rules, zone geometry, event definitions) are written in every supported
+language (English and Turkish) next to the definition, and the API returns them
+in the language the panel asks for (`Accept-Language`, or `?lang=tr`).
+Formulas stay as written, since they are expressions rather than prose. The
+published manifests are pinned in English, so a translation can never change
+the contract unnoticed. The panel shows ratios as percentages and switches as
+on and off.
 
 ```ts
 interface ParadigmManifest {

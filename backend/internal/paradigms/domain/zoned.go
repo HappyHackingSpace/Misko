@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-func calibratedZone(key, role string, label Text, geometry string, required bool) Zone {
+func calibratedZone(key, role string, label Text, geometry Text, required bool) Zone {
 	return Zone{Key: key, Role: role, Label: label, Geometry: geometry, Calibrated: true, Required: required}
 }
 
@@ -13,9 +13,9 @@ func elevatedPlusMazeV1() definition {
 	trajectory := []string{"samples", "max_sample_gap_s"}
 	zoned := append(trajectory, "calibrated zones")
 	zoneList := []Zone{
-		calibratedZone("center", "CENTER", T("Center", "Merkez"), "Central square where the arms meet.", true),
-		calibratedZone("open_arms", "OPEN", T("Open arms", "Açık kollar"), "Both open arms, one shape per arm.", true),
-		calibratedZone("closed_arms", "CLOSED", T("Closed arms", "Kapalı kollar"), "Both closed arms, one shape per arm.", true),
+		calibratedZone("center", "CENTER", T("Center", "Merkez"), T("Central square where the arms meet.", "Kolların birleştiği merkez kare."), true),
+		calibratedZone("open_arms", "OPEN", T("Open arms", "Açık kollar"), T("Both open arms, one shape per arm.", "Her iki açık kol; her kol için bir şekil."), true),
+		calibratedZone("closed_arms", "CLOSED", T("Closed arms", "Kapalı kollar"), T("Both closed arms, one shape per arm.", "Her iki kapalı kol; her kol için bir şekil."), true),
 	}
 	return definition{
 		paradigm: Paradigm{
@@ -39,33 +39,33 @@ func elevatedPlusMazeV1() definition {
 			},
 			Zones: zoneList,
 			InputEvents: []EventDefinition{{Type: "risk_assessment", Kind: PointEvent, Label: T("Risk assessment", "Risk değerlendirme"),
-				Definition: "A scored stretched-attend or head-dip posture."}},
+				Definition: T("A scored stretched-attend or head-dip posture.", "Puanlanan gerilerek uzanma ya da baş daldırma duruşu.")}},
 			Events: append(append(occupancyEvents(zoneList, "center", "open_arms", "closed_arms"), entryEvents(zoneList, "center", "open_arms", "closed_arms")...),
 				EventDefinition{Type: "risk_assessment", Kind: PointEvent, Label: T("Risk assessment", "Risk değerlendirme"),
-					Definition: "Scored risk assessment, passed through."}),
+					Definition: T("Scored risk assessment, passed through.", "Puanlanan risk değerlendirmesi; olduğu gibi aktarılır.")}),
 			Metrics: []MetricDefinition{
 				metric("duration_s", T("Analyzed duration", "Analiz edilen süre"),
 					T("Time during which the animal could be tracked.", "Hayvanın izlenebildiği toplam süre."),
-					Second, 86400, trajectory, calibratedFrame+" "+trackedPair, "sum(dt over counted intervals)", missingNoPairs),
+					Second, 86400, trajectory, J(calibratedFrame, trackedPair), "sum(dt over counted intervals)", missingNoPairs),
 				metric("distance_cm", T("Distance traveled", "Kat edilen mesafe"),
 					T("Total length of the path the animal walked.", "Hayvanın yürüdüğü yolun toplam uzunluğu."),
-					Centimeter, 1e6, trajectory, "Path length over counted intervals.", "sum(hypot(dx, dy))", missingNoPairs),
+					Centimeter, 1e6, trajectory, T("Path length over counted intervals.", "Sayılan aralıklar boyunca kat edilen yolun uzunluğu."), "sum(hypot(dx, dy))", missingNoPairs),
 				metric("center_time_s", T("Time in center", "Merkezde geçen süre"),
 					T("Time spent in the central square where the arms meet.", "Kolların birleştiği merkez karede geçen süre."),
-					Second, 86400, zoned, "Counted time whose earlier sample is in the center.", "sum(dt where earlier sample in center)", missingNoPairs),
+					Second, 86400, zoned, T("Counted time whose earlier sample is in the center.", "Önceki örneği merkezde olan sayılan aralıkların süresi."), "sum(dt where earlier sample in center)", missingNoPairs),
 				metric("open_arm_time_s", T("Time in open arms", "Açık kollarda geçen süre"),
 					T("Less time in the open arms suggests more anxiety-like behaviour.", "Açık kollarda daha az süre, daha fazla anksiyete benzeri davranışa işaret eder."),
-					Second, 86400, zoned, "Counted time whose earlier sample is in an open arm.", "sum(dt where earlier sample in open arms)", missingNoPairs),
+					Second, 86400, zoned, T("Counted time whose earlier sample is in an open arm.", "Önceki örneği bir açık kolda olan sayılan aralıkların süresi."), "sum(dt where earlier sample in open arms)", missingNoPairs),
 				metric("closed_arm_time_s", T("Time in closed arms", "Kapalı kollarda geçen süre"),
 					T("Time spent in the walled arms.", "Duvarlı kollarda geçen süre."),
-					Second, 86400, zoned, "Counted time whose earlier sample is in a closed arm.", "sum(dt where earlier sample in closed arms)", missingNoPairs),
+					Second, 86400, zoned, T("Counted time whose earlier sample is in a closed arm.", "Önceki örneği bir kapalı kolda olan sayılan aralıkların süresi."), "sum(dt where earlier sample in closed arms)", missingNoPairs),
 				metric("open_arm_time_ratio", T("Share of time in open arms", "Açık kollarda geçen süre oranı"),
 					T("Part of the analyzed duration spent in the open arms; a lower share suggests more anxiety-like behaviour.",
 						"Analiz edilen sürenin açık kollarda geçen kısmı; daha düşük oran daha fazla anksiyete benzeri davranışa işaret eder."),
-					Ratio, 1, zoned, "Share of analyzed duration in open arms.", "open_arm_time_s / duration_s", missingNoPairs),
+					Ratio, 1, zoned, T("Share of analyzed duration in open arms.", "Analiz edilen sürenin açık kollarda geçen oranı."), "open_arm_time_s / duration_s", missingNoPairs),
 				metric("closed_arm_time_ratio", T("Share of time in closed arms", "Kapalı kollarda geçen süre oranı"),
 					T("Part of the analyzed duration spent in the closed arms.", "Analiz edilen sürenin kapalı kollarda geçen kısmı."),
-					Ratio, 1, zoned, "Share of analyzed duration in closed arms.", "closed_arm_time_s / duration_s", missingNoPairs),
+					Ratio, 1, zoned, T("Share of analyzed duration in closed arms.", "Analiz edilen sürenin kapalı kollarda geçen oranı."), "closed_arm_time_s / duration_s", missingNoPairs),
 				metric("open_arm_entries_count", T("Open arm entries", "Açık kola giriş sayısı"),
 					T("How many times the animal walked into an open arm.", "Hayvanın açık kollara kaç kez girdiği."),
 					Count, 1e6, zoned, entryRule, "count(open arm entries)", missingNoPairs),
@@ -78,7 +78,7 @@ func elevatedPlusMazeV1() definition {
 					Second, 86400, zoned, latencyRule, "first tracked sample time in open arms", missingNotSeen),
 				metric("risk_assessment_count", T("Risk assessments", "Risk değerlendirme sayısı"),
 					T("Number of scored stretched-attend postures and head dips.", "Puanlanan gerilerek uzanma duruşları ve baş daldırmaların sayısı."),
-					Count, 1e6, []string{"risk_assessment events"}, "Scored risk assessment events.", "count(risk_assessment)", "Missing (NOT_SCORED) when risk assessment was not scored."),
+					Count, 1e6, []string{"risk_assessment events"}, T("Scored risk assessment events.", "Puanlanan risk değerlendirme olayları."), "count(risk_assessment)", T("Missing (NOT_SCORED) when risk assessment was not scored.", "Risk değerlendirmesi puanlanmadıysa eksik (NOT_SCORED).")),
 			},
 			QC: trajectoryQC,
 		},
@@ -118,9 +118,9 @@ func yMazeV1() definition {
 	trajectory := []string{"samples", "max_sample_gap_s"}
 	arms := append(trajectory, "calibrated arm zones")
 	zoneList := []Zone{
-		calibratedZone("arm_a", "ARM", T("Arm A", "A kolu"), "Arm A.", true),
-		calibratedZone("arm_b", "ARM", T("Arm B", "B kolu"), "Arm B.", true),
-		calibratedZone("arm_c", "ARM", T("Arm C", "C kolu"), "Arm C.", true),
+		calibratedZone("arm_a", "ARM", T("Arm A", "A kolu"), T("Arm A.", "A kolu."), true),
+		calibratedZone("arm_b", "ARM", T("Arm B", "B kolu"), T("Arm B.", "B kolu."), true),
+		calibratedZone("arm_c", "ARM", T("Arm C", "C kolu"), T("Arm C.", "C kolu."), true),
 	}
 	return definition{
 		paradigm: Paradigm{
@@ -151,26 +151,27 @@ func yMazeV1() definition {
 			Metrics: []MetricDefinition{
 				metric("duration_s", T("Analyzed duration", "Analiz edilen süre"),
 					T("Time during which the animal could be tracked.", "Hayvanın izlenebildiği toplam süre."),
-					Second, 86400, trajectory, calibratedFrame+" "+trackedPair, "sum(dt over counted intervals)", missingNoPairs),
+					Second, 86400, trajectory, J(calibratedFrame, trackedPair), "sum(dt over counted intervals)", missingNoPairs),
 				metric("distance_cm", T("Distance traveled", "Kat edilen mesafe"),
 					T("Total length of the path the animal walked.", "Hayvanın yürüdüğü yolun toplam uzunluğu."),
-					Centimeter, 1e6, trajectory, "Path length over counted intervals.", "sum(hypot(dx, dy))", missingNoPairs),
+					Centimeter, 1e6, trajectory, T("Path length over counted intervals.", "Sayılan aralıklar boyunca kat edilen yolun uzunluğu."), "sum(hypot(dx, dy))", missingNoPairs),
 				metric("total_arm_entries_count", T("Total arm entries", "Toplam kol girişi"),
 					T("How many arms the animal entered, including the arm it started in; a measure of general activity.",
 						"Başladığı kol dahil hayvanın kaç kola girdiği; genel aktivite ölçüsüdür."),
 					Count, 1e6, arms,
-					"The arm holding the first tracked sample counts as the first entry; each later arm entry follows the entry rule, and re-entering the same arm counts again. "+entryRule,
+					J(T("The arm holding the first tracked sample counts as the first entry; each later arm entry follows the entry rule, and re-entering the same arm counts again.",
+						"İlk izlenmiş örneğin bulunduğu kol ilk giriş sayılır; sonraki her kol girişi giriş kuralına uyar ve aynı kola yeniden giriş de tekrar sayılır."), entryRule),
 					"1 (start arm) + count(arm entries)", missingNoPairs),
 				metric("spontaneous_alternation_ratio", T("Spontaneous alternation", "Spontan alternasyon oranı"),
 					T("Share of three consecutive arm entries that visit three different arms; a lower value suggests impaired working memory.",
 						"Art arda üç kol girişinden üç farklı kolu ziyaret edenlerin oranı; daha düşük değer çalışma belleğinde bozulmaya işaret eder."),
 					Ratio, 1, arms,
-					"Share of overlapping entry triplets that visit three different arms.", "alternations / (total_arm_entries_count - 2)", "Missing (INSUFFICIENT_ENTRIES) with fewer than 3 entries; missing (NO_VALID_INTERVALS) without counted intervals."),
+					T("Share of overlapping entry triplets that visit three different arms.", "Örtüşen giriş üçlülerinden üç farklı kolu ziyaret edenlerin oranı."), "alternations / (total_arm_entries_count - 2)", T("Missing (INSUFFICIENT_ENTRIES) with fewer than 3 entries; missing (NO_VALID_INTERVALS) without counted intervals.", "3'ten az giriş varsa eksik (INSUFFICIENT_ENTRIES); sayılan aralık yoksa eksik (NO_VALID_INTERVALS).")),
 				metric("novel_arm_time_ratio", T("Share of time in novel arm", "Yeni kolda geçen süre oranı"),
 					T("Part of the analyzed duration spent in the novel arm; a higher share suggests the animal remembers the familiar arms.",
 						"Analiz edilen sürenin yeni kolda geçen kısmı; daha yüksek oran hayvanın tanıdık kolları hatırladığına işaret eder."),
 					Ratio, 1, append(arms, "novel_arm"),
-					"Share of analyzed duration whose earlier sample is in the novel arm.", "novel arm time / duration_s", "Missing (NOT_APPLICABLE) when novel_arm is 0; missing (NO_VALID_INTERVALS) without counted intervals."),
+					T("Share of analyzed duration whose earlier sample is in the novel arm.", "Analiz edilen süre içinde, önceki örneği yeni kolda olan sayılan aralıkların oranı."), "novel arm time / duration_s", T("Missing (NOT_APPLICABLE) when novel_arm is 0; missing (NO_VALID_INTERVALS) without counted intervals.", "novel_arm 0 ise eksik (NOT_APPLICABLE); sayılan aralık yoksa eksik (NO_VALID_INTERVALS).")),
 			},
 			QC: trajectoryQC,
 		},
@@ -227,8 +228,8 @@ func barnesMazeV1() definition {
 	trajectory := []string{"samples", "max_sample_gap_s"}
 	holes := append(trajectory, "calibrated target_hole and holes zones")
 	zoneList := []Zone{
-		calibratedZone("target_hole", "TARGET", T("Target hole", "Hedef delik"), "The escape hole.", true),
-		calibratedZone("holes", "ERROR", T("Other holes", "Diğer delikler"), "Every other hole, one shape per hole.", true),
+		calibratedZone("target_hole", "TARGET", T("Target hole", "Hedef delik"), T("The escape hole.", "Kaçış deliği."), true),
+		calibratedZone("holes", "ERROR", T("Other holes", "Diğer delikler"), T("Every other hole, one shape per hole.", "Diğer tüm delikler; her delik için bir şekil."), true),
 	}
 	return definition{
 		paradigm: Paradigm{
@@ -257,27 +258,28 @@ func barnesMazeV1() definition {
 			Zones: zoneList,
 			Events: append(append(occupancyEvents(zoneList, "target_hole"), entryEvents(zoneList, "target_hole")...),
 				EventDefinition{Type: "hole_error", Kind: PointEvent, Label: T("Wrong hole visit", "Yanlış delik ziyareti"),
-					Definition: "Later sample time of a counted interval entering a non-target hole."}),
+					Definition: T("Later sample time of a counted interval entering a non-target hole.", "Hedef dışı bir deliğe giren sayılan aralığın sonraki örneğinin zamanı.")}),
 			Metrics: []MetricDefinition{
 				metric("duration_s", T("Analyzed duration", "Analiz edilen süre"),
 					T("Time during which the animal could be tracked.", "Hayvanın izlenebildiği toplam süre."),
-					Second, 86400, trajectory, calibratedFrame+" "+trackedPair, "sum(dt over counted intervals)", missingNoPairs),
+					Second, 86400, trajectory, J(calibratedFrame, trackedPair), "sum(dt over counted intervals)", missingNoPairs),
 				metric("distance_cm", T("Distance traveled", "Kat edilen mesafe"),
 					T("Total length of the path the animal walked.", "Hayvanın yürüdüğü yolun toplam uzunluğu."),
-					Centimeter, 1e6, trajectory, "Path length over counted intervals.", "sum(hypot(dx, dy))", missingNoPairs),
+					Centimeter, 1e6, trajectory, T("Path length over counted intervals.", "Sayılan aralıklar boyunca kat edilen yolun uzunluğu."), "sum(hypot(dx, dy))", missingNoPairs),
 				metric("primary_latency_s", T("Latency to target hole", "Hedef deliğe ulaşma süresi"),
 					T("Time from the start of the trial until the animal first reaches the escape hole; shorter times indicate better learning.",
 						"Deneme başından hayvanın kaçış deliğine ilk kez ulaşmasına kadar geçen süre; daha kısa süre daha iyi öğrenmeyi gösterir."),
-					Second, 86400, holes, latencyRule+" The zone is target_hole.", "first tracked sample time in target_hole", missingNotSeen),
+					Second, 86400, holes, J(latencyRule, T("The zone is target_hole.", "Bölge olarak target_hole kullanılır.")), "first tracked sample time in target_hole", missingNotSeen),
 				metric("primary_errors_count", T("Errors before target", "Hedeften önceki hatalar"),
 					T("Visits to wrong holes before the escape hole is first reached; fewer errors indicate better learning.",
 						"Kaçış deliğine ilk ulaşmadan önce yanlış deliklere yapılan ziyaretler; daha az hata daha iyi öğrenmeyi gösterir."),
 					Count, 1e6, holes,
-					"Entries into non-target holes before the primary latency. Each hole is a separate zone, so re-entering a hole counts again. "+entryRule,
-					"count(hole entries before primary_latency_s)", "Missing (EVENT_NOT_OBSERVED) when the target is never reached; missing (NO_VALID_INTERVALS) without counted intervals."),
+					J(T("Entries into non-target holes before the primary latency. Each hole is a separate zone, so re-entering a hole counts again.",
+						"Hedef deliğe ilk ulaşma süresinden önce hedef dışı deliklere yapılan girişler. Her delik ayrı bir bölgedir, bu nedenle aynı deliğe yeniden giriş tekrar sayılır."), entryRule),
+					"count(hole entries before primary_latency_s)", T("Missing (EVENT_NOT_OBSERVED) when the target is never reached; missing (NO_VALID_INTERVALS) without counted intervals.", "Hedefe hiç ulaşılmazsa eksik (EVENT_NOT_OBSERVED); sayılan aralık yoksa eksik (NO_VALID_INTERVALS).")),
 				metric("total_errors_count", T("Total errors", "Toplam hata"),
 					T("Visits to wrong holes over the whole trial.", "Deneme boyunca yanlış deliklere yapılan toplam ziyaret."),
-					Count, 1e6, holes, "Entries into non-target holes over the whole trial.", "count(hole entries)", missingNoPairs),
+					Count, 1e6, holes, T("Entries into non-target holes over the whole trial.", "Deneme boyunca hedef dışı deliklere yapılan girişler."), "count(hole entries)", missingNoPairs),
 			},
 			QC: trajectoryQC,
 		},
@@ -323,13 +325,13 @@ func barnesMazeV1() definition {
 func threeChamberV1() definition {
 	trajectory := []string{"samples", "max_sample_gap_s"}
 	chambers := append(trajectory, "calibrated chamber zones")
-	zoneMissing := "Missing (ZONE_NOT_PROVIDED) when the interaction zone is not calibrated; missing (NO_VALID_INTERVALS) without counted intervals."
+	zoneMissing := T("Missing (ZONE_NOT_PROVIDED) when the interaction zone is not calibrated; missing (NO_VALID_INTERVALS) without counted intervals.", "Etkileşim bölgesi kalibre edilmemişse eksik (ZONE_NOT_PROVIDED); sayılan aralık yoksa eksik (NO_VALID_INTERVALS).")
 	zoneList := []Zone{
-		calibratedZone("social_chamber", "TARGET", T("Social chamber", "Sosyal bölme"), "Chamber with the stimulus animal.", true),
-		calibratedZone("object_chamber", "CONTROL", T("Object chamber", "Nesne bölmesi"), "Chamber with the empty cage or object.", true),
-		calibratedZone("center_chamber", "CENTER", T("Center chamber", "Orta bölme"), "Middle chamber.", true),
-		calibratedZone("social_interaction", "TARGET", T("Social interaction area", "Sosyal etkileşim alanı"), "Close-interaction area around the stimulus cage.", false),
-		calibratedZone("object_interaction", "CONTROL", T("Object interaction area", "Nesne etkileşim alanı"), "Close-interaction area around the object cage.", false),
+		calibratedZone("social_chamber", "TARGET", T("Social chamber", "Sosyal bölme"), T("Chamber with the stimulus animal.", "Uyaran hayvanın bulunduğu bölme."), true),
+		calibratedZone("object_chamber", "CONTROL", T("Object chamber", "Nesne bölmesi"), T("Chamber with the empty cage or object.", "Boş kafesin ya da nesnenin bulunduğu bölme."), true),
+		calibratedZone("center_chamber", "CENTER", T("Center chamber", "Orta bölme"), T("Middle chamber.", "Ortadaki bölme."), true),
+		calibratedZone("social_interaction", "TARGET", T("Social interaction area", "Sosyal etkileşim alanı"), T("Close-interaction area around the stimulus cage.", "Uyaran hayvanın kafesini çevreleyen yakın etkileşim alanı."), false),
+		calibratedZone("object_interaction", "CONTROL", T("Object interaction area", "Nesne etkileşim alanı"), T("Close-interaction area around the object cage.", "Nesne kafesini çevreleyen yakın etkileşim alanı."), false),
 	}
 	return definition{
 		paradigm: Paradigm{
@@ -361,32 +363,32 @@ func threeChamberV1() definition {
 			Metrics: []MetricDefinition{
 				metric("duration_s", T("Analyzed duration", "Analiz edilen süre"),
 					T("Time during which the animal could be tracked.", "Hayvanın izlenebildiği toplam süre."),
-					Second, 86400, trajectory, calibratedFrame+" "+trackedPair, "sum(dt over counted intervals)", missingNoPairs),
+					Second, 86400, trajectory, J(calibratedFrame, trackedPair), "sum(dt over counted intervals)", missingNoPairs),
 				metric("social_chamber_time_s", T("Time in social chamber", "Sosyal bölmede geçen süre"),
 					T("Time spent in the chamber with the other animal.", "Diğer hayvanın bulunduğu bölmede geçen süre."),
-					Second, 86400, chambers, "Counted time whose earlier sample is in the social chamber.", "sum(dt in social_chamber)", missingNoPairs),
+					Second, 86400, chambers, T("Counted time whose earlier sample is in the social chamber.", "Önceki örneği sosyal bölmede olan sayılan aralıkların süresi."), "sum(dt in social_chamber)", missingNoPairs),
 				metric("object_chamber_time_s", T("Time in object chamber", "Nesne bölmesinde geçen süre"),
 					T("Time spent in the chamber with the empty cage or object.", "Boş kafesin ya da nesnenin bulunduğu bölmede geçen süre."),
-					Second, 86400, chambers, "Counted time whose earlier sample is in the object chamber.", "sum(dt in object_chamber)", missingNoPairs),
+					Second, 86400, chambers, T("Counted time whose earlier sample is in the object chamber.", "Önceki örneği nesne bölmesinde olan sayılan aralıkların süresi."), "sum(dt in object_chamber)", missingNoPairs),
 				metric("center_chamber_time_s", T("Time in center chamber", "Orta bölmede geçen süre"),
 					T("Time spent in the middle chamber.", "Orta bölmede geçen süre."),
-					Second, 86400, chambers, "Counted time whose earlier sample is in the center chamber.", "sum(dt in center_chamber)", missingNoPairs),
+					Second, 86400, chambers, T("Counted time whose earlier sample is in the center chamber.", "Önceki örneği orta bölmede olan sayılan aralıkların süresi."), "sum(dt in center_chamber)", missingNoPairs),
 				func() MetricDefinition {
 					m := metric("sociability_index", T("Sociability index", "Sosyallik indeksi"),
 						T("Preference for the social chamber over the object chamber, from -1 (only object) to +1 (only social); values near 0 mean no preference.",
 							"Sosyal bölmenin nesne bölmesine tercihi; -1 (yalnızca nesne) ile +1 (yalnızca sosyal) arasındadır, 0 civarı tercih olmadığını gösterir."),
 						Ratio, 1, []string{"social_chamber_time_s", "object_chamber_time_s"},
-						"Preference for the social chamber, from -1 (object) to +1 (social).", "(social - object) / (social + object)",
-						"Missing (ZERO_DENOMINATOR) when both chamber times are 0; missing (NO_VALID_INTERVALS) without counted intervals.")
+						T("Preference for the social chamber, from -1 (object) to +1 (social).", "Sosyal bölme tercihi; -1 (nesne) ile +1 (sosyal) arasında değişir."), "(social - object) / (social + object)",
+						T("Missing (ZERO_DENOMINATOR) when both chamber times are 0; missing (NO_VALID_INTERVALS) without counted intervals.", "İki bölme süresi de 0 ise eksik (ZERO_DENOMINATOR); sayılan aralık yoksa eksik (NO_VALID_INTERVALS)."))
 					m.Min = -1
 					return m
 				}(),
 				metric("social_interaction_time_s", T("Social interaction time", "Sosyal etkileşim süresi"),
 					T("Time spent close to the cage with the other animal.", "Diğer hayvanın kafesine yakın geçen süre."),
-					Second, 86400, append(trajectory, "social_interaction zone"), "Counted time whose earlier sample is in the social interaction zone.", "sum(dt in social_interaction)", zoneMissing),
+					Second, 86400, append(trajectory, "social_interaction zone"), T("Counted time whose earlier sample is in the social interaction zone.", "Önceki örneği sosyal etkileşim alanında olan sayılan aralıkların süresi."), "sum(dt in social_interaction)", zoneMissing),
 				metric("object_interaction_time_s", T("Object interaction time", "Nesne etkileşim süresi"),
 					T("Time spent close to the empty cage or object.", "Boş kafese ya da nesneye yakın geçen süre."),
-					Second, 86400, append(trajectory, "object_interaction zone"), "Counted time whose earlier sample is in the object interaction zone.", "sum(dt in object_interaction)", zoneMissing),
+					Second, 86400, append(trajectory, "object_interaction zone"), T("Counted time whose earlier sample is in the object interaction zone.", "Önceki örneği nesne etkileşim alanında olan sayılan aralıkların süresi."), "sum(dt in object_interaction)", zoneMissing),
 				metric("social_chamber_entries_count", T("Social chamber entries", "Sosyal bölmeye giriş sayısı"),
 					T("How many times the animal walked into the social chamber.", "Hayvanın sosyal bölmeye kaç kez girdiği."),
 					Count, 1e6, chambers, entryRule, "count(social_chamber entries)", missingNoPairs),
@@ -437,8 +439,8 @@ func threeChamberV1() definition {
 func lightDarkV1() definition {
 	trajectory := []string{"samples", "box_width_cm", "box_height_cm", "light_fraction", "max_sample_gap_s"}
 	zoneList := []Zone{
-		{Key: "light", Role: "RISK", Label: T("Light compartment", "Aydınlık bölme"), Geometry: "0 <= x < box_width_cm x light_fraction, within the box.", Required: true},
-		{Key: "dark", Role: "CLOSED", Label: T("Dark compartment", "Karanlık bölme"), Geometry: "box_width_cm x light_fraction <= x <= box_width_cm; the dividing line belongs to the dark side.", Required: true},
+		{Key: "light", Role: "RISK", Label: T("Light compartment", "Aydınlık bölme"), Geometry: T("0 <= x < box_width_cm x light_fraction, within the box.", "Kutu içinde 0 <= x < box_width_cm x light_fraction."), Required: true},
+		{Key: "dark", Role: "CLOSED", Label: T("Dark compartment", "Karanlık bölme"), Geometry: T("box_width_cm x light_fraction <= x <= box_width_cm; the dividing line belongs to the dark side.", "box_width_cm x light_fraction <= x <= box_width_cm; ayırma çizgisi karanlık tarafa aittir."), Required: true},
 	}
 	return definition{
 		paradigm: Paradigm{
@@ -470,26 +472,27 @@ func lightDarkV1() definition {
 				metric("duration_s", T("Analyzed duration", "Analiz edilen süre"),
 					T("Time during which the animal could be tracked.", "Hayvanın izlenebildiği toplam süre."),
 					Second, 86400, trajectory,
-					"Samples are box-local centimeters with the origin at the light-side corner; samples outside the box count as lost. "+trackedPair, "sum(dt over counted intervals)", missingNoPairs),
+					J(T("Samples are box-local centimeters with the origin at the light-side corner; samples outside the box count as lost.",
+						"Örnekler, başlangıcı aydınlık taraftaki köşede olan kutu içi santimetre koordinatlarıdır; kutu dışındaki örnekler kayıp sayılır."), trackedPair), "sum(dt over counted intervals)", missingNoPairs),
 				metric("light_time_s", T("Time in light", "Aydınlıkta geçen süre"),
 					T("Less time in the light compartment suggests more anxiety-like behaviour.", "Aydınlık bölmede daha az süre, daha fazla anksiyete benzeri davranışa işaret eder."),
-					Second, 86400, trajectory, "Counted time whose earlier sample is in the light compartment.", "sum(dt in light)", missingNoPairs),
+					Second, 86400, trajectory, T("Counted time whose earlier sample is in the light compartment.", "Önceki örneği aydınlık bölmede olan sayılan aralıkların süresi."), "sum(dt in light)", missingNoPairs),
 				metric("dark_time_s", T("Time in dark", "Karanlıkta geçen süre"),
 					T("Time spent in the dark compartment.", "Karanlık bölmede geçen süre."),
-					Second, 86400, trajectory, "Counted time whose earlier sample is in the dark compartment.", "sum(dt in dark)", missingNoPairs),
+					Second, 86400, trajectory, T("Counted time whose earlier sample is in the dark compartment.", "Önceki örneği karanlık bölmede olan sayılan aralıkların süresi."), "sum(dt in dark)", missingNoPairs),
 				metric("light_time_ratio", T("Share of time in light", "Aydınlıkta geçen süre oranı"),
 					T("Part of the analyzed duration spent in the light compartment.", "Analiz edilen sürenin aydınlık bölmede geçen kısmı."),
-					Ratio, 1, trajectory, "Share of analyzed duration in the light compartment.", "light_time_s / duration_s", missingNoPairs),
+					Ratio, 1, trajectory, T("Share of analyzed duration in the light compartment.", "Analiz edilen sürenin aydınlık bölmede geçen oranı."), "light_time_s / duration_s", missingNoPairs),
 				metric("light_entries_count", T("Light entries", "Aydınlığa giriş sayısı"),
 					T("How many times the animal crossed from the dark into the light compartment.", "Hayvanın karanlık bölmeden aydınlık bölmeye kaç kez geçtiği."),
-					Count, 1e6, trajectory, "Counted intervals from dark to light.", "count(dark to light)", missingNoPairs),
+					Count, 1e6, trajectory, T("Counted intervals from dark to light.", "Karanlık bölmeden aydınlık bölmeye geçen sayılan aralıklar."), "count(dark to light)", missingNoPairs),
 				metric("transitions_count", T("Transitions", "Geçiş sayısı"),
 					T("Total crossings between the two compartments in either direction; fewer transitions suggest more anxiety-like behaviour or lower activity.",
 						"İki bölme arasında her iki yöndeki toplam geçiş; daha az geçiş daha fazla anksiyete benzeri davranışa ya da düşük aktiviteye işaret eder."),
-					Count, 1e6, trajectory, "Counted intervals whose samples are in different compartments.", "count(light to dark) + count(dark to light)", missingNoPairs),
+					Count, 1e6, trajectory, T("Counted intervals whose samples are in different compartments.", "Örnekleri farklı bölmelerde olan sayılan aralıklar."), "count(light to dark) + count(dark to light)", missingNoPairs),
 				metric("latency_to_dark_s", T("Latency to dark", "Karanlığa ilk geçiş süresi"),
 					T("Time from the start of the trial until the animal first enters the dark compartment.", "Deneme başından hayvanın karanlık bölmeye ilk kez girmesine kadar geçen süre."),
-					Second, 86400, trajectory, latencyRule+" The zone is dark.", "first tracked sample time in dark", missingNotSeen),
+					Second, 86400, trajectory, J(latencyRule, T("The zone is dark.", "Bölge olarak dark kullanılır.")), "first tracked sample time in dark", missingNotSeen),
 			},
 			QC: trajectoryQC,
 		},

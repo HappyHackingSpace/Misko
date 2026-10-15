@@ -1,9 +1,9 @@
 <script setup>
 // One published paradigm version, read as a template: what it measures, the
 // values an environment and a protocol step have to provide, and the metrics,
-// zones, events and quality rules the engine produces. Names and explanations
-// come from the API in the chosen language; the precise definitions and
-// formulas stay as written, because they are the scientific contract.
+// zones, events and quality rules the engine produces. Names, explanations
+// and technical definitions come from the API in the chosen language;
+// formulas stay as written.
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import { useI18n } from "vue-i18n";

@@ -100,7 +100,7 @@ func TestEveryContractMatchesItsEngine(t *testing.T) {
 			declared := map[string]bool{}
 			for _, m := range p.Metrics {
 				declared[m.Key] = true
-				if m.Label.EN == "" || m.Definition == "" || m.Formula == "" || m.MissingWhen == "" || len(m.Inputs) == 0 ||
+				if m.Label.EN == "" || m.Definition.EN == "" || m.Formula == "" || m.MissingWhen.EN == "" || len(m.Inputs) == 0 ||
 					!slices.Contains(units, m.Unit) || m.Min > m.Max || m.Tolerance <= 0 {
 					t.Errorf("incomplete metric %+v", m)
 				}
@@ -112,13 +112,13 @@ func TestEveryContractMatchesItsEngine(t *testing.T) {
 				}
 			}
 			for _, z := range p.Zones {
-				if z.Key == "" || z.Role == "" || z.Geometry == "" {
+				if z.Key == "" || z.Role == "" || z.Geometry.EN == "" {
 					t.Errorf("zone %+v", z)
 				}
 			}
 			kinds := map[string]EventKind{}
 			for _, e := range append(slices.Clone(p.Events), p.InputEvents...) {
-				if e.Definition == "" || (e.Kind != IntervalEvent && e.Kind != PointEvent) {
+				if e.Definition.EN == "" || (e.Kind != IntervalEvent && e.Kind != PointEvent) {
 					t.Errorf("event %+v", e)
 				}
 				kinds[e.Type] = e.Kind
@@ -200,13 +200,17 @@ func TestCatalogTextIsCompleteAndReadable(t *testing.T) {
 			}
 			for _, z := range p.Zones {
 				check("zone "+z.Key, z.Label, true)
+				check("zone geometry "+z.Key, z.Geometry, false)
 			}
 			for _, e := range append(slices.Clone(p.Events), p.InputEvents...) {
 				check("event "+e.Type, e.Label, true)
+				check("event definition "+e.Type, e.Definition, false)
 			}
 			for _, m := range p.Metrics {
 				check("metric "+m.Key, m.Label, true)
 				check("metric description "+m.Key, m.Description, false)
+				check("metric definition "+m.Key, m.Definition, false)
+				check("metric missing rule "+m.Key, m.MissingWhen, false)
 			}
 		})
 	}

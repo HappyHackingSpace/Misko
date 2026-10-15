@@ -4,15 +4,21 @@ import (
 	"math"
 	"slices"
 	"strings"
+	"unicode"
 )
 
 // Shared wording for trajectory-based definitions.
-const (
-	trackedPair     = "A counted interval is a pair of consecutive tracked samples with 0 < dt <= max_sample_gap_s."
-	calibratedFrame = "Samples and calibrated zone shapes use the same coordinates in centimeters; zones are evaluated independently and include their boundary."
-	entryRule       = "An entry is a counted interval whose earlier sample is outside the zone and whose later sample is inside."
-	latencyRule     = "Time of the first tracked sample inside the zone, from the trial start."
-	missingNotSeen  = "Missing (EVENT_NOT_OBSERVED) when no tracked sample is inside the zone; missing (NO_VALID_INTERVALS) without counted intervals."
+var (
+	trackedPair = T("A counted interval is a pair of consecutive tracked samples with 0 < dt <= max_sample_gap_s.",
+		"Sayılan aralık, 0 < dt <= max_sample_gap_s olan iki ardışık izlenmiş örnekten oluşur.")
+	calibratedFrame = T("Samples and calibrated zone shapes use the same coordinates in centimeters; zones are evaluated independently and include their boundary.",
+		"Örnekler ve kalibre edilmiş bölge şekilleri aynı santimetre koordinatlarını kullanır; bölgeler birbirinden bağımsız değerlendirilir ve sınırları bölgeye dahildir.")
+	entryRule = T("An entry is a counted interval whose earlier sample is outside the zone and whose later sample is inside.",
+		"Giriş, önceki örneği bölgenin dışında, sonraki örneği içinde olan sayılan aralıktır.")
+	latencyRule = T("Time of the first tracked sample inside the zone, from the trial start.",
+		"Deneme başından itibaren bölge içindeki ilk izlenmiş örneğin zamanı.")
+	missingNotSeen = T("Missing (EVENT_NOT_OBSERVED) when no tracked sample is inside the zone; missing (NO_VALID_INTERVALS) without counted intervals.",
+		"Bölge içinde izlenmiş örnek yoksa eksik (EVENT_NOT_OBSERVED); sayılan aralık yoksa eksik (NO_VALID_INTERVALS).")
 )
 
 var gapParameter = Parameter{
@@ -143,7 +149,9 @@ func occupancyEvents(zones []Zone, keys ...string) []EventDefinition {
 	for _, k := range keys {
 		z := zoneByKey(zones, k)
 		out = append(out, EventDefinition{
-			Type: "in_" + k, Kind: IntervalEvent, Definition: "Contiguous counted intervals whose earlier sample is in " + k + ".",
+			Type: "in_" + k, Kind: IntervalEvent,
+			Definition: T("Contiguous counted intervals whose earlier sample is in "+k+".",
+				"Önceki örneği "+lowerTR(z.Label.TR)+" içinde olan bitişik sayılan aralıklar."),
 			Label: T(z.Label.EN+" visit", z.Label.TR+" ziyareti"),
 		})
 	}
@@ -155,11 +163,28 @@ func entryEvents(zones []Zone, keys ...string) []EventDefinition {
 	for _, k := range keys {
 		z := zoneByKey(zones, k)
 		out = append(out, EventDefinition{
-			Type: k + "_entry", Kind: PointEvent, Definition: "Later sample time of a counted interval entering " + k + ".",
+			Type: k + "_entry", Kind: PointEvent,
+			Definition: T("Later sample time of a counted interval entering "+k+".",
+				capitalTR(z.Label.TR)+" bölgesine giren sayılan aralığın sonraki örneğinin zamanı."),
 			Label: T(z.Label.EN+" entry", z.Label.TR+" girişi"),
 		})
 	}
 	return out
+}
+
+// lowerTR lowercases Turkish wording for use inside a sentence (I -> ı, İ -> i).
+func lowerTR(s string) string {
+	return strings.ToLowerSpecial(unicode.TurkishCase, s)
+}
+
+// capitalTR keeps the wording as written but starts it in upper case, for
+// the start of a sentence.
+func capitalTR(s string) string {
+	if s == "" {
+		return s
+	}
+	r := []rune(s)
+	return strings.ToUpperSpecial(unicode.TurkishCase, string(r[0])) + string(r[1:])
 }
 
 func zoneByKey(zones []Zone, key string) Zone {
@@ -197,7 +222,7 @@ func trialType(key string, label Text) TrialType { return TrialType{Key: key, La
 
 // metric builds a definition with the tolerance used for its unit: 1e-9 for
 // counts, booleans and ratios, 1e-6 otherwise.
-func metric(key string, label, description Text, unit Unit, max float64, inputs []string, definition, formula, missingWhen string) MetricDefinition {
+func metric(key string, label, description Text, unit Unit, max float64, inputs []string, definition Text, formula string, missingWhen Text) MetricDefinition {
 	m := MetricDefinition{Key: key, Label: label, Description: description, Unit: unit, Max: max, Inputs: inputs, Definition: definition, Formula: formula, MissingWhen: missingWhen, Tolerance: 1e-6}
 	switch unit {
 	case Count, Boolean:

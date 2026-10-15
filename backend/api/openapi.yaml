@@ -3048,12 +3048,12 @@ components:
       properties:
         key: {type: string}
         label: {type: string, description: In the response language}
-        description: {type: string, description: Plain explanation in the response language; definition and formula are the English technical contract}
+        description: {type: string, description: Plain explanation in the response language}
         unit: {type: string, enum: [cm, cm_s, s, count, ratio, rpm, boolean]}
         valueType: {type: string, enum: [number, integer]}
-        definition: {type: string}
-        formula: {type: string}
-        missingWhen: {type: string, description: When the metric is reported missing instead of a value}
+        definition: {type: string, description: Precise technical definition in the response language}
+        formula: {type: string, description: Expression; the same in every language}
+        missingWhen: {type: string, description: When the metric is reported missing instead of a value, in the response language}
         inputs: {type: array, items: {type: string}}
         min: {type: number}
         max: {type: number}
