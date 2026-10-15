@@ -196,6 +196,15 @@ async function onExport(key) {
     exporting.value = false;
   }
 }
+
+// "3 results wait for review and 2 animals wait for analysis", leaving out a zero part.
+const provisionalParts = computed(() => {
+  const parts = [];
+  if (open.value.pending) parts.push(t("studyReport.state.provisionalPending", { n: open.value.pending }));
+  if (open.value.awaitingAnalysis) parts.push(t("studyReport.state.provisionalAwaiting", { n: open.value.awaitingAnalysis }));
+  const text = parts.join(t("studyReport.state.provisionalJoin"));
+  return text.charAt(0).toUpperCase() + text.slice(1);
+});
 </script>
 
 <template>
@@ -211,7 +220,7 @@ async function onExport(key) {
             data-test="report-provisional"
             class="banner"
           >
-            {{ $t("studyReport.state.provisional", { pending: open.pending, awaiting: open.awaitingAnalysis }) }}
+            {{ $t("studyReport.state.provisional", { parts: provisionalParts }) }}
             <RouterLink class="link" :to="{ path: '/review', query: { experimentId: data.experiment.id, status: 'PENDING' } }" data-test="report-review-link">
               {{ $t("studyReport.state.goReview") }}
             </RouterLink>

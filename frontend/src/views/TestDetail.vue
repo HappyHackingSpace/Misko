@@ -21,6 +21,7 @@ import VideoPanel from "../components/test/VideoPanel.vue";
 import CalibrationDialog from "../components/test/CalibrationDialog.vue";
 import SessionAnimalsEditor from "../components/test/SessionAnimalsEditor.vue";
 import TestComments from "../components/test/TestComments.vue";
+import SubjectResult from "../components/analysis/SubjectResult.vue";
 
 const { t } = useI18n();
 const route = useRoute();
@@ -183,10 +184,11 @@ onUnmounted(() => crumb.clear());
 
     <VideoPanel :test="test" :can-upload="canRun" @changed="loadCalibration" />
 
-    <!-- Analysis results and runs per animal belong to the analysis screens,
-         which mount their panels here. -->
+    <!-- Analysis results and runs, one block per animal. -->
     <NCard size="small" :bordered="true" :title="$t('execution.session.analysisTitle')" data-test="analysis-slot">
-      <p class="muted">{{ $t("execution.session.analysisHint") }}</p>
+      <div class="analysis-list">
+        <SubjectResult v-for="s in test.subjects" :key="s.id" :test-id="test.id" :test-subject-id="s.id" @changed="load" />
+      </div>
     </NCard>
 
     <TestComments :test-id="testId" />
@@ -227,4 +229,5 @@ onUnmounted(() => crumb.clear());
 .facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 12px 20px; margin: 0; }
 .fact dt { font-size: 12px; color: var(--muted); margin-bottom: 2px; }
 .fact dd { margin: 0; overflow-wrap: anywhere; }
+.analysis-list { display: flex; flex-direction: column; gap: 16px; }
 </style>

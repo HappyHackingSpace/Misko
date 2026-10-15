@@ -31,13 +31,6 @@ export const experiments = {
 
 
 
-export const analysis = {
-  runsOfTest: (testId) => api(`/tests/${testId}/analysis-runs`),
-  run: (runId) => api(`/analysis-runs/${runId}`),
-  videoPair: (runId) => api(`/analysis-runs/${runId}/video-pair`),
-  reanalyze: (testId, recordingId) => api(`/tests/${testId}/recordings/${recordingId}/analysis-runs`, { method: "POST", body: {} }),
-  capabilities: () => api("/analysis/capabilities"),
-};
 
 export const paradigms = {
   list: () => api("/paradigms"),

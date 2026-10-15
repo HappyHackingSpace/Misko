@@ -127,7 +127,10 @@ export default {
     blinded: "This study is blinded. The report shows group allocation; share it only when the study may be unblinded.",
     state: {
       provisionalTitle: "Provisional: not every result is reviewed",
-      provisional: "{pending} results wait for review and {awaiting} animals wait for analysis. Only accepted results count, so these numbers will still change.",
+      provisional: "{parts}. Only accepted results count, so these numbers will still change.",
+      provisionalPending: "{n} results wait for review",
+      provisionalAwaiting: "{n} animals wait for analysis",
+      provisionalJoin: " and ",
       goReview: "Review them",
       interimTitle: "Interim report",
       interim: "Every result so far is reviewed, but the study is still running.",

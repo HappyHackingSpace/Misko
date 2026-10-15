@@ -127,7 +127,10 @@ export default {
     blinded: "Bu çalışma kör yürütülüyor. Rapor grup dağılımını gösterir; yalnızca körlük kaldırılabildiğinde paylaşın.",
     state: {
       provisionalTitle: "Geçici: tüm sonuçlar incelenmedi",
-      provisional: "{pending} sonuç inceleme, {awaiting} hayvan analiz bekliyor. Yalnızca kabul edilen sonuçlar sayıldığı için bu rakamlar değişecek.",
+      provisional: "{parts}. Yalnızca kabul edilen sonuçlar sayıldığı için bu rakamlar değişecek.",
+      provisionalPending: "{n} sonuç inceleme bekliyor",
+      provisionalAwaiting: "{n} hayvan analiz bekliyor",
+      provisionalJoin: ", ",
       goReview: "İncele",
       interimTitle: "Ara rapor",
       interim: "Şu ana kadarki tüm sonuçlar incelendi ama çalışma sürüyor.",
