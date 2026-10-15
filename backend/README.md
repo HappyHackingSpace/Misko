@@ -631,10 +631,11 @@ reads video bytes. Workers measure positions only: the Go metric engine computes
 every published metric and event from the stored trajectory. A test (one
 session) has one video and one or more animals (test subjects), each in its own
 arena; a run analyses one animal in that video with its arena's calibration,
-whose crop is the arena's region of the frame. The first worker, for Open Field
-video and tested only on synthetic video so far, is in
-[`worker/`](../worker/README.md); it refuses every other paradigm with
-`UNSUPPORTED_PARADIGM`.
+whose crop is the arena's region of the frame. The worker in
+[`worker/`](../worker/README.md), tested only on synthetic video so far,
+tracks every paradigm measured from a trajectory (OPEN_FIELD, EPM, Y_MAZE,
+BARNES_MAZE, THREE_CHAMBER, MWM, LIGHT_DARK version 1); it refuses every other
+paradigm with `UNSUPPORTED_PARADIGM`.
 
 Workers are service identities, not users:
 
@@ -705,9 +706,15 @@ never change; reanalysis is a new run.
   run id, attempt and recording duration, equal-length `tUs`, `xCm`, `yCm`,
   `tracked` and `confidence` arrays, strictly increasing times within the
   recording, confidences from 0 to 1 and coordinates for tracked samples
-  (`analysis.invalidTrajectory`). QC rules the trajectory can measure are
-  applied: `max_lost_frame_ratio` against untracked samples and
-  `min_tracking_confidence` against the mean confidence of tracked samples. A
+  (`analysis.invalidTrajectory`). An optional `inferred` array of the same
+  length marks tracked samples whose position the worker placed without seeing
+  it (a light/dark animal hidden in the dark compartment); an inferred sample
+  must be tracked, and a trajectory without the array has none. QC rules the
+  trajectory can measure are applied: `max_lost_frame_ratio` against untracked
+  samples (inferred ones are tracked), `min_tracking_confidence` against the
+  mean confidence of observed samples (tracked and not inferred) and, when a
+  paradigm sets it, `max_inferred_ratio` against inferred samples; the inferred
+  ratio is part of the trajectory's quality summary (`Track.Quality`). A
   failure marks the run `FAILED` with a `QC_FAILED` reason, without retry, and
   publishes nothing.
 - The Go metric engine then computes the metrics and events from the samples
