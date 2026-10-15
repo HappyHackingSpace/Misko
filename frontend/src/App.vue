@@ -2,7 +2,7 @@
 import { computed, h, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
-import { NConfigProvider, NLayout, NLayoutHeader, NLayoutSider, NLayoutContent, NMenu, dateEnUS, dateTrTR, enUS, trTR } from "naive-ui";
+import { NConfigProvider, NLayout, NLayoutHeader, NLayoutSider, NLayoutContent, NMenu, NMessageProvider, dateEnUS, dateTrTR, enUS, trTR } from "naive-ui";
 import { useAuth } from "./stores/auth.js";
 import { useLab } from "./stores/lab.js";
 import { usePrefs } from "./stores/prefs.js";
@@ -106,6 +106,7 @@ const activeKey = computed(() => topLevelKeys.find((k) => route.path.startsWith(
 
 <template>
   <n-config-provider :theme="naiveTheme" :theme-overrides="naiveThemeOverrides" :locale="naiveLocale" :date-locale="naiveDateLocale" class="theme-root">
+    <n-message-provider>
     <div v-if="auth.isLoggedIn" class="app">
       <n-layout has-sider class="shell">
         <div v-if="isMobile && mobileOpen" class="sidebar-overlay" @click="closeMobile"></div>
@@ -191,6 +192,7 @@ const activeKey = computed(() => topLevelKeys.find((k) => route.path.startsWith(
       </n-layout>
     </div>
     <RouterView v-else />
+    </n-message-provider>
   </n-config-provider>
 </template>
 

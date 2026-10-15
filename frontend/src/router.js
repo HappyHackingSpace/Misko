@@ -10,8 +10,8 @@ const Review = () => import("./views/review/Review.vue");
 const ExperimentForm = () => import("./views/ExperimentForm.vue");
 const TestDetail = () => import("./views/TestDetail.vue");
 const Tests = () => import("./views/Tests.vue");
-const Subjects = () => import("./views/Subjects.vue");
-const SubjectForm = () => import("./views/SubjectForm.vue");
+const Subjects = () => import("./views/subjects/Subjects.vue");
+const SubjectDetail = () => import("./views/subjects/SubjectDetail.vue");
 const Reports = () => import("./views/Reports.vue");
 const Paradigms = () => import("./views/Paradigms.vue");
 const ParadigmDetail = () => import("./views/ParadigmDetail.vue");
@@ -35,11 +35,9 @@ const routes = [
   { path: "/tests", component: Tests, meta: { titleKey: "nav.tests" } },
   { path: "/tests/:id", component: TestDetail, meta: { titleKey: "nav.tests" } },
 
+  // Subjects are created and edited in a drawer; the detail page shows weights and allocation.
   { path: "/subjects", component: Subjects, meta: { titleKey: "nav.subjects" } },
-  // Writing a subject needs subject:write, so a technician or a viewer cannot
-  // reach the form by typing the address either.
-  { path: "/subjects/new", component: SubjectForm, meta: { permission: "subject:write", titleKey: "nav.subjects" } },
-  { path: "/subjects/:id", component: SubjectForm, meta: { permission: "subject:write", titleKey: "nav.subjects" } },
+  { path: "/subjects/:id", component: SubjectDetail, meta: { titleKey: "nav.subjects" } },
   // Reading results is open to every signed-in role, like the rest of the data.
   { path: "/reports", component: Reports, meta: { titleKey: "nav.reports" } },
   { path: "/review", component: Review, meta: { titleKey: "nav.review" } },
