@@ -1,6 +1,8 @@
 // Package domain holds video assets and test recordings. An asset is one
 // object in private cloud storage, identified by bucket, object name and
-// generation once verified. A recording links a verified original to a test.
+// generation once verified. A recording links an original to a test; a test
+// has one current recording, and a replacement upload supersedes it while the
+// old one stays for provenance.
 package domain
 
 import (
@@ -21,6 +23,7 @@ var (
 	ErrInvalidClip        = errors.New("clip start must be non-negative and the clip end after its start")
 	ErrInvalidObject      = errors.New("stored object has no generation")
 	ErrAlreadyFinalized   = errors.New("the upload was already finalized")
+	ErrTestNotStarted     = errors.New("a video needs the test in progress or completed")
 )
 
 type Kind string
@@ -74,14 +77,33 @@ type Clip struct {
 	EndUs   *int64
 }
 
+// Recording is one video of a test. SupersedesID names the recording it
+// replaced; Current is true for the one recording nothing supersedes.
 type Recording struct {
 	ID           string
 	ExperimentID string
 	TestID       string
+	SupersedesID string
+	Current      bool
 	Clip         Clip
 	Asset        Asset
 	CreatedBy    string
 	CreatedAt    time.Time
+}
+
+// Test statuses that accept a video.
+const (
+	TestInProgress = "IN_PROGRESS"
+	TestCompleted  = "COMPLETED"
+)
+
+// AcceptsVideo tells whether a test in this status may get a video: it must
+// have started, and a cancelled test takes none.
+func AcceptsVideo(testStatus string) error {
+	if testStatus != TestInProgress && testStatus != TestCompleted {
+		return ErrTestNotStarted
+	}
+	return nil
 }
 
 type UploadRequest struct {

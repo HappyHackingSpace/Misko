@@ -121,7 +121,9 @@ type storedObject struct {
 type session struct {
 	object      string
 	contentType string
-	data        []byte
+	// limit is the signed x-goog-content-length-range maximum; 0 has none.
+	limit int
+	data  []byte
 }
 
 // diskStore serves signed upload and read URLs from memory. Browsers reach it
@@ -144,6 +146,15 @@ func (s *diskStore) UploadURL(_ context.Context, object, contentType string, exp
 		Headers:   map[string]string{"Content-Type": contentType, "x-goog-resumable": "start", "x-goog-if-generation-match": "0"},
 		ExpiresAt: expires,
 	}, nil
+}
+
+// SizedUploadURL limits the upload to size bytes, as the signed
+// x-goog-content-length-range header does on a bucket.
+func (s *diskStore) SizedUploadURL(ctx context.Context, object, contentType string, size int64, expires time.Time) (mediaapp.SignedRequest, error) {
+	signed, err := s.UploadURL(ctx, object, contentType, expires)
+	signed.URL += "&limit=" + strconv.FormatInt(size, 10)
+	signed.Headers["x-goog-content-length-range"] = "0," + strconv.FormatInt(size, 10)
+	return signed, err
 }
 
 // ReadURL signs a read that stops working after `expires`, the way a signed
@@ -193,9 +204,10 @@ func (s *diskStore) routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /e2e/storage/start", func(w http.ResponseWriter, r *http.Request) {
 		cors(w)
 		object, contentType := r.URL.Query().Get("object"), r.URL.Query().Get("contentType")
+		limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 		s.mu.Lock()
 		id := fmt.Sprintf("s%d", len(s.sessions)+1)
-		s.sessions[id] = &session{object: object, contentType: contentType}
+		s.sessions[id] = &session{object: object, contentType: contentType, limit: limit}
 		s.mu.Unlock()
 		w.Header().Set("Location", s.base+"/e2e/storage/session?id="+id)
 		w.WriteHeader(http.StatusCreated)
@@ -212,6 +224,10 @@ func (s *diskStore) routes(mux *http.ServeMux) {
 		chunk, err := io.ReadAll(r.Body)
 		if err != nil {
 			http.Error(w, "read failed", http.StatusBadRequest)
+			return
+		}
+		if current.limit > 0 && len(current.data)+len(chunk) > current.limit {
+			http.Error(w, "the upload exceeds the signed content length range", http.StatusBadRequest)
 			return
 		}
 		current.data = append(current.data, chunk...)
@@ -261,7 +277,7 @@ func (s *diskStore) routes(mux *http.ServeMux) {
 func cors(w http.ResponseWriter) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Access-Control-Allow-Methods", "GET, HEAD, POST, PUT, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Range, Range, x-goog-resumable, x-goog-if-generation-match")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Range, Range, x-goog-resumable, x-goog-if-generation-match, x-goog-content-length-range")
 	w.Header().Set("Access-Control-Expose-Headers", "Location, Range, Content-Range, ETag")
 	w.Header().Set("Access-Control-Max-Age", "3600")
 }
