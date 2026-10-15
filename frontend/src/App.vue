@@ -82,11 +82,13 @@ const primaryOptions = computed(() => [
   { label: navLabel("nav.experiments", "nav-experiments"), key: "/experiments", icon: navIcon("experiments") },
   { label: navLabel("nav.tests", "nav-tests"), key: "/tests", icon: navIcon("test") },
   { label: t("nav.subjects"), key: "/subjects", icon: navIcon("subjects") },
+  { label: navLabel("nav.review", "nav-review"), key: "/review", icon: navIcon("test") },
   { label: navLabel("nav.reports", "nav-reports"), key: "/reports", icon: navIcon("reports") },
 ]);
 
 const managementOptions = computed(() => {
   const options = [
+    { label: t("nav.catalog"), key: "/catalog", icon: navIcon("paradigms") },
     { label: t("nav.paradigms"), key: "/paradigms", icon: navIcon("paradigms") },
     { label: t("nav.environments"), key: "/environments", icon: navIcon("environments") },
   ];
@@ -98,7 +100,7 @@ function onMenuSelect(key) {
   if (key && key !== route.path) router.push(key);
 }
 
-const topLevelKeys = ["/dashboard", "/experiments", "/tests", "/subjects", "/reports", "/paradigms", "/environments", "/users"];
+const topLevelKeys = ["/dashboard", "/experiments", "/tests", "/subjects", "/review", "/reports", "/catalog", "/paradigms", "/environments", "/users"];
 const activeKey = computed(() => topLevelKeys.find((k) => route.path.startsWith(k)) ?? null);
 </script>
 
