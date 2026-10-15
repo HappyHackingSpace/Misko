@@ -15,6 +15,9 @@ import (
 	dashboardhttp "github.com/HappyHackingSpace/Misko/backend/internal/dashboard/adapters/http"
 	dashboardpostgres "github.com/HappyHackingSpace/Misko/backend/internal/dashboard/adapters/postgres"
 	dashboardapp "github.com/HappyHackingSpace/Misko/backend/internal/dashboard/application"
+	dosinghttp "github.com/HappyHackingSpace/Misko/backend/internal/dosing/adapters/http"
+	dosingpostgres "github.com/HappyHackingSpace/Misko/backend/internal/dosing/adapters/postgres"
+	dosingapp "github.com/HappyHackingSpace/Misko/backend/internal/dosing/application"
 	environmentscatalog "github.com/HappyHackingSpace/Misko/backend/internal/environments/adapters/catalog"
 	environmentshttp "github.com/HappyHackingSpace/Misko/backend/internal/environments/adapters/http"
 	environmentspostgres "github.com/HappyHackingSpace/Misko/backend/internal/environments/adapters/postgres"
@@ -141,6 +144,7 @@ func NewAPI(pool *pgxpool.Pool, cfg config.Config, auth config.Auth, logger *slo
 	subjects := subjectsapp.New(subjectspostgres.NewStore(pool), time.Now)
 	catalog := catalogapp.New(catalogpostgres.NewStore(pool))
 	experiments := experimentsapp.New(experimentspostgres.NewStore(pool))
+	dosing := dosingapp.New(dosingpostgres.NewStore(pool), time.Now)
 	environments := environmentsapp.New(environmentspostgres.NewStore(pool), environmentscatalog.New())
 	protocols := protocolsapp.New(protocolspostgres.NewStore(pool), protocolscatalog.New())
 	// One user may create or edit at most 20 comments per minute on this instance.
@@ -160,6 +164,7 @@ func NewAPI(pool *pgxpool.Pool, cfg config.Config, auth config.Auth, logger *slo
 	subjectshttp.Register(mux, subjects, authenticate, logger)
 	cataloghttp.Register(mux, catalog, authenticate, logger)
 	experimentshttp.Register(mux, experiments, authenticate, logger)
+	dosinghttp.Register(mux, dosing, authenticate, logger)
 	paradigmshttp.Register(mux, paradigmsapp.New(newWorkerCapabilities(pool)), authenticate, logger)
 	environmentshttp.Register(mux, environments, authenticate, logger)
 	protocolshttp.Register(mux, protocols, authenticate, logger)
