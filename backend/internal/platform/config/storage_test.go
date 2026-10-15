@@ -45,3 +45,14 @@ func TestStorageIsOptionalAndValidated(t *testing.T) {
 		}
 	}
 }
+
+func TestLocalStorageIsUsedOnlyWithoutABucket(t *testing.T) {
+	s, err := LoadStorage(env(map[string]string{"LOCAL_STORAGE_DIR": "/data/videos"}))
+	if err != nil || !s.Enabled() || !s.Local() || s.LocalDir != "/data/videos" {
+		t.Fatalf("local: %+v %v", s, err)
+	}
+	s, err = LoadStorage(env(map[string]string{"LOCAL_STORAGE_DIR": "/data/videos", "GCS_BUCKET": "misko-lab-videos"}))
+	if err != nil || !s.Enabled() || s.Local() {
+		t.Fatalf("bucket and directory: %+v %v", s, err)
+	}
+}

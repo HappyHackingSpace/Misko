@@ -72,8 +72,17 @@ folder at `/out`.
 Sign in with `ADMIN_EMAIL` (default `admin@misko.local`) and that password, then
 change it and create the other users from the **Users** screen.
 
-Video upload and playback need a private Google Cloud Storage bucket. Without
-`GCS_BUCKET` those routes answer 503 and the rest of the system works normally.
+Videos and analysis outputs are kept on the `local-videos` Docker volume: the
+backend runs with `LOCAL_STORAGE_DIR=/data/videos` and serves the signed upload
+and read URLs itself under `/api/local-storage/`, so the stack needs no Google
+Cloud account. Set `GCS_BUCKET` (and `GCS_SIGNER_EMAIL`) to use a private Cloud
+Storage bucket instead; a bucket takes precedence.
+
+The database now lives on the `postgres-data` volume. The older `foundation-db`
+and `db-data` volumes are no longer mounted and are left untouched, so the first
+start after this change begins with an empty database: run `migrate` and `setup`
+again, and remove the old volumes with `docker volume rm` once you no longer
+need them.
 
 ## Local development
 
@@ -92,8 +101,12 @@ export DATABASE_URL='postgres://misko:misko_local_only@127.0.0.1:5432/misko_foun
 export JWT_SECRET="$(openssl rand -base64 48)"
 go run ./cmd/bootstrap migrate
 go run ./cmd/bootstrap setup
+export LOCAL_STORAGE_DIR="$PWD/.local-storage"   # optional: videos without GCS
 go run ./cmd/api                      # http://localhost:4000
 ```
+
+A worker started from source with `MISKO_API_URL=http://localhost:4000` reaches
+local storage through the same base URL.
 
 **Frontend** (a second terminal):
 

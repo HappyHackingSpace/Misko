@@ -14,7 +14,7 @@ Mişko is made of a few parts that run together:
 - **Backend** (Go API) holds the business logic and talks to the database.
 - **Jobs** is a small process that queues analysis runs and requeues expired ones.
 - **Frontend** (Vue 3 single-page app, served by Nginx) is the web panel you use in the browser.
-- **Worker** (Python) analyzes recorded videos. It is optional and needs cloud storage.
+- **Worker** (Python) analyzes recorded videos. It is optional.
 
 With Docker you start them together. For development you can run the database in
 Docker and the applications from source.
@@ -77,19 +77,32 @@ existing one. Sign in, change the password, then create the other users from the
 
 ### Video storage
 
-Uploading and playing back videos needs a private Google Cloud Storage bucket.
-Set `GCS_BUCKET` (and `GCS_SIGNER_EMAIL`) for that. Without a bucket those routes
-answer 503 and everything else works normally, which is enough to explore the
-system.
+By default videos and analysis outputs are stored on this machine, in the
+`local-videos` Docker volume. The backend runs with `LOCAL_STORAGE_DIR=/data/videos`
+and serves the upload and playback URLs itself under `/api/local-storage/`, so
+no cloud account is needed. The URLs are signed with `JWT_SECRET` and expire like
+cloud storage URLs do.
+
+To use a private Google Cloud Storage bucket instead, set `GCS_BUCKET` (and
+`GCS_SIGNER_EMAIL`). When a bucket is set it takes precedence over the local
+directory.
+
+### Upgrading from an earlier version
+
+The database volume is now called `postgres-data`. The older `foundation-db` and
+`db-data` volumes are no longer mounted and are left as they are, never deleted,
+so after upgrading the stack starts with an empty database: run the `migrate` and
+`setup` commands again. Remove an old volume with `docker volume rm` once you no
+longer need it (`docker volume ls` lists them).
 
 ### Stopping and resetting
 
 ```bash
 docker compose down            # stop the containers, keep the data
-docker compose down -v         # stop AND delete the database volume (full reset)
+docker compose down -v         # stop AND delete the database and video volumes (full reset)
 ```
 
-After a `down -v` the database is empty again, so run the `migrate` and `setup`
+After a `down -v` the database and the stored videos are gone, so run the `migrate` and `setup`
 commands before starting the stack.
 
 ## Option B: Local development
@@ -109,8 +122,13 @@ export DATABASE_URL='postgres://misko:misko_local_only@127.0.0.1:5432/misko_foun
 export JWT_SECRET="$(openssl rand -base64 48)"
 go run ./cmd/bootstrap migrate  # install or upgrade the schema
 go run ./cmd/bootstrap setup    # create the laboratory and the administrator
+export LOCAL_STORAGE_DIR="$PWD/.local-storage"   # optional: store videos in a folder
 go run ./cmd/api                # API on http://localhost:4000
 ```
+
+With `LOCAL_STORAGE_DIR` set the API keeps videos in that folder and the panel
+uploads to it through the same `/api` proxy. A worker run from source uses
+`MISKO_API_URL=http://localhost:4000` and reaches the files the same way.
 
 **Frontend** (a second terminal):
 
@@ -137,9 +155,13 @@ for development only.
 | `LAB_TIMEZONE` | `UTC` | Time zone the laboratory records use. |
 | `FRONTEND_PORT` | `8080` | Host port for the web panel. |
 | `JOB_INTERVAL` | `10s` | How often the jobs process queues analysis runs. |
-| `GCS_BUCKET` | empty | Private bucket for videos. Empty means the video routes answer 503. |
+| `GCS_BUCKET` | empty | Private bucket for videos. When set it is used instead of local storage. |
 | `GCS_SIGNER_EMAIL` | empty | Service account that signs the upload and read URLs. |
 | `MISKO_WORKER_TOKEN` | empty | Only for the `worker` profile, after registering a worker in the API. |
+
+In `docker-compose.yml` the backend also has `LOCAL_STORAGE_DIR=/data/videos` on
+the `local-videos` volume. Outside Docker, set `LOCAL_STORAGE_DIR` to any folder
+to store videos there; with neither it nor `GCS_BUCKET` the video routes answer 503.
 
 For the backend outside Docker the full list, including `TOKEN_TTL`,
 `BCRYPT_COST`, `UPLOAD_URL_TTL` and `READ_URL_TTL`, is in `backend/.env.example`.
@@ -161,5 +183,6 @@ described in [DEPLOY.md](https://github.com/HappyHackingSpace/Misko/blob/main/do
 - **Port already in use**: change `FRONTEND_PORT` in `.env`, or stop whatever holds port 4000, and run `docker compose up -d` again.
 - **Cannot sign in and the password is gone**: the password is shown once and is not recoverable. Reset with `docker compose down -v`, then run the `migrate` and `setup` commands again.
 - **`setup` refuses to run**: it needs a terminal for the password. In a script, pass `-credentials-file` with a path that does not exist yet.
-- **Video upload returns 503**: `GCS_BUCKET` is not set. That is expected without a bucket.
+- **Video upload returns 503**: neither `LOCAL_STORAGE_DIR` nor `GCS_BUCKET` is set on the backend.
+- **The database is empty after an upgrade**: the stack now uses the `postgres-data` volume. Run `migrate` and `setup`; the old volume is still there if you need its data.
 - **Backend cannot reach the database**: make sure the `db` container is healthy (`docker compose ps`).
