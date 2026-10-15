@@ -488,17 +488,20 @@ func toRun(r sqlcgen.MiskoAnalysisRun) (domain.Run, error) {
 	}, nil
 }
 
-// parameters snapshots the environment's apparatus and the step's session values.
+// parameters snapshots the step's session values and the environment's
+// apparatus and analysis values. The environment wins on a shared key: steps
+// written before analysis settings moved to the environment stored their
+// defaults in the session.
 func parameters(apparatus, session []byte) (map[string]float64, error) {
 	out := map[string]float64{}
-	if err := json.Unmarshal(apparatus, &out); err != nil {
-		return nil, fmt.Errorf("decode apparatus: %w", err)
-	}
-	s := map[string]float64{}
-	if err := json.Unmarshal(session, &s); err != nil {
+	if err := json.Unmarshal(session, &out); err != nil {
 		return nil, fmt.Errorf("decode session: %w", err)
 	}
-	maps.Copy(out, s)
+	environment := map[string]float64{}
+	if err := json.Unmarshal(apparatus, &environment); err != nil {
+		return nil, fmt.Errorf("decode apparatus: %w", err)
+	}
+	maps.Copy(out, environment)
 	return out, nil
 }
 

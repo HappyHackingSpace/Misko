@@ -974,6 +974,8 @@ paths:
     get:
       operationId: listParadigms
       summary: Paradigms with their published versions (*:read); the catalog is read-only
+      parameters:
+        - {name: lang, in: query, schema: {type: string, enum: [en, tr]}, description: Language of names, labels and explanations; otherwise Accept-Language, otherwise en. The response carries Content-Language}
       responses:
         '200':
           description: Paradigms ordered by key
@@ -988,6 +990,8 @@ paths:
     get:
       operationId: getLatestParadigm
       summary: Manifest of the latest published version (*:read)
+      parameters:
+        - {name: lang, in: query, schema: {type: string, enum: [en, tr]}, description: Language of names, labels and explanations; otherwise Accept-Language, otherwise en. The response carries Content-Language}
       responses:
         '200': {description: Manifest, content: {application/json: {schema: {$ref: '#/components/schemas/ParadigmManifest'}}}}
         '401': {$ref: '#/components/responses/Problem'}
@@ -999,7 +1003,9 @@ paths:
       - {name: version, in: path, required: true, schema: {type: integer, minimum: 1}}
     get:
       operationId: getParadigmVersion
-      summary: Manifest of one published version, as consumed by analysis workers (*:read)
+      summary: Manifest of one published version (*:read)
+      parameters:
+        - {name: lang, in: query, schema: {type: string, enum: [en, tr]}, description: Language of names, labels and explanations; otherwise Accept-Language, otherwise en. The response carries Content-Language}
       responses:
         '200': {description: Manifest, content: {application/json: {schema: {$ref: '#/components/schemas/ParadigmManifest'}}}}
         '401': {$ref: '#/components/responses/Problem'}
@@ -2379,10 +2385,11 @@ components:
         pageSize: {type: integer}
     ParadigmSummary:
       type: object
-      required: [key, name, category, species, versions, latestVersion, automatedAnalysis]
+      required: [key, name, description, category, species, versions, latestVersion, automatedAnalysis]
       properties:
         key: {type: string}
-        name: {type: string}
+        name: {type: string, description: In the response language}
+        description: {type: string, description: What the test is and what it measures, in the response language}
         category: {type: string, enum: [LEARNING_MEMORY, ANXIETY, MOTOR, SOCIAL]}
         species: {type: array, items: {type: string}}
         versions: {type: array, items: {type: integer}}
@@ -2390,10 +2397,15 @@ components:
         automatedAnalysis: {type: boolean, description: Whether a real analysis worker supports this paradigm; catalog presence alone does not}
     ParadigmParameter:
       type: object
-      required: [key, label, unit, valueType, min, max, default]
+      required: [key, scope, label, help, unit, valueType, min, max, default]
       properties:
         key: {type: string}
-        label: {type: string}
+        scope:
+          type: string
+          enum: [APPARATUS, ANALYSIS, SESSION]
+          description: APPARATUS values are measured and required on an environment; ANALYSIS values are optional on an environment; SESSION values are optional on a protocol step. Missing optional values use the default
+        label: {type: string, description: In the response language}
+        help: {type: string, description: What to measure or what the value changes, in the response language}
         unit: {type: string, enum: [cm, cm_s, s, count, ratio, rpm, boolean]}
         valueType: {type: string, enum: [number, integer], description: Integer parameters accept whole numbers only; booleans are 0 or 1}
         min: {type: number}
@@ -2401,10 +2413,11 @@ components:
         default: {type: number}
     ParadigmMetric:
       type: object
-      required: [key, label, unit, valueType, definition, formula, missingWhen, inputs, min, max, tolerance]
+      required: [key, label, description, unit, valueType, definition, formula, missingWhen, inputs, min, max, tolerance]
       properties:
         key: {type: string}
-        label: {type: string}
+        label: {type: string, description: In the response language}
+        description: {type: string, description: Plain explanation in the response language; definition and formula are the English technical contract}
         unit: {type: string, enum: [cm, cm_s, s, count, ratio, rpm, boolean]}
         valueType: {type: string, enum: [number, integer]}
         definition: {type: string}
@@ -2416,35 +2429,37 @@ components:
         tolerance: {type: number, description: Absolute tolerance in the metric unit}
     ParadigmEvent:
       type: object
-      required: [type, kind, labels, single, definition]
+      required: [type, label, kind, labels, single, definition]
       properties:
         type: {type: string}
+        label: {type: string, description: In the response language}
         kind: {type: string, enum: [INTERVAL, POINT]}
         labels: {type: array, items: {type: string}, description: Allowed labels; empty when the event takes no label}
         single: {type: boolean, description: The event may occur at most once per trial}
         definition: {type: string}
     ParadigmManifest:
       type: object
-      required: [key, name, category, species, trialTypes, version, metricEngineVersion, resultSchemaVersion, automatedAnalysis, apparatusParameters, sessionParameters, zones, inputEvents, events, metrics, qc]
+      required: [key, name, description, category, species, trialTypes, version, metricEngineVersion, resultSchemaVersion, automatedAnalysis, parameters, zones, inputEvents, events, metrics, qc]
       properties:
         key: {type: string}
         name: {type: string}
+        description: {type: string}
         category: {type: string}
         species: {type: array, items: {type: string}}
-        trialTypes: {type: array, items: {type: string}}
+        trialTypes: {type: array, items: {type: object, required: [key, label], properties: {key: {type: string}, label: {type: string}}}}
         version: {type: integer, description: ParadigmVersion; a published version never changes}
         metricEngineVersion: {type: integer}
         resultSchemaVersion: {type: integer}
         automatedAnalysis: {type: boolean}
-        apparatusParameters: {type: array, items: {$ref: '#/components/schemas/ParadigmParameter'}}
-        sessionParameters: {type: array, items: {$ref: '#/components/schemas/ParadigmParameter'}}
+        parameters: {type: array, description: Ordered apparatus, analysis, then session, items: {$ref: '#/components/schemas/ParadigmParameter'}}
         zones:
           type: array
           items:
             type: object
-            required: [key, role, geometry, calibrated, required]
+            required: [key, label, role, geometry, calibrated, required]
             properties:
               key: {type: string}
+              label: {type: string}
               role: {type: string}
               geometry: {type: string}
               calibrated: {type: boolean, description: Shapes come with the analysis input (per-video calibration) instead of being derived from parameters}
@@ -2509,7 +2524,7 @@ components:
         paradigmVersion: {type: integer, minimum: 1}
         apparatus:
           allOf: [{$ref: '#/components/schemas/ParameterValues'}]
-          description: Every apparatus parameter of the paradigm version, within range and consistent; no measurement is defaulted
+          description: Every APPARATUS parameter of the paradigm version, within range and consistent (no measurement is defaulted), plus any ANALYSIS parameters; omitted analysis values take their defaults
         notes: {type: string, maxLength: 2000}
     EnvironmentInput:
       type: object
@@ -2570,7 +2585,7 @@ components:
         interTrialIntervalS: {type: integer, minimum: 0, maximum: 86400, default: 0}
         session:
           allOf: [{$ref: '#/components/schemas/ParameterValues'}]
-          description: Session parameters of the paradigm version; omitted ones take their defaults
+          description: SESSION parameters of the paradigm version; omitted ones take their defaults. Apparatus and analysis keys are rejected
         notes: {type: string, maxLength: 2000}
     ProtocolVersion:
       type: object

@@ -12,7 +12,7 @@ import (
 // reports real worker support, which is separate from catalog presence.
 type Summary struct {
 	Key               string
-	Name              string
+	Name, Description domain.Text
 	Category          domain.Category
 	Species           []string
 	Versions          []int
@@ -71,7 +71,7 @@ func (s *Service) List(ctx context.Context, actor access.Actor) ([]Summary, erro
 			return nil, err
 		}
 		out = append(out, Summary{
-			Key: p.Key, Name: p.Name, Category: p.Category, Species: p.Species,
+			Key: p.Key, Name: p.Name, Description: p.Description, Category: p.Category, Species: p.Species,
 			Versions: versions, LatestVersion: p.Version, AutomatedAnalysis: supported[Capability{p.Key, p.Version}],
 		})
 	}

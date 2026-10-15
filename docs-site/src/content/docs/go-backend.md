@@ -221,9 +221,12 @@ code and cannot be created, edited or deleted through the API.
   and `Y_MAZE`. Automated analysis is not available for any of them yet.
 - `GET /api/paradigms/{key}` returns the latest version, and
   `GET /api/paradigms/{key}/versions/{version}` returns one exact version. Each
-  version lists its apparatus and session parameters with units, allowed ranges
-  and defaults, its zones and events, and for every metric the definition,
-  formula, inputs and what happens when data is missing.
+  version lists its parameters, each with its scope (`APPARATUS` and `ANALYSIS`
+  on an environment, `SESSION` on a protocol step), label, help text, unit,
+  allowed range and default; its zones and events; and for every metric a plain
+  description, the definition, formula, inputs and what happens when data is
+  missing. Names, labels and descriptions follow `?lang=` or
+  `Accept-Language` (`en` or `tr`).
 
 Some paradigms need more than a tracked position:
 
@@ -249,7 +252,8 @@ revise environments and protocols; every signed-in user can read them.
 
 - `POST /api/environments` creates an environment with its first revision. Give
   every apparatus measurement of the paradigm version, for example the tank and
-  platform sizes for `MWM`. Values outside the allowed ranges, or inconsistent
+  platform sizes for `MWM`, and optionally its analysis settings; omitted
+  analysis settings use their defaults. Values outside the allowed ranges, or inconsistent
   values such as a platform outside the tank, are rejected.
 - When the apparatus changes, add a revision with
   `POST /api/environments/{id}/revisions`. Earlier revisions never change and

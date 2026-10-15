@@ -1,22 +1,28 @@
 {
   "key": "EPM",
   "name": "Elevated plus maze",
+  "description": "A raised plus-shaped maze with two open and two walled arms. Measures anxiety-like behaviour: anxious animals avoid the open arms and stay in the closed arms.",
   "category": "ANXIETY",
   "species": [
     "MOUSE",
     "RAT"
   ],
   "trialTypes": [
-    "STANDARD"
+    {
+      "key": "STANDARD",
+      "label": "Standard"
+    }
   ],
   "version": 1,
   "metricEngineVersion": 1,
   "resultSchemaVersion": 1,
   "automatedAnalysis": false,
-  "apparatusParameters": [
+  "parameters": [
     {
       "key": "arm_length_cm",
-      "label": "Arm length, used to review calibrated zones",
+      "scope": "APPARATUS",
+      "label": "Arm length",
+      "help": "Length of one arm from the edge of the center square to the arm tip. It is only used to check the drawn zones, not in the calculations.",
       "unit": "cm",
       "valueType": "number",
       "min": 20,
@@ -25,18 +31,20 @@
     },
     {
       "key": "arm_width_cm",
-      "label": "Arm width, used to review calibrated zones",
+      "scope": "APPARATUS",
+      "label": "Arm width",
+      "help": "Inside width of one arm. It is only used to check the drawn zones, not in the calculations.",
       "unit": "cm",
       "valueType": "number",
       "min": 3,
       "max": 15,
       "default": 6
-    }
-  ],
-  "sessionParameters": [
+    },
     {
       "key": "max_sample_gap_s",
-      "label": "Longest gap between samples that still counts as tracked",
+      "scope": "ANALYSIS",
+      "label": "Tracking gap tolerance",
+      "help": "If the animal is lost for longer than this, the movement across the gap is not counted. Raise it only for low frame rate videos.",
       "unit": "s",
       "valueType": "number",
       "min": 0.01,
@@ -47,6 +55,7 @@
   "zones": [
     {
       "key": "center",
+      "label": "Center",
       "role": "CENTER",
       "geometry": "Central square where the arms meet.",
       "calibrated": true,
@@ -54,6 +63,7 @@
     },
     {
       "key": "open_arms",
+      "label": "Open arms",
       "role": "OPEN",
       "geometry": "Both open arms, one shape per arm.",
       "calibrated": true,
@@ -61,6 +71,7 @@
     },
     {
       "key": "closed_arms",
+      "label": "Closed arms",
       "role": "CLOSED",
       "geometry": "Both closed arms, one shape per arm.",
       "calibrated": true,
@@ -70,6 +81,7 @@
   "inputEvents": [
     {
       "type": "risk_assessment",
+      "label": "Risk assessment",
       "kind": "POINT",
       "labels": [],
       "single": false,
@@ -79,6 +91,7 @@
   "events": [
     {
       "type": "in_center",
+      "label": "Center visit",
       "kind": "INTERVAL",
       "labels": [],
       "single": false,
@@ -86,6 +99,7 @@
     },
     {
       "type": "in_open_arms",
+      "label": "Open arms visit",
       "kind": "INTERVAL",
       "labels": [],
       "single": false,
@@ -93,6 +107,7 @@
     },
     {
       "type": "in_closed_arms",
+      "label": "Closed arms visit",
       "kind": "INTERVAL",
       "labels": [],
       "single": false,
@@ -100,6 +115,7 @@
     },
     {
       "type": "center_entry",
+      "label": "Center entry",
       "kind": "POINT",
       "labels": [],
       "single": false,
@@ -107,6 +123,7 @@
     },
     {
       "type": "open_arms_entry",
+      "label": "Open arms entry",
       "kind": "POINT",
       "labels": [],
       "single": false,
@@ -114,6 +131,7 @@
     },
     {
       "type": "closed_arms_entry",
+      "label": "Closed arms entry",
       "kind": "POINT",
       "labels": [],
       "single": false,
@@ -121,6 +139,7 @@
     },
     {
       "type": "risk_assessment",
+      "label": "Risk assessment",
       "kind": "POINT",
       "labels": [],
       "single": false,
@@ -131,6 +150,7 @@
     {
       "key": "duration_s",
       "label": "Analyzed duration",
+      "description": "Time during which the animal could be tracked.",
       "unit": "s",
       "valueType": "number",
       "definition": "Samples and calibrated zone shapes use the same coordinates in centimeters; zones are evaluated independently and include their boundary. A counted interval is a pair of consecutive tracked samples with 0 \u003c dt \u003c= max_sample_gap_s.",
@@ -147,6 +167,7 @@
     {
       "key": "distance_cm",
       "label": "Distance traveled",
+      "description": "Total length of the path the animal walked.",
       "unit": "cm",
       "valueType": "number",
       "definition": "Path length over counted intervals.",
@@ -163,6 +184,7 @@
     {
       "key": "center_time_s",
       "label": "Time in center",
+      "description": "Time spent in the central square where the arms meet.",
       "unit": "s",
       "valueType": "number",
       "definition": "Counted time whose earlier sample is in the center.",
@@ -180,6 +202,7 @@
     {
       "key": "open_arm_time_s",
       "label": "Time in open arms",
+      "description": "Less time in the open arms suggests more anxiety-like behaviour.",
       "unit": "s",
       "valueType": "number",
       "definition": "Counted time whose earlier sample is in an open arm.",
@@ -197,6 +220,7 @@
     {
       "key": "closed_arm_time_s",
       "label": "Time in closed arms",
+      "description": "Time spent in the walled arms.",
       "unit": "s",
       "valueType": "number",
       "definition": "Counted time whose earlier sample is in a closed arm.",
@@ -213,7 +237,8 @@
     },
     {
       "key": "open_arm_time_ratio",
-      "label": "Open arm time ratio",
+      "label": "Share of time in open arms",
+      "description": "Part of the analyzed duration spent in the open arms; a lower share suggests more anxiety-like behaviour.",
       "unit": "ratio",
       "valueType": "number",
       "definition": "Share of analyzed duration in open arms.",
@@ -230,7 +255,8 @@
     },
     {
       "key": "closed_arm_time_ratio",
-      "label": "Closed arm time ratio",
+      "label": "Share of time in closed arms",
+      "description": "Part of the analyzed duration spent in the closed arms.",
       "unit": "ratio",
       "valueType": "number",
       "definition": "Share of analyzed duration in closed arms.",
@@ -248,6 +274,7 @@
     {
       "key": "open_arm_entries_count",
       "label": "Open arm entries",
+      "description": "How many times the animal walked into an open arm.",
       "unit": "count",
       "valueType": "integer",
       "definition": "An entry is a counted interval whose earlier sample is outside the zone and whose later sample is inside.",
@@ -265,6 +292,7 @@
     {
       "key": "closed_arm_entries_count",
       "label": "Closed arm entries",
+      "description": "How many times the animal walked into a closed arm; often used as a measure of general activity.",
       "unit": "count",
       "valueType": "integer",
       "definition": "An entry is a counted interval whose earlier sample is outside the zone and whose later sample is inside.",
@@ -282,6 +310,7 @@
     {
       "key": "latency_to_open_arm_s",
       "label": "Latency to open arm",
+      "description": "Time from the start of the trial until the animal first reaches an open arm.",
       "unit": "s",
       "valueType": "number",
       "definition": "Time of the first tracked sample inside the zone, from the trial start.",
@@ -299,6 +328,7 @@
     {
       "key": "risk_assessment_count",
       "label": "Risk assessments",
+      "description": "Number of scored stretched-attend postures and head dips.",
       "unit": "count",
       "valueType": "integer",
       "definition": "Scored risk assessment events.",

@@ -1,7 +1,8 @@
 <script setup>
-// The published paradigm catalog. The API returns the whole list at once, and
+// The published paradigm catalog: the templates environments are created
+// from. The API returns the whole list at once in the chosen language, and
 // says which versions a worker can actually analyze.
-import { computed, h, onMounted, ref } from "vue";
+import { computed, h, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { RouterLink } from "vue-router";
 import { NAlert, NCard, NDataTable, NTag } from "naive-ui";
@@ -10,13 +11,13 @@ import { useTableExport } from "../composables/useTableExport.js";
 import PageHead from "../components/PageHead.vue";
 import ListToolbar from "../components/ListToolbar.vue";
 
-const { t } = useI18n();
+const { t, locale } = useI18n();
 const paradigms = ref([]);
 const error = ref("");
 const search = ref("");
 const loading = ref(true);
 
-onMounted(async () => {
+async function load() {
   try {
     paradigms.value = (await api("/paradigms")).data || [];
   } catch (e) {
@@ -24,22 +25,32 @@ onMounted(async () => {
   } finally {
     loading.value = false;
   }
-});
+}
+onMounted(load);
+watch(locale, load);
+
+const category = (key) => t(`paradigms.categories.${String(key).toLowerCase()}`);
 
 const filtered = computed(() => {
   const q = search.value.trim().toLowerCase();
   if (!q) return paradigms.value;
-  return paradigms.value.filter((p) => p.key.toLowerCase().includes(q) || p.name.toLowerCase().includes(q));
+  return paradigms.value.filter((p) =>
+    [p.key, p.name, p.description, category(p.category)].some((text) => text.toLowerCase().includes(q)),
+  );
 });
 
 const columns = computed(() => [
   {
-    title: t("paradigms.key"),
-    key: "key",
+    title: t("common.name"),
+    key: "name",
     sorter: "default",
-    render: (row) => h(RouterLink, { class: "link", to: `/paradigms/${row.key}` }, () => row.key),
+    render: (row) =>
+      h("div", { class: "cell" }, [
+        h(RouterLink, { class: "link", to: `/paradigms/${row.key}`, "data-test": `paradigm-${row.key}` }, () => row.name),
+        h("small", { class: "muted" }, row.description),
+      ]),
   },
-  { title: t("common.name"), key: "name", sorter: "default" },
+  { title: t("paradigms.category"), key: "category", sorter: "default", width: 170, render: (row) => category(row.category) },
   { title: t("paradigms.versions"), key: "versions", render: (row) => row.versions.join(", ") },
   {
     title: t("paradigms.automated"),
@@ -54,6 +65,7 @@ const columns = computed(() => [
 const exportColumns = [
   { key: "key", label: t("paradigms.key") },
   { key: "name", label: t("common.name") },
+  { key: "category", label: t("paradigms.category"), value: (row) => category(row.category) },
   { key: "versions", label: t("paradigms.versions"), value: (row) => row.versions.join(", ") },
   { key: "automatedAnalysis", label: t("paradigms.automated"), value: (row) => (row.automatedAnalysis ? t("common.yes") : t("common.no")) },
 ];
@@ -84,4 +96,5 @@ const { exportCsv, exportPdf } = useTableExport({
 
 <style scoped>
 .intro { margin: -8px 0 18px; }
+:deep(.cell) { display: flex; flex-direction: column; gap: 2px; max-width: 640px; }
 </style>

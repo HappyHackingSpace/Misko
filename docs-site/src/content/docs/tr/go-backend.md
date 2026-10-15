@@ -220,10 +220,12 @@ tanımlıdır ve API üzerinden oluşturulamaz, değiştirilemez veya silinemez.
   `NOVEL_OBJECT`, `OPEN_FIELD`, `POLE`, `ROTAROD`, `THREE_CHAMBER`, `TREADMILL`
   ve `Y_MAZE`. Hiçbiri için otomatik analiz henüz yoktur.
 - `GET /api/paradigms/{key}` en son sürümü, `GET /api/paradigms/{key}/versions/{version}`
-  ise tam olarak bir sürümü döndürür. Her sürüm; birim, izin verilen aralık ve
-  varsayılan değerleriyle düzenek ve oturum parametrelerini, bölgelerini ve
-  olaylarını, her metrik için de tanımı, formülü, girdileri ve veri eksik
-  olduğunda ne olacağını listeler.
+  ise tam olarak bir sürümü döndürür. Her sürüm parametrelerini kapsamı
+  (ortamda `APPARATUS` ve `ANALYSIS`, protokol adımında `SESSION`), etiketi,
+  yardım metni, birimi, izin verilen aralığı ve varsayılanıyla; bölgelerini ve
+  olaylarını; her metrik için de sade açıklamayı, tanımı, formülü, girdileri ve
+  veri eksik olduğunda ne olacağını listeler. Adlar, etiketler ve açıklamalar
+  `?lang=` ya da `Accept-Language` dilinde (`en` veya `tr`) döner.
 
 Bazı paradigmalar izlenen konumdan fazlasına ihtiyaç duyar:
 
@@ -250,7 +252,8 @@ ve protokol oluşturup güncelleyebilir; giriş yapmış her kullanıcı bunlar�
 
 - `POST /api/environments` bir ortamı ilk revizyonuyla birlikte oluşturur.
   Paradigma sürümünün tüm düzenek ölçülerini verin; örneğin `MWM` için tank ve
-  platform boyutları. İzin verilen aralık dışındaki değerler veya tank dışında
+  platform boyutları. Analiz ayarları isteğe bağlıdır, verilmeyenler varsayılanı
+  kullanır. İzin verilen aralık dışındaki değerler veya tank dışında
   kalan bir platform gibi tutarsız değerler reddedilir.
 - Düzenek değiştiğinde `POST /api/environments/{id}/revisions` ile yeni bir
   revizyon ekleyin. Önceki revizyonlar asla değişmez ve silinemez. Ortamın adını

@@ -50,7 +50,7 @@ func TestCalibrationOverHTTP(t *testing.T) {
 	arena := c.create("/api/environments", admin, map[string]any{"name": "Arena", "paradigmKey": "OPEN_FIELD",
 		"revision": map[string]any{"paradigmVersion": 1, "apparatus": map[string]any{"arena_width_cm": 50, "arena_height_cm": 40, "center_fraction": 0.5}}})
 	rotarod := c.create("/api/environments", admin, map[string]any{"name": "Rod", "paradigmKey": "ROTAROD",
-		"revision": map[string]any{"paradigmVersion": 1, "apparatus": map[string]any{"start_rpm": 4, "end_rpm": 40}}})
+		"revision": map[string]any{"paradigmVersion": 1, "apparatus": map[string]any{}}})
 	rotarodEnv := rotarod["environment"].(map[string]any)
 	protocol := c.create(base+"/protocols", admin, map[string]any{"name": "Battery", "version": map[string]any{"steps": []any{
 		map[string]any{"position": 1, "paradigmKey": "OPEN_FIELD", "paradigmVersion": 1, "environmentRevisionId": id(arena["revision"].(map[string]any)), "trialType": "STANDARD", "trials": 1},

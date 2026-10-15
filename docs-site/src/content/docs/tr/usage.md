@@ -58,20 +58,31 @@ Mişko kurulum başına tek bir laboratuvar olarak çalışır. Laboratuvar kayd
 ve ayarları) ilk açılışta kurulum sihirbazı tarafından oluşturulur ve panel
 genelinde markalama için kullanılır.
 
-**Paradigmalar** ekranı, kodda tanımlı bilimsel test türlerinin salt okunur
-kataloğudur. Her paradigmanın kendi detay sayfası vardır (bir karta tıklayarak
-açılır); operasyonel kontrat burada salt okunur olarak gösterilir: apparatus
-parametreleri, bölgeler, metrikler, olay tipleri (CV detect spec'i ile) ve kalite kontrol
-gereksinimleri. Parametre kümesi ve geçerli aralıkları kod tarafından sabittir ve
-burada düzenlenemez.
+**Paradigmalar** ekranı, kodda tanımlı test şablonlarını, her birinin neyi
+ölçtüğünü anlatan kısa bir açıklamayla, panelin dilinde listeler. Paradigmanın
+detay sayfası parametrelerini girildikleri yere göre gruplanmış olarak, her
+biri için neyin ölçüleceği, izin verilen aralık ve varsayılan değerle gösterir.
+Metrikler sade bir açıklamayla listelenir (teknik tanım ve formül istenince
+açılır); bölgeler, olaylar ve kalite kuralları da buradadır. Parametre kümesi ve
+aralıkları kod tarafından sabittir ve burada düzenlenemez.
+
+Parametreler üç gruptadır:
+
+- **Düzenek ölçüleri** fiziksel düzenekte bir kez ölçülür ve ortam
+  oluşturulurken girilmesi zorunludur.
+- **Analiz ayarları** izleme ve puanlamayı ayarlar. Ortama aittir, çoğu düzenek
+  için uygun varsayılanlarla başlar ve **Analiz ayarlarını göster** altında
+  kapalı durur.
+- **Seans ayarları** bir denemenin nasıl yürütüleceğini, örneğin deneme süresi
+  sınırını ya da rotarod hızlarını belirler ve her protokol adımında seçilir.
 
 Bir paradigmayı kullanıma almak için `apparatus:write` iznine sahip herkes
 (RESEARCHER ve üzeri) ondan bir **ortam** oluşturur. Ortam, bir paradigma
 şablonuna dayanan adlandırılmış ve kalıcı bir test düzenidir; bir laboratuvar aynı
 paradigma için birçok ortam tutabilir (örneğin "Tank A" ve "Tank B" adlı iki
 Morris su tankı). Paradigma detay sayfasından **Bu paradigmadan ortam oluştur**'u
-kullanın, bir ad verin ve apparatus değerlerini kod tarafından sabitlenen izin
-verilen aralıklar içinde doldurun. Ortamları **Ortamlar** menüsünden yönetin; bu
+kullanın, bir ad verin ve düzenek ölçülerini izin verilen aralıklar içinde
+doldurun. Oranlar yüzde olarak, açık/kapalı değerler anahtarla girilir. Ortamları **Ortamlar** menüsünden yönetin; bu
 menü oluşturma, düzenleme ve silmeyi destekler; düzenlemede paradigma
 değiştirilemez. Apparatus değerleri test anında kilitlenir.
 

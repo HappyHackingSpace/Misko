@@ -1,23 +1,32 @@
 {
   "key": "MWM",
   "name": "Morris water maze",
+  "description": "The animal swims in a round pool of opaque water and learns to find a hidden platform using cues around the room. Measures spatial learning and memory.",
   "category": "LEARNING_MEMORY",
   "species": [
     "MOUSE",
     "RAT"
   ],
   "trialTypes": [
-    "ACQUISITION",
-    "PROBE"
+    {
+      "key": "ACQUISITION",
+      "label": "Acquisition"
+    },
+    {
+      "key": "PROBE",
+      "label": "Probe"
+    }
   ],
   "version": 1,
   "metricEngineVersion": 1,
   "resultSchemaVersion": 1,
   "automatedAnalysis": false,
-  "apparatusParameters": [
+  "parameters": [
     {
       "key": "tank_diameter_cm",
-      "label": "Tank diameter",
+      "scope": "APPARATUS",
+      "label": "Pool diameter",
+      "help": "Inside diameter of the pool at the water surface, wall to wall.",
       "unit": "cm",
       "valueType": "number",
       "min": 60,
@@ -26,7 +35,9 @@
     },
     {
       "key": "platform_diameter_cm",
+      "scope": "APPARATUS",
       "label": "Platform diameter",
+      "help": "Diameter of the top surface of the escape platform.",
       "unit": "cm",
       "valueType": "number",
       "min": 4,
@@ -35,7 +46,9 @@
     },
     {
       "key": "platform_x_cm",
-      "label": "Platform center east of tank center",
+      "scope": "APPARATUS",
+      "label": "Platform position, left-right",
+      "help": "How far the platform center is from the pool center, sideways in the camera image. Positive to the right, negative to the left.",
       "unit": "cm",
       "valueType": "number",
       "min": -125,
@@ -44,7 +57,9 @@
     },
     {
       "key": "platform_y_cm",
-      "label": "Platform center north of tank center",
+      "scope": "APPARATUS",
+      "label": "Platform position, up-down",
+      "help": "How far the platform center is from the pool center, up or down in the camera image. Positive towards the top, negative towards the bottom.",
       "unit": "cm",
       "valueType": "number",
       "min": -125,
@@ -53,37 +68,42 @@
     },
     {
       "key": "wall_annulus_width_cm",
-      "label": "Wall annulus width for thigmotaxis",
+      "scope": "ANALYSIS",
+      "label": "Wall zone width",
+      "help": "Width of the ring along the pool wall. Time spent in this ring counts as wall hugging (thigmotaxis).",
       "unit": "cm",
       "valueType": "number",
       "min": 4,
       "max": 30,
       "default": 12
-    }
-  ],
-  "sessionParameters": [
-    {
-      "key": "max_sample_gap_s",
-      "label": "Longest gap between samples that still counts as tracked",
-      "unit": "s",
-      "valueType": "number",
-      "min": 0.01,
-      "max": 5,
-      "default": 0.5
     },
     {
       "key": "min_platform_dwell_s",
-      "label": "Time the subject must stay on the platform to escape",
+      "scope": "ANALYSIS",
+      "label": "Time on platform to escape",
+      "help": "The animal must stay on the platform at least this long for the trial to count as escaped. Short touches are ignored.",
       "unit": "s",
       "valueType": "number",
       "min": 0,
       "max": 10,
       "default": 1
+    },
+    {
+      "key": "max_sample_gap_s",
+      "scope": "ANALYSIS",
+      "label": "Tracking gap tolerance",
+      "help": "If the animal is lost for longer than this, the movement across the gap is not counted. Raise it only for low frame rate videos.",
+      "unit": "s",
+      "valueType": "number",
+      "min": 0.01,
+      "max": 5,
+      "default": 0.5
     }
   ],
   "zones": [
     {
       "key": "platform",
+      "label": "Platform",
       "role": "TARGET",
       "geometry": "Closed disk of platform_diameter_cm at the platform center.",
       "calibrated": false,
@@ -91,6 +111,7 @@
     },
     {
       "key": "target_quadrant",
+      "label": "Target quadrant",
       "role": "TARGET",
       "geometry": "Quadrant containing the platform center; x \u003e= 0 is east and y \u003e= 0 is north.",
       "calibrated": false,
@@ -98,6 +119,7 @@
     },
     {
       "key": "wall_annulus",
+      "label": "Wall zone",
       "role": "PERIPHERY",
       "geometry": "Ring with distance from the tank center \u003e= tank radius - wall_annulus_width_cm.",
       "calibrated": false,
@@ -108,6 +130,7 @@
   "events": [
     {
       "type": "in_platform",
+      "label": "Platform visit",
       "kind": "INTERVAL",
       "labels": [],
       "single": false,
@@ -115,6 +138,7 @@
     },
     {
       "type": "platform_entry",
+      "label": "Platform entry",
       "kind": "POINT",
       "labels": [],
       "single": false,
@@ -125,6 +149,7 @@
     {
       "key": "duration_s",
       "label": "Analyzed duration",
+      "description": "Time during which the animal could be tracked.",
       "unit": "s",
       "valueType": "number",
       "definition": "Coordinates are centimeters from the tank center, x east and y north; samples outside the tank count as lost. A counted interval is a pair of consecutive tracked samples with 0 \u003c dt \u003c= max_sample_gap_s.",
@@ -142,6 +167,7 @@
     {
       "key": "escape_latency_s",
       "label": "Escape latency",
+      "description": "Time to find the platform; shorter latencies across trials mean better learning.",
       "unit": "s",
       "valueType": "number",
       "definition": "Start of the first platform dwell: consecutive tracked samples on the platform, joined by gaps no longer than max_sample_gap_s, spanning at least min_platform_dwell_s.",
@@ -163,6 +189,7 @@
     {
       "key": "path_length_cm",
       "label": "Path length",
+      "description": "Distance swum before reaching the platform; a shorter path means a more direct search.",
       "unit": "cm",
       "valueType": "number",
       "definition": "Distance over counted intervals ending at or before the escape, or over the whole trial without an escape.",
@@ -184,6 +211,7 @@
     {
       "key": "mean_swim_speed_cm_s",
       "label": "Mean swim speed",
+      "description": "Path length divided by swim time; helps rule out motor problems.",
       "unit": "cm_s",
       "valueType": "number",
       "definition": "Path length divided by the counted time it covers.",
@@ -198,7 +226,8 @@
     },
     {
       "key": "target_quadrant_time_ratio",
-      "label": "Target quadrant time ratio",
+      "label": "Share of time in target quadrant",
+      "description": "More time in the target quadrant during a probe trial means better memory of the platform location.",
       "unit": "ratio",
       "valueType": "number",
       "definition": "Share of analyzed duration whose earlier sample is in the target quadrant.",
@@ -218,7 +247,8 @@
     },
     {
       "key": "thigmotaxis_time_ratio",
-      "label": "Thigmotaxis time ratio",
+      "label": "Share of time near the wall",
+      "description": "Time spent swimming along the wall; high values suggest anxiety or a poor search strategy.",
       "unit": "ratio",
       "valueType": "number",
       "definition": "Share of analyzed duration whose earlier sample is in the wall annulus.",
@@ -237,6 +267,7 @@
     {
       "key": "platform_crossings_count",
       "label": "Platform crossings",
+      "description": "How many times the animal swam over the platform location; more crossings in a probe trial mean better memory.",
       "unit": "count",
       "valueType": "integer",
       "definition": "Counted intervals entering the platform disk; starting on the platform is not a crossing.",
@@ -257,6 +288,7 @@
     {
       "key": "mean_distance_to_platform_cm",
       "label": "Mean distance to platform",
+      "description": "Average distance from the platform location; a smaller value means a more focused search.",
       "unit": "cm",
       "valueType": "number",
       "definition": "Time-weighted mean distance from the platform center, using the earlier sample of each counted interval.",

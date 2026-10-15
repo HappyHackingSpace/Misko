@@ -18,7 +18,7 @@ func (Catalog) TrialTypes(key string, version int) ([]string, error) {
 	if err != nil {
 		return nil, translate(err)
 	}
-	return p.TrialTypes, nil
+	return p.TrialTypeKeys(), nil
 }
 
 func (Catalog) ResolveSession(key string, version int, apparatus, session map[string]float64) (map[string]float64, error) {
