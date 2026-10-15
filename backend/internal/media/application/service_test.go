@@ -77,7 +77,7 @@ func TestStartUploadSignsANewObjectOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Equal(store.calls, []string{"Transaction", "LockTest", "CurrentRecording", "CreateRecording"}) {
+	if !slices.Equal(store.calls, []string{"Transaction", "LockTest", "NewestRecordingID", "CreateRecording"}) {
 		t.Fatalf("store calls: %v", store.calls)
 	}
 	rec := upload.Recording
@@ -293,10 +293,15 @@ func (f *fakeStore) CurrentRecording(_ context.Context, testID string) (domain.R
 	return domain.Recording{ID: f.current, TestID: testID, Current: true}, nil
 }
 
+func (f *fakeStore) NewestRecordingID(_ context.Context, _ string) (string, error) {
+	f.record("NewestRecordingID")
+	return f.current, nil
+}
+
 func (f *fakeStore) CreateRecording(_ context.Context, test TestRef, asset domain.Asset, clip domain.Clip, supersedesID string) (domain.Recording, error) {
 	f.record("CreateRecording")
 	asset.ID, asset.ObjectName = "asset", "tests/"+test.ID+"/originals/asset"
-	return domain.Recording{ID: "rec", ExperimentID: test.ExperimentID, TestID: test.ID, SupersedesID: supersedesID, Current: true, Clip: clip, Asset: asset, CreatedBy: asset.CreatedBy}, nil
+	return domain.Recording{ID: "rec", ExperimentID: test.ExperimentID, TestID: test.ID, SupersedesID: supersedesID, Current: false, Clip: clip, Asset: asset, CreatedBy: asset.CreatedBy}, nil
 }
 
 func (f *fakeStore) recording(testID string) (domain.Recording, error) {

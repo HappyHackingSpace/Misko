@@ -83,10 +83,11 @@ func TestCalibrationOverHTTP(t *testing.T) {
 	}
 	c.expect("override without a video", c.call("POST", subjectPath(first)+"/calibrations", tokens["TECHNICIAN"], body("", 0)), 409, "calibration.noVideo")
 	pending := upload(study.test, false)
-	if s := status(first); s["status"] != "WAITING_FOR_VIDEO" || s["recordingId"] != pending {
+	// A video still uploading is not the test's current video yet.
+	if s := status(first); s["status"] != "WAITING_FOR_VIDEO" || s["recordingId"] != nil || pending == "" {
 		t.Fatalf("pending video: %v", s)
 	}
-	c.expect("unverified video", c.call("POST", subjectPath(first)+"/calibrations", tokens["TECHNICIAN"], body("", 0)), 409, "calibration.videoNotVerified")
+	c.expect("unverified video", c.call("POST", subjectPath(first)+"/calibrations", tokens["TECHNICIAN"], body("", 0)), 409, "calibration.noVideo")
 	rec := upload(study.test, true)
 	if s := status(first); s["status"] != "WAITING_FOR_CALIBRATION" || s["calibration"] != nil || s["recordingId"] != rec || s["source"] != nil {
 		t.Fatalf("before calibration: %v", s)

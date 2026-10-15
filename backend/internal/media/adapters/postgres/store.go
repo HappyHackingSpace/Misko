@@ -72,6 +72,17 @@ func (s *Store) CurrentRecording(ctx context.Context, testID string) (domain.Rec
 	return toRecording(sqlcgen.GetRecordingRow(row)), nil
 }
 
+func (s *Store) NewestRecordingID(ctx context.Context, testID string) (string, error) {
+	id, err := s.queries.GetNewestRecordingID(ctx, testID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("get newest recording: %w", err)
+	}
+	return id, nil
+}
+
 // CreateRecording must run inside Transaction so the asset and recording are stored together.
 func (s *Store) CreateRecording(ctx context.Context, test application.TestRef, asset domain.Asset, clip domain.Clip, supersedesID string) (domain.Recording, error) {
 	a, err := s.queries.CreateAsset(ctx, sqlcgen.CreateAssetParams{
@@ -89,7 +100,7 @@ func (s *Store) CreateRecording(ctx context.Context, test application.TestRef, a
 		return domain.Recording{}, translate(err, nil, "create recording")
 	}
 	return domain.Recording{
-		ID: r.ID, ExperimentID: r.ExperimentID, TestID: r.TestID, SupersedesID: value(r.SupersedesID), Current: true,
+		ID: r.ID, ExperimentID: r.ExperimentID, TestID: r.TestID, SupersedesID: value(r.SupersedesID), Current: false,
 		Clip: domain.Clip{StartUs: r.ClipStartUs, EndUs: r.ClipEndUs}, Asset: toAsset(a), CreatedBy: r.CreatedBy, CreatedAt: r.CreatedAt.UTC(),
 	}, nil
 }

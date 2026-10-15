@@ -194,7 +194,7 @@ func TestVideoUploadsOverHTTP(t *testing.T) {
 	rec, upload := started["recording"].(map[string]any), started["upload"].(map[string]any)
 	headers := upload["headers"].(map[string]any)
 	if upload["method"] != "POST" || headers["x-goog-if-generation-match"] != "0" || headers["x-goog-resumable"] != "start" || headers["x-goog-content-length-range"] != "0,4096" ||
-		rec["video"].(map[string]any)["status"] != "PENDING" || rec["video"].(map[string]any)["generation"] != nil || rec["current"] != true || rec["supersedesId"] != nil {
+		rec["video"].(map[string]any)["status"] != "PENDING" || rec["video"].(map[string]any)["generation"] != nil || rec["current"] != false || rec["supersedesId"] != nil {
 		t.Fatalf("upload start: %v", started)
 	}
 	recPath := recordings + "/" + id(rec)
@@ -223,9 +223,10 @@ func TestVideoUploadsOverHTTP(t *testing.T) {
 	c.expect("anonymous read URL", c.call("GET", recPath+"/read-url", "", nil), 401, "auth.unauthenticated")
 	c.expect("recording through another test", c.call("GET", "/api/tests/"+other.test+"/recordings/"+id(rec)+"/read-url", tokens["VIEWER"], nil), 404, "recording.notFound")
 
-	// A replacement supersedes the current video; the old one stays readable.
+	// A replacement supersedes the newest video but becomes current only once
+	// it is verified; a rejected replacement leaves the verified video current.
 	corrupt := c.create(recordings, tokens["TECHNICIAN"], video)["recording"].(map[string]any)
-	if corrupt["supersedesId"] != id(rec) || corrupt["current"] != true {
+	if corrupt["supersedesId"] != id(rec) || corrupt["current"] != false {
 		t.Fatalf("replacement: %v", corrupt)
 	}
 	objects.finishUpload(4096, 7)
@@ -235,7 +236,7 @@ func TestVideoUploadsOverHTTP(t *testing.T) {
 	}
 	c.expect("read a rejected video", c.call("GET", recordings+"/"+id(corrupt)+"/read-url", tokens["VIEWER"], nil), 409, "media.notVerified")
 	c.expect("read the superseded video", c.call("GET", recPath+"/read-url", tokens["VIEWER"], nil), 200, "")
-	if current := c.expect("current", c.call("GET", recordings+"/current", tokens["VIEWER"], nil), 200, "").body; current["id"] != id(corrupt) {
+	if current := c.expect("current", c.call("GET", recordings+"/current", tokens["VIEWER"], nil), 200, "").body; current["id"] != id(rec) {
 		t.Fatalf("current: %v", current)
 	}
 	oversized := map[string]any{"fileName": "big.mp4", "contentType": "video/mp4", "sizeBytes": int64(2 << 30), "crc32c": "AAAAAQ=="}
@@ -243,7 +244,7 @@ func TestVideoUploadsOverHTTP(t *testing.T) {
 	image := map[string]any{"fileName": "x.png", "contentType": "image/png", "sizeBytes": 10, "crc32c": "AAAAAQ=="}
 	c.expect("not a video", c.call("POST", recordings, tokens["TECHNICIAN"], image), 400, "media.invalidContentType")
 	list := c.call("GET", recordings, tokens["VIEWER"], nil).body["data"].([]any)
-	if len(list) != 2 || list[0].(map[string]any)["current"] != false || list[1].(map[string]any)["current"] != true {
+	if len(list) != 2 || list[0].(map[string]any)["current"] != true || list[1].(map[string]any)["current"] != false {
 		t.Fatalf("recordings: %v", list)
 	}
 	if strings.Contains(logs.String(), "X-Goog-Signature") || strings.Contains(logs.String(), "secret") {

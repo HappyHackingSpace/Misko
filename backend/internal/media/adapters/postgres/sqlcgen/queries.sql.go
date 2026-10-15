@@ -212,9 +212,22 @@ func (q *Queries) GetCurrentRecording(ctx context.Context, testID string) (GetCu
 	return i, err
 }
 
+const getNewestRecordingID = `-- name: GetNewestRecordingID :one
+SELECT r.id FROM misko.test_recordings r
+WHERE r.test_id = $1 AND NOT EXISTS (SELECT 1 FROM misko.test_recordings n WHERE n.supersedes_id = r.id)
+`
+
+// The end of the test's chain, verified or not: every new upload supersedes it.
+func (q *Queries) GetNewestRecordingID(ctx context.Context, testID string) (string, error) {
+	row := q.db.QueryRow(ctx, getNewestRecordingID, testID)
+	var id string
+	err := row.Scan(&id)
+	return id, err
+}
+
 const getRecording = `-- name: GetRecording :one
 SELECT r.id, r.experiment_id, r.test_id, r.supersedes_id, r.clip_start_us, r.clip_end_us, r.created_by, r.created_at,
-       NOT EXISTS (SELECT 1 FROM misko.test_recordings n WHERE n.supersedes_id = r.id) AS current,
+       EXISTS (SELECT 1 FROM misko.current_recordings c WHERE c.id = r.id) AS current,
        a.id AS asset_id, a.kind, a.bucket, a.object_name, a.content_type, a.file_name, a.size_bytes, a.crc32c,
        a.status, a.generation, a.rejection_reason, a.verified_at, a.created_by AS asset_created_by, a.created_at AS asset_created_at
 FROM misko.test_recordings r
@@ -303,7 +316,7 @@ func (q *Queries) GetTestRef(ctx context.Context, id string) (GetTestRefRow, err
 
 const listRecordings = `-- name: ListRecordings :many
 SELECT r.id, r.experiment_id, r.test_id, r.supersedes_id, r.clip_start_us, r.clip_end_us, r.created_by, r.created_at,
-       NOT EXISTS (SELECT 1 FROM misko.test_recordings n WHERE n.supersedes_id = r.id) AS current,
+       EXISTS (SELECT 1 FROM misko.current_recordings c WHERE c.id = r.id) AS current,
        a.id AS asset_id, a.kind, a.bucket, a.object_name, a.content_type, a.file_name, a.size_bytes, a.crc32c,
        a.status, a.generation, a.rejection_reason, a.verified_at, a.created_by AS asset_created_by, a.created_at AS asset_created_at
 FROM misko.test_recordings r
@@ -384,7 +397,7 @@ func (q *Queries) ListRecordings(ctx context.Context, testID string) ([]ListReco
 
 const lockRecording = `-- name: LockRecording :one
 SELECT r.id, r.experiment_id, r.test_id, r.supersedes_id, r.clip_start_us, r.clip_end_us, r.created_by, r.created_at,
-       NOT EXISTS (SELECT 1 FROM misko.test_recordings n WHERE n.supersedes_id = r.id) AS current,
+       EXISTS (SELECT 1 FROM misko.current_recordings c WHERE c.id = r.id) AS current,
        a.id AS asset_id, a.kind, a.bucket, a.object_name, a.content_type, a.file_name, a.size_bytes, a.crc32c,
        a.status, a.generation, a.rejection_reason, a.verified_at, a.created_by AS asset_created_by, a.created_at AS asset_created_at
 FROM misko.test_recordings r

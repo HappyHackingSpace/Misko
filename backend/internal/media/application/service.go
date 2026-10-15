@@ -62,8 +62,10 @@ type Store interface {
 	Test(ctx context.Context, id string) (TestRef, error)
 	// LockTest reads a test and serializes the videos attached to it.
 	LockTest(ctx context.Context, id string) (TestRef, error)
-	// CurrentRecording returns the recording nothing supersedes, or ErrRecordingNotFound.
+	// CurrentRecording returns the test's newest verified recording, or ErrRecordingNotFound.
 	CurrentRecording(ctx context.Context, testID string) (domain.Recording, error)
+	// NewestRecordingID returns the end of the test's chain, verified or not, or "".
+	NewestRecordingID(ctx context.Context, testID string) (string, error)
 	// CreateRecording stores a pending asset with a new object name and its
 	// recording, which supersedes supersedesID (empty for the first video).
 	CreateRecording(ctx context.Context, test TestRef, asset domain.Asset, clip domain.Clip, supersedesID string) (domain.Recording, error)
@@ -98,7 +100,7 @@ type Upload struct {
 }
 
 // StartUpload records a pending original video for a test that has started,
-// makes it the test's current video and signs the resumable upload the caller
+// appends it to the test's chain (it becomes current once verified) and signs the resumable upload the caller
 // sends straight to storage, limited to the declared size. The upload is
 // signed inside the transaction, so a signing failure attaches nothing.
 func (s *Service) StartUpload(ctx context.Context, actor access.Actor, testID string, req domain.UploadRequest) (Upload, error) {
@@ -122,11 +124,8 @@ func (s *Service) StartUpload(ctx context.Context, actor access.Actor, testID st
 		if err := domain.AcceptsVideo(test.Status); err != nil {
 			return err
 		}
-		supersedes := ""
-		switch current, err := tx.CurrentRecording(ctx, test.ID); {
-		case err == nil:
-			supersedes = current.ID
-		case !errors.Is(err, ErrRecordingNotFound):
+		supersedes, err := tx.NewestRecordingID(ctx, test.ID)
+		if err != nil {
 			return err
 		}
 		rec, err := tx.CreateRecording(ctx, test, asset, clip, supersedes)

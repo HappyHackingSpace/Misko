@@ -43,8 +43,8 @@ CREATE TRIGGER video_assets_change BEFORE UPDATE OR DELETE ON misko.video_assets
     FOR EACH ROW EXECUTE FUNCTION misko.check_video_asset_change();
 
 -- The video of a test: one video belongs to one test, and a test has one
--- current video. A replacement upload supersedes the current one, which stays
--- for provenance. Clip times are microseconds from the start of the video.
+-- current video (current_recordings). Every upload supersedes the newest one,
+-- so the chain is linear and earlier videos stay for provenance. Clip times are microseconds from the start of the video.
 CREATE TABLE misko.test_recordings (
     id             uuid PRIMARY KEY DEFAULT uuidv7(),
     experiment_id  uuid NOT NULL,
@@ -84,10 +84,14 @@ CREATE TRIGGER test_recordings_test_started BEFORE INSERT ON misko.test_recordin
 CREATE TRIGGER test_recordings_immutable BEFORE UPDATE OR DELETE ON misko.test_recordings
     FOR EACH ROW EXECUTE FUNCTION misko.reject_change();
 
--- The current video of every test.
+-- The current video of every test: the newest one whose upload was verified.
+-- A replacement that is still uploading, abandoned or rejected never hides
+-- the verified video before it.
 CREATE VIEW misko.current_recordings AS
-SELECT r.* FROM misko.test_recordings r
-WHERE NOT EXISTS (SELECT 1 FROM misko.test_recordings n WHERE n.supersedes_id = r.id);
+SELECT DISTINCT ON (r.test_id) r.*
+FROM misko.test_recordings r
+JOIN misko.video_assets a ON a.id = r.video_asset_id AND a.status = 'VERIFIED'
+ORDER BY r.test_id, r.created_at DESC, r.id DESC;
 
 CREATE TRIGGER current_recordings_read_only INSTEAD OF INSERT OR UPDATE OR DELETE ON misko.current_recordings
     FOR EACH ROW EXECUTE FUNCTION misko.reject_change();

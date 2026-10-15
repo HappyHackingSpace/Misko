@@ -22,9 +22,14 @@ INSERT INTO misko.test_recordings (experiment_id, test_id, video_asset_id, super
 VALUES (@experiment_id, @test_id, @video_asset_id, sqlc.narg(supersedes_id), @clip_start_us, sqlc.narg(clip_end_us), @created_by)
 RETURNING *;
 
+-- The end of the test's chain, verified or not: every new upload supersedes it.
+-- name: GetNewestRecordingID :one
+SELECT r.id FROM misko.test_recordings r
+WHERE r.test_id = @test_id AND NOT EXISTS (SELECT 1 FROM misko.test_recordings n WHERE n.supersedes_id = r.id);
+
 -- name: ListRecordings :many
 SELECT r.id, r.experiment_id, r.test_id, r.supersedes_id, r.clip_start_us, r.clip_end_us, r.created_by, r.created_at,
-       NOT EXISTS (SELECT 1 FROM misko.test_recordings n WHERE n.supersedes_id = r.id) AS current,
+       EXISTS (SELECT 1 FROM misko.current_recordings c WHERE c.id = r.id) AS current,
        a.id AS asset_id, a.kind, a.bucket, a.object_name, a.content_type, a.file_name, a.size_bytes, a.crc32c,
        a.status, a.generation, a.rejection_reason, a.verified_at, a.created_by AS asset_created_by, a.created_at AS asset_created_at
 FROM misko.test_recordings r
@@ -43,7 +48,7 @@ WHERE r.test_id = @test_id;
 
 -- name: GetRecording :one
 SELECT r.id, r.experiment_id, r.test_id, r.supersedes_id, r.clip_start_us, r.clip_end_us, r.created_by, r.created_at,
-       NOT EXISTS (SELECT 1 FROM misko.test_recordings n WHERE n.supersedes_id = r.id) AS current,
+       EXISTS (SELECT 1 FROM misko.current_recordings c WHERE c.id = r.id) AS current,
        a.id AS asset_id, a.kind, a.bucket, a.object_name, a.content_type, a.file_name, a.size_bytes, a.crc32c,
        a.status, a.generation, a.rejection_reason, a.verified_at, a.created_by AS asset_created_by, a.created_at AS asset_created_at
 FROM misko.test_recordings r
@@ -52,7 +57,7 @@ WHERE r.test_id = @test_id AND r.id = @id;
 
 -- name: LockRecording :one
 SELECT r.id, r.experiment_id, r.test_id, r.supersedes_id, r.clip_start_us, r.clip_end_us, r.created_by, r.created_at,
-       NOT EXISTS (SELECT 1 FROM misko.test_recordings n WHERE n.supersedes_id = r.id) AS current,
+       EXISTS (SELECT 1 FROM misko.current_recordings c WHERE c.id = r.id) AS current,
        a.id AS asset_id, a.kind, a.bucket, a.object_name, a.content_type, a.file_name, a.size_bytes, a.crc32c,
        a.status, a.generation, a.rejection_reason, a.verified_at, a.created_by AS asset_created_by, a.created_at AS asset_created_at
 FROM misko.test_recordings r
