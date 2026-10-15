@@ -52,11 +52,10 @@ Laboratory-wide reference data reused across studies.
   induced.
 - **Paradigm:** a scientific test type **defined in code**, not an editable
   database row: parameters, zones, scored events and metric definitions, in
-  published versions that never change. Registry: `MWM`, `OPEN_FIELD`, `EPM`,
-  `ROTAROD`, `Y_MAZE`, `NOVEL_OBJECT`, `BARNES_MAZE`, `THREE_CHAMBER`,
-  `LIGHT_DARK`, `POLE`, `TREADMILL`.
+  published versions that never change. Registry: `MWM`, `NOVEL_OBJECT`,
+  `POLE`, `TREADMILL`.
 - **Environment:** one physical apparatus of one paradigm, such as a particular
-  water tank or one of three open field boxes under one camera. Its
+  water tank or one of three novel object boxes under one camera. Its
   measurements are immutable numbered revisions. In a test, an animal is placed
   in an **arena**, which is one environment revision.
 
@@ -143,21 +142,20 @@ its own arena; usually one, sometimes up to three arenas under one camera.
   (environment revision) is calibrated once when the rig is set up, with its
   crop as the arena's region of the camera frame. When the camera or arena moved,
   a manual **override** applies to one test subject on the current video.
-  Paradigms whose zones are not derived from parameters (elevated plus maze,
-  Y maze, Barnes maze, three-chamber) carry their **zones** with the
-  calibration, drawn on the frame in pixels and stored in centimetres too; a
+  A paradigm may declare zones that are not derived from parameters; such
+  **calibrated zones** travel with the calibration, drawn on the frame in
+  pixels and stored in centimetres too (none of the current catalog does). A
   calibration and its zones never change. Observer-scored paradigms need no
   calibration.
-- **Scoring sheet:** for an observer-scored paradigm (`ROTAROD`, `POLE`,
-  `TREADMILL`, `NOVEL_OBJECT`), the events a person marks for one test subject
+- **Scoring sheet:** for an observer-scored paradigm (`POLE`, `TREADMILL`,
+  `NOVEL_OBJECT`), the events a person marks for one test subject
   on the current video, in microseconds from the clip start. A sheet is a
   `DRAFT` while it is scored and `COMPLETED` once its scored event types and
   recording length are fixed; reopening starts the next version and completed
   sheets never change.
 - **Analysis run:** one per test subject. Its `method` is `AUTOMATED` when a
   worker tracks the animal inside its arena's crop and uploads the trajectory
-  (`OPEN_FIELD`, `EPM`, `Y_MAZE`, `BARNES_MAZE`, `THREE_CHAMBER`, `MWM`,
-  `LIGHT_DARK`), or `SCORED` when it is computed from a completed scoring sheet,
+  (`MWM`), or `SCORED` when it is computed from a completed scoring sheet,
   with the scorer and no worker, calibration or video pair. Either way Mişko
   computes every metric and event itself. Inputs are pinned, so reanalysis or
   rescoring is a new run and old runs stay.

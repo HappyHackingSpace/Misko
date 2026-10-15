@@ -91,13 +91,12 @@ geçer.
 ### Analiz worker'ı
 
 Worker opsiyoneldir: o olmadan da testler kaydedilebilir ve gözlemci puanlamalı
-paradigmalar (rotarod, direk, koşu bandı, yeni nesne) panelde puanlanır, ama
-takip edilen paradigmalar analiz edilmez. Worker takip edilen yedi paradigmayı
-izler: `OPEN_FIELD`, `EPM`, `Y_MAZE`, `BARNES_MAZE`, `THREE_CHAMBER`, `MWM` ve
-`LIGHT_DARK`. Yalnızca sentetik videoyla test edildi.
+paradigmalar (direk, koşu bandı, yeni nesne) panelde puanlanır, ama takip
+edilen paradigma analiz edilmez. Worker takip edilen tek paradigmayı, `MWM`
+(Morris su labirenti) sürüm 1'i izler. Yalnızca sentetik videoyla test edildi.
 
 1. Laboratuvar yöneticisi ya da yönetici olarak giriş yapın ve worker'ı
-   `misko-tracker-bgsub 2.0.0` model sürümüyle ve takip edilen her yeteneği
+   `misko-tracker-bgsub 2.0.0` model sürümüyle ve `MWM` yeteneğini
    sürüm 1 olarak kaydedin. Gözlemci puanlamalı paradigmalar yetenek olamaz.
 
    ```bash
@@ -110,13 +109,7 @@ izler: `OPEN_FIELD`, `EPM`, `Y_MAZE`, `BARNES_MAZE`, `THREE_CHAMBER`, `MWM` ve
     "name": "worker-1",
     "modelVersion": "misko-tracker-bgsub 2.0.0",
     "capabilities": [
-      {"paradigmKey": "OPEN_FIELD", "paradigmVersion": 1},
-      {"paradigmKey": "EPM", "paradigmVersion": 1},
-      {"paradigmKey": "Y_MAZE", "paradigmVersion": 1},
-      {"paradigmKey": "BARNES_MAZE", "paradigmVersion": 1},
-      {"paradigmKey": "THREE_CHAMBER", "paradigmVersion": 1},
-      {"paradigmKey": "MWM", "paradigmVersion": 1},
-      {"paradigmKey": "LIGHT_DARK", "paradigmVersion": 1}
+      {"paradigmKey": "MWM", "paradigmVersion": 1}
     ]
   }'
    ```

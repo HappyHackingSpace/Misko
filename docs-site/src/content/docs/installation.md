@@ -90,14 +90,13 @@ directory.
 ### Analysis worker
 
 The worker is optional: without it, tests can still be recorded and the
-observer-scored paradigms (rotarod, pole, treadmill, novel object) are scored
-in the panel, but tracked paradigms are not analysed. It tracks the seven
-tracked paradigms: `OPEN_FIELD`, `EPM`, `Y_MAZE`, `BARNES_MAZE`,
-`THREE_CHAMBER`, `MWM` and `LIGHT_DARK`. It has been tested on synthetic video
-only.
+observer-scored paradigms (pole, treadmill, novel object) are scored in the
+panel, but the tracked paradigm is not analysed. It tracks the one tracked
+paradigm, `MWM` (Morris water maze), version 1. It has been tested on synthetic
+video only.
 
 1. Sign in as a lab manager or the administrator and register the worker with
-   model version `misko-tracker-bgsub 2.0.0` and every tracked capability at
+   model version `misko-tracker-bgsub 2.0.0` and the `MWM` capability at
    version 1. Observer-scored paradigms cannot be capabilities.
 
    ```bash
@@ -110,13 +109,7 @@ only.
     "name": "worker-1",
     "modelVersion": "misko-tracker-bgsub 2.0.0",
     "capabilities": [
-      {"paradigmKey": "OPEN_FIELD", "paradigmVersion": 1},
-      {"paradigmKey": "EPM", "paradigmVersion": 1},
-      {"paradigmKey": "Y_MAZE", "paradigmVersion": 1},
-      {"paradigmKey": "BARNES_MAZE", "paradigmVersion": 1},
-      {"paradigmKey": "THREE_CHAMBER", "paradigmVersion": 1},
-      {"paradigmKey": "MWM", "paradigmVersion": 1},
-      {"paradigmKey": "LIGHT_DARK", "paradigmVersion": 1}
+      {"paradigmKey": "MWM", "paradigmVersion": 1}
     ]
   }'
    ```

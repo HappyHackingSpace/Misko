@@ -21,13 +21,13 @@ current release. Do not deploy it.
 | Subjects and body weights | Implemented |
 | Experiments: groups with roles, regimens, timepoints, endpoints, allocation and exclusion | Implemented |
 | Dosing: administrations, daily dosing schedule, induction outcomes | Implemented |
-| Paradigm catalog with metric definitions for eleven paradigms | Implemented |
+| Paradigm catalog with metric definitions for four paradigms | Implemented |
 | Environments with measurement revisions and experiment test protocols | Implemented |
 | Tests as sessions with one or more animals in arenas, trials and comments | Implemented |
 | Video uploads to Google Cloud Storage, one current video per test | Implemented, live storage test pending |
 | Calibration per arena with per-animal overrides | Implemented |
-| Analysis runs per animal and human review of every result | Implemented; the worker tracks all seven tracked paradigms, tested on synthetic video only |
-| Observer scoring of rotarod, pole, treadmill and novel object | Implemented |
+| Analysis runs per animal and human review of every result | Implemented; the worker tracks the water maze (`MWM`), tested on synthetic video only |
+| Observer scoring of pole, treadmill and novel object | Implemented |
 | Study report with role-based comparisons, CSV export, dashboard | Implemented |
 | Vue panel on the new API | Scaffolded, not complete |
 
@@ -283,14 +283,13 @@ Every signed-in user can read the paradigm catalog. Paradigms are defined in the
 code and cannot be created, edited or deleted through the API.
 
 - `GET /api/paradigms` lists paradigms with their published versions and whether
-  automated video analysis is available (`automatedAnalysis`). Eleven
-  paradigms are published: `BARNES_MAZE`, `EPM`, `LIGHT_DARK`, `MWM`,
-  `NOVEL_OBJECT`, `OPEN_FIELD`, `POLE`, `ROTAROD`, `THREE_CHAMBER`, `TREADMILL`
-  and `Y_MAZE`. Seven are tracked by an analysis worker (`OPEN_FIELD`, `EPM`,
-  `Y_MAZE`, `BARNES_MAZE`, `THREE_CHAMBER`, `MWM`, `LIGHT_DARK`), and automated
-  analysis is available for them once a worker is registered for the paradigm
-  version. The other four (`ROTAROD`, `POLE`, `TREADMILL`, `NOVEL_OBJECT`) are
-  scored by an observer on the video (see [Observer scoring](#observer-scoring)).
+  automated video analysis is available (`automatedAnalysis`). Four
+  paradigms are published: `MWM`, `NOVEL_OBJECT`, `POLE` and `TREADMILL`, in
+  two categories (`LEARNING_MEMORY` for `MWM` and `NOVEL_OBJECT`, `MOTOR` for
+  `POLE` and `TREADMILL`). `MWM` is tracked by an analysis worker, and automated
+  analysis is available for it once a worker is registered for the paradigm
+  version. The other three (`NOVEL_OBJECT`, `POLE`, `TREADMILL`) are scored by
+  an observer on the video (see [Observer scoring](#observer-scoring)).
 - `GET /api/paradigms/{key}` returns the latest version, and
   `GET /api/paradigms/{key}/versions/{version}` returns one exact version. Each
   version lists its parameters, each with its scope (`APPARATUS` and `ANALYSIS`
@@ -302,24 +301,25 @@ code and cannot be created, edited or deleted through the API.
 
 Some paradigms need more than a tracked position:
 
-- Zones marked `calibrated`, such as the elevated plus maze arms or the Barnes
-  maze holes, are drawn as circles or polygons. Other zones, such as the water
-  maze platform, come from the apparatus parameters.
+- Zones come from the apparatus parameters, such as the water maze platform.
+  A paradigm may also declare zones marked `calibrated`, drawn as circles or
+  polygons; none of the current catalog does.
 - `inputEvents` lists observations that are scored rather than tracked, such as
-  a rotarod fall, pole test turns or novel object exploration. An event type that
+  pole test turns, a treadmill exhaustion or novel object exploration. An event type that
   was not scored produces missing metrics, not zeros.
 
 Results always name the paradigm version, the metric engine version and the
 result schema version they were computed with. A metric that cannot be computed
 is reported as missing with a reason, never as zero. For example, a probe trial
-without an escape reports `EVENT_NOT_OBSERVED`, and a Y maze trial with fewer
-than three arm entries reports `INSUFFICIENT_ENTRIES`. A published version never
+without an escape reports `EVENT_NOT_OBSERVED`, and a novel object trial whose
+total exploration is below the minimum reports `BELOW_EXPLORATION_CRITERION`
+for the discrimination index. A published version never
 changes; a changed definition is published as a new version.
 
 ### Environments and protocols
 
 An environment is one physical apparatus, such as a particular water tank or one
-of several open field boxes under one camera, set up for one paradigm. In a test
+of several novel object boxes under one camera, set up for one paradigm. In a test
 each animal is placed in an arena, which is one revision of an environment.
 Researchers, lab managers and super admins create and revise environments and
 protocols; every signed-in user can read them.
@@ -336,7 +336,7 @@ protocols; every signed-in user can read them.
   `GET /api/environment-revisions` lists every revision for arena pickers.
 
 A protocol is the test battery of an experiment. It can combine paradigms, for
-example an open field test followed by an elevated plus maze.
+example a pole test followed by a treadmill run.
 
 - `POST /api/experiments/{id}/protocols` creates a protocol with its first
   version. Each step gives its position, the paradigm and its version, the trial
@@ -430,12 +430,12 @@ to know how camera pixels map to centimeters in each arena.
   centimeters. The FIT points define the mapping and the CHECK points test it. If
   a CHECK point is off by more than the paradigm allows (2 cm for the trajectory
   paradigms), the calibration is stored as `REJECTED`.
-- Paradigms with `calibrated` zones (elevated plus maze, Y maze, Barnes maze,
-  three-chamber) also need those zones drawn on the same frame. Send them as
-  `zones` in pixels, for example
-  `{"key": "open_arms", "polygon": [{"x": 300, "y": 480}, ...]}` or
-  `{"key": "center", "circle": {"x": 960, "y": 540, "radius": 60}}`; a key may
-  have several shapes, such as the two open arms. Every required zone needs a
+- A paradigm with `calibrated` zones (none of the current catalog has any)
+  also needs those zones drawn on the same frame. Send them as `zones` in
+  pixels, for example
+  `{"key": "zone_a", "polygon": [{"x": 300, "y": 480}, ...]}` or
+  `{"key": "zone_b", "circle": {"x": 960, "y": 540, "radius": 60}}`; a key may
+  have several shapes. Every required zone needs a
   shape and every shape must lie inside the frame. Misko converts them to
   centimeters with the calibration and returns each zone in both. The worker
   receives them with its job, and the metrics use the centimeter shapes. In the
@@ -446,29 +446,27 @@ to know how camera pixels map to centimeters in each arena.
 - World points must use the frame the paradigm's zones are defined in. For the
   water maze that frame is tank-centred: (0, 0) is the tank centre, x points
   east and y north, so the wall points are (r, 0), (0, r), (-r, 0) and (0, -r)
-  with r = tank diameter / 2. Open field uses arena-local points from one floor
-  corner, light/dark box-local points from a light-side corner with x toward
-  the dark end wall, and paradigms with calibrated zones any frame.
+  with r = tank diameter / 2. A paradigm with calibrated zones may use any
+  frame.
 - To fix a calibration, send a new one with `supersedesId` set to the latest
   calibration of the same arena or animal. Earlier calibrations are kept.
 - `GET /api/tests/{id}/calibration-status` lists every animal of a test:
   `WAITING_FOR_VIDEO`, `WAITING_FOR_CALIBRATION` until a valid calibration
   with every required zone applies, then `CALIBRATED`. Paradigms without video measurements, such as the
-  rotarod, show `NOT_REQUIRED`.
+  pole test, show `NOT_REQUIRED`.
 
 ### Video analysis
 
 Tracking runs in separate analysis workers that talk to the API. The worker in
-the `worker/` folder tracks recorded fixed-camera video of every tracked
-paradigm: `OPEN_FIELD`, `EPM`, `Y_MAZE`, `BARNES_MAZE`, `THREE_CHAMBER`, `MWM`
-and `LIGHT_DARK`, version 1. It has only been tested on synthetic video so far;
+the `worker/` folder tracks recorded fixed-camera video of the tracked
+paradigm, `MWM` version 1. It has only been tested on synthetic video so far;
 do not use its results for research until it has been checked against a
 manually annotated recording.
 
 - A lab manager registers a worker with `POST /api/analysis/workers`, giving its
   name, model version and the paradigm versions it supports. Register the
-  bundled worker with model version `misko-tracker-bgsub 2.0.0` and all seven
-  tracked paradigms at version 1 (see [Installation](../installation/#analysis-worker)).
+  bundled worker with model version `misko-tracker-bgsub 2.0.0` and `MWM` at
+  version 1 (see [Installation](../installation/#analysis-worker)).
   Observer-scored paradigms are refused with `worker.unknownCapability`. The
   response shows the worker's token only once; store it in the worker's secret
   configuration.
@@ -486,9 +484,9 @@ manually annotated recording.
   computes every metric and event from the trajectory; a worker cannot send its
   own numbers. If too many frames are lost or the tracking confidence is too
   low, the run is `FAILED` with a `QC_FAILED` reason and nothing is published.
-  In the light/dark box, frames where the animal is hidden in the dark
-  compartment are sent as inferred samples: they count as tracked, but not in
-  the confidence mean.
+  A worker may mark samples as inferred (the optional `inferred` flag), for
+  example while the animal is hidden: they count as tracked, but not in the
+  confidence mean. The bundled worker sends none.
 - Every run has a `method`: `AUTOMATED` for a worker run, `SCORED` for a run
   computed from an observer's scoring (with `scoredBy` and no worker,
   calibration or video pair).
@@ -503,7 +501,7 @@ manually annotated recording.
 
 ### Observer scoring
 
-Rotarod, pole, treadmill and novel object tests are scored by a person on the
+Pole, treadmill and novel object tests are scored by a person on the
 test's current video. Technicians and the roles above them can score; everyone
 signed in can read.
 

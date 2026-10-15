@@ -21,13 +21,13 @@ Canlıya almayın.
 | Denekler ve vücut ağırlıkları | Hazır |
 | Deneyler: rollü gruplar, rejimler, zaman noktaları, sonlanım noktaları, atama ve dışlama | Hazır |
 | Dozlama: uygulamalar, günlük doz takvimi, indüksiyon sonuçları | Hazır |
-| On bir paradigmanın metrik tanımlarıyla paradigma kataloğu | Hazır |
+| Dört paradigmanın metrik tanımlarıyla paradigma kataloğu | Hazır |
 | Ölçüm revizyonlarıyla ortamlar ve deney test protokolleri | Hazır |
 | Arenalarda bir veya birden çok hayvanla oturum olarak testler, denemeler ve yorumlar | Hazır |
 | Google Cloud Storage'a video yükleme, test başına tek güncel video | Hazır, gerçek depolama testi bekliyor |
 | Arena başına kalibrasyon ve hayvan başına düzeltme | Hazır |
-| Hayvan başına analiz çalıştırmaları ve her sonucun insan onayı | Hazır; worker takip edilen yedi paradigmanın hepsini izler, yalnızca sentetik videoyla test edildi |
-| Rotarod, direk, koşu bandı ve yeni nesne için gözlemci puanlaması | Hazır |
+| Hayvan başına analiz çalıştırmaları ve her sonucun insan onayı | Hazır; worker su labirentini (`MWM`) izler, yalnızca sentetik videoyla test edildi |
+| Direk, koşu bandı ve yeni nesne için gözlemci puanlaması | Hazır |
 | Rol tabanlı karşılaştırmalarla çalışma raporu, CSV dışa aktarma, gösterge paneli | Hazır |
 | Yeni API üzerinde Vue paneli | İskeleti var, tamamlanmadı |
 
@@ -289,13 +289,12 @@ Giriş yapmış her kullanıcı paradigma kataloğunu okuyabilir. Paradigmalar k
 tanımlıdır; API üzerinden oluşturulamaz, düzenlenemez veya silinemez.
 
 - `GET /api/paradigms`, paradigmaları yayınlanmış sürümleriyle ve otomatik video
-  analizinin olup olmadığıyla (`automatedAnalysis`) listeler. On bir paradigma
-  yayınlanmıştır: `BARNES_MAZE`, `EPM`, `LIGHT_DARK`, `MWM`, `NOVEL_OBJECT`,
-  `OPEN_FIELD`, `POLE`, `ROTAROD`, `THREE_CHAMBER`, `TREADMILL` ve `Y_MAZE`.
-  Yedisi bir analiz worker'ı tarafından takip edilir (`OPEN_FIELD`, `EPM`,
-  `Y_MAZE`, `BARNES_MAZE`, `THREE_CHAMBER`, `MWM`, `LIGHT_DARK`) ve paradigma
-  sürümü için bir worker kaydedildiğinde bunlarda otomatik analiz vardır. Diğer
-  dördü (`ROTAROD`, `POLE`, `TREADMILL`, `NOVEL_OBJECT`) videoda bir gözlemci
+  analizinin olup olmadığıyla (`automatedAnalysis`) listeler. Dört paradigma
+  yayınlanmıştır: `MWM`, `NOVEL_OBJECT`, `POLE` ve `TREADMILL`; iki kategoride
+  toplanırlar (`MWM` ve `NOVEL_OBJECT` için `LEARNING_MEMORY`, `POLE` ve
+  `TREADMILL` için `MOTOR`). `MWM` bir analiz worker'ı tarafından takip edilir
+  ve paradigma sürümü için bir worker kaydedildiğinde onda otomatik analiz
+  vardır. Diğer üçü (`NOVEL_OBJECT`, `POLE`, `TREADMILL`) videoda bir gözlemci
   tarafından puanlanır (aşağıdaki Gözlemci puanlaması bölümüne bakın).
 - `GET /api/paradigms/{key}` en son sürümü, `GET /api/paradigms/{key}/versions/{version}`
   ise belirli bir sürümü döndürür. Her sürüm; parametrelerini kapsamı (ortamda
@@ -307,24 +306,25 @@ tanımlıdır; API üzerinden oluşturulamaz, düzenlenemez veya silinemez.
 
 Bazı paradigmalar izlenen bir konumdan fazlasına ihtiyaç duyar:
 
-- Yükseltilmiş artı labirent kolları veya Barnes labirenti delikleri gibi
-  `calibrated` işaretli bölgeler daire ya da çokgen olarak çizilir. Su labirenti
-  platformu gibi diğer bölgeler düzenek parametrelerinden gelir.
-- `inputEvents`, izlenmek yerine puanlanan gözlemleri listeler; örneğin rotarod
-  düşüşü, pole testinde dönüşler veya yeni nesne keşfi. Puanlanmamış bir olay
+- Su labirenti platformu gibi bölgeler düzenek parametrelerinden gelir. Bir
+  paradigma daire ya da çokgen olarak çizilen `calibrated` işaretli bölgeler de
+  tanımlayabilir; güncel katalogdaki hiçbir paradigma bunu kullanmaz.
+- `inputEvents`, izlenmek yerine puanlanan gözlemleri listeler; örneğin direk
+  testinde dönüşler, koşu bandında tükenme veya yeni nesne keşfi. Puanlanmamış bir olay
   türü sıfır değil, eksik metrik üretir.
 
 Sonuçlar her zaman hesaplandıkları paradigma sürümünü, metrik motoru sürümünü ve
 sonuç şeması sürümünü belirtir. Hesaplanamayan bir metrik hiçbir zaman sıfır
 olarak değil, bir nedenle eksik olarak raporlanır. Örneğin kaçışın olmadığı bir
-probe denemesi `EVENT_NOT_OBSERVED`, üçten az kol girişi olan bir Y labirenti
-denemesi `INSUFFICIENT_ENTRIES` döndürür. Yayınlanmış bir sürüm hiç değişmez;
+probe denemesi `EVENT_NOT_OBSERVED`, toplam keşfi en az sürenin altında kalan
+bir yeni nesne denemesi ayırt etme indeksi için `BELOW_EXPLORATION_CRITERION`
+döndürür. Yayınlanmış bir sürüm hiç değişmez;
 değişen bir tanım yeni bir sürüm olarak yayınlanır.
 
 ### Ortamlar ve protokoller
 
 Ortam, tek bir paradigma için kurulmuş tek bir fiziksel düzenektir; örneğin belirli
-bir su tankı ya da tek kameranın gördüğü birkaç açık alan kutusundan biri. Bir
+bir su tankı ya da tek kameranın gördüğü birkaç yeni nesne kutusundan biri. Bir
 testte her hayvan bir arenaya konur; arena, bir ortamın bir revizyonudur.
 RESEARCHER, LAB_MANAGER ve SUPERADMIN ortam ve protokol oluşturup
 güncelleyebilir; giriş yapmış her kullanıcı bunları okuyabilir.
@@ -341,7 +341,7 @@ güncelleyebilir; giriş yapmış her kullanıcı bunları okuyabilir.
   seçimi için tüm revizyonları listeler.
 
 Protokol, bir deneyin test bataryasıdır. Paradigmaları birleştirebilir; örneğin
-açık alan testinin ardından yükseltilmiş artı labirent.
+direk testinin ardından koşu bandı.
 
 - `POST /api/experiments/{id}/protocols`, ilk sürümüyle birlikte bir protokol
   oluşturur. Her adım sırasını, paradigmayı ve sürümünü, deneme türünü, deneme
@@ -439,12 +439,12 @@ gerekir.
   noktaları dönüşümü belirler, CHECK noktaları onu sınar. Bir CHECK noktası
   paradigmanın izin verdiğinden fazla saparsa (yörünge paradigmaları için 2 cm)
   kalibrasyon `REJECTED` olarak kaydedilir.
-- `calibrated` bölgeleri olan paradigmalar (yükseltilmiş artı labirent, Y
-  labirenti, Barnes labirenti, üç bölmeli test) bu bölgelerin aynı kare üzerinde
-  çizilmesini de ister. Bunları piksel cinsinden `zones` olarak gönderin; örneğin
-  `{"key": "open_arms", "polygon": [{"x": 300, "y": 480}, ...]}` ya da
-  `{"key": "center", "circle": {"x": 960, "y": 540, "radius": 60}}`. Bir
-  anahtarın iki açık kol gibi birden çok şekli olabilir. Her zorunlu bölgenin bir
+- `calibrated` bölgeleri olan bir paradigma (güncel katalogda böyle bir
+  paradigma yoktur) bu bölgelerin aynı kare üzerinde çizilmesini de ister.
+  Bunları piksel cinsinden `zones` olarak gönderin; örneğin
+  `{"key": "zone_a", "polygon": [{"x": 300, "y": 480}, ...]}` ya da
+  `{"key": "zone_b", "circle": {"x": 960, "y": 540, "radius": 60}}`. Bir
+  anahtarın birden çok şekli olabilir. Her zorunlu bölgenin bir
   şekli olmalı ve her şekil karenin içinde kalmalıdır. Misko bunları kalibrasyonla
   santimetreye çevirir ve her bölgeyi iki birimde de döndürür. Worker bölgeleri
   işiyle birlikte alır; metrikler santimetre şekilleriyle hesaplanır. Panelde
@@ -455,31 +455,28 @@ gerekir.
 - Dünya noktaları, paradigmanın bölgelerinin tanımlandığı çerçeveyi kullanmalıdır.
   Su labirentinde bu çerçeve tank merkezlidir: (0, 0) tankın merkezi, x doğuyu,
   y kuzeyi gösterir; duvar noktaları r = tank çapı / 2 olmak üzere (r, 0),
-  (0, r), (-r, 0) ve (0, -r) olur. Açık alan bir taban köşesinden başlayan arena
-  yerel noktaları, aydınlık/karanlık aydınlık taraftaki bir köşeden başlayıp x'i
-  karanlık uç duvara doğru ilerleyen kutu yerel noktaları, kalibre edilen
-  bölgeleri olan paradigmalar ise herhangi bir çerçeveyi kullanır.
+  (0, r), (-r, 0) ve (0, -r) olur. Kalibre edilen bölgeleri olan bir paradigma
+  herhangi bir çerçeveyi kullanabilir.
 - Bir kalibrasyonu düzeltmek için, `supersedesId` alanına aynı arenanın ya da
   hayvanın en son kalibrasyonunu yazarak yeni bir kalibrasyon gönderin. Önceki
   kalibrasyonlar saklanır.
 - `GET /api/tests/{id}/calibration-status` bir testin tüm hayvanlarını
   listeler: `WAITING_FOR_VIDEO`, her zorunlu bölgesi çizilmiş geçerli bir
-  kalibrasyon uygulanana kadar `WAITING_FOR_CALIBRATION`, sonra `CALIBRATED`. Rotarod gibi video ölçümü
+  kalibrasyon uygulanana kadar `WAITING_FOR_CALIBRATION`, sonra `CALIBRATED`. Direk testi gibi video ölçümü
   olmayan paradigmalar `NOT_REQUIRED` gösterir.
 
 ### Video analizi
 
 Takip, API ile konuşan ayrı analiz worker'larında çalışır. `worker/`
-klasöründeki worker, takip edilen her paradigmanın sabit kameradan kaydedilmiş
-videosunu izler: `OPEN_FIELD`, `EPM`, `Y_MAZE`, `BARNES_MAZE`,
-`THREE_CHAMBER`, `MWM` ve `LIGHT_DARK`, sürüm 1. Şimdiye kadar yalnızca
+klasöründeki worker, takip edilen paradigmanın, `MWM` sürüm 1'in, sabit
+kameradan kaydedilmiş videosunu izler. Şimdiye kadar yalnızca
 sentetik videoyla test edildi; elle işaretlenmiş bir kayda karşı doğrulanana
 kadar sonuçlarını araştırmada kullanmayın.
 
 - LAB_MANAGER bir worker'ı `POST /api/analysis/workers` ile kaydeder; adını, model
   sürümünü ve desteklediği paradigma sürümlerini verir. Paketle gelen worker'ı
-  `misko-tracker-bgsub 2.0.0` model sürümüyle ve takip edilen yedi paradigmanın
-  hepsiyle, sürüm 1 olarak kaydedin (bkz. [Kurulum](../installation/)). Gözlemci
+  `misko-tracker-bgsub 2.0.0` model sürümüyle ve `MWM` sürüm 1 ile
+  kaydedin (bkz. [Kurulum](../installation/)). Gözlemci
   puanlamalı paradigmalar `worker.unknownCapability` ile reddedilir. Yanıt
   worker'ın token'ını yalnızca bir kez gösterir; bunu worker'ın gizli
   yapılandırmasında saklayın. `POST /api/analysis/workers/{id}/disable` token'ı iptal eder.
@@ -496,9 +493,10 @@ kadar sonuçlarını araştırmada kullanmayın.
   yükler. Hayvanın grubunu veya tedavisini hiç öğrenmez. Mişko her metriği ve
   olayı yörüngeden hesaplar; worker kendi sayılarını gönderemez. Çok fazla kare
   kaybedilirse veya takip güveni çok düşükse çalıştırma `QC_FAILED` gerekçesiyle
-  `FAILED` olur ve hiçbir şey yayınlanmaz. Aydınlık/karanlık kutuda hayvanın
-  karanlık bölmede gizli olduğu kareler çıkarımlı örnek olarak gönderilir:
-  takip edilmiş sayılırlar ama güven ortalamasına girmezler.
+  `FAILED` olur ve hiçbir şey yayınlanmaz. Bir worker örnekleri çıkarımlı
+  olarak işaretleyebilir (isteğe bağlı `inferred` alanı), örneğin hayvan
+  gizliyken: takip edilmiş sayılırlar ama güven ortalamasına
+  girmezler. Paketle gelen worker böyle örnek göndermez.
 - Her çalıştırmanın bir `method` alanı vardır: worker çalıştırması için
   `AUTOMATED`, bir gözlemcinin puanlamasından hesaplanan çalıştırma için
   `SCORED` (`scoredBy` ile; worker, kalibrasyon ve video çifti olmadan).
@@ -515,7 +513,7 @@ kadar sonuçlarını araştırmada kullanmayın.
 
 ### Gözlemci puanlaması
 
-Rotarod, direk, koşu bandı ve yeni nesne testleri testin güncel videosunda bir
+Direk, koşu bandı ve yeni nesne testleri testin güncel videosunda bir
 kişi tarafından puanlanır. TECHNICIAN ve üstü roller puanlayabilir; giriş yapmış
 herkes okuyabilir.
 

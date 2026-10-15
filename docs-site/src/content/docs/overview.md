@@ -18,8 +18,8 @@ what the result was**, without managing raw video by hand.
 
 - **Catalog**: substances (compounds, reference drugs, vehicles, inducing
   agents) and disease models, shared by every study of the laboratory.
-- **Paradigm**: a scientific test type (Morris Water Maze, Open Field, Elevated
-  Plus Maze, Rotarod and others). Defined in code in published versions that
+- **Paradigm**: a scientific test type (Morris water maze, novel object
+  recognition, pole test and treadmill). Defined in code in published versions that
   never change.
 - **Environment**: a physical apparatus of one paradigm, with measurement
   revisions. In a test, an animal is placed in an arena, which is one

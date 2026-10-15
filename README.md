@@ -44,7 +44,7 @@ Misko/
 │   └── tests/               # architecture policy and end to end harness
 │
 ├── frontend/                # Vue 3 panel (Nginx serves it, proxies /api)
-├── worker/                  # Open Field analysis worker (Python)
+├── worker/                  # Morris water maze analysis worker (Python)
 └── docs-site/               # documentation published to GitHub Pages
 ```
 

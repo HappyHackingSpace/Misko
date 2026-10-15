@@ -123,7 +123,7 @@ Hierarchy in one line each:
 **disease_models** (exists, extended)
 - `name`, `description`
 - `induction_type`: `CHEMICAL` | `SURGICAL` | `DIET` | `STRESS` | `OTHER`
-- `confirmation_criterion`: free text, e.g. "rotarod latency < 50% of baseline"
+- `confirmation_criterion`: free text, e.g. "pole test total time > 150% of baseline"
   (an automatic, metric-based confirmation is a later option, see section 3.1)
 
 ### Study design

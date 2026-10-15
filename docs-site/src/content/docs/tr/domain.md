@@ -54,10 +54,9 @@ değil.
 - **Paradigma:** düzenlenebilir bir veritabanı satırı değil, **kodda tanımlı**
   bilimsel bir test türüdür: parametreler, bölgeler, puanlanan olaylar ve metrik
   tanımları, hiç değişmeyen yayınlanmış sürümler halinde. Kayıt defteri: `MWM`,
-  `OPEN_FIELD`, `EPM`, `ROTAROD`, `Y_MAZE`, `NOVEL_OBJECT`, `BARNES_MAZE`,
-  `THREE_CHAMBER`, `LIGHT_DARK`, `POLE`, `TREADMILL`.
+  `NOVEL_OBJECT`, `POLE`, `TREADMILL`.
 - **Ortam:** tek bir paradigmanın tek bir fiziksel düzeneği; örneğin belirli bir
-  su tankı ya da tek kamera altındaki üç açık alan kutusundan biri. Ölçüleri
+  su tankı ya da tek kamera altındaki üç yeni nesne kutusundan biri. Ölçüleri
   değişmeyen, numaralı revizyonlardır. Bir testte hayvan bir **arenaya** konur;
   arena, bir ortam revizyonudur.
 
@@ -145,22 +144,21 @@ altında en fazla üç arena.
 - **Kalibrasyon:** pikselleri santimetreye çevirir. Varsayılan olarak her arena
   (ortam revizyonu) düzenek kurulurken bir kez kalibre edilir; kırpma alanı
   arenanın kamera karesindeki bölgesidir. Kamera veya arena kaydıysa güncel
-  videoda tek bir test deneğine elle bir **düzeltme** uygulanır. Bölgeleri
-  parametrelerden türetilmeyen paradigmalar (yükseltilmiş artı labirent, Y
-  labirenti, Barnes labirenti, üç bölmeli test) **bölgelerini** kalibrasyonla
-  birlikte taşır; bölgeler kare üzerinde piksel olarak çizilir ve santimetre
-  olarak da saklanır. Bir kalibrasyon ve bölgeleri asla değişmez. Gözlemci
+  videoda tek bir test deneğine elle bir **düzeltme** uygulanır. Bir paradigma
+  parametrelerden türetilmeyen bölgeler tanımlayabilir; bu **kalibre edilen
+  bölgeler** kalibrasyonla birlikte taşınır, kare üzerinde piksel olarak
+  çizilir ve santimetre olarak da saklanır (güncel katalogdaki hiçbir paradigma
+  bunu kullanmaz). Bir kalibrasyon ve bölgeleri asla değişmez. Gözlemci
   puanlamalı paradigmalar kalibrasyon gerektirmez.
-- **Puanlama sayfası:** gözlemci puanlamalı bir paradigmada (`ROTAROD`, `POLE`,
-  `TREADMILL`, `NOVEL_OBJECT`) bir kişinin güncel videoda bir test deneği için
+- **Puanlama sayfası:** gözlemci puanlamalı bir paradigmada (`POLE`, `TREADMILL`,
+  `NOVEL_OBJECT`) bir kişinin güncel videoda bir test deneği için
   işaretlediği olaylar, klip başlangıcından itibaren mikrosaniye cinsinden. Bir
   sayfa puanlanırken `DRAFT`, puanlanan olay türleri ve kayıt uzunluğu
   sabitlendiğinde `COMPLETED` olur; yeniden açmak bir sonraki sürümü başlatır ve
   tamamlanmış sayfalar asla değişmez.
 - **Analiz çalıştırması:** test deneği başına bir tane. Bir worker hayvanı
   arenasının kırpma alanında izleyip yörüngeyi yüklediğinde `method` alanı
-  `AUTOMATED` olur (`OPEN_FIELD`, `EPM`, `Y_MAZE`, `BARNES_MAZE`,
-  `THREE_CHAMBER`, `MWM`, `LIGHT_DARK`); tamamlanmış bir puanlama sayfasından
+  `AUTOMATED` olur (`MWM`); tamamlanmış bir puanlama sayfasından
   hesaplandığında ise puanlayanla birlikte, worker, kalibrasyon ve video çifti
   olmadan `SCORED` olur. Her iki durumda da Mişko her metriği ve olayı kendisi
   hesaplar. Girdiler sabitlenir; yeniden analiz ya da yeniden puanlama yeni bir

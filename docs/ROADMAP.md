@@ -1,5 +1,9 @@
 # Mişko Roadmap
 
+> **2026-10-15, katalog daraltıldı:** paradigma kataloğu dört paradigmaya
+> indirildi: `MWM`, `NOVEL_OBJECT`, `POLE` ve `TREADMILL` (kategoriler
+> `LEARNING_MEMORY` ve `MOTOR`). Diğer yedi paradigma kaldırıldı.
+>
 > **2026-10-12, çalışma modeli:** eski denek/senaryo modeli yerine grup, hastalık
 > modeli ve rejim etrafında kurulan çalışma modeli geldi; şema sıfırdan yeniden
 > yazıldı. Model ve kararlar: [DOMAIN_REDESIGN.md](plans/DOMAIN_REDESIGN.md).
@@ -82,11 +86,8 @@ Exit criteria:
 Goal: define what the system means by each paradigm and each measurement before
 real AI starts producing data.
 
-- Add code-backed `ParadigmSpec` registry: (done, 11 paradigms in `backend/src/config/paradigms.js`)
-  - `MWM`, `OPEN_FIELD`, `EPM`, `ROTAROD`
-  - `Y_MAZE`, `NOVEL_OBJECT`, `BARNES_MAZE` (learning and memory)
-  - `THREE_CHAMBER` (social)
-  - `LIGHT_DARK` (anxiety)
+- Add code-backed `ParadigmSpec` registry: (done; now the Go catalog in `backend/internal/paradigms`, trimmed to four paradigms on 2026-10-15)
+  - `MWM`, `NOVEL_OBJECT` (learning and memory)
   - `POLE`, `TREADMILL` (motor)
 - Add code-backed `MetricDefinition` registry from `docs/MEASUREMENTS.md`. (done, `backend/src/config/metrics.js`)
 - Lock canonical units: (done, `backend/src/config/units.js`)
@@ -96,7 +97,6 @@ real AI starts producing data.
   - ratios: `ratio` (0..1) and `percent`
   - counts: `count`
   - angle: `deg`
-  - rotarod speed: `rpm`
   - subject weight: `g`
   - event flags: `boolean`
   - apparatus parameters only: `mm`, `c`
@@ -216,16 +216,13 @@ Initial metric targets:
 | Paradigm | MVP metrics |
 |---|---|
 | MWM | Escape latency, path length, swim speed, quadrant time, thigmotaxis, platform crossings for probe trials. |
-| Open Field | Distance, mean speed, center time, periphery time, immobility. |
-| EPM | Open arm time, closed arm time, open arm entries, closed arm entries. |
-| Rotarod | Trial duration and fall candidate events, with manual review at first. |
 
 Exit criteria:
 
 - CV processes a real video and returns valid metrics.
 - Debug overlay shows detected animal, trajectory, zones and calibration.
-- MWM, Open Field and EPM can run with centroid tracking.
-- Rotarod is marked as experimental until fall detection is validated.
+- MWM can run with centroid tracking.
+- Pole test, treadmill and novel object stay observer scored until automated event detection is validated.
 
 ## Step 7 - Quality control and review
 
@@ -265,9 +262,8 @@ Goal: turn individual tests into study-level evidence.
 - Per-subject history across tests.
 - MWM acquisition curves.
 - Probe trial summaries.
-- Open Field center/periphery summaries.
-- EPM open-arm summaries.
-- Rotarod repeated-trial learning curves.
+- Novel object discrimination summaries.
+- Pole test and treadmill summaries.
 - Export CSV and JSON with metric definitions and QC status.
 
 Exit criteria:
@@ -291,7 +287,7 @@ enough.
   - freezing
   - risk assessment
   - head direction
-- Improve Rotarod fall detection.
+- Automated detection of observer-scored events (pole test turns and falls, novel object exploration).
 - Add multi-animal support only after single-animal workflows are stable.
 
 Exit criteria:

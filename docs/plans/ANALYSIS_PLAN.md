@@ -1,5 +1,9 @@
 # Analysis for every paradigm
 
+> **2026-10-15:** the paradigm catalog was trimmed to `MWM`, `NOVEL_OBJECT`,
+> `POLE` and `TREADMILL`; the other seven paradigms were removed. The text
+> below predates this change and is kept as written.
+
 Status: done. Date: 2026-10-15. Goal: every published paradigm can be
 analysed end to end and its results reviewed and reported.
 

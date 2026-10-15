@@ -19,8 +19,8 @@ laboratuvarları için.
 
 - **Katalog**: maddeler (bileşikler, referans ilaçlar, taşıyıcılar, indükleyici
   ajanlar) ve hastalık modelleri; laboratuvarın tüm çalışmalarında ortaktır.
-- **Paradigma**: bilimsel bir test türü (Morris Su Tankı, Açık Alan,
-  Yükseltilmiş Artı Labirent, Rotarod ve diğerleri). Kodda, hiç değişmeyen
+- **Paradigma**: bilimsel bir test türü (Morris su labirenti, yeni nesne
+  tanıma, direk testi ve koşu bandı). Kodda, hiç değişmeyen
   yayınlanmış sürümler halinde tanımlıdır.
 - **Ortam**: tek bir paradigmanın ölçüm revizyonlu fiziksel düzeneği. Bir testte
   hayvan bir arenaya konur; arena bir ortam revizyonudur.

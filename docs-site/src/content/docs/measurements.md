@@ -30,8 +30,8 @@ scope that says where it is set:
 | Scope | Set on | Required | Examples |
 |---|---|---|---|
 | `APPARATUS` | Environment | Yes, measured on the physical setup | arena width, tank diameter, pole length |
-| `ANALYSIS` | Environment | No, defaults suit most setups | center zone size, tracking gap tolerance, immobility threshold |
-| `SESSION` | Protocol step | No, defaults apply | trial cut-off, rotarod start and end speed |
+| `ANALYSIS` | Environment | No, defaults suit most setups | wall zone width, time on platform to escape, minimum total exploration |
+| `SESSION` | Protocol step | No, defaults apply | trial cut-off, treadmill start and end speed |
 
 Each parameter carries a label and a help text that says what to measure or what
 the value changes. Names, labels, help texts, zone and event names, plain metric
@@ -49,14 +49,14 @@ interface ParadigmManifest {
   key: string;
   name: string;           // in the response language
   description: string;    // what the test is and what it measures
-  category: "LEARNING_MEMORY" | "ANXIETY" | "MOTOR" | "SOCIAL";
+  category: "LEARNING_MEMORY" | "MOTOR";
   trialTypes: { key: string; label: string }[];
   parameters: {
     key: string;
     scope: "APPARATUS" | "ANALYSIS" | "SESSION";
     label: string;
     help: string;
-    unit: "cm" | "cm_s" | "s" | "count" | "ratio" | "rpm" | "boolean";
+    unit: "cm" | "cm_s" | "s" | "count" | "ratio" | "boolean";
     valueType: "number" | "integer";
     min: number;
     max: number;
@@ -74,21 +74,14 @@ Wording and help texts can be improved without a new version.
 
 ## Tracked and observer-scored paradigms
 
-Each of the eleven paradigms gets its inputs in one of two ways. The metric
+Each of the four paradigms gets its inputs in one of two ways. The metric
 engine in `backend/internal/paradigms/domain` computes the metrics in both
 cases, so a measurement has one definition whatever produced its inputs.
 
 | Paradigm | Method | Input | Zones |
 |---|---|---|---|
-| `OPEN_FIELD` | Tracked (`AUTOMATED` run) | trajectory | from parameters (arena, center) |
-| `LIGHT_DARK` | Tracked | trajectory, with inferred samples | from parameters (light, dark) |
-| `MWM` | Tracked | trajectory in tank-centred cm | from parameters (platform, target quadrant, wall zone) |
-| `EPM` | Tracked | trajectory | calibrated, required: `center`, `open_arms`, `closed_arms` |
-| `Y_MAZE` | Tracked | trajectory | calibrated, required: `arm_a`, `arm_b`, `arm_c` |
-| `BARNES_MAZE` | Tracked | trajectory | calibrated, required: `target_hole`, `holes` |
-| `THREE_CHAMBER` | Tracked | trajectory | calibrated, required: `social_chamber`, `object_chamber`, `center_chamber`; optional: `social_interaction`, `object_interaction` |
-| `ROTAROD` | Observer scored (`SCORED` run) | `fall` (point, once) | none |
-| `POLE` | Observer scored | `turn_complete`, `base_reached`, `fall` (points, each once) | none |
+| `MWM` | Tracked (`AUTOMATED` run) | trajectory in tank-centred cm | from parameters (platform, target quadrant, wall zone) |
+| `POLE` | Observer scored (`SCORED` run) | `turn_complete`, `base_reached`, `fall` (points, each once) | none |
 | `TREADMILL` | Observer scored | `exhaustion` (point, once), `shock` (points) | none |
 | `NOVEL_OBJECT` | Observer scored | `exploration` (intervals labelled `novel` or `familiar`) | none |
 
@@ -112,33 +105,32 @@ human review; only accepted results enter the report.
 
 Zones come from one of two places:
 
-- **From parameters.** Open field, light/dark and the water maze derive their
-  zones from the environment's measurements (for example `center_fraction`,
-  `light_fraction`, the platform position). Their calibration world points
-  must use the frame those zones are defined in: arena-local from one floor
-  corner for open field, box-local from a light-side corner with x toward the
-  dark end wall for light/dark, and **tank-centred** for the water maze
-  ((0, 0) at the tank centre, x east, y north, so the wall points are (r, 0),
-  (0, r), (-r, 0) and (0, -r) with r = tank diameter / 2).
-- **Calibrated.** EPM, Y maze, Barnes maze and three-chamber zones are drawn as
-  circles or polygons on the camera frame with the calibration. A key may have
-  several shapes (two open arms, one shape per Barnes hole). Shapes are stored
+- **From parameters.** The water maze derives its zones from the
+  environment's measurements (the platform position and diameter, the wall
+  zone width). Its calibration world points must use the frame those zones are
+  defined in: **tank-centred** ((0, 0) at the tank centre, x east, y north, so
+  the wall points are (r, 0), (0, r), (-r, 0) and (0, -r) with
+  r = tank diameter / 2).
+- **Calibrated.** A paradigm may declare calibrated zones; none of the current
+  catalog does, but the support stays. Such zones are drawn as circles or
+  polygons on the camera frame with the calibration, and a key may have
+  several shapes. Shapes are stored
   as drawn in pixels and converted to centimetres with the calibration's fitted
   transform; they must lie inside the frame and never change after the
   calibration is saved (migration `014_calibration_zones.sql`). Until a valid
   calibration with every required zone applies, the animal stays
   `WAITING_FOR_CALIBRATION` and is not analysed. The worker limits tracking to
-  the convex hull of the zones (plus a margin), so junctions that belong to no
-  zone, such as the Y maze centre, are still tracked.
+  the convex hull of the zones (plus a margin), so areas between zones that
+  belong to no zone are still tracked.
 
 ### Inferred samples
 
-In the light/dark box the animal disappears under the dark compartment's lid. A
-stretch of frames without any detection is filled when the animal was last seen
-in the dark compartment or at its doorway and is next seen there again (or the
-clip ends). Those samples are `tracked` with `inferred: true` in
-`misko.trajectory.v1`, so the engine counts dark time and transitions. A
-disappearance anywhere else stays lost.
+`misko.trajectory.v1` has an optional `inferred` flag per sample. A worker may
+fill a stretch of frames where the animal is hidden with samples that are
+`tracked` with `inferred: true`; they count as tracked, but not in the
+tracking confidence mean. No paradigm of the current catalog needs this and the
+bundled worker sends no inferred samples; frames without a detection stay
+lost.
 
 ## No pass/fail verdict
 
@@ -175,7 +167,7 @@ type DetectSpec =
 The generic kinds (`zone_transition`, `zone_first_enter`, `speed_below`) are
 **data-driven**: a paradigm that only uses them needs no new CV code, declaring
 the event types is enough. `custom` flags an event that needs a dedicated
-detector (e.g. a rotarod fall, a social interaction). Event types are exposed on
+detector (e.g. a pole test turn, object exploration). Event types are exposed on
 the paradigm detail API (`GET /api/paradigms/:key` -> `eventTypes`).
 
 ## Localization
@@ -200,7 +192,7 @@ calculations.
 interface MetricDefinition {
   key: string;
   paradigmKeys: string[];
-  unit: "cm" | "cm_s" | "s" | "count" | "ratio" | "percent" | "deg" | "rpm" | "boolean";
+  unit: "cm" | "cm_s" | "s" | "count" | "ratio" | "percent" | "deg" | "boolean";
   valueType: "number" | "integer" | "boolean" | "object";
   required: boolean;
   definition: string;
@@ -213,7 +205,7 @@ interface MetricDefinition {
 ```
 
 Canonical result units: positions and distances in `cm`, speed in `cm_s`,
-duration in `s`, weight in `g`, angles in `deg`, rotation speed in `rpm`, ratios
+duration in `s`, weight in `g`, angles in `deg`, ratios
 as `ratio` (`0..1`) or `percent`, event flags as `boolean`, and counts as
 `count`. Apparatus parameters reuse this enum and add `mm` (small rig diameters)
 and `c` (water temperature in Celsius), which never appear in result metrics.
@@ -236,9 +228,9 @@ Pixel values stay out of Mişko result metrics.
 | Paradigm | Core metrics |
 |---|---|
 | MWM | Escape latency, path length, swim speed, target quadrant time, platform crossings, thigmotaxis, mean distance to platform. |
-| Open Field | Total distance, center time, periphery time, center entries, immobility, mean speed. |
-| EPM | Open arm time, closed arm time, open and closed arm entries, latency to open arm, optional risk assessment events. |
-| Rotarod | Latency to fall, rpm at fall, trial duration, fall detected, learning slope across repeated trials. |
+| Novel object | Novel object time, familiar object time, total exploration time, discrimination index. |
+| Pole | Time to turn, total time, descent time, descent speed, fall detected. |
+| Treadmill | Latency to exhaustion, run time, run distance, shock count. |
 
 ## MWM normalization
 

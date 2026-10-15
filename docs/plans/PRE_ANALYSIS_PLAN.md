@@ -1,5 +1,9 @@
 # Everything before analysis
 
+> **2026-10-15:** the paradigm catalog was trimmed to `MWM`, `NOVEL_OBJECT`,
+> `POLE` and `TREADMILL`; the other seven paradigms were removed. The text
+> below predates this change and is kept as written.
+
 Status: plan. Date: 2026-10-15.
 
 Scope: everything up to the point where an animal has been tested and its

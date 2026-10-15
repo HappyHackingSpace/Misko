@@ -2,6 +2,11 @@
 
 # Mişko - Paradigm-Owned Metric Engine (roadmap)
 
+> **Catalog trimmed (2026-10-15).** The paradigm catalog now holds `MWM`,
+> `NOVEL_OBJECT`, `POLE` and `TREADMILL`; the other seven paradigms were
+> removed. Paradigm names below that are no longer in the catalog are
+> historical.
+
 > Status: implemented (declarative engine). Decided with the team:
 > - Backend stays **Node** (no Go rewrite); the computation architecture lives here.
 > - Computation is **declarative**: each metric has a rule in `METRIC_RULES`
@@ -88,7 +93,7 @@ is only needed for a genuinely new aggregation kind.
 - **computed** (`ratio`): ratios/indices computed from other metrics in a second
   pass (e.g. `center_time_ratio`). Not entered.
 - **cvOnly**: trajectory/sensor values a human cannot log (`distance_cm`,
-  `mean_speed_cm_s`, `heading_error_deg`, `rpm_at_fall`). Hidden from manual entry
+  `mean_speed_cm_s`, `heading_error_deg`). Hidden from manual entry
   (or an explicit optional override); the CV service supplies them via `cvInputs`.
 
 ### 4.1 Event detection (`detect` spec) - the CV contract

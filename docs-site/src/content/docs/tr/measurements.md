@@ -31,8 +31,8 @@ nerede girildiğini söyleyen bir kapsamı vardır:
 | Kapsam | Girildiği yer | Zorunlu mu | Örnekler |
 |---|---|---|---|
 | `APPARATUS` | Ortam | Evet, fiziksel düzenekte ölçülür | arena genişliği, tank çapı, direk uzunluğu |
-| `ANALYSIS` | Ortam | Hayır, varsayılanlar çoğu düzenek için uygundur | merkez bölge boyutu, izleme boşluğu toleransı, hareketsizlik eşiği |
-| `SESSION` | Protokol adımı | Hayır, varsayılan kullanılır | deneme süresi sınırı, rotarod başlangıç ve bitiş hızı |
+| `ANALYSIS` | Ortam | Hayır, varsayılanlar çoğu düzenek için uygundur | duvar kenarı bölge genişliği, kaçış için platformda kalma süresi, en az toplam keşif süresi |
+| `SESSION` | Protokol adımı | Hayır, varsayılan kullanılır | deneme süresi sınırı, koşu bandı başlangıç ve bitiş hızı |
 
 Her parametrenin bir etiketi ve neyin ölçüleceğini ya da değerin neyi
 değiştirdiğini anlatan bir yardım metni vardır. Adlar, etiketler, yardım
@@ -50,14 +50,14 @@ interface ParadigmManifest {
   key: string;
   name: string;           // yanıt dilinde
   description: string;    // testin ne olduğu ve neyi ölçtüğü
-  category: "LEARNING_MEMORY" | "ANXIETY" | "MOTOR" | "SOCIAL";
+  category: "LEARNING_MEMORY" | "MOTOR";
   trialTypes: { key: string; label: string }[];
   parameters: {
     key: string;
     scope: "APPARATUS" | "ANALYSIS" | "SESSION";
     label: string;
     help: string;
-    unit: "cm" | "cm_s" | "s" | "count" | "ratio" | "rpm" | "boolean";
+    unit: "cm" | "cm_s" | "s" | "count" | "ratio" | "boolean";
     valueType: "number" | "integer";
     min: number;
     max: number;
@@ -76,22 +76,15 @@ iyileştirilebilir.
 
 ## Takip edilen ve gözlemci puanlamalı paradigmalar
 
-On bir paradigmanın her biri girdilerini iki yoldan biriyle alır. Metrikleri her
+Dört paradigmanın her biri girdilerini iki yoldan biriyle alır. Metrikleri her
 iki durumda da `backend/internal/paradigms/domain` içindeki metrik motoru
 hesaplar; böylece bir ölçümün, girdisini ne üretmiş olursa olsun tek bir tanımı
 vardır.
 
 | Paradigma | Yöntem | Girdi | Bölgeler |
 |---|---|---|---|
-| `OPEN_FIELD` | Takip edilir (`AUTOMATED` çalıştırma) | yörünge | parametrelerden (arena, merkez) |
-| `LIGHT_DARK` | Takip edilir | yörünge, çıkarımlı örneklerle | parametrelerden (aydınlık, karanlık) |
-| `MWM` | Takip edilir | tank merkezli cm cinsinden yörünge | parametrelerden (platform, hedef çeyrek, duvar kenarı bölgesi) |
-| `EPM` | Takip edilir | yörünge | kalibre edilen, zorunlu: `center`, `open_arms`, `closed_arms` |
-| `Y_MAZE` | Takip edilir | yörünge | kalibre edilen, zorunlu: `arm_a`, `arm_b`, `arm_c` |
-| `BARNES_MAZE` | Takip edilir | yörünge | kalibre edilen, zorunlu: `target_hole`, `holes` |
-| `THREE_CHAMBER` | Takip edilir | yörünge | kalibre edilen, zorunlu: `social_chamber`, `object_chamber`, `center_chamber`; isteğe bağlı: `social_interaction`, `object_interaction` |
-| `ROTAROD` | Gözlemci puanlar (`SCORED` çalıştırma) | `fall` (an, bir kez) | yok |
-| `POLE` | Gözlemci puanlar | `turn_complete`, `base_reached`, `fall` (anlar, her biri bir kez) | yok |
+| `MWM` | Takip edilir (`AUTOMATED` çalıştırma) | tank merkezli cm cinsinden yörünge | parametrelerden (platform, hedef çeyrek, duvar kenarı bölgesi) |
+| `POLE` | Gözlemci puanlar (`SCORED` çalıştırma) | `turn_complete`, `base_reached`, `fall` (anlar, her biri bir kez) | yok |
 | `TREADMILL` | Gözlemci puanlar | `exhaustion` (an, bir kez), `shock` (anlar) | yok |
 | `NOVEL_OBJECT` | Gözlemci puanlar | `exploration` (`novel` ya da `familiar` etiketli aralıklar) | yok |
 
@@ -117,35 +110,31 @@ girer.
 
 Bölgeler iki yerden birinden gelir:
 
-- **Parametrelerden.** Açık alan, aydınlık/karanlık ve su labirenti
-  bölgelerini ortamın ölçülerinden türetir (örneğin `center_fraction`,
-  `light_fraction`, platform konumu). Kalibrasyonlarının dünya noktaları bu
-  bölgelerin tanımlandığı çerçeveyi kullanmalıdır: açık alanda bir taban
-  köşesinden başlayan arena yerel çerçeve, aydınlık/karanlıkta aydınlık
-  taraftaki bir köşeden başlayıp x'i karanlık uç duvara doğru ilerleyen kutu
-  yerel çerçeve, su labirentinde ise **tank merkezli** çerçeve ((0, 0) tankın
-  merkezi, x doğu, y kuzey; duvar noktaları r = tank çapı / 2 olmak üzere
-  (r, 0), (0, r), (-r, 0) ve (0, -r)).
-- **Kalibre edilen.** EPM, Y labirenti, Barnes labirenti ve üç bölmeli test
-  bölgeleri, kalibrasyonla birlikte kamera karesi üzerine daire ya da çokgen
-  olarak çizilir. Bir anahtarın birden çok şekli olabilir (iki açık kol, Barnes
-  deliklerinin her biri için bir şekil). Şekiller çizildiği gibi piksel olarak
+- **Parametrelerden.** Su labirenti bölgelerini ortamın ölçülerinden türetir
+  (platform konumu ve çapı, duvar kenarı bölge genişliği). Kalibrasyonunun
+  dünya noktaları bu bölgelerin tanımlandığı çerçeveyi kullanmalıdır:
+  **tank merkezli** çerçeve ((0, 0) tankın merkezi, x doğu, y kuzey; duvar
+  noktaları r = tank çapı / 2 olmak üzere (r, 0), (0, r), (-r, 0) ve (0, -r)).
+- **Kalibre edilen.** Bir paradigma kalibre edilen bölgeler tanımlayabilir;
+  güncel katalogdaki hiçbir paradigma bunu kullanmaz, ama destek korunur. Bu
+  bölgeler kalibrasyonla birlikte kamera karesi üzerine daire ya da çokgen
+  olarak çizilir ve bir anahtarın birden çok şekli olabilir. Şekiller çizildiği gibi piksel olarak
   saklanır ve kalibrasyonun uydurulan dönüşümüyle santimetreye çevrilir; karenin
   içinde kalmaları gerekir ve kalibrasyon kaydedildikten sonra asla değişmezler
   (`014_calibration_zones.sql` migrasyonu). Her zorunlu bölgesi olan geçerli bir
   kalibrasyon uygulanana kadar hayvan `WAITING_FOR_CALIBRATION` durumunda kalır
   ve analiz edilmez. İşçi takibi bölgelerin dışbükey zarfıyla (bir payla)
-  sınırlar; böylece Y labirentinin merkezi gibi hiçbir bölgeye ait olmayan
-  kavşaklar da takip edilir.
+  sınırlar; böylece bölgeler arasında kalan ve hiçbir bölgeye ait olmayan
+  alanlar da takip edilir.
 
 ### Çıkarımlı örnekler
 
-Aydınlık/karanlık kutuda hayvan karanlık bölmenin kapağı altında kaybolur.
-Hiçbir tespitin olmadığı bir kare dizisi, hayvan en son karanlık bölmede ya da
-kapısında görüldüyse ve bir sonraki görülüşü yine orada olursa (ya da klip
-biterse) doldurulur. Bu örnekler `misko.trajectory.v1` içinde `tracked` ve
-`inferred: true` olarak işaretlenir; böylece motor karanlıkta geçen süreyi ve
-geçişleri sayar. Başka bir yerdeki kayboluş kayıp olarak kalır.
+`misko.trajectory.v1` her örnek için isteğe bağlı bir `inferred` alanı taşır.
+Bir worker, hayvanın gizli olduğu bir kare dizisini `tracked` ve
+`inferred: true` olarak işaretlenmiş örneklerle doldurabilir; bu örnekler
+takip edilmiş sayılır ama takip güveni ortalamasına girmez. Güncel katalogdaki
+hiçbir paradigma buna ihtiyaç duymaz ve paketle gelen worker çıkarımlı örnek
+göndermez; tespitin olmadığı kareler kayıp olarak kalır.
 
 ## Geçti/kaldı verdikti yok
 
@@ -183,7 +172,7 @@ type DetectSpec =
 Jenerik türler (`zone_transition`, `zone_first_enter`, `speed_below`)
 **veri-güdümlüdür**: yalnızca bunları kullanan bir paradigma yeni CV kodu
 gerektirmez, olay tiplerini bildirmek yeterlidir. `custom`, özel bir dedektör
-gerektiren bir olayı işaretler (örn. bir rotarod düşüşü, bir sosyal etkileşim).
+gerektiren bir olayı işaretler (örn. direk testinde dönüş, nesne keşfi).
 Olay tipleri paradigma detay API'sinde sunulur
 (`GET /api/paradigms/:key` -> `eventTypes`).
 
@@ -208,7 +197,7 @@ Metrik sözlüğü, iki servisin aynı ismi farklı hesaplar için kullanmasın�
 interface MetricDefinition {
   key: string;
   paradigmKeys: string[];
-  unit: "cm" | "cm_s" | "s" | "count" | "ratio" | "percent" | "deg" | "rpm" | "boolean";
+  unit: "cm" | "cm_s" | "s" | "count" | "ratio" | "percent" | "deg" | "boolean";
   valueType: "number" | "integer" | "boolean" | "object";
   required: boolean;
   definition: string;
@@ -221,7 +210,7 @@ interface MetricDefinition {
 ```
 
 Kanonik sonuç birimleri: pozisyon ve mesafe `cm`, hız `cm_s`, süre `s`, ağırlık
-`g`, açı `deg`, dönüş hızı `rpm`, oranlar `ratio` (`0..1`) veya `percent`, olay
+`g`, açı `deg`, oranlar `ratio` (`0..1`) veya `percent`, olay
 bayrakları `boolean`, sayımlar `count`. Apparatus parametreleri bu enum'ı
 yeniden kullanır ve sonuç metriklerinde hiç görünmeyen `mm` (küçük düzenek
 çapları) ile `c` (Celsius cinsinden su sıcaklığı) birimlerini ekler. Piksel
@@ -244,9 +233,9 @@ değerleri Mişko sonuç metriklerine girmez.
 | Paradigma | Ana metrikler |
 |---|---|
 | MWM | Escape latency, path length, swim speed, target quadrant time, platform crossings, thigmotaxis, mean distance to platform. |
-| Open Field | Total distance, center time, periphery time, center entries, immobility, mean speed. |
-| EPM | Open arm time, closed arm time, open ve closed arm entries, latency to open arm, opsiyonel risk assessment event'leri. |
-| Rotarod | Latency to fall, rpm at fall, trial duration, fall detected, tekrarlı trial'larda learning slope. |
+| Yeni nesne | Yeni nesne keşif süresi, tanıdık nesne keşif süresi, toplam keşif süresi, ayırt etme indeksi. |
+| Direk | Dönme süresi, toplam süre, iniş süresi, iniş hızı, düşme. |
+| Koşu bandı | Tükenme latansı, koşu süresi, koşu mesafesi, şok sayısı. |
 
 ## MWM normalizasyonu
 

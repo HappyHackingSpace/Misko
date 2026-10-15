@@ -104,8 +104,8 @@ The **Paradigms** page lists the tests Mişko knows; most link to a Wikipedia
 article that explains the test (in Turkish when one exists, otherwise in
 English).
 
-An environment is a physical arena built from a paradigm (open field, rotarod,
-Morris water maze and so on). Open **Environments** and click **New
+An environment is a physical arena built from a paradigm (Morris water maze,
+novel object box, pole, treadmill). Open **Environments** and click **New
 environment**:
 
 1. Type a name (for example "Box A").
@@ -117,8 +117,8 @@ environment**:
 
 **Default calibration.** A camera that does not move is calibrated once per
 arena, and every video filmed in that arena uses it. Calibration tells Mişko how
-camera pixels map to centimetres on the apparatus, and for some paradigms where
-the zones (arms, holes, chambers) are. Observer-scored paradigms (rotarod, pole,
+camera pixels map to centimetres on the apparatus, and, for a paradigm that
+declares drawn zones, where those zones are. Observer-scored paradigms (pole,
 treadmill, novel object) need no calibration.
 
 1. On the environment's page click **Calibrate this revision**. The visual
@@ -132,33 +132,31 @@ treadmill, novel object) need no calibration.
    or water surface for the water maze).
 4. With the **Fit points** tool, click each fit point on the frame, then drag it
    to adjust. The highlighted row is the point the next click places; click a
-   row to choose another one. For open field, light/dark and the water maze,
+   row to choose another one. For the water maze and the novel object box,
    **Use the apparatus points** fills in the real positions from the
    environment's measurements, so you only click them in turn:
-   - open field and light/dark: the four inside corners of the floor, from the
-     origin corner (0, 0) along the width and the depth. For light/dark the
-     origin is a corner on the light side and x runs toward the dark end wall.
    - water maze: the north, east, south and west points of the tank wall,
      measured from the tank centre (x grows east, y north).
+   - novel object box: the four inside corners of the floor, from the origin
+     corner (0, 0) along the width and the depth.
 
-   For the other paradigms type the real position in cm of every point you
-   click, in any frame you like (for example centred on the maze).
+   Without a preset, type the real position in cm of every point you click, in
+   any frame you like (for example centred on the apparatus).
 5. With the **Check points** tool, place at least three check points at
    places other than the fit points (the presets use the middles of the sides,
    or the diagonal wall points of the tank).
 6. With the **Crop** tool, drag a rectangle around this arena. Points and zones
    must lie inside it. **Whole frame** resets it.
-7. If the paradigm has drawn zones (elevated plus maze, Y maze, Barnes maze,
-   three-chamber), open the **Zones** tool. Every zone is listed as
+7. If the paradigm has drawn zones (none of the current catalog does, but the
+   calibrator supports them), open the **Zones** tool. Every zone is listed as
    **Required** or **Optional**. Click **Draw polygon** or **Draw circle** next
    to a zone and draw it on the frame:
    - a polygon: click each corner, then click the first corner again (or
      **Close polygon**) to close it; **Undo last corner** removes the last one;
    - a circle: press at the centre and drag to the edge.
 
-   A zone may need several shapes, for example one per open arm of the plus
-   maze or one per hole of the Barnes maze; draw them one after another under
-   the same zone. While drawing, a click on a corner or centre of a shape
+   A zone may need several shapes; draw them one after another under the same
+   zone. While drawing, a click on a corner or centre of a shape
    already drawn snaps to it, so neighbouring zones share their edges exactly.
    Drag the handles of a finished shape to adjust it, or use **Redraw** and
    **Delete**. **Stop drawing** ends the current zone.
@@ -203,7 +201,7 @@ and a vehicle; a sham has a vehicle and no induction.
    (Baseline, Day 7) and a study day (negative before day 0).
 2. Click **New protocol**, name it and add one step per test: the paradigm, the
    trial type and the number of trials. Paradigms with session settings (for
-   example rotarod speeds) show them on the step.
+   example treadmill belt speeds) show them on the step.
 3. To change a protocol later, click **New version**. Earlier versions never
    change, so sessions keep the version they were planned with.
 
@@ -261,7 +259,7 @@ filtered by animal and purpose.
 ## Planning and running test sessions
 
 A test session is one timepoint, one protocol step and **one video**, with one
-or more animals, each in its own arena (for example three open field boxes
+or more animals, each in its own arena (for example three novel object boxes
 filmed by one camera).
 
 **Planning** (researchers and above), on the experiment's **Tests** tab:
@@ -312,8 +310,8 @@ How an animal is measured depends on the paradigm:
 
 | Paradigm | How it is measured |
 |---|---|
-| Open field, elevated plus maze, Y maze, Barnes maze, three-chamber, water maze, light/dark | **Tracked**: an analysis worker follows the animal on the video. |
-| Rotarod, pole, treadmill, novel object | **Observer scored**: a person marks the events on the video. |
+| Morris water maze | **Tracked**: an analysis worker follows the animal on the video. |
+| Pole, treadmill, novel object | **Observer scored**: a person marks the events on the video. |
 
 **Tracked paradigms.** When a running session's video is verified and the
 animal's calibration is valid, the analysis worker measures each animal in its
@@ -332,7 +330,7 @@ each animal on the session's verified video:
    list slows playback down to 0.25x.
 4. Score each event at the moment it happens with its button or the number
    shown on it (1 to 9, then 0):
-   - a point event (a rotarod fall, a pole turn or arrival at the base, a
+   - a point event (a pole turn, arrival at the base or fall, a
      treadmill shock or exhaustion) is marked at the current time;
    - an interval event (novel object exploration) is started with one press
      and stopped with the next. Each label has its own button, for example
@@ -343,7 +341,7 @@ each animal on the session's verified video:
 5. The scored events appear on a timeline and in a list. Click an event to jump
    to it, **Edit** its times or label, or **Delete** it.
 6. Under **Scored event types**, tick every event you watched for. A ticked
-   event that never happened counts as not observed (for example a rotarod trial
+   event that never happened counts as not observed (for example a pole trial
    without a fall); an unticked one is reported as not scored.
 7. Click **Complete scoring** and confirm. Mişko computes the metrics from the
    events and the result appears in the review queue as pending, like any

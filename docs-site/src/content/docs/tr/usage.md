@@ -106,7 +106,7 @@ Kodlar benzersizdir. Bir gruptaki veya ağırlığı olan hayvan silinemez.
 anlatan bir Wikipedia makalesine bağlanır (Türkçesi varsa Türkçe, yoksa
 İngilizce).
 
-Ortam, bir paradigmadan (açık alan, rotarod, Morris su labirenti gibi)
+Ortam, bir paradigmadan (Morris su labirenti, yeni nesne kutusu, direk, koşu bandı gibi)
 oluşturulan fiziksel bir arenadır. **Ortamlar**'ı açıp **Yeni ortam**'a
 tıklayın:
 
@@ -120,9 +120,9 @@ tıklayın:
 **Varsayılan kalibrasyon.** Yeri değişmeyen bir kamera her arena için bir kez
 kalibre edilir ve o arenada çekilen her video bunu kullanır. Kalibrasyon,
 kamera piksellerinin düzenek üzerinde santimetreye nasıl karşılık geldiğini ve
-bazı paradigmalarda bölgelerin (kollar, delikler, bölmeler) nerede olduğunu
-Mişko'ya söyler. Gözlemci puanlamalı paradigmalar (rotarod, direk, koşu bandı,
-yeni nesne) kalibrasyon gerektirmez.
+çizilen bölgeler tanımlayan bir paradigmada bu bölgelerin nerede olduğunu
+Mişko'ya söyler. Gözlemci puanlamalı paradigmalar (direk, koşu bandı, yeni
+nesne) kalibrasyon gerektirmez.
 
 1. Ortamın sayfasında **Bu revizyonu kalibre et**'e tıklayın. Görsel
    kalibratör açılır.
@@ -134,34 +134,31 @@ yeni nesne) kalibrasyon gerektirmez.
    su labirentinde su yüzeyi).
 4. **Uyum noktaları** aracıyla her uyum noktasına karede tıklayın, sonra
    sürükleyerek ayarlayın. Vurgulanan satır, bir sonraki tıklamanın
-   yerleştireceği noktadır; başka bir nokta seçmek için satırına tıklayın. Açık
-   alan, aydınlık/karanlık ve su labirentinde **Düzenek noktalarını kullan**
-   gerçek konumları ortamın ölçülerinden doldurur, siz yalnızca sırayla
-   tıklarsınız:
-   - açık alan ve aydınlık/karanlık: tabanın dört iç köşesi, (0, 0) başlangıç
-     köşesinden genişlik ve derinlik boyunca. Aydınlık/karanlıkta başlangıç
-     aydınlık taraftaki bir köşedir ve x karanlık uç duvara doğru ilerler.
+   yerleştireceği noktadır; başka bir nokta seçmek için satırına tıklayın. Su
+   labirentinde ve yeni nesne kutusunda **Düzenek noktalarını kullan** gerçek
+   konumları ortamın ölçülerinden doldurur, siz yalnızca sırayla tıklarsınız:
    - su labirenti: tank duvarının kuzey, doğu, güney ve batı noktaları, tankın
      merkezinden ölçülür (x doğuya, y kuzeye doğru artar).
+   - yeni nesne kutusu: tabanın dört iç köşesi, (0, 0) başlangıç köşesinden
+     genişlik ve derinlik boyunca.
 
-   Diğer paradigmalarda tıkladığınız her noktanın cm cinsinden gerçek konumunu,
-   istediğiniz bir çerçevede (örneğin labirentin merkezine göre) yazın.
+   Hazır nokta yoksa tıkladığınız her noktanın cm cinsinden gerçek konumunu,
+   istediğiniz bir çerçevede (örneğin düzeneğin merkezine göre) yazın.
 5. **Kontrol noktaları** aracıyla uyum noktalarından farklı yerlere en az üç
    kontrol noktası koyun (hazır noktalar kenarların ortalarını ya da tankın
    çapraz duvar noktalarını kullanır).
 6. **Kırpma** aracıyla bu arenanın çevresine bir dikdörtgen sürükleyin.
    Noktalar ve bölgeler bunun içinde kalmalıdır. **Tüm kare** onu sıfırlar.
-7. Paradigmanın çizilen bölgeleri varsa (yükseltilmiş artı labirenti, Y
-   labirenti, Barnes labirenti, üç bölmeli test) **Bölgeler** aracını açın. Her
+7. Paradigmanın çizilen bölgeleri varsa (güncel katalogda böyle bir paradigma
+   yok, ama kalibratör bunları destekler) **Bölgeler** aracını açın. Her
    bölge **Zorunlu** ya da **İsteğe bağlı** olarak listelenir. Bir bölgenin
    yanındaki **Çokgen çiz** ya da **Daire çiz**'e tıklayıp onu karede çizin:
    - çokgen: her köşeye tıklayın, kapatmak için ilk köşeye yeniden tıklayın (ya
      da **Çokgeni kapat**); **Son köşeyi geri al** son köşeyi kaldırır;
    - daire: merkeze basıp kenara kadar sürükleyin.
 
-   Bir bölge birden çok şekil gerektirebilir, örneğin artı labirentinin her
-   açık kolu ya da Barnes labirentinin her deliği için bir tane; bunları aynı
-   bölge altında art arda çizin. Çizerken önceden çizilmiş bir şeklin köşesine
+   Bir bölge birden çok şekil gerektirebilir; bunları aynı bölge altında art
+   arda çizin. Çizerken önceden çizilmiş bir şeklin köşesine
    ya da merkezine tıklamak oraya yapışır, böylece komşu bölgeler kenarlarını
    tam olarak paylaşır. Biten bir şekli tutamaçlarını sürükleyerek ayarlayın ya
    da **Yeniden çiz** ve **Sil**'i kullanın. **Çizimi bitir** o anki bölgeyi
@@ -208,7 +205,7 @@ sekmesinde:
    bir ad (Baseline, 7. gün) ve çalışma günü verin (0. günden önce eksi).
 2. **Yeni protokol**'e tıklayın, ad verin ve her test için bir adım ekleyin:
    paradigma, deneme türü ve deneme sayısı. Oturum ayarları olan paradigmalar
-   (örneğin rotarod hızları) bunları adımda gösterir.
+   (örneğin koşu bandı hızları) bunları adımda gösterir.
 3. Bir protokolü sonradan değiştirmek için **Yeni sürüm**'e tıklayın. Önceki
    sürümler değişmez; oturumlar planlandıkları sürümü korur.
 
@@ -271,7 +268,7 @@ filtrelenebilir.
 
 Bir test oturumu; bir zaman noktası, bir protokol adımı ve **tek bir videodur**.
 Bir veya daha fazla hayvan içerir, her biri kendi arenasındadır (örneğin tek
-kameranın çektiği üç açık alan kutusu).
+kameranın çektiği üç yeni nesne kutusu).
 
 **Planlama** (araştırmacı ve üstü), deneyin **Testler** sekmesinde:
 
@@ -325,8 +322,8 @@ Bir hayvanın nasıl ölçüldüğü paradigmaya bağlıdır:
 
 | Paradigma | Nasıl ölçülür |
 |---|---|
-| Açık alan, yükseltilmiş artı labirenti, Y labirenti, Barnes labirenti, üç bölmeli test, su labirenti, aydınlık/karanlık | **Takip edilir**: bir analiz işçisi hayvanı videoda izler. |
-| Rotarod, direk, koşu bandı, yeni nesne | **Gözlemci puanlar**: bir kişi olayları videoda işaretler. |
+| Morris su labirenti | **Takip edilir**: bir analiz işçisi hayvanı videoda izler. |
+| Direk, koşu bandı, yeni nesne | **Gözlemci puanlar**: bir kişi olayları videoda işaretler. |
 
 **Takip edilen paradigmalar.** Süren bir oturumun videosu doğrulandığında ve
 hayvanın kalibrasyonu geçerli olduğunda analiz işçisi her hayvanı kendi
@@ -345,8 +342,8 @@ hayvanı oturumun doğrulanmış videosunda puanlar:
    listesi oynatmayı 0,25x'e kadar yavaşlatır.
 4. Her olayı gerçekleştiği anda kendi düğmesiyle ya da üzerindeki rakamla (1'den
    9'a, sonra 0) puanlayın:
-   - bir an olayı (rotarod düşmesi, direkte dönüş ya da tabana ulaşma, koşu
-     bandında şok ya da tükenme) o anki zamanda işaretlenir;
+   - bir an olayı (direkte dönüş, tabana ulaşma ya da düşme, koşu bandında
+     şok ya da tükenme) o anki zamanda işaretlenir;
    - bir aralık olayı (yeni nesne keşfi) bir basışla başlar, sonrakiyle biter.
      Her etiketin kendi düğmesi vardır, örneğin **yeni** ve **tanıdık** nesnenin
      keşfi.
@@ -358,7 +355,7 @@ hayvanı oturumun doğrulanmış videosunda puanlar:
    değiştirin ya da **Sil**'le kaldırın.
 6. **Puanlanan olay türleri** altında izlediğiniz her olayı işaretleyin.
    İşaretli olup hiç olmayan olay gözlenmedi sayılır (örneğin düşmesiz bir
-   rotarod denemesi); işaretsiz olan puanlanmadı olarak raporlanır.
+   direk denemesi); işaretsiz olan puanlanmadı olarak raporlanır.
 7. **Puanlamayı tamamla**'ya tıklayıp onaylayın. Mişko metrikleri olaylardan
    hesaplar ve sonuç, analiz edilmiş her sonuç gibi onay kuyruğunda bekleyen
    olarak görünür.
