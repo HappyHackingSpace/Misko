@@ -10,18 +10,19 @@ import (
 )
 
 const createCalibration = `-- name: CreateCalibration :one
-INSERT INTO misko.calibrations (recording_id, environment_revision_id, supersedes_id, camera_id, frame_width, frame_height, crop_x, crop_y, crop_width, crop_height,
-    reference_frame_us, measurement_plane, fit_points, check_points, transform, fit_rms_error_cm, check_rms_error_cm, check_max_error_cm,
-    tolerance_cm, algorithm_version, status, rejection_reason, created_by)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-    $11, $12, $13, $14, $15, $16, $17, $18,
-    $19, $20, $21, $22, $23)
-RETURNING id, recording_id, supersedes_id, camera_id, frame_width, frame_height, crop_x, crop_y, crop_width, crop_height, reference_frame_us, measurement_plane, fit_points, check_points, transform, fit_rms_error_cm, check_rms_error_cm, check_max_error_cm, tolerance_cm, algorithm_version, status, rejection_reason, created_by, created_at, environment_revision_id, chain_id
+INSERT INTO misko.calibrations (environment_revision_id, test_subject_id, recording_id, supersedes_id, camera_id, frame_width, frame_height,
+    crop_x, crop_y, crop_width, crop_height, reference_frame_us, measurement_plane, fit_points, check_points, transform,
+    fit_rms_error_cm, check_rms_error_cm, check_max_error_cm, tolerance_cm, algorithm_version, status, rejection_reason, created_by)
+VALUES ($1, $2, $3, $4, $5, $6, $7,
+    $8, $9, $10, $11, $12, $13, $14, $15, $16,
+    $17, $18, $19, $20, $21, $22, $23, $24)
+RETURNING id, environment_revision_id, test_subject_id, recording_id, chain_id, supersedes_id, camera_id, frame_width, frame_height, crop_x, crop_y, crop_width, crop_height, reference_frame_us, measurement_plane, fit_points, check_points, transform, fit_rms_error_cm, check_rms_error_cm, check_max_error_cm, tolerance_cm, algorithm_version, status, rejection_reason, created_by, created_at
 `
 
 type CreateCalibrationParams struct {
-	RecordingID           *string
 	EnvironmentRevisionID string
+	TestSubjectID         *string
+	RecordingID           *string
 	SupersedesID          *string
 	CameraID              string
 	FrameWidth            int32
@@ -47,8 +48,9 @@ type CreateCalibrationParams struct {
 
 func (q *Queries) CreateCalibration(ctx context.Context, arg CreateCalibrationParams) (MiskoCalibration, error) {
 	row := q.db.QueryRow(ctx, createCalibration,
-		arg.RecordingID,
 		arg.EnvironmentRevisionID,
+		arg.TestSubjectID,
+		arg.RecordingID,
 		arg.SupersedesID,
 		arg.CameraID,
 		arg.FrameWidth,
@@ -74,7 +76,10 @@ func (q *Queries) CreateCalibration(ctx context.Context, arg CreateCalibrationPa
 	var i MiskoCalibration
 	err := row.Scan(
 		&i.ID,
+		&i.EnvironmentRevisionID,
+		&i.TestSubjectID,
 		&i.RecordingID,
+		&i.ChainID,
 		&i.SupersedesID,
 		&i.CameraID,
 		&i.FrameWidth,
@@ -97,53 +102,70 @@ func (q *Queries) CreateCalibration(ctx context.Context, arg CreateCalibrationPa
 		&i.RejectionReason,
 		&i.CreatedBy,
 		&i.CreatedAt,
-		&i.EnvironmentRevisionID,
-		&i.ChainID,
 	)
 	return i, err
 }
 
-const getRecordingRef = `-- name: GetRecordingRef :one
-SELECT r.id, r.test_id, a.status AS video_status, t.paradigm_key, t.paradigm_version, t.environment_revision_id, e.apparatus
-FROM misko.test_recordings r
-JOIN misko.video_assets a ON a.id = r.video_asset_id
-JOIN misko.tests t ON t.id = r.test_id
-JOIN misko.environment_revisions e ON e.id = t.environment_revision_id
-WHERE r.test_id = $1 AND r.id = $2
+const getCalibration = `-- name: GetCalibration :one
+SELECT id, environment_revision_id, test_subject_id, recording_id, chain_id, supersedes_id, camera_id, frame_width, frame_height, crop_x, crop_y, crop_width, crop_height, reference_frame_us, measurement_plane, fit_points, check_points, transform, fit_rms_error_cm, check_rms_error_cm, check_max_error_cm, tolerance_cm, algorithm_version, status, rejection_reason, created_by, created_at FROM misko.calibrations WHERE id = $1
 `
 
-type GetRecordingRefParams struct {
-	TestID string
-	ID     string
-}
-
-type GetRecordingRefRow struct {
-	ID                    string
-	TestID                string
-	VideoStatus           string
-	ParadigmKey           string
-	ParadigmVersion       int32
-	EnvironmentRevisionID string
-	Apparatus             []byte
-}
-
-func (q *Queries) GetRecordingRef(ctx context.Context, arg GetRecordingRefParams) (GetRecordingRefRow, error) {
-	row := q.db.QueryRow(ctx, getRecordingRef, arg.TestID, arg.ID)
-	var i GetRecordingRefRow
+func (q *Queries) GetCalibration(ctx context.Context, id string) (MiskoCalibration, error) {
+	row := q.db.QueryRow(ctx, getCalibration, id)
+	var i MiskoCalibration
 	err := row.Scan(
 		&i.ID,
-		&i.TestID,
-		&i.VideoStatus,
-		&i.ParadigmKey,
-		&i.ParadigmVersion,
 		&i.EnvironmentRevisionID,
-		&i.Apparatus,
+		&i.TestSubjectID,
+		&i.RecordingID,
+		&i.ChainID,
+		&i.SupersedesID,
+		&i.CameraID,
+		&i.FrameWidth,
+		&i.FrameHeight,
+		&i.CropX,
+		&i.CropY,
+		&i.CropWidth,
+		&i.CropHeight,
+		&i.ReferenceFrameUs,
+		&i.MeasurementPlane,
+		&i.FitPoints,
+		&i.CheckPoints,
+		&i.Transform,
+		&i.FitRmsErrorCm,
+		&i.CheckRmsErrorCm,
+		&i.CheckMaxErrorCm,
+		&i.ToleranceCm,
+		&i.AlgorithmVersion,
+		&i.Status,
+		&i.RejectionReason,
+		&i.CreatedBy,
+		&i.CreatedAt,
 	)
+	return i, err
+}
+
+const getCurrentVideo = `-- name: GetCurrentVideo :one
+SELECT r.id, a.status
+FROM misko.current_recordings r
+JOIN misko.video_assets a ON a.id = r.video_asset_id
+WHERE r.test_id = $1
+`
+
+type GetCurrentVideoRow struct {
+	ID     string
+	Status string
+}
+
+func (q *Queries) GetCurrentVideo(ctx context.Context, testID string) (GetCurrentVideoRow, error) {
+	row := q.db.QueryRow(ctx, getCurrentVideo, testID)
+	var i GetCurrentVideoRow
+	err := row.Scan(&i.ID, &i.Status)
 	return i, err
 }
 
 const getRevisionRef = `-- name: GetRevisionRef :one
-SELECT id, environment_id, paradigm_key, paradigm_version, apparatus
+SELECT id, environment_id, paradigm_key, paradigm_version, parameters
 FROM misko.environment_revisions
 WHERE environment_id = $1 AND number = $2
 `
@@ -158,7 +180,7 @@ type GetRevisionRefRow struct {
 	EnvironmentID   string
 	ParadigmKey     string
 	ParadigmVersion int32
-	Apparatus       []byte
+	Parameters      []byte
 }
 
 func (q *Queries) GetRevisionRef(ctx context.Context, arg GetRevisionRefParams) (GetRevisionRefRow, error) {
@@ -169,51 +191,103 @@ func (q *Queries) GetRevisionRef(ctx context.Context, arg GetRevisionRefParams) 
 		&i.EnvironmentID,
 		&i.ParadigmKey,
 		&i.ParadigmVersion,
-		&i.Apparatus,
+		&i.Parameters,
 	)
 	return i, err
 }
 
-const listCalibrations = `-- name: ListCalibrations :many
-SELECT id, recording_id, supersedes_id, camera_id, frame_width, frame_height, crop_x, crop_y, crop_width, crop_height, reference_frame_us, measurement_plane, fit_points, check_points, transform, fit_rms_error_cm, check_rms_error_cm, check_max_error_cm, tolerance_cm, algorithm_version, status, rejection_reason, created_by, created_at, environment_revision_id, chain_id FROM misko.calibrations WHERE recording_id = $1 ORDER BY created_at, id
+const getTestExists = `-- name: GetTestExists :one
+SELECT EXISTS (SELECT 1 FROM misko.tests WHERE id = $1)
 `
 
-func (q *Queries) ListCalibrations(ctx context.Context, recordingID *string) ([]MiskoCalibration, error) {
-	rows, err := q.db.Query(ctx, listCalibrations, recordingID)
+func (q *Queries) GetTestExists(ctx context.Context, id string) (bool, error) {
+	row := q.db.QueryRow(ctx, getTestExists, id)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
+const getTestSubjectRef = `-- name: GetTestSubjectRef :one
+SELECT s.id, s.test_id, s.environment_revision_id, s.paradigm_key, s.paradigm_version, e.parameters
+FROM misko.test_subjects s
+JOIN misko.environment_revisions e ON e.id = s.environment_revision_id
+WHERE s.test_id = $1 AND s.id = $2
+`
+
+type GetTestSubjectRefParams struct {
+	TestID string
+	ID     string
+}
+
+type GetTestSubjectRefRow struct {
+	ID                    string
+	TestID                string
+	EnvironmentRevisionID string
+	ParadigmKey           string
+	ParadigmVersion       int32
+	Parameters            []byte
+}
+
+func (q *Queries) GetTestSubjectRef(ctx context.Context, arg GetTestSubjectRefParams) (GetTestSubjectRefRow, error) {
+	row := q.db.QueryRow(ctx, getTestSubjectRef, arg.TestID, arg.ID)
+	var i GetTestSubjectRefRow
+	err := row.Scan(
+		&i.ID,
+		&i.TestID,
+		&i.EnvironmentRevisionID,
+		&i.ParadigmKey,
+		&i.ParadigmVersion,
+		&i.Parameters,
+	)
+	return i, err
+}
+
+const listEffective = `-- name: ListEffective :many
+SELECT s.id AS test_subject_id, s.environment_revision_id, s.paradigm_key, s.paradigm_version, e.parameters,
+       r.id AS recording_id, a.status AS video_status,
+       coalesce(ec.source, '')::text AS source, coalesce(ec.calibration_id::text, '')::text AS calibration_id
+FROM misko.test_subjects s
+JOIN misko.environment_revisions e ON e.id = s.environment_revision_id
+LEFT JOIN misko.current_recordings r ON r.test_id = s.test_id
+LEFT JOIN misko.video_assets a ON a.id = r.video_asset_id
+LEFT JOIN misko.effective_calibrations ec ON ec.test_subject_id = s.id
+WHERE s.test_id = $1
+ORDER BY s.created_at, s.id
+`
+
+type ListEffectiveRow struct {
+	TestSubjectID         string
+	EnvironmentRevisionID string
+	ParadigmKey           string
+	ParadigmVersion       int32
+	Parameters            []byte
+	RecordingID           *string
+	VideoStatus           *string
+	Source                string
+	CalibrationID         string
+}
+
+// The effective calibration of every animal of a test, with what deciding its
+// status needs: the arena's measurements and the current video.
+func (q *Queries) ListEffective(ctx context.Context, testID string) ([]ListEffectiveRow, error) {
+	rows, err := q.db.Query(ctx, listEffective, testID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []MiskoCalibration
+	var items []ListEffectiveRow
 	for rows.Next() {
-		var i MiskoCalibration
+		var i ListEffectiveRow
 		if err := rows.Scan(
-			&i.ID,
-			&i.RecordingID,
-			&i.SupersedesID,
-			&i.CameraID,
-			&i.FrameWidth,
-			&i.FrameHeight,
-			&i.CropX,
-			&i.CropY,
-			&i.CropWidth,
-			&i.CropHeight,
-			&i.ReferenceFrameUs,
-			&i.MeasurementPlane,
-			&i.FitPoints,
-			&i.CheckPoints,
-			&i.Transform,
-			&i.FitRmsErrorCm,
-			&i.CheckRmsErrorCm,
-			&i.CheckMaxErrorCm,
-			&i.ToleranceCm,
-			&i.AlgorithmVersion,
-			&i.Status,
-			&i.RejectionReason,
-			&i.CreatedBy,
-			&i.CreatedAt,
+			&i.TestSubjectID,
 			&i.EnvironmentRevisionID,
-			&i.ChainID,
+			&i.ParadigmKey,
+			&i.ParadigmVersion,
+			&i.Parameters,
+			&i.RecordingID,
+			&i.VideoStatus,
+			&i.Source,
+			&i.CalibrationID,
 		); err != nil {
 			return nil, err
 		}
@@ -226,8 +300,8 @@ func (q *Queries) ListCalibrations(ctx context.Context, recordingID *string) ([]
 }
 
 const listEnvironmentCalibrations = `-- name: ListEnvironmentCalibrations :many
-SELECT id, recording_id, supersedes_id, camera_id, frame_width, frame_height, crop_x, crop_y, crop_width, crop_height, reference_frame_us, measurement_plane, fit_points, check_points, transform, fit_rms_error_cm, check_rms_error_cm, check_max_error_cm, tolerance_cm, algorithm_version, status, rejection_reason, created_by, created_at, environment_revision_id, chain_id FROM misko.calibrations
-WHERE environment_revision_id = $1 AND recording_id IS NULL
+SELECT id, environment_revision_id, test_subject_id, recording_id, chain_id, supersedes_id, camera_id, frame_width, frame_height, crop_x, crop_y, crop_width, crop_height, reference_frame_us, measurement_plane, fit_points, check_points, transform, fit_rms_error_cm, check_rms_error_cm, check_max_error_cm, tolerance_cm, algorithm_version, status, rejection_reason, created_by, created_at FROM misko.calibrations
+WHERE environment_revision_id = $1 AND test_subject_id IS NULL
 ORDER BY created_at, id
 `
 
@@ -242,7 +316,10 @@ func (q *Queries) ListEnvironmentCalibrations(ctx context.Context, environmentRe
 		var i MiskoCalibration
 		if err := rows.Scan(
 			&i.ID,
+			&i.EnvironmentRevisionID,
+			&i.TestSubjectID,
 			&i.RecordingID,
+			&i.ChainID,
 			&i.SupersedesID,
 			&i.CameraID,
 			&i.FrameWidth,
@@ -265,8 +342,6 @@ func (q *Queries) ListEnvironmentCalibrations(ctx context.Context, environmentRe
 			&i.RejectionReason,
 			&i.CreatedBy,
 			&i.CreatedAt,
-			&i.EnvironmentRevisionID,
-			&i.ChainID,
 		); err != nil {
 			return nil, err
 		}
@@ -278,49 +353,60 @@ func (q *Queries) ListEnvironmentCalibrations(ctx context.Context, environmentRe
 	return items, nil
 }
 
-const lockRecordingRef = `-- name: LockRecordingRef :one
-SELECT r.id, r.test_id, a.status AS video_status, t.paradigm_key, t.paradigm_version, t.environment_revision_id, e.apparatus
-FROM misko.test_recordings r
-JOIN misko.video_assets a ON a.id = r.video_asset_id
-JOIN misko.tests t ON t.id = r.test_id
-JOIN misko.environment_revisions e ON e.id = t.environment_revision_id
-WHERE r.test_id = $1 AND r.id = $2
-FOR UPDATE OF r
+const listOverrides = `-- name: ListOverrides :many
+SELECT id, environment_revision_id, test_subject_id, recording_id, chain_id, supersedes_id, camera_id, frame_width, frame_height, crop_x, crop_y, crop_width, crop_height, reference_frame_us, measurement_plane, fit_points, check_points, transform, fit_rms_error_cm, check_rms_error_cm, check_max_error_cm, tolerance_cm, algorithm_version, status, rejection_reason, created_by, created_at FROM misko.calibrations WHERE test_subject_id = $1 ORDER BY created_at, id
 `
 
-type LockRecordingRefParams struct {
-	TestID string
-	ID     string
-}
-
-type LockRecordingRefRow struct {
-	ID                    string
-	TestID                string
-	VideoStatus           string
-	ParadigmKey           string
-	ParadigmVersion       int32
-	EnvironmentRevisionID string
-	Apparatus             []byte
-}
-
-// The row lock serializes calibrations of one recording; recordings are never updated.
-func (q *Queries) LockRecordingRef(ctx context.Context, arg LockRecordingRefParams) (LockRecordingRefRow, error) {
-	row := q.db.QueryRow(ctx, lockRecordingRef, arg.TestID, arg.ID)
-	var i LockRecordingRefRow
-	err := row.Scan(
-		&i.ID,
-		&i.TestID,
-		&i.VideoStatus,
-		&i.ParadigmKey,
-		&i.ParadigmVersion,
-		&i.EnvironmentRevisionID,
-		&i.Apparatus,
-	)
-	return i, err
+func (q *Queries) ListOverrides(ctx context.Context, testSubjectID *string) ([]MiskoCalibration, error) {
+	rows, err := q.db.Query(ctx, listOverrides, testSubjectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []MiskoCalibration
+	for rows.Next() {
+		var i MiskoCalibration
+		if err := rows.Scan(
+			&i.ID,
+			&i.EnvironmentRevisionID,
+			&i.TestSubjectID,
+			&i.RecordingID,
+			&i.ChainID,
+			&i.SupersedesID,
+			&i.CameraID,
+			&i.FrameWidth,
+			&i.FrameHeight,
+			&i.CropX,
+			&i.CropY,
+			&i.CropWidth,
+			&i.CropHeight,
+			&i.ReferenceFrameUs,
+			&i.MeasurementPlane,
+			&i.FitPoints,
+			&i.CheckPoints,
+			&i.Transform,
+			&i.FitRmsErrorCm,
+			&i.CheckRmsErrorCm,
+			&i.CheckMaxErrorCm,
+			&i.ToleranceCm,
+			&i.AlgorithmVersion,
+			&i.Status,
+			&i.RejectionReason,
+			&i.CreatedBy,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const lockRevisionRef = `-- name: LockRevisionRef :one
-SELECT id, environment_id, paradigm_key, paradigm_version, apparatus
+SELECT id, environment_id, paradigm_key, paradigm_version, parameters
 FROM misko.environment_revisions
 WHERE environment_id = $1 AND number = $2
 FOR NO KEY UPDATE
@@ -336,11 +422,11 @@ type LockRevisionRefRow struct {
 	EnvironmentID   string
 	ParadigmKey     string
 	ParadigmVersion int32
-	Apparatus       []byte
+	Parameters      []byte
 }
 
 // The row lock serializes calibrations of one revision. NO KEY UPDATE does not
-// block tests that only reference the revision.
+// block test subjects that only reference the revision.
 func (q *Queries) LockRevisionRef(ctx context.Context, arg LockRevisionRefParams) (LockRevisionRefRow, error) {
 	row := q.db.QueryRow(ctx, lockRevisionRef, arg.EnvironmentID, arg.Number)
 	var i LockRevisionRefRow
@@ -349,7 +435,45 @@ func (q *Queries) LockRevisionRef(ctx context.Context, arg LockRevisionRefParams
 		&i.EnvironmentID,
 		&i.ParadigmKey,
 		&i.ParadigmVersion,
-		&i.Apparatus,
+		&i.Parameters,
+	)
+	return i, err
+}
+
+const lockTestSubjectRef = `-- name: LockTestSubjectRef :one
+SELECT s.id, s.test_id, s.environment_revision_id, s.paradigm_key, s.paradigm_version, e.parameters
+FROM misko.test_subjects s
+JOIN misko.environment_revisions e ON e.id = s.environment_revision_id
+WHERE s.test_id = $1 AND s.id = $2
+FOR NO KEY UPDATE OF s
+`
+
+type LockTestSubjectRefParams struct {
+	TestID string
+	ID     string
+}
+
+type LockTestSubjectRefRow struct {
+	ID                    string
+	TestID                string
+	EnvironmentRevisionID string
+	ParadigmKey           string
+	ParadigmVersion       int32
+	Parameters            []byte
+}
+
+// The row lock serializes the overrides of one test subject; test subjects are
+// never updated. NO KEY UPDATE leaves trials and runs that reference it unblocked.
+func (q *Queries) LockTestSubjectRef(ctx context.Context, arg LockTestSubjectRefParams) (LockTestSubjectRefRow, error) {
+	row := q.db.QueryRow(ctx, lockTestSubjectRef, arg.TestID, arg.ID)
+	var i LockTestSubjectRefRow
+	err := row.Scan(
+		&i.ID,
+		&i.TestID,
+		&i.EnvironmentRevisionID,
+		&i.ParadigmKey,
+		&i.ParadigmVersion,
+		&i.Parameters,
 	)
 	return i, err
 }

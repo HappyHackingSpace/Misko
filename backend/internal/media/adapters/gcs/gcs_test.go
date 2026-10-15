@@ -75,6 +75,23 @@ func TestUploadURLRequiresANewObject(t *testing.T) {
 	}
 }
 
+func TestSizedUploadURLLimitsTheLength(t *testing.T) {
+	s := newTestStore(t, http.NotFound)
+	expires := time.Now().Add(time.Hour)
+	req, err := s.SizedUploadURL(context.Background(), "tests/t1/originals/a1", "video/mp4", 4096, expires)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, q := signedQuery(t, req.URL)
+	if signed := q.Get("X-Goog-SignedHeaders"); signed != "content-type;host;x-goog-content-length-range;x-goog-if-generation-match;x-goog-resumable" {
+		t.Fatalf("signed headers: %s", signed)
+	}
+	if req.Headers["x-goog-content-length-range"] != "0,4096" || req.Headers["x-goog-if-generation-match"] != "0" || req.Headers["x-goog-resumable"] != "start" ||
+		req.Headers["Content-Type"] != "video/mp4" || len(req.Headers) != 4 {
+		t.Fatalf("headers the client must send: %v", req.Headers)
+	}
+}
+
 func TestReadURLPinsTheGeneration(t *testing.T) {
 	s := newTestStore(t, http.NotFound)
 	raw, err := s.ReadURL(context.Background(), "tests/t1/originals/a1", 1757592000000001, time.Now().Add(15*time.Minute))

@@ -62,15 +62,16 @@ func (q *Queries) CreateAsset(ctx context.Context, arg CreateAssetParams) (Misko
 }
 
 const createRecording = `-- name: CreateRecording :one
-INSERT INTO misko.test_recordings (experiment_id, test_id, video_asset_id, clip_start_us, clip_end_us, created_by)
-VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING id, experiment_id, test_id, video_asset_id, clip_start_us, clip_end_us, created_by, created_at
+INSERT INTO misko.test_recordings (experiment_id, test_id, video_asset_id, supersedes_id, clip_start_us, clip_end_us, created_by)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+RETURNING id, experiment_id, test_id, video_asset_id, supersedes_id, clip_start_us, clip_end_us, created_by, created_at
 `
 
 type CreateRecordingParams struct {
 	ExperimentID string
 	TestID       string
 	VideoAssetID string
+	SupersedesID *string
 	ClipStartUs  int64
 	ClipEndUs    *int64
 	CreatedBy    string
@@ -81,6 +82,7 @@ func (q *Queries) CreateRecording(ctx context.Context, arg CreateRecordingParams
 		arg.ExperimentID,
 		arg.TestID,
 		arg.VideoAssetID,
+		arg.SupersedesID,
 		arg.ClipStartUs,
 		arg.ClipEndUs,
 		arg.CreatedBy,
@@ -91,6 +93,7 @@ func (q *Queries) CreateRecording(ctx context.Context, arg CreateRecordingParams
 		&i.ExperimentID,
 		&i.TestID,
 		&i.VideoAssetID,
+		&i.SupersedesID,
 		&i.ClipStartUs,
 		&i.ClipEndUs,
 		&i.CreatedBy,
@@ -142,8 +145,76 @@ func (q *Queries) FinishAsset(ctx context.Context, arg FinishAssetParams) (Misko
 	return i, err
 }
 
+const getCurrentRecording = `-- name: GetCurrentRecording :one
+SELECT r.id, r.experiment_id, r.test_id, r.supersedes_id, r.clip_start_us, r.clip_end_us, r.created_by, r.created_at,
+       true AS current,
+       a.id AS asset_id, a.kind, a.bucket, a.object_name, a.content_type, a.file_name, a.size_bytes, a.crc32c,
+       a.status, a.generation, a.rejection_reason, a.verified_at, a.created_by AS asset_created_by, a.created_at AS asset_created_at
+FROM misko.current_recordings r
+JOIN misko.video_assets a ON a.id = r.video_asset_id
+WHERE r.test_id = $1
+`
+
+type GetCurrentRecordingRow struct {
+	ID              string
+	ExperimentID    string
+	TestID          string
+	SupersedesID    *string
+	ClipStartUs     int64
+	ClipEndUs       *int64
+	CreatedBy       string
+	CreatedAt       time.Time
+	Current         bool
+	AssetID         string
+	Kind            string
+	Bucket          string
+	ObjectName      string
+	ContentType     string
+	FileName        *string
+	SizeBytes       int64
+	Crc32c          int64
+	Status          string
+	Generation      *int64
+	RejectionReason *string
+	VerifiedAt      *time.Time
+	AssetCreatedBy  string
+	AssetCreatedAt  time.Time
+}
+
+func (q *Queries) GetCurrentRecording(ctx context.Context, testID string) (GetCurrentRecordingRow, error) {
+	row := q.db.QueryRow(ctx, getCurrentRecording, testID)
+	var i GetCurrentRecordingRow
+	err := row.Scan(
+		&i.ID,
+		&i.ExperimentID,
+		&i.TestID,
+		&i.SupersedesID,
+		&i.ClipStartUs,
+		&i.ClipEndUs,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.Current,
+		&i.AssetID,
+		&i.Kind,
+		&i.Bucket,
+		&i.ObjectName,
+		&i.ContentType,
+		&i.FileName,
+		&i.SizeBytes,
+		&i.Crc32c,
+		&i.Status,
+		&i.Generation,
+		&i.RejectionReason,
+		&i.VerifiedAt,
+		&i.AssetCreatedBy,
+		&i.AssetCreatedAt,
+	)
+	return i, err
+}
+
 const getRecording = `-- name: GetRecording :one
-SELECT r.id, r.experiment_id, r.test_id, r.clip_start_us, r.clip_end_us, r.created_by, r.created_at,
+SELECT r.id, r.experiment_id, r.test_id, r.supersedes_id, r.clip_start_us, r.clip_end_us, r.created_by, r.created_at,
+       NOT EXISTS (SELECT 1 FROM misko.test_recordings n WHERE n.supersedes_id = r.id) AS current,
        a.id AS asset_id, a.kind, a.bucket, a.object_name, a.content_type, a.file_name, a.size_bytes, a.crc32c,
        a.status, a.generation, a.rejection_reason, a.verified_at, a.created_by AS asset_created_by, a.created_at AS asset_created_at
 FROM misko.test_recordings r
@@ -160,10 +231,12 @@ type GetRecordingRow struct {
 	ID              string
 	ExperimentID    string
 	TestID          string
+	SupersedesID    *string
 	ClipStartUs     int64
 	ClipEndUs       *int64
 	CreatedBy       string
 	CreatedAt       time.Time
+	Current         bool
 	AssetID         string
 	Kind            string
 	Bucket          string
@@ -187,10 +260,12 @@ func (q *Queries) GetRecording(ctx context.Context, arg GetRecordingParams) (Get
 		&i.ID,
 		&i.ExperimentID,
 		&i.TestID,
+		&i.SupersedesID,
 		&i.ClipStartUs,
 		&i.ClipEndUs,
 		&i.CreatedBy,
 		&i.CreatedAt,
+		&i.Current,
 		&i.AssetID,
 		&i.Kind,
 		&i.Bucket,
@@ -227,7 +302,8 @@ func (q *Queries) GetTestRef(ctx context.Context, id string) (GetTestRefRow, err
 }
 
 const listRecordings = `-- name: ListRecordings :many
-SELECT r.id, r.experiment_id, r.test_id, r.clip_start_us, r.clip_end_us, r.created_by, r.created_at,
+SELECT r.id, r.experiment_id, r.test_id, r.supersedes_id, r.clip_start_us, r.clip_end_us, r.created_by, r.created_at,
+       NOT EXISTS (SELECT 1 FROM misko.test_recordings n WHERE n.supersedes_id = r.id) AS current,
        a.id AS asset_id, a.kind, a.bucket, a.object_name, a.content_type, a.file_name, a.size_bytes, a.crc32c,
        a.status, a.generation, a.rejection_reason, a.verified_at, a.created_by AS asset_created_by, a.created_at AS asset_created_at
 FROM misko.test_recordings r
@@ -240,10 +316,12 @@ type ListRecordingsRow struct {
 	ID              string
 	ExperimentID    string
 	TestID          string
+	SupersedesID    *string
 	ClipStartUs     int64
 	ClipEndUs       *int64
 	CreatedBy       string
 	CreatedAt       time.Time
+	Current         bool
 	AssetID         string
 	Kind            string
 	Bucket          string
@@ -273,10 +351,12 @@ func (q *Queries) ListRecordings(ctx context.Context, testID string) ([]ListReco
 			&i.ID,
 			&i.ExperimentID,
 			&i.TestID,
+			&i.SupersedesID,
 			&i.ClipStartUs,
 			&i.ClipEndUs,
 			&i.CreatedBy,
 			&i.CreatedAt,
+			&i.Current,
 			&i.AssetID,
 			&i.Kind,
 			&i.Bucket,
@@ -303,7 +383,8 @@ func (q *Queries) ListRecordings(ctx context.Context, testID string) ([]ListReco
 }
 
 const lockRecording = `-- name: LockRecording :one
-SELECT r.id, r.experiment_id, r.test_id, r.clip_start_us, r.clip_end_us, r.created_by, r.created_at,
+SELECT r.id, r.experiment_id, r.test_id, r.supersedes_id, r.clip_start_us, r.clip_end_us, r.created_by, r.created_at,
+       NOT EXISTS (SELECT 1 FROM misko.test_recordings n WHERE n.supersedes_id = r.id) AS current,
        a.id AS asset_id, a.kind, a.bucket, a.object_name, a.content_type, a.file_name, a.size_bytes, a.crc32c,
        a.status, a.generation, a.rejection_reason, a.verified_at, a.created_by AS asset_created_by, a.created_at AS asset_created_at
 FROM misko.test_recordings r
@@ -321,10 +402,12 @@ type LockRecordingRow struct {
 	ID              string
 	ExperimentID    string
 	TestID          string
+	SupersedesID    *string
 	ClipStartUs     int64
 	ClipEndUs       *int64
 	CreatedBy       string
 	CreatedAt       time.Time
+	Current         bool
 	AssetID         string
 	Kind            string
 	Bucket          string
@@ -348,10 +431,12 @@ func (q *Queries) LockRecording(ctx context.Context, arg LockRecordingParams) (L
 		&i.ID,
 		&i.ExperimentID,
 		&i.TestID,
+		&i.SupersedesID,
 		&i.ClipStartUs,
 		&i.ClipEndUs,
 		&i.CreatedBy,
 		&i.CreatedAt,
+		&i.Current,
 		&i.AssetID,
 		&i.Kind,
 		&i.Bucket,
@@ -367,5 +452,25 @@ func (q *Queries) LockRecording(ctx context.Context, arg LockRecordingParams) (L
 		&i.AssetCreatedBy,
 		&i.AssetCreatedAt,
 	)
+	return i, err
+}
+
+const lockTestRef = `-- name: LockTestRef :one
+SELECT id, experiment_id, status FROM misko.tests WHERE id = $1 FOR NO KEY UPDATE
+`
+
+type LockTestRefRow struct {
+	ID           string
+	ExperimentID string
+	Status       string
+}
+
+// The row lock serializes videos attached to one test, so each new recording
+// supersedes the one that was current. NO KEY UPDATE leaves rows that only
+// reference the test unblocked.
+func (q *Queries) LockTestRef(ctx context.Context, id string) (LockTestRefRow, error) {
+	row := q.db.QueryRow(ctx, lockTestRef, id)
+	var i LockTestRefRow
+	err := row.Scan(&i.ID, &i.ExperimentID, &i.Status)
 	return i, err
 }

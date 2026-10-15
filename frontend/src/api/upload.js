@@ -36,9 +36,17 @@ export class UploadError extends Error {
   }
 }
 
+/** The next offset after a 308 Range header such as "bytes=0-1048575". */
+export function persisted(range) {
+  const match = /^bytes=0-(\d+)$/.exec(range || "");
+  return match ? Number(match[1]) + 1 : 0;
+}
+
 /**
  * Starts the signed resumable upload and sends the file in chunks.
- * `signed` is the API's { method, url, headers }; onProgress receives 0 to 1.
+ * `signed` is the API's { method, url, headers }, including the signed
+ * x-goog-content-length-range that caps the upload at the declared size;
+ * onProgress receives 0 to 1.
  */
 export async function upload(signed, file, { onProgress } = {}) {
   const start = await fetch(signed.url, { method: signed.method || "POST", headers: signed.headers || {} });
@@ -55,9 +63,9 @@ export async function upload(signed, file, { onProgress } = {}) {
       body: file.slice(offset, end),
     });
     if (response.status === 308) {
-      // Storage reports how much it kept; continue from there.
-      const received = response.headers.get("Range");
-      offset = received ? Number(received.split("-")[1]) + 1 : end;
+      // Storage reports the bytes it kept as "bytes=0-N"; continue after them.
+      // Without a Range header it kept nothing, so the upload restarts at 0.
+      offset = persisted(response.headers.get("Range"));
     } else if (response.ok) {
       offset = file.size;
     } else {
