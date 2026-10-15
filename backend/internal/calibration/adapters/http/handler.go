@@ -1,5 +1,6 @@
-// Package calibrationhttp exposes environment and per-recording calibrations and
-// the calibration status that gates analysis over HTTP.
+// Package calibrationhttp exposes environment calibrations, overrides per
+// animal of a test (test subject) and the calibration status that gates
+// analysis over HTTP.
 package calibrationhttp
 
 import (
@@ -16,9 +17,12 @@ import (
 var failures = []httpjson.Failure{
 	{Err: access.ErrUnauthenticated, Status: http.StatusUnauthorized, Code: "auth.unauthenticated"},
 	{Err: access.ErrForbidden, Status: http.StatusForbidden, Code: "auth.forbidden"},
-	{Err: application.ErrRecordingNotFound, Status: http.StatusNotFound, Code: "recording.notFound"},
+	{Err: application.ErrTestNotFound, Status: http.StatusNotFound, Code: "test.notFound"},
+	{Err: application.ErrTestSubjectNotFound, Status: http.StatusNotFound, Code: "test.subjectNotFound"},
 	{Err: application.ErrRevisionNotFound, Status: http.StatusNotFound, Code: "environment.revisionNotFound"},
+	{Err: application.ErrNoVideo, Status: http.StatusConflict, Code: "calibration.noVideo"},
 	{Err: application.ErrVideoNotVerified, Status: http.StatusConflict, Code: "calibration.videoNotVerified"},
+	{Err: application.ErrInvalidScope, Status: http.StatusConflict, Code: "calibration.invalidScope"},
 	{Err: domain.ErrNotRequired, Status: http.StatusConflict, Code: "calibration.notRequired"},
 	{Err: domain.ErrStaleCorrection, Status: http.StatusConflict, Code: "calibration.staleCorrection"},
 	{Err: domain.ErrCameraMismatch, Status: http.StatusBadRequest, Code: "calibration.cameraMismatch"},
@@ -44,9 +48,10 @@ type handler struct {
 
 func Register(mux *http.ServeMux, service *application.Service, authenticate func(*http.Request) (access.Actor, error), logger *slog.Logger) {
 	h := handler{service: service, authenticate: authenticate, logger: logger}
-	mux.HandleFunc("GET /api/tests/{id}/recordings/{recordingId}/calibrations", h.with(h.list))
-	mux.HandleFunc("POST /api/tests/{id}/recordings/{recordingId}/calibrations", h.with(h.create))
-	mux.HandleFunc("GET /api/tests/{id}/recordings/{recordingId}/calibration-status", h.with(h.status))
+	mux.HandleFunc("GET /api/tests/{id}/calibration-status", h.with(h.testStatus))
+	mux.HandleFunc("GET /api/tests/{id}/subjects/{testSubjectId}/calibrations", h.with(h.list))
+	mux.HandleFunc("POST /api/tests/{id}/subjects/{testSubjectId}/calibrations", h.with(h.create))
+	mux.HandleFunc("GET /api/tests/{id}/subjects/{testSubjectId}/calibration-status", h.with(h.status))
 	mux.HandleFunc("GET /api/environments/{id}/revisions/{number}/calibrations", h.with(h.listEnvironment))
 	mux.HandleFunc("POST /api/environments/{id}/revisions/{number}/calibrations", h.with(h.createEnvironment))
 	mux.HandleFunc("GET /api/environments/{id}/revisions/{number}/calibration-status", h.with(h.environmentStatus))
@@ -82,7 +87,7 @@ func (h handler) create(w http.ResponseWriter, r *http.Request, actor access.Act
 	if !ok {
 		return
 	}
-	c, err := h.service.Calibrate(r.Context(), actor, r.PathValue("id"), r.PathValue("recordingId"), in)
+	c, err := h.service.Calibrate(r.Context(), actor, r.PathValue("id"), r.PathValue("testSubjectId"), in)
 	if err != nil {
 		h.fail(w, r, err)
 		return
@@ -139,7 +144,7 @@ func revisionNumber(r *http.Request) (int, bool) {
 }
 
 func (h handler) list(w http.ResponseWriter, r *http.Request, actor access.Actor) {
-	list, err := h.service.Calibrations(r.Context(), actor, r.PathValue("id"), r.PathValue("recordingId"))
+	list, err := h.service.Overrides(r.Context(), actor, r.PathValue("id"), r.PathValue("testSubjectId"))
 	h.writeList(w, r, list, err)
 }
 
@@ -167,9 +172,28 @@ func (h handler) writeList(w http.ResponseWriter, r *http.Request, list []domain
 	}{data})
 }
 
+func (h handler) testStatus(w http.ResponseWriter, r *http.Request, actor access.Actor) {
+	list, err := h.service.TestStatus(r.Context(), actor, r.PathValue("id"))
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	data := make([]subjectStatusJSON, 0, len(list))
+	for _, s := range list {
+		data = append(data, toSubjectStatus(s))
+	}
+	httpjson.Write(w, http.StatusOK, struct {
+		Data []subjectStatusJSON `json:"data"`
+	}{data})
+}
+
 func (h handler) status(w http.ResponseWriter, r *http.Request, actor access.Actor) {
-	view, err := h.service.Status(r.Context(), actor, r.PathValue("id"), r.PathValue("recordingId"))
-	h.writeStatus(w, r, view, err)
+	s, err := h.service.SubjectStatus(r.Context(), actor, r.PathValue("id"), r.PathValue("testSubjectId"))
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	httpjson.Write(w, http.StatusOK, toSubjectStatus(s))
 }
 
 func (h handler) environmentStatus(w http.ResponseWriter, r *http.Request, actor access.Actor) {
@@ -187,17 +211,34 @@ func (h handler) writeStatus(w http.ResponseWriter, r *http.Request, view applic
 		h.fail(w, r, err)
 		return
 	}
-	out := struct {
-		Status      string               `json:"status"`
-		Source      *string              `json:"source"`
-		Drift       *string              `json:"drift"`
-		Calibration *calibrationJSONBody `json:"calibration"`
-	}{Status: string(view.Status), Source: nullable(string(view.Source)), Drift: nullable(string(view.Drift))}
+	httpjson.Write(w, http.StatusOK, toStatus(view))
+}
+
+type statusJSON struct {
+	Status      string               `json:"status"`
+	Source      *string              `json:"source"`
+	Drift       *string              `json:"drift"`
+	Calibration *calibrationJSONBody `json:"calibration"`
+}
+
+func toStatus(view application.StatusView) statusJSON {
+	out := statusJSON{Status: string(view.Status), Source: nullable(string(view.Source)), Drift: nullable(string(view.Drift))}
 	if view.Current != nil {
 		c := calibrationJSON(*view.Current)
 		out.Calibration = &c
 	}
-	httpjson.Write(w, http.StatusOK, out)
+	return out
+}
+
+type subjectStatusJSON struct {
+	TestSubjectID         string  `json:"testSubjectId"`
+	EnvironmentRevisionID string  `json:"environmentRevisionId"`
+	RecordingID           *string `json:"recordingId"`
+	statusJSON
+}
+
+func toSubjectStatus(s application.SubjectStatus) subjectStatusJSON {
+	return subjectStatusJSON{s.TestSubjectID, s.EnvironmentRevisionID, nullable(s.RecordingID), toStatus(s.StatusView)}
 }
 
 func (h handler) fail(w http.ResponseWriter, r *http.Request, err error) {
@@ -215,6 +256,7 @@ func correspondences(in []pointJSON) []domain.Correspondence {
 type calibrationJSONBody struct {
 	ID                    string      `json:"id"`
 	Scope                 string      `json:"scope"`
+	TestSubjectID         *string     `json:"testSubjectId"`
 	RecordingID           *string     `json:"recordingId"`
 	EnvironmentRevisionID string      `json:"environmentRevisionId"`
 	SupersedesID          *string     `json:"supersedesId"`
@@ -240,7 +282,7 @@ type calibrationJSONBody struct {
 
 func calibrationJSON(c domain.Calibration) calibrationJSONBody {
 	return calibrationJSONBody{
-		ID: c.ID, Scope: string(c.Scope()), RecordingID: nullable(c.RecordingID), EnvironmentRevisionID: c.EnvironmentRevisionID, SupersedesID: nullable(c.SupersedesID), CameraID: c.CameraID,
+		ID: c.ID, Scope: string(c.Scope()), TestSubjectID: nullable(c.TestSubjectID), RecordingID: nullable(c.RecordingID), EnvironmentRevisionID: c.EnvironmentRevisionID, SupersedesID: nullable(c.SupersedesID), CameraID: c.CameraID,
 		FrameWidth: c.FrameWidth, FrameHeight: c.FrameHeight, Crop: cropJSON(c.Crop), ReferenceFrameUs: referenceFrame(c),
 		MeasurementPlane: string(c.Plane), FitPoints: pointsJSON(c.Fit), CheckPoints: pointsJSON(c.Check), Transform: c.Transform,
 		FitRMSErrorCm: c.FitRMSErrorCm, CheckRMSErrorCm: c.CheckRMSErrorCm, CheckMaxErrorCm: c.CheckMaxErrorCm, ToleranceCm: c.ToleranceCm,
@@ -251,7 +293,7 @@ func calibrationJSON(c domain.Calibration) calibrationJSONBody {
 
 // referenceFrame is null for an environment calibration, which has no video.
 func referenceFrame(c domain.Calibration) *int64 {
-	if c.RecordingID == "" {
+	if c.Scope() == domain.ScopeEnvironment {
 		return nil
 	}
 	return &c.ReferenceFrameUs

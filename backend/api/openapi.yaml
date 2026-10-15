@@ -1390,7 +1390,8 @@ paths:
       - $ref: '#/components/parameters/ID'
     get:
       operationId: listRecordings
-      summary: Recordings of a test with their video status (*:read)
+      summary: Every video of a test, oldest first, with its status (*:read)
+      description: A test has one current recording (current is true); each replacement supersedes the previous one, which stays for provenance.
       responses:
         '200':
           description: Recordings
@@ -1401,8 +1402,8 @@ paths:
         '404': {$ref: '#/components/responses/Problem'}
     post:
       operationId: startRecordingUpload
-      summary: Declare an original video and get a signed request that starts a resumable upload straight to Cloud Storage (test:run)
-      description: Send upload.method to upload.url with upload.headers to get the resumable session URI from Cloud Storage, upload the file to it, then call finalize. The signed request is returned once and never stored.
+      summary: Declare an original video, attach it as the test's current video and get a signed request that starts a resumable upload straight to Cloud Storage (test:run)
+      description: The test must be IN_PROGRESS or COMPLETED (409 media.testNotStarted otherwise). The new recording supersedes the current one at once, so a replacement makes the test wait for its verification. Send upload.method to upload.url with upload.headers to get the resumable session URI from Cloud Storage, upload the file to it, then call finalize. The signed request carries x-goog-content-length-range, so storage refuses more bytes than sizeBytes. It is returned once and never stored. 409 media.concurrentUpload when another video was attached at the same moment; retry.
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/RecordingUploadInput'}}}}
       responses:
         '201':
@@ -1421,6 +1422,17 @@ paths:
         '404': {$ref: '#/components/responses/Problem'}
         '409': {$ref: '#/components/responses/Problem'}
         '503': {$ref: '#/components/responses/Problem'}
+  /api/tests/{id}/recordings/current:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      operationId: getCurrentRecording
+      summary: The test's current video (*:read)
+      description: 404 recording.notFound while the test has no video.
+      responses:
+        '200': {description: Current recording, content: {application/json: {schema: {$ref: '#/components/schemas/Recording'}}}}
+        '401': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
   /api/tests/{id}/recordings/{recordingId}/finalize:
     parameters:
       - $ref: '#/components/parameters/ID'
@@ -1471,8 +1483,8 @@ paths:
         '404': {$ref: '#/components/responses/Problem'}
     post:
       operationId: createEnvironmentCalibration
-      summary: Calibrate the environment revision once; every recording of it uses this calibration unless it has one of its own (apparatus:write)
-      description: Same fitting and validation as a recording calibration, against the revision's measurements. There is no video, so referenceFrameUs is ignored. A correction must supersede the latest calibration of the revision and use the same camera and frame size. Analysis runs that already pinned an earlier calibration keep it, and a correction never queues automatic runs for recordings that already have one. Answers calibration.notRequired for paradigms without max_calibration_error_cm.
+      summary: Calibrate the environment revision once; every animal tested in this arena uses it unless it has an override on its test's current video (apparatus:write)
+      description: Same fitting and validation as an override, against the revision's measurements. Its crop is this arena's region of the fixed camera frame, so arenas filmed together each have their own. There is no video, so referenceFrameUs is ignored. A correction must supersede the latest calibration of the revision and use the same camera and frame size. Analysis runs that already pinned an earlier calibration keep it. Answers calibration.notRequired for paradigms without max_calibration_error_cm.
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/EnvironmentCalibrationInput'}}}}
       responses:
         '201': {description: Stored, content: {application/json: {schema: {$ref: '#/components/schemas/Calibration'}}}}
@@ -1487,7 +1499,7 @@ paths:
       - {name: number, in: path, required: true, schema: {type: integer, minimum: 1}}
     get:
       operationId: getEnvironmentCalibrationStatus
-      summary: Whether recordings of the revision are calibrated by default (*:read)
+      summary: Whether animals tested in the revision's arena are calibrated by default (*:read)
       responses:
         '200':
           description: Calibration status
@@ -1496,14 +1508,29 @@ paths:
               schema: {$ref: '#/components/schemas/CalibrationStatus'}
         '401': {$ref: '#/components/responses/Problem'}
         '404': {$ref: '#/components/responses/Problem'}
-  /api/tests/{id}/recordings/{recordingId}/calibrations:
+  /api/tests/{id}/calibration-status:
     parameters:
       - $ref: '#/components/parameters/ID'
-      - {name: recordingId, in: path, required: true, schema: {type: string, format: uuid}}
     get:
-      operationId: listCalibrations
-      summary: The recording's own calibrations, oldest first (*:read)
-      description: Manual calibrations of this video only; the default of its environment is listed under the revision.
+      operationId: getTestCalibrationStatus
+      summary: For every animal of the test, whether its part of the current video can be analysed into physical metrics (*:read)
+      description: Read from the effective_calibrations view, the rule the analysis scheduler uses. An animal's own latest override on the current video decides when it has one (a REJECTED one leaves it waiting), otherwise the latest default of its arena.
+      responses:
+        '200':
+          description: Calibration status per test subject
+          content:
+            application/json:
+              schema: {type: object, required: [data], properties: {data: {type: array, items: {$ref: '#/components/schemas/SubjectCalibrationStatus'}}}}
+        '401': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+  /api/tests/{id}/subjects/{testSubjectId}/calibrations:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+      - {name: testSubjectId, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      operationId: listCalibrationOverrides
+      summary: The animal's own calibrations over every video of the test, oldest first (*:read)
+      description: Overrides only; the default of its arena is listed under the environment revision. recordingId names the video each one was read from.
       responses:
         '200':
           description: Calibrations
@@ -1513,9 +1540,9 @@ paths:
         '401': {$ref: '#/components/responses/Problem'}
         '404': {$ref: '#/components/responses/Problem'}
     post:
-      operationId: createCalibration
-      summary: Manually calibrate this video, overriding the environment's calibration for it only (test:run)
-      description: Fits a pixel-to-centimeter transform from FIT points and validates it with independent CHECK points. A recording with a calibration of its own never falls back to the environment, so a REJECTED one leaves it waiting. The result is VALID, or REJECTED with EXCESSIVE_CHECK_ERROR when CHECK points deviate more than the paradigm's max_calibration_error_cm. A correction must supersede the latest calibration and use the same camera and frame size.
+      operationId: createCalibrationOverride
+      summary: Manually calibrate this animal's arena on the test's current video, overriding the arena default for that video only (test:run)
+      description: The test needs a current, verified video (409 calibration.noVideo, calibration.videoNotVerified). Fits a pixel-to-centimeter transform from FIT points and validates it with independent CHECK points. An animal with an override on the current video never falls back to its arena default, so a REJECTED one leaves it waiting. The result is VALID, or REJECTED with EXCESSIVE_CHECK_ERROR when CHECK points deviate more than the paradigm's max_calibration_error_cm. The overrides of an animal form one chain across the test's videos, so a correction, also the first one on a replacement video, must supersede the latest of them; within one video it must keep the camera and frame size.
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CalibrationInput'}}}}
       responses:
         '201': {description: Stored, content: {application/json: {schema: {$ref: '#/components/schemas/Calibration'}}}}
@@ -1524,20 +1551,19 @@ paths:
         '403': {$ref: '#/components/responses/Problem'}
         '404': {$ref: '#/components/responses/Problem'}
         '409': {$ref: '#/components/responses/Problem'}
-  /api/tests/{id}/recordings/{recordingId}/calibration-status:
+  /api/tests/{id}/subjects/{testSubjectId}/calibration-status:
     parameters:
       - $ref: '#/components/parameters/ID'
-      - {name: recordingId, in: path, required: true, schema: {type: string, format: uuid}}
+      - {name: testSubjectId, in: path, required: true, schema: {type: string, format: uuid}}
     get:
-      operationId: getCalibrationStatus
-      summary: Whether the recording can be analyzed into physical metrics (*:read)
-      description: The recording's own latest calibration decides when it has one, otherwise the default of its environment revision.
+      operationId: getSubjectCalibrationStatus
+      summary: Whether this animal's part of the current video can be analysed into physical metrics (*:read)
       responses:
         '200':
           description: Calibration status
           content:
             application/json:
-              schema: {$ref: '#/components/schemas/CalibrationStatus'}
+              schema: {$ref: '#/components/schemas/SubjectCalibrationStatus'}
         '401': {$ref: '#/components/responses/Problem'}
         '404': {$ref: '#/components/responses/Problem'}
   /api/analysis/workers:
@@ -2723,11 +2749,14 @@ components:
         createdAt: {type: string, format: date-time}
     Recording:
       type: object
-      required: [id, experimentId, testId, clipStartUs, clipEndUs, video, createdBy, createdAt]
+      required: [id, experimentId, testId, supersedesId, current, clipStartUs, clipEndUs, video, createdBy, createdAt]
+      description: One video of a test. Recordings never change; a replacement supersedes the current one.
       properties:
         id: {type: string, format: uuid}
         experimentId: {type: string, format: uuid}
         testId: {type: string, format: uuid}
+        supersedesId: {type: [string, 'null'], format: uuid, description: The recording this one replaced; null for the first video of the test}
+        current: {type: boolean, description: True for the one recording of the test nothing supersedes}
         clipStartUs: {type: integer, format: int64, minimum: 0, description: Microseconds from the start of the video}
         clipEndUs: {type: [integer, 'null'], format: int64, description: Null runs to the end of the video}
         video: {$ref: '#/components/schemas/Video'}
@@ -2751,7 +2780,7 @@ components:
       properties:
         method: {type: string, enum: [POST]}
         url: {type: string, format: uri}
-        headers: {type: object, additionalProperties: {type: string}}
+        headers: {type: object, additionalProperties: {type: string}, description: 'Send all of them: Content-Type, x-goog-resumable, x-goog-if-generation-match and, for a video, x-goog-content-length-range "0,<sizeBytes>"'}
         expiresAt: {type: string, format: date-time}
     CalibrationPoint:
       type: object
@@ -2790,10 +2819,20 @@ components:
       type: object
       required: [status, source, drift, calibration]
       properties:
-        status: {type: string, enum: [NOT_REQUIRED, WAITING_FOR_CALIBRATION, CALIBRATED], description: WAITING_FOR_CALIBRATION until a VALID calibration applies (and, for a recording, its video is verified)}
-        source: {type: [string, 'null'], enum: [ENVIRONMENT, RECORDING, null], description: Which calibration decides. RECORDING with WAITING_FOR_CALIBRATION means the recording's own calibration was rejected. Null when nothing was calibrated}
+        status: {type: string, enum: [NOT_REQUIRED, WAITING_FOR_VIDEO, WAITING_FOR_CALIBRATION, CALIBRATED], description: 'WAITING_FOR_VIDEO (test subjects only) while the test has no current verified video; WAITING_FOR_CALIBRATION until a VALID calibration applies'}
+        source: {type: [string, 'null'], enum: [ENVIRONMENT, OVERRIDE, null], description: Which calibration decides. OVERRIDE with WAITING_FOR_CALIBRATION means the animal's override on the current video was rejected. Null when nothing was calibrated}
         drift: {type: [string, 'null'], enum: [UNCHECKED, null], description: Whether camera or arena movement was checked. No check exists yet, so a calibration in use is UNCHECKED; null while waiting}
         calibration: {oneOf: [{$ref: '#/components/schemas/Calibration'}, {type: 'null'}]}
+    SubjectCalibrationStatus:
+      description: The calibration state of one animal of a test on the test's current video
+      allOf:
+        - $ref: '#/components/schemas/CalibrationStatus'
+        - type: object
+          required: [testSubjectId, environmentRevisionId, recordingId]
+          properties:
+            testSubjectId: {type: string, format: uuid}
+            environmentRevisionId: {type: string, format: uuid, description: The animal's arena}
+            recordingId: {type: [string, 'null'], format: uuid, description: The test's current video; null while it has none}
     CalibrationInput:
       type: object
       additionalProperties: false
@@ -2807,15 +2846,16 @@ components:
         measurementPlane: {type: string, enum: [ARENA_FLOOR, WATER_SURFACE, APPARATUS_TOP]}
         fitPoints: {type: array, minItems: 4, maxItems: 100, items: {$ref: '#/components/schemas/CalibrationPoint'}, description: Inside the crop, no three on a line; inside the environment when the paradigm derives its zones from parameters}
         checkPoints: {type: array, minItems: 3, maxItems: 100, items: {$ref: '#/components/schemas/CalibrationPoint'}, description: Independent of the FIT points (at least 1 pixel away)}
-        supersedesId: {type: string, format: uuid, description: The latest calibration of the recording; required for corrections}
+        supersedesId: {type: string, format: uuid, description: The latest override of the animal over all videos of the test; required for corrections}
     Calibration:
       type: object
-      required: [id, scope, recordingId, environmentRevisionId, supersedesId, cameraId, frameWidth, frameHeight, crop, referenceFrameUs, measurementPlane, fitPoints, checkPoints, transform, fitRmsErrorCm, checkRmsErrorCm, checkMaxErrorCm, toleranceCm, algorithmVersion, status, rejectionReason, createdBy, createdAt]
+      required: [id, scope, testSubjectId, recordingId, environmentRevisionId, supersedesId, cameraId, frameWidth, frameHeight, crop, referenceFrameUs, measurementPlane, fitPoints, checkPoints, transform, fitRmsErrorCm, checkRmsErrorCm, checkMaxErrorCm, toleranceCm, algorithmVersion, status, rejectionReason, createdBy, createdAt]
       description: Immutable; analysis runs reference a fixed calibration
       properties:
         id: {type: string, format: uuid}
-        scope: {type: string, enum: [ENVIRONMENT, RECORDING], description: ENVIRONMENT is the default of a revision, RECORDING a manual override for one video}
-        recordingId: {type: [string, 'null'], format: uuid, description: Null for an environment calibration}
+        scope: {type: string, enum: [ENVIRONMENT, OVERRIDE], description: ENVIRONMENT is the default of a revision, OVERRIDE a manual calibration of one animal of a test on one video}
+        testSubjectId: {type: [string, 'null'], format: uuid, description: Null for an environment calibration}
+        recordingId: {type: [string, 'null'], format: uuid, description: The video an override was read from; null for an environment calibration}
         environmentRevisionId: {type: string, format: uuid}
         supersedesId: {type: [string, 'null'], format: uuid}
         cameraId: {type: string}

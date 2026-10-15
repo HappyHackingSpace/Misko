@@ -37,7 +37,7 @@ business routes return 404. There is no legacy API adapter or data migration.
 - `internal/protocols`: test protocols of an experiment with immutable versions of ordered paradigm steps.
 - `internal/tests`: tests of enrolled subjects, their trials and comments.
 - `internal/media`: video assets and test recordings; `adapters/gcs` is the only package that imports the Cloud Storage client.
-- `internal/calibration`: pixel-to-centimeter calibrations, the default of an environment revision and manual overrides per video, and the status that gates analysis.
+- `internal/calibration`: pixel-to-centimeter calibrations, the default of an environment revision and manual overrides per animal of a test on its current video, and the status that gates analysis.
 - `internal/analysis`: analysis workers, runs, leases, result validation and publication of metrics, events, artifacts and video pairs.
 - `internal/reports`: read-only reports, exports and group comparisons over the reporting views.
 - `internal/health`: readiness use case and probes.
@@ -99,11 +99,11 @@ The five roles and their permissions are static code, not database rows.
 | `GET, POST /api/tests/{id}/comments` | Any signed-in user |
 | `PATCH /api/tests/{id}/comments/{commentId}` | The comment's author |
 | `DELETE /api/tests/{id}/comments/{commentId}` | The comment's author, SUPERADMIN or LAB_MANAGER |
-| `GET /api/tests/{id}/recordings`, `GET /api/tests/{id}/recordings/{recordingId}/read-url` | `*:read` |
+| `GET /api/tests/{id}/recordings`, `GET /api/tests/{id}/recordings/current`, `GET /api/tests/{id}/recordings/{recordingId}/read-url` | `*:read` |
 | `POST /api/tests/{id}/recordings` | `test:run` |
 | `POST /api/tests/{id}/recordings/{recordingId}/finalize` | `test:run`, and the uploader, SUPERADMIN or LAB_MANAGER |
-| `GET /api/tests/{id}/recordings/{recordingId}/calibrations`, `GET ./../calibration-status` | `*:read` |
-| `POST /api/tests/{id}/recordings/{recordingId}/calibrations` (manual override for one video) | `test:run` |
+| `GET /api/tests/{id}/calibration-status`, `GET /api/tests/{id}/subjects/{testSubjectId}/calibrations`, `GET ./../calibration-status` | `*:read` |
+| `POST /api/tests/{id}/subjects/{testSubjectId}/calibrations` (manual override for one animal on the current video) | `test:run` |
 | `GET /api/environments/{id}/revisions/{number}/calibrations`, `GET ./../calibration-status` | `*:read` |
 | `POST /api/environments/{id}/revisions/{number}/calibrations` | `apparatus:write` |
 
@@ -366,13 +366,23 @@ Original videos go straight from the browser to a private Google Cloud Storage
 bucket; the API never proxies video bytes and never stores signed URLs or upload
 session URIs.
 
+A test has one current video. Videos attach only to a test that is
+`IN_PROGRESS` or `COMPLETED` (`media.testNotStarted` otherwise); a new upload
+supersedes the current recording at once and the old one stays readable for
+provenance (`supersedesId`, `current` on every recording,
+`GET /api/tests/{id}/recordings/current`). The test row is locked while a
+video is attached, so concurrent uploads form one linear chain.
+
 1. `POST /api/tests/{id}/recordings` declares file name, content type
    (`video/mp4`, `video/quicktime` or `video/webm`), size, base64 CRC32C and the
    clip range, and stores a `PENDING` video with a new object name
    `tests/{testId}/originals/{videoId}`. The response carries a V4-signed `POST`
-   with `x-goog-resumable: start` and `x-goog-if-generation-match: 0`, so the
-   upload cannot overwrite an existing object. The client sends it, uploads to
-   the returned session URI and keeps that URI to itself.
+   with `x-goog-resumable: start`, `x-goog-if-generation-match: 0`, so the
+   upload cannot overwrite an existing object, and
+   `x-goog-content-length-range: 0,<size>`, so storage refuses more bytes than
+   declared. The client sends all of them, uploads to the returned session URI
+   in chunks (a `308` without `Range` means storage kept nothing and the upload
+   restarts at 0) and keeps that URI to itself.
 2. `POST .../recordings/{recordingId}/finalize` (the uploader, LAB_MANAGER or
    SUPERADMIN) reads the object's attributes from GCS first and only then locks
    the database row. A missing object returns `media.uploadIncomplete`; a size,
@@ -395,7 +405,7 @@ no cloud resources:
   `gcloud storage buckets create gs://BUCKET --location=REGION --uniform-bucket-level-access --public-access-prevention`.
 - A CORS policy for the UI origin:
   `gcloud storage buckets update gs://BUCKET --cors-file=cors.json` with
-  `[{"origin":["https://UI_ORIGIN"],"method":["GET","HEAD","POST","PUT","OPTIONS"],"responseHeader":["Content-Type","Content-Range","Range","Location","ETag","x-goog-resumable"],"maxAgeSeconds":3600}]`.
+  `[{"origin":["https://UI_ORIGIN"],"method":["GET","HEAD","POST","PUT","OPTIONS"],"responseHeader":["Content-Type","Content-Range","Range","Location","ETag","x-goog-resumable","x-goog-content-length-range"],"maxAgeSeconds":3600}]`.
 - Application Default Credentials for the API (workload identity on GCP; no
   service account JSON in the repository). The identity needs object create and
   get permissions on the bucket, for example `roles/storage.objectUser`. When the
@@ -427,11 +437,12 @@ Physical metrics need a validated calibration. Paradigms whose QC contract has
 new paradigm that declares it gets the workflow below without further code;
 observation-only paradigms such as ROTAROD report `NOT_REQUIRED`.
 
-- `POST /api/tests/{id}/recordings/{recordingId}/calibrations` (`test:run`) takes
-  the camera id, frame size, crop, the video time of the reference frame, the
-  measurement plane (`ARENA_FLOOR`, `WATER_SURFACE`, `APPARATUS_TOP`), 4 to 100
-  FIT points and 3 to 100 CHECK points, each a full-frame pixel with plane
-  coordinates in centimeters.
+- `POST /api/tests/{id}/subjects/{testSubjectId}/calibrations` (`test:run`)
+  takes the camera id, frame size, crop, the video time of the reference frame,
+  the measurement plane (`ARENA_FLOOR`, `WATER_SURFACE`, `APPARATUS_TOP`), 4 to
+  100 FIT points and 3 to 100 CHECK points, each a full-frame pixel with plane
+  coordinates in centimeters. It needs the test's current video verified
+  (`calibration.noVideo`, `calibration.videoNotVerified`).
 - The transform is a homography fitted with the normalized direct linear
   transform: both point sets are centered and scaled, the 8 unknowns are solved by
   least squares with partial pivoting, and a negligible pivot (collinear or
@@ -445,29 +456,36 @@ observation-only paradigms such as ROTAROD report `NOT_REQUIRED`.
   paradigm's `max_calibration_error_cm`, otherwise `REJECTED` with
   `EXCESSIVE_CHECK_ERROR`. FIT error alone never validates a calibration.
 - Calibrations are immutable. A correction names `supersedesId`, which must be
-  the recording's latest calibration, and keeps the camera id and frame size;
-  the crop may change. The recording row is locked, a unique index allows one
-  first calibration, and a unique `supersedes_id` keeps one linear chain.
-- A calibration has a scope. An environment calibration is the default of one
-  environment revision, entered once when the rig is set up with
+  the latest calibration of its chain; within one video it keeps the camera id
+  and frame size, and the crop may change. The chain's row (environment
+  revision or test subject) is locked, a unique index allows one first
+  calibration, and a unique `supersedes_id` keeps one linear chain.
+- A calibration has a scope. An `ENVIRONMENT` calibration is the default of one
+  environment revision (one arena), entered once when the rig is set up with
   `POST /api/environments/{id}/revisions/{number}/calibrations`
-  (`apparatus:write`, no video, so no reference frame). A recording calibration
-  is a manual override for one video, for example when its camera or arena moved.
-  Chains are separate: one per revision and one per recording, each linear and
-  immutable. A recording calibration belongs to the revision of its test.
-- A recording is analyzed with its own latest calibration when it has one, and a
-  `REJECTED` one leaves it waiting instead of falling back to the environment.
-  Without one it uses the latest calibration of its environment revision. One
-  rule decides this (`calibration/domain.Effective`, mirrored by the
-  `misko.effective_calibrations` view that analysis and the dashboard read).
-- `GET .../calibration-status` returns `WAITING_FOR_CALIBRATION` until the video
-  is verified and a valid calibration applies, then `CALIBRATED` with that
-  calibration. The response also carries `source` (`ENVIRONMENT` or
-  `RECORDING`) and `drift` (`UNCHECKED`: nothing checks camera or arena movement
-  yet, so a calibration taken from the environment is trusted as entered).
-- Correcting an environment calibration never queues automatic runs for
-  recordings that already have one; reanalysis stays an explicit manual run.
-  Analysis runs reference the calibration id, so older runs keep their inputs
+  (`apparatus:write`, no video, so no reference frame); its crop is that arena's
+  region of the fixed camera frame, so arenas filmed together each have their
+  own. An `OVERRIDE` is a manual calibration of one animal of a test (a test
+  subject) on the test's current video, for example when the camera or arena
+  moved; it must use the animal's arena and a video of its test. There is one
+  chain per revision and one per test subject, spanning the test's videos: the
+  first override on a replacement video supersedes the latest one of the
+  previous video and may use another camera.
+- An animal is analyzed with its own latest override on the current video when
+  there is one, and a `REJECTED` one leaves it waiting instead of falling back to
+  the arena default. Otherwise it uses the latest default of its arena, so a
+  replacement video starts from the defaults again. The
+  `misko.effective_calibrations` view decides this, and the status endpoints,
+  analysis and the dashboard all read it.
+- `GET /api/tests/{id}/calibration-status` lists every animal of a test and
+  `GET .../subjects/{testSubjectId}/calibration-status` one of them:
+  `WAITING_FOR_VIDEO` while the test has no current verified video,
+  `WAITING_FOR_CALIBRATION` until a valid calibration applies, then `CALIBRATED`
+  with that calibration. The response also carries `source` (`ENVIRONMENT` or
+  `OVERRIDE`), `drift` (`UNCHECKED`: nothing checks camera or arena movement
+  yet, so a calibration taken from the environment is trusted as entered), the
+  arena and the current recording.
+- Analysis runs reference the calibration id, so older runs keep their inputs
   after a correction.
 
 ## Analysis runs

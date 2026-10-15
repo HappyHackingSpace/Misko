@@ -1,8 +1,10 @@
 // Package domain holds calibrations: a pixel-to-centimeter homography fitted
 // from FIT points and validated against independent CHECK points. A
-// calibration is either the default of an environment revision or a manual
-// override for one recording. Calibrations never change; a correction is a new
-// calibration that supersedes the latest one of the same chain.
+// calibration is either the default of an environment revision (one arena's
+// region of a fixed camera frame) or a manual override for one animal of a
+// test (a test subject) on the test's current video. Calibrations never
+// change; a correction is a new calibration that supersedes the latest one of
+// the same chain: the revision's, or the test subject's across its videos.
 package domain
 
 import (
@@ -45,16 +47,17 @@ const (
 	ApparatusTop Plane = "APPARATUS_TOP"
 )
 
-// Scope tells what a calibration applies to.
+// Scope tells what a calibration applies to. The values match the source
+// names of the effective_calibrations view.
 type Scope string
 
 const (
 	// ScopeEnvironment is the default of an environment revision, entered once
-	// when the rig is set up and used by every recording of that revision.
+	// when the rig is set up and used by every animal tested in that arena.
 	ScopeEnvironment Scope = "ENVIRONMENT"
-	// ScopeRecording is a manual override for one recording, used when its
-	// camera or arena moved.
-	ScopeRecording Scope = "RECORDING"
+	// ScopeOverride is a manual calibration of one test subject on one video,
+	// used when the camera or the arena moved.
+	ScopeOverride Scope = "OVERRIDE"
 )
 
 type Status string
@@ -102,8 +105,10 @@ type Input struct {
 
 type Calibration struct {
 	ID string
-	// RecordingID is empty for an environment calibration.
-	RecordingID string
+	// TestSubjectID and RecordingID are empty for an environment calibration;
+	// an override names the animal and the video it was read from.
+	TestSubjectID string
+	RecordingID   string
 	// EnvironmentRevisionID is the revision whose measurements the points were
 	// validated against.
 	EnvironmentRevisionID   string
@@ -197,10 +202,10 @@ func New(in Input, req Requirement, createdBy string, now time.Time) (Calibratio
 	return c, nil
 }
 
-// Scope is ScopeRecording when the calibration belongs to a recording.
+// Scope is ScopeOverride when the calibration belongs to a test subject.
 func (c Calibration) Scope() Scope {
-	if c.RecordingID != "" {
-		return ScopeRecording
+	if c.TestSubjectID != "" {
+		return ScopeOverride
 	}
 	return ScopeEnvironment
 }
@@ -248,40 +253,49 @@ func SameSetup(previous Calibration, in Input) error {
 	return nil
 }
 
-// Source names where the effective calibration of a recording comes from.
+// CheckCorrection decides whether in may join chain as a calibration read from
+// the video recordingID (empty for an environment). It must supersede the
+// latest calibration of the chain. An override chain spans the videos of a
+// test, and a replacement video may come from another camera, so the camera
+// and frame size must match only within the same video.
+func CheckCorrection(chain []Calibration, in Input, recordingID string) error {
+	if err := CanCorrect(chain, in.SupersedesID); err != nil {
+		return err
+	}
+	if latest := Latest(chain); latest != nil && latest.RecordingID == recordingID {
+		return SameSetup(*latest, in)
+	}
+	return nil
+}
+
+// Source names the chain that decides an animal's calibration, as the
+// effective_calibrations view reports it.
 type Source string
 
 const (
 	SourceEnvironment Source = "ENVIRONMENT"
-	SourceRecording   Source = "RECORDING"
+	SourceOverride    Source = "OVERRIDE"
 )
 
-// Resolution is the calibration a recording is analyzed with. A nil
-// Calibration means the recording waits for calibration; Source then names the
-// chain that is blocking it, or is empty when nothing has been calibrated.
+// Resolution is the calibration that applies. A nil Calibration means analysis
+// waits; Source then names the chain that is blocking it, or is empty when
+// nothing has been calibrated.
 type Resolution struct {
 	Calibration *Calibration
 	Source      Source
 }
 
-// Effective decides which calibration a recording uses. A calibration entered
-// for the recording itself always decides: when it is REJECTED the recording
-// waits instead of silently falling back to the environment, because someone
-// entered it for a reason. Without one, the environment default applies when
-// it is VALID. Every reader of calibration state must use this function so the
-// status endpoint, the analysis scheduler and the dashboard cannot disagree.
-func Effective(recording, environment []Calibration) Resolution {
-	if latest := Latest(recording); latest != nil {
-		if latest.Status == Valid {
-			return Resolution{Calibration: latest, Source: SourceRecording}
-		}
-		return Resolution{Source: SourceRecording}
+// Resolve applies one chain: its latest calibration when VALID. A REJECTED
+// latest calibration leaves the chain waiting instead of reaching back to an
+// older valid one, because someone corrected it for a reason.
+func Resolve(chain []Calibration, source Source) Resolution {
+	latest := Latest(chain)
+	switch {
+	case latest == nil:
+		return Resolution{}
+	case latest.Status == Valid:
+		return Resolution{Calibration: latest, Source: source}
+	default:
+		return Resolution{Source: source}
 	}
-	if current := Current(environment); current != nil {
-		return Resolution{Calibration: current, Source: SourceEnvironment}
-	}
-	if Latest(environment) != nil {
-		return Resolution{Source: SourceEnvironment}
-	}
-	return Resolution{}
 }

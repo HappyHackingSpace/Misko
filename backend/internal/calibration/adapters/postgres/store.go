@@ -1,4 +1,6 @@
-// Package postgres implements calibration persistence with sqlc-generated queries.
+// Package postgres implements calibration persistence with sqlc-generated
+// queries. The effective calibration of a test subject is read from the
+// effective_calibrations view.
 package postgres
 
 import (
@@ -20,6 +22,9 @@ var constraintErrors = map[string]error{
 	"calibrations_first_key":       domain.ErrStaleCorrection,
 	"calibrations_supersedes_key":  domain.ErrStaleCorrection,
 	"calibrations_supersedes_fkey": domain.ErrStaleCorrection,
+	"calibrations_crop_check":      domain.ErrInvalidCrop,
+	"calibrations_scope":           application.ErrInvalidScope,
+	"calibrations_override_check":  application.ErrInvalidScope,
 }
 
 type Store struct {
@@ -35,26 +40,48 @@ func (s *Store) Transaction(ctx context.Context, fn func(application.Store) erro
 	})
 }
 
-func (s *Store) Recording(ctx context.Context, testID, recordingID string) (application.RecordingRef, error) {
-	if !pgtx.ValidUUID(testID) || !pgtx.ValidUUID(recordingID) {
-		return application.RecordingRef{}, application.ErrRecordingNotFound
+func (s *Store) TestExists(ctx context.Context, testID string) (bool, error) {
+	if !pgtx.ValidUUID(testID) {
+		return false, nil
 	}
-	row, err := s.queries.GetRecordingRef(ctx, sqlcgen.GetRecordingRefParams{TestID: testID, ID: recordingID})
+	exists, err := s.queries.GetTestExists(ctx, testID)
 	if err != nil {
-		return application.RecordingRef{}, translate(err, application.ErrRecordingNotFound, "get recording")
+		return false, fmt.Errorf("get test: %w", err)
 	}
-	return toRef(row)
+	return exists, nil
 }
 
-func (s *Store) LockRecording(ctx context.Context, testID, recordingID string) (application.RecordingRef, error) {
-	if !pgtx.ValidUUID(testID) || !pgtx.ValidUUID(recordingID) {
-		return application.RecordingRef{}, application.ErrRecordingNotFound
+func (s *Store) TestSubject(ctx context.Context, testID, testSubjectID string) (application.TestSubjectRef, error) {
+	if !pgtx.ValidUUID(testID) || !pgtx.ValidUUID(testSubjectID) {
+		return application.TestSubjectRef{}, application.ErrTestSubjectNotFound
 	}
-	row, err := s.queries.LockRecordingRef(ctx, sqlcgen.LockRecordingRefParams{TestID: testID, ID: recordingID})
+	row, err := s.queries.GetTestSubjectRef(ctx, sqlcgen.GetTestSubjectRefParams{TestID: testID, ID: testSubjectID})
 	if err != nil {
-		return application.RecordingRef{}, translate(err, application.ErrRecordingNotFound, "lock recording")
+		return application.TestSubjectRef{}, translate(err, application.ErrTestSubjectNotFound, "get test subject")
 	}
-	return toRef(sqlcgen.GetRecordingRefRow(row))
+	return toSubjectRef(row)
+}
+
+func (s *Store) LockTestSubject(ctx context.Context, testID, testSubjectID string) (application.TestSubjectRef, error) {
+	if !pgtx.ValidUUID(testID) || !pgtx.ValidUUID(testSubjectID) {
+		return application.TestSubjectRef{}, application.ErrTestSubjectNotFound
+	}
+	row, err := s.queries.LockTestSubjectRef(ctx, sqlcgen.LockTestSubjectRefParams{TestID: testID, ID: testSubjectID})
+	if err != nil {
+		return application.TestSubjectRef{}, translate(err, application.ErrTestSubjectNotFound, "lock test subject")
+	}
+	return toSubjectRef(sqlcgen.GetTestSubjectRefRow(row))
+}
+
+func (s *Store) CurrentVideo(ctx context.Context, testID string) (application.VideoRef, error) {
+	if !pgtx.ValidUUID(testID) {
+		return application.VideoRef{}, application.ErrNoVideo
+	}
+	row, err := s.queries.GetCurrentVideo(ctx, testID)
+	if err != nil {
+		return application.VideoRef{}, translate(err, application.ErrNoVideo, "get current video")
+	}
+	return application.VideoRef{RecordingID: row.ID, Status: row.Status}, nil
 }
 
 func (s *Store) Revision(ctx context.Context, environmentID string, number int) (application.RevisionRef, error) {
@@ -79,13 +106,13 @@ func (s *Store) LockRevision(ctx context.Context, environmentID string, number i
 	return toRevisionRef(sqlcgen.GetRevisionRefRow(row))
 }
 
-func (s *Store) Calibrations(ctx context.Context, recordingID string) ([]domain.Calibration, error) {
-	if !pgtx.ValidUUID(recordingID) {
+func (s *Store) Overrides(ctx context.Context, testSubjectID string) ([]domain.Calibration, error) {
+	if !pgtx.ValidUUID(testSubjectID) {
 		return nil, nil
 	}
-	rows, err := s.queries.ListCalibrations(ctx, &recordingID)
+	rows, err := s.queries.ListOverrides(ctx, &testSubjectID)
 	if err != nil {
-		return nil, fmt.Errorf("list calibrations: %w", err)
+		return nil, fmt.Errorf("list overrides: %w", err)
 	}
 	return toCalibrations(rows)
 }
@@ -99,6 +126,35 @@ func (s *Store) EnvironmentCalibrations(ctx context.Context, revisionID string) 
 		return nil, fmt.Errorf("list environment calibrations: %w", err)
 	}
 	return toCalibrations(rows)
+}
+
+func (s *Store) Calibration(ctx context.Context, id string) (domain.Calibration, error) {
+	row, err := s.queries.GetCalibration(ctx, id)
+	if err != nil {
+		return domain.Calibration{}, fmt.Errorf("get calibration: %w", err)
+	}
+	return toCalibration(row)
+}
+
+func (s *Store) Effective(ctx context.Context, testID string) ([]application.Effective, error) {
+	if !pgtx.ValidUUID(testID) {
+		return nil, nil
+	}
+	rows, err := s.queries.ListEffective(ctx, testID)
+	if err != nil {
+		return nil, fmt.Errorf("list effective calibrations: %w", err)
+	}
+	out := make([]application.Effective, 0, len(rows))
+	for _, row := range rows {
+		subject, err := toSubjectRef(sqlcgen.GetTestSubjectRefRow{ID: row.TestSubjectID, TestID: testID, EnvironmentRevisionID: row.EnvironmentRevisionID,
+			ParadigmKey: row.ParadigmKey, ParadigmVersion: row.ParadigmVersion, Parameters: row.Parameters})
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, application.Effective{Subject: subject, RecordingID: value(row.RecordingID), VideoStatus: value(row.VideoStatus),
+			Source: domain.Source(row.Source), CalibrationID: row.CalibrationID})
+	}
+	return out, nil
 }
 
 func toCalibrations(rows []sqlcgen.MiskoCalibration) ([]domain.Calibration, error) {
@@ -123,7 +179,8 @@ func (s *Store) CreateCalibration(ctx context.Context, c domain.Calibration) (do
 		return domain.Calibration{}, fmt.Errorf("encode CHECK points: %w", err)
 	}
 	row, err := s.queries.CreateCalibration(ctx, sqlcgen.CreateCalibrationParams{
-		RecordingID: optional(c.RecordingID), EnvironmentRevisionID: c.EnvironmentRevisionID, SupersedesID: optional(c.SupersedesID), CameraID: c.CameraID,
+		EnvironmentRevisionID: c.EnvironmentRevisionID, TestSubjectID: optional(c.TestSubjectID), RecordingID: optional(c.RecordingID),
+		SupersedesID: optional(c.SupersedesID), CameraID: c.CameraID,
 		FrameWidth: int32(c.FrameWidth), FrameHeight: int32(c.FrameHeight),
 		CropX: int32(c.Crop.X), CropY: int32(c.Crop.Y), CropWidth: int32(c.Crop.Width), CropHeight: int32(c.Crop.Height),
 		ReferenceFrameUs: referenceFrame(c), MeasurementPlane: string(c.Plane), FitPoints: fit, CheckPoints: check, Transform: c.Transform[:],
@@ -175,22 +232,29 @@ func decodePoints(raw []byte) ([]domain.Correspondence, error) {
 	return out, nil
 }
 
-func toRef(r sqlcgen.GetRecordingRefRow) (application.RecordingRef, error) {
-	apparatus := map[string]float64{}
-	if err := json.Unmarshal(r.Apparatus, &apparatus); err != nil {
-		return application.RecordingRef{}, fmt.Errorf("decode apparatus: %w", err)
+func decodeParameters(raw []byte) (map[string]float64, error) {
+	parameters := map[string]float64{}
+	if err := json.Unmarshal(raw, &parameters); err != nil {
+		return nil, fmt.Errorf("decode environment parameters: %w", err)
 	}
-	return application.RecordingRef{
-		ID: r.ID, TestID: r.TestID, VideoStatus: r.VideoStatus, ParadigmKey: r.ParadigmKey, ParadigmVersion: int(r.ParadigmVersion), EnvironmentRevisionID: r.EnvironmentRevisionID, Apparatus: apparatus,
-	}, nil
+	return parameters, nil
+}
+
+func toSubjectRef(r sqlcgen.GetTestSubjectRefRow) (application.TestSubjectRef, error) {
+	parameters, err := decodeParameters(r.Parameters)
+	if err != nil {
+		return application.TestSubjectRef{}, err
+	}
+	return application.TestSubjectRef{ID: r.ID, TestID: r.TestID, EnvironmentRevisionID: r.EnvironmentRevisionID, ParadigmKey: r.ParadigmKey,
+		ParadigmVersion: int(r.ParadigmVersion), Parameters: parameters}, nil
 }
 
 func toRevisionRef(r sqlcgen.GetRevisionRefRow) (application.RevisionRef, error) {
-	apparatus := map[string]float64{}
-	if err := json.Unmarshal(r.Apparatus, &apparatus); err != nil {
-		return application.RevisionRef{}, fmt.Errorf("decode apparatus: %w", err)
+	parameters, err := decodeParameters(r.Parameters)
+	if err != nil {
+		return application.RevisionRef{}, err
 	}
-	return application.RevisionRef{ID: r.ID, EnvironmentID: r.EnvironmentID, ParadigmKey: r.ParadigmKey, ParadigmVersion: int(r.ParadigmVersion), Apparatus: apparatus}, nil
+	return application.RevisionRef{ID: r.ID, EnvironmentID: r.EnvironmentID, ParadigmKey: r.ParadigmKey, ParadigmVersion: int(r.ParadigmVersion), Parameters: parameters}, nil
 }
 
 func toCalibration(r sqlcgen.MiskoCalibration) (domain.Calibration, error) {
@@ -206,7 +270,7 @@ func toCalibration(r sqlcgen.MiskoCalibration) (domain.Calibration, error) {
 		return domain.Calibration{}, fmt.Errorf("calibration %s has %d transform values", r.ID, len(r.Transform))
 	}
 	c := domain.Calibration{
-		ID: r.ID, RecordingID: value(r.RecordingID), EnvironmentRevisionID: r.EnvironmentRevisionID, SupersedesID: value(r.SupersedesID), CameraID: r.CameraID,
+		ID: r.ID, TestSubjectID: value(r.TestSubjectID), RecordingID: value(r.RecordingID), EnvironmentRevisionID: r.EnvironmentRevisionID, SupersedesID: value(r.SupersedesID), CameraID: r.CameraID,
 		FrameWidth: int(r.FrameWidth), FrameHeight: int(r.FrameHeight),
 		Crop:             domain.Rect{X: int(r.CropX), Y: int(r.CropY), Width: int(r.CropWidth), Height: int(r.CropHeight)},
 		ReferenceFrameUs: int64Value(r.ReferenceFrameUs), Plane: domain.Plane(r.MeasurementPlane), Fit: fit, Check: check,
@@ -233,7 +297,7 @@ func value(s *string) string {
 	return *s
 }
 
-// referenceFrame stores the video time only for calibrations of a recording.
+// referenceFrame stores the video time only for overrides, which have a video.
 func referenceFrame(c domain.Calibration) *int64 {
 	if c.RecordingID == "" {
 		return nil

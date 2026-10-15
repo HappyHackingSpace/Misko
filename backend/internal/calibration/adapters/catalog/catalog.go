@@ -11,8 +11,8 @@ type Catalog struct{}
 
 func New() Catalog { return Catalog{} }
 
-func (Catalog) Requirement(key string, version int, apparatus map[string]float64) (domain.Requirement, error) {
-	needs, err := paradigms.CalibrationRequirement(key, version, apparatus)
+func (Catalog) Requirement(key string, version int, parameters map[string]float64) (domain.Requirement, error) {
+	needs, err := paradigms.CalibrationRequirement(key, version, parameters)
 	if err != nil {
 		return domain.Requirement{}, fmt.Errorf("calibration requirement of %s v%d: %w", key, version, err)
 	}
