@@ -205,3 +205,12 @@ def test_unusable_inputs_fail_without_retry(tmp_path: Path) -> None:
     beyond = synthetic.job(clip_start_us=5_000_000, clip_end_us=6_000_000)
     with pytest.raises(NonRetryable, match="NO_FRAMES_IN_CLIP"):
         analyze(source, beyond, tmp_path / "o5.mp4")
+
+
+def test_unsupported_paradigms_are_refused_before_decoding(tmp_path: Path) -> None:
+    garbage = tmp_path / "garbage.mp4"
+    garbage.write_bytes(b"not a video" * 200)
+    job = synthetic.job()
+    job["run"]["paradigmKey"] = "MWM"
+    with pytest.raises(NonRetryable, match="UNSUPPORTED_PARADIGM: MWM v1"):
+        analyze(garbage, job, tmp_path / "o.mp4")

@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from . import ALGORITHM_VERSION, TRAJECTORY_SCHEMA, video
+from . import ALGORITHM_VERSION, SUPPORTED_PARADIGM, TRAJECTORY_SCHEMA, video
 from .geometry import to_arena
 from .overlay import Overlay
 from .tracking import Background, TrackerSettings, detect, luminance
@@ -45,7 +45,17 @@ class Analysis:
         return sum(tracked) / len(tracked) if tracked else 0.0
 
 
+def check_supported(job: dict[str, Any]) -> None:
+    """Rejects a job this worker cannot measure, before anything is downloaded."""
+    run = job["run"]
+    key, version = run.get("paradigmKey"), run.get("paradigmVersion")
+    if (key, version) != SUPPORTED_PARADIGM:
+        raise NonRetryable(f"UNSUPPORTED_PARADIGM: {key} v{version}; this worker analyzes {SUPPORTED_PARADIGM[0]} v{SUPPORTED_PARADIGM[1]} only")
+
+
 def analyze(source: Path, job: dict[str, Any], overlay_path: Path, settings: TrackerSettings = TrackerSettings()) -> Analysis:
+    """Measures the one animal of the job inside its arena's crop of the shared video."""
+    check_supported(job)
     run, calibration = job["run"], job.get("calibration")
     if calibration is None:
         raise NonRetryable("MISSING_CALIBRATION: this worker needs a pixel to centimeter calibration")
@@ -123,6 +133,7 @@ def trajectory_document(job: dict[str, Any], analysis: Analysis, settings: Track
             "algorithm": ALGORITHM_VERSION,
             "settings": settings.__dict__,
             "calibrationId": (job.get("calibration") or {}).get("id"),
+            "testSubjectId": (job.get("testSubject") or {}).get("id"),
             "pixels": {"x": [rounded(s.px, 2) for s in samples], "y": [rounded(s.py, 2) for s in samples]},
             "qc": {"lostRatio": round(analysis.lost_ratio, 6), "meanTrackedConfidence": round(analysis.mean_confidence, 6)},
         },
