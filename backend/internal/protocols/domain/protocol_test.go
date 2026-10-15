@@ -8,7 +8,7 @@ import (
 )
 
 func step(position int) Step {
-	return Step{Position: position, ParadigmKey: "OPEN_FIELD", ParadigmVersion: 1, EnvironmentRevisionID: "rev", TrialType: "STANDARD", Trials: 1}
+	return Step{Position: position, ParadigmKey: "OPEN_FIELD", ParadigmVersion: 1, TrialType: "STANDARD", Trials: 1}
 }
 
 func TestProtocolFieldsAreValidated(t *testing.T) {
@@ -71,7 +71,6 @@ func TestVersionStepsAreOrderedByPosition(t *testing.T) {
 		"malformed trial type": {[]Step{with(1, func(s *Step) { s.TrialType = "probe" })}, ErrInvalidTrialType},
 		"malformed paradigm":   {[]Step{with(1, func(s *Step) { s.ParadigmKey = "maze" })}, ErrInvalidParadigmKey},
 		"paradigm version 0":   {[]Step{with(1, func(s *Step) { s.ParadigmVersion = 0 })}, ErrInvalidParadigmVersion},
-		"no environment":       {[]Step{with(1, func(s *Step) { s.EnvironmentRevisionID = "" })}, ErrMissingEnvironment},
 		"long step notes":      {[]Step{with(1, func(s *Step) { s.Notes = strings.Repeat("n", 2001) })}, ErrInvalidNotes},
 	} {
 		if _, err := NewVersion("protocol", "", "user", tc.steps); !errors.Is(err, tc.want) {

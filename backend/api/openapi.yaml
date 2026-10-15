@@ -1144,7 +1144,7 @@ paths:
         '401': {$ref: '#/components/responses/Problem'}
     post:
       operationId: createProtocol
-      summary: Create a protocol with its first version (apparatus:write)
+      summary: Create a protocol with its first version (study:write); 409 protocol.experimentClosed once the experiment is completed
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ProtocolInput'}}}}
       responses:
         '201':
@@ -1175,7 +1175,7 @@ paths:
         '404': {$ref: '#/components/responses/Problem'}
     patch:
       operationId: updateProtocol
-      summary: Rename a protocol or edit its description (apparatus:write); steps change only through versions
+      summary: Rename a protocol or edit its description (study:write); steps change only through versions
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ProtocolPatch'}}}}
       responses:
         '200': {description: Updated, content: {application/json: {schema: {$ref: '#/components/schemas/Protocol'}}}}
@@ -1201,7 +1201,7 @@ paths:
         '404': {$ref: '#/components/responses/Problem'}
     post:
       operationId: createProtocolVersion
-      summary: Store the next version (apparatus:write); earlier versions never change
+      summary: Store the next version (study:write); earlier versions never change
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ProtocolVersionInput'}}}}
       responses:
         '201': {description: Created, content: {application/json: {schema: {$ref: '#/components/schemas/ProtocolVersion'}}}}
@@ -1209,6 +1209,7 @@ paths:
         '401': {$ref: '#/components/responses/Problem'}
         '403': {$ref: '#/components/responses/Problem'}
         '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
   /api/experiments/{id}/protocols/{protocolId}/versions/{number}:
     parameters:
       - $ref: '#/components/parameters/ID'
@@ -1226,17 +1227,19 @@ paths:
       - $ref: '#/components/parameters/ID'
     get:
       operationId: listTests
-      summary: Tests of this experiment by scheduled time (*:read)
+      summary: Tests of this experiment, earliest scheduled first (*:read)
       parameters:
-        - {name: subjectId, in: query, schema: {type: string, format: uuid}}
-        - {name: phaseId, in: query, schema: {type: string, format: uuid}}
+        - {name: timepointId, in: query, schema: {type: string, format: uuid}}
+        - {name: subjectId, in: query, schema: {type: string, format: uuid}, description: Tests that include this animal}
         - {name: status, in: query, schema: {$ref: '#/components/schemas/TestStatus'}}
         - {name: paradigmKey, in: query, schema: {$ref: '#/components/schemas/ConstantKey'}}
+        - {name: from, in: query, schema: {type: string, format: date}, description: Inclusive first scheduled date in the laboratory's time zone}
+        - {name: to, in: query, schema: {type: string, format: date}, description: Inclusive last scheduled date in the laboratory's time zone}
         - $ref: '#/components/parameters/Page'
         - $ref: '#/components/parameters/PageSize'
       responses:
         '200':
-          description: Tests
+          description: Tests with their animals
           content:
             application/json:
               schema: {type: object, required: [data, total, page, pageSize], properties: {data: {type: array, items: {$ref: '#/components/schemas/Test'}}, total: {type: integer}, page: {type: integer}, pageSize: {type: integer}}}
@@ -1244,7 +1247,11 @@ paths:
         '401': {$ref: '#/components/responses/Problem'}
     post:
       operationId: createTest
-      summary: Plan a test of an enrolled subject on one protocol step (test:write)
+      summary: Plan a session of a running experiment with its animals (test:write)
+      description: >-
+        The paradigm and planned trials come from the protocol step. Every arena must be an environment revision of the step's
+        paradigm version, every animal an allocation of this experiment that is not excluded, and no animal may already be in
+        another non-cancelled test of the same timepoint and protocol step (409 test.animalAlreadyScheduled).
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/TestInput'}}}}
       responses:
         '201': {description: Created, content: {application/json: {schema: {$ref: '#/components/schemas/Test'}}}}
@@ -1252,20 +1259,24 @@ paths:
         '401': {$ref: '#/components/responses/Problem'}
         '403': {$ref: '#/components/responses/Problem'}
         '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
   /api/tests:
     get:
       operationId: listAllTests
-      summary: Tests across every experiment, newest scheduled first (*:read)
+      summary: Worklist of tests across every experiment, newest scheduled first (*:read)
       parameters:
         - {name: experimentId, in: query, schema: {type: string, format: uuid}}
-        - {name: subjectId, in: query, schema: {type: string, format: uuid}}
+        - {name: timepointId, in: query, schema: {type: string, format: uuid}}
+        - {name: subjectId, in: query, schema: {type: string, format: uuid}, description: Tests that include this animal}
         - {name: status, in: query, schema: {$ref: '#/components/schemas/TestStatus'}}
         - {name: paradigmKey, in: query, schema: {$ref: '#/components/schemas/ConstantKey'}}
+        - {name: from, in: query, schema: {type: string, format: date}, description: Inclusive first scheduled date in the laboratory's time zone}
+        - {name: to, in: query, schema: {type: string, format: date}, description: Inclusive last scheduled date in the laboratory's time zone}
         - $ref: '#/components/parameters/Page'
         - $ref: '#/components/parameters/PageSize'
       responses:
         '200':
-          description: Tests
+          description: Tests with their animals
           content:
             application/json:
               schema: {type: object, required: [data, total, page, pageSize], properties: {data: {type: array, items: {$ref: '#/components/schemas/Test'}}, total: {type: integer}, page: {type: integer}, pageSize: {type: integer}}}
@@ -1276,24 +1287,44 @@ paths:
       - $ref: '#/components/parameters/ID'
     get:
       operationId: getTest
-      summary: A test with its trials (*:read)
+      summary: A test with its animals and each animal's trials (*:read)
       responses:
-        '200':
-          description: Test
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: '#/components/schemas/Test'
-                  - {type: object, required: [trials], properties: {trials: {type: array, items: {$ref: '#/components/schemas/Trial'}}}}
+        '200': {description: Test; every subject carries its trials, content: {application/json: {schema: {$ref: '#/components/schemas/Test'}}}}
         '401': {$ref: '#/components/responses/Problem'}
         '404': {$ref: '#/components/responses/Problem'}
+  /api/tests/{id}/subjects:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    post:
+      operationId: addTestSubject
+      summary: Add an animal in its own arena to a planned test (test:write); same rules as planning
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/TestSubjectInput'}}}}
+      responses:
+        '201': {description: The test with its animals, content: {application/json: {schema: {$ref: '#/components/schemas/Test'}}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/tests/{id}/subjects/{subjectId}:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+      - {name: subjectId, in: path, required: true, schema: {type: string, format: uuid}, description: Test subject id (an animal of this test)}
+    delete:
+      operationId: removeTestSubject
+      summary: Remove an animal from a planned test (test:write); the last animal stays (409 test.lastSubject), cancel the test instead
+      responses:
+        '200': {description: The test with its remaining animals, content: {application/json: {schema: {$ref: '#/components/schemas/Test'}}}}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
   /api/tests/{id}/start:
     parameters:
       - $ref: '#/components/parameters/ID'
     post:
       operationId: startTest
-      summary: Start a planned test (test:run); the subject's group at the start must be the planned group
+      summary: Start a planned test (test:run); an animal excluded since planning must be removed first (409 test.subjectExcluded)
       requestBody: {required: true, content: {application/json: {schema: {type: object, additionalProperties: false, properties: {startedAt: {type: string, format: date-time, description: Defaults to now}}}}}}
       responses:
         '200': {description: Started, content: {application/json: {schema: {$ref: '#/components/schemas/Test'}}}}
@@ -1307,7 +1338,7 @@ paths:
       - $ref: '#/components/parameters/ID'
     post:
       operationId: completeTest
-      summary: Complete a test in progress that has at least one trial (test:run)
+      summary: Complete a test in progress in which every animal has at least one trial (test:run)
       requestBody: {required: true, content: {application/json: {schema: {type: object, additionalProperties: false, properties: {completedAt: {type: string, format: date-time, description: Defaults to now}}}}}}
       responses:
         '200': {description: Completed, content: {application/json: {schema: {$ref: '#/components/schemas/Test'}}}}
@@ -1321,7 +1352,7 @@ paths:
       - $ref: '#/components/parameters/ID'
     post:
       operationId: cancelTest
-      summary: Cancel a planned test or one in progress (test:write); recorded trials are kept
+      summary: Cancel a planned test or one in progress (test:write); animals and trials are kept, the animals may join another test of the slot
       requestBody: {required: true, content: {application/json: {schema: {type: object, additionalProperties: false, required: [reason], properties: {reason: {type: string, minLength: 1, maxLength: 2000}}}}}}
       responses:
         '200': {description: Cancelled, content: {application/json: {schema: {$ref: '#/components/schemas/Test'}}}}
@@ -1330,12 +1361,13 @@ paths:
         '403': {$ref: '#/components/responses/Problem'}
         '404': {$ref: '#/components/responses/Problem'}
         '409': {$ref: '#/components/responses/Problem'}
-  /api/tests/{id}/trials:
+  /api/tests/{id}/subjects/{subjectId}/trials:
     parameters:
       - $ref: '#/components/parameters/ID'
+      - {name: subjectId, in: path, required: true, schema: {type: string, format: uuid}, description: Test subject id (an animal of this test)}
     get:
       operationId: listTrials
-      summary: Trials of a test in recording order (*:read)
+      summary: Trials of one animal of a test in recording order (*:read)
       responses:
         '200':
           description: Trials
@@ -1346,7 +1378,7 @@ paths:
         '404': {$ref: '#/components/responses/Problem'}
     post:
       operationId: recordTrial
-      summary: Append a trial to a test in progress (test:run); repeating a repetition adds an attempt
+      summary: Append a trial of one animal to a test in progress (test:run); repeating a repetition adds an attempt
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/TrialInput'}}}}
       responses:
         '201': {description: Recorded, content: {application/json: {schema: {$ref: '#/components/schemas/Trial'}}}}
@@ -2677,14 +2709,12 @@ components:
         updatedAt: {type: string, format: date-time}
     ProtocolStep:
       type: object
-      required: [position, paradigmKey, paradigmVersion, environmentId, environmentRevision, environmentRevisionId, trialType, trials, interTrialIntervalS, session, notes]
+      required: [position, paradigmKey, paradigmVersion, trialType, trials, interTrialIntervalS, session, notes]
+      description: The arena is chosen per animal when a test is planned
       properties:
         position: {type: integer, minimum: 1, maximum: 50}
         paradigmKey: {$ref: '#/components/schemas/ConstantKey'}
         paradigmVersion: {type: integer, minimum: 1}
-        environmentId: {type: string, format: uuid}
-        environmentRevision: {type: integer, minimum: 1, description: Number of the referenced revision}
-        environmentRevisionId: {type: string, format: uuid}
         trialType: {$ref: '#/components/schemas/ConstantKey'}
         trials: {type: integer, minimum: 1, maximum: 1000}
         interTrialIntervalS: {type: integer, minimum: 0, maximum: 86400}
@@ -2695,18 +2725,17 @@ components:
     ProtocolStepInput:
       type: object
       additionalProperties: false
-      required: [position, paradigmKey, paradigmVersion, environmentRevisionId, trialType, trials]
+      required: [position, paradigmKey, paradigmVersion, trialType, trials]
       properties:
         position: {type: integer, minimum: 1, maximum: 50, description: Positions run from 1 without gaps or duplicates}
         paradigmKey: {$ref: '#/components/schemas/ConstantKey'}
         paradigmVersion: {type: integer, minimum: 1}
-        environmentRevisionId: {type: string, format: uuid, description: A revision set up for the same paradigm key and version}
         trialType: {$ref: '#/components/schemas/ConstantKey'}
         trials: {type: integer, minimum: 1, maximum: 1000}
         interTrialIntervalS: {type: integer, minimum: 0, maximum: 86400, default: 0}
         session:
           allOf: [{$ref: '#/components/schemas/ParameterValues'}]
-          description: SESSION parameters of the paradigm version; omitted ones take their defaults. Apparatus and analysis keys are rejected
+          description: SESSION parameters of the paradigm version, checked against its ranges and rules; omitted ones take their defaults. Apparatus and analysis keys are rejected
         notes: {type: string, maxLength: 2000}
     ProtocolVersion:
       type: object
@@ -2747,20 +2776,22 @@ components:
     TestStatus: {type: string, enum: [PLANNED, IN_PROGRESS, COMPLETED, CANCELLED]}
     Test:
       type: object
-      required: [id, experimentId, enrollmentId, subjectId, phaseId, groupId, protocolVersionId, stepPosition, paradigmKey, paradigmVersion, environmentRevisionId, plannedTrials, status, scheduledAt, startedAt, completedAt, cancelledAt, cancelReason, notes, createdBy, createdAt, updatedAt]
-      description: One session of a subject on one protocol step. Context fields never change; status is the session's own lifecycle, separate from analysis.
+      required: [id, experimentId, experimentCode, timepointId, timepointName, studyDay, protocolId, protocolName, protocolVersionId, protocolVersion, stepPosition, paradigmKey, paradigmVersion, plannedTrials, status, scheduledAt, startedAt, completedAt, cancelledAt, cancelReason, notes, createdBy, createdAt, updatedAt, subjects]
+      description: One session of a running experiment at one timepoint on one protocol step, with one video and one or more animals each in its own arena. Context fields never change; status is the session's own lifecycle, separate from analysis.
       properties:
         id: {type: string, format: uuid}
         experimentId: {type: string, format: uuid}
-        enrollmentId: {type: string, format: uuid}
-        subjectId: {type: string, format: uuid}
-        phaseId: {type: [string, 'null'], format: uuid}
-        groupId: {type: [string, 'null'], format: uuid, description: The subject's group at the scheduled time}
+        experimentCode: {type: string}
+        timepointId: {type: string, format: uuid}
+        timepointName: {type: string}
+        studyDay: {type: integer}
+        protocolId: {type: string, format: uuid}
+        protocolName: {type: string}
         protocolVersionId: {type: string, format: uuid}
+        protocolVersion: {type: integer, minimum: 1}
         stepPosition: {type: integer, minimum: 1}
         paradigmKey: {$ref: '#/components/schemas/ConstantKey'}
         paradigmVersion: {type: integer, minimum: 1}
-        environmentRevisionId: {type: string, format: uuid}
         plannedTrials: {type: integer, minimum: 1}
         status: {$ref: '#/components/schemas/TestStatus'}
         scheduledAt: {type: string, format: date-time}
@@ -2772,25 +2803,51 @@ components:
         createdBy: {type: string, format: uuid}
         createdAt: {type: string, format: date-time}
         updatedAt: {type: string, format: date-time}
+        subjects: {type: array, items: {$ref: '#/components/schemas/TestSubject'}}
+    TestSubject:
+      type: object
+      required: [id, allocationId, subjectId, subjectCode, excluded, environmentRevisionId, environmentId, environmentName, environmentRevision, createdBy, createdAt]
+      description: One animal of a test in its arena. The group is left out so a blinded study stays blind for the people running tests.
+      properties:
+        id: {type: string, format: uuid}
+        allocationId: {type: string, format: uuid}
+        subjectId: {type: string, format: uuid}
+        subjectCode: {type: string}
+        excluded: {type: boolean, description: The animal was excluded from the study after it was planned}
+        environmentRevisionId: {type: string, format: uuid}
+        environmentId: {type: string, format: uuid}
+        environmentName: {type: string}
+        environmentRevision: {type: integer, minimum: 1}
+        createdBy: {type: string, format: uuid}
+        createdAt: {type: string, format: date-time}
+        trials: {type: array, items: {$ref: '#/components/schemas/Trial'}, description: 'Only on GET /api/tests/{id}'}
+    TestSubjectInput:
+      type: object
+      additionalProperties: false
+      required: [allocationId, environmentRevisionId]
+      properties:
+        allocationId: {type: string, format: uuid, description: An allocation of this experiment that is not excluded}
+        environmentRevisionId: {type: string, format: uuid, description: An environment revision of the step's paradigm version, not used by another animal of the test}
     TestInput:
       type: object
       additionalProperties: false
-      required: [enrollmentId, protocolVersionId, stepPosition, scheduledAt]
+      required: [timepointId, protocolVersionId, stepPosition, subjects]
       properties:
-        enrollmentId: {type: string, format: uuid, description: An enrollment of this experiment; the subject comes from it}
-        phaseId: {type: string, format: uuid}
+        timepointId: {type: string, format: uuid, description: A timepoint of this experiment}
         protocolVersionId: {type: string, format: uuid, description: A protocol version of this experiment}
         stepPosition: {type: integer, minimum: 1}
-        scheduledAt: {type: string, format: date-time, description: Not before the enrollment}
+        scheduledAt: {type: string, format: date-time, description: Defaults to day 0 plus the timepoint's study day, at midnight in the laboratory's time zone}
         notes: {type: string, maxLength: 2000}
+        subjects: {type: array, minItems: 1, maxItems: 12, items: {$ref: '#/components/schemas/TestSubjectInput'}}
     Trial:
       type: object
-      required: [id, testId, number, repetition, attempt, startedAt, endedAt, notes, recordedBy, createdAt]
+      required: [id, testId, testSubjectId, number, repetition, attempt, startedAt, endedAt, notes, recordedBy, createdAt]
       description: Immutable; a repeated repetition is a new attempt
       properties:
         id: {type: string, format: uuid}
         testId: {type: string, format: uuid}
-        number: {type: integer, minimum: 1, description: Recording order within the test}
+        testSubjectId: {type: string, format: uuid}
+        number: {type: integer, minimum: 1, description: Recording order within the animal's trials}
         repetition: {type: integer, minimum: 1}
         attempt: {type: integer, minimum: 1}
         startedAt: {type: string, format: date-time}

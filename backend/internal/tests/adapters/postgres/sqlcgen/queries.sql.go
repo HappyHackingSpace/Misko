@@ -8,59 +8,45 @@ package sqlcgen
 import (
 	"context"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const countAllTests = `-- name: CountAllTests :one
-SELECT count(*) FROM misko.tests
-WHERE ($1::uuid IS NULL OR experiment_id = $1::uuid)
-  AND ($2::uuid IS NULL OR subject_id = $2::uuid)
-  AND ($3::text = '' OR status = $3::text)
-  AND ($4::text = '' OR paradigm_key = $4::text)
-`
-
-type CountAllTestsParams struct {
-	ExperimentID *string
-	SubjectID    *string
-	Status       string
-	ParadigmKey  string
-}
-
-func (q *Queries) CountAllTests(ctx context.Context, arg CountAllTestsParams) (int64, error) {
-	row := q.db.QueryRow(ctx, countAllTests,
-		arg.ExperimentID,
-		arg.SubjectID,
-		arg.Status,
-		arg.ParadigmKey,
-	)
-	var count int64
-	err := row.Scan(&count)
-	return count, err
-}
-
 const countTests = `-- name: CountTests :one
-SELECT count(*) FROM misko.tests
-WHERE experiment_id = $1
-  AND ($2::uuid IS NULL OR subject_id = $2::uuid)
-  AND ($3::uuid IS NULL OR phase_id = $3::uuid)
-  AND ($4::text = '' OR status = $4::text)
-  AND ($5::text = '' OR paradigm_key = $5::text)
+WITH lab AS (SELECT coalesce((SELECT l.timezone FROM misko.laboratory l), 'UTC') AS timezone)
+SELECT count(*)
+FROM misko.tests t
+CROSS JOIN lab
+WHERE ($1::uuid IS NULL OR t.experiment_id = $1::uuid)
+  AND ($2::uuid IS NULL OR t.timepoint_id = $2::uuid)
+  AND ($3::uuid IS NULL OR EXISTS (
+        SELECT 1 FROM misko.test_subjects ts JOIN misko.allocations a ON a.id = ts.allocation_id
+        WHERE ts.test_id = t.id AND a.subject_id = $3::uuid))
+  AND ($4::text = '' OR t.status = $4::text)
+  AND ($5::text = '' OR t.paradigm_key = $5::text)
+  AND ($6::date IS NULL OR t.scheduled_at >= ($6::date)::timestamp AT TIME ZONE lab.timezone)
+  AND ($7::date IS NULL OR t.scheduled_at < ($7::date + 1)::timestamp AT TIME ZONE lab.timezone)
 `
 
 type CountTestsParams struct {
-	ExperimentID string
+	ExperimentID *string
+	TimepointID  *string
 	SubjectID    *string
-	PhaseID      *string
 	Status       string
 	ParadigmKey  string
+	FromDate     pgtype.Date
+	ToDate       pgtype.Date
 }
 
 func (q *Queries) CountTests(ctx context.Context, arg CountTestsParams) (int64, error) {
 	row := q.db.QueryRow(ctx, countTests,
 		arg.ExperimentID,
+		arg.TimepointID,
 		arg.SubjectID,
-		arg.PhaseID,
 		arg.Status,
 		arg.ParadigmKey,
+		arg.FromDate,
+		arg.ToDate,
 	)
 	var count int64
 	err := row.Scan(&count)
@@ -87,93 +73,92 @@ func (q *Queries) CreateComment(ctx context.Context, arg CreateCommentParams) (s
 }
 
 const createTest = `-- name: CreateTest :one
-INSERT INTO misko.tests (experiment_id, enrollment_id, subject_id, phase_id, group_id, protocol_version_id, step_position, paradigm_key, paradigm_version, environment_revision_id, planned_trials, scheduled_at, notes, created_by)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-RETURNING id, experiment_id, enrollment_id, subject_id, phase_id, group_id, protocol_version_id, step_position, paradigm_key, paradigm_version, environment_revision_id, planned_trials, status, scheduled_at, started_at, completed_at, cancelled_at, cancel_reason, notes, created_by, created_at, updated_at
+INSERT INTO misko.tests (experiment_id, timepoint_id, protocol_version_id, step_position, paradigm_key, paradigm_version, planned_trials, scheduled_at, notes, created_by)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+RETURNING id
 `
 
 type CreateTestParams struct {
-	ExperimentID          string
-	EnrollmentID          string
-	SubjectID             string
-	PhaseID               *string
-	GroupID               *string
-	ProtocolVersionID     string
-	StepPosition          int32
-	ParadigmKey           string
-	ParadigmVersion       int32
-	EnvironmentRevisionID string
-	PlannedTrials         int32
-	ScheduledAt           time.Time
-	Notes                 *string
-	CreatedBy             string
+	ExperimentID      string
+	TimepointID       string
+	ProtocolVersionID string
+	StepPosition      int32
+	ParadigmKey       string
+	ParadigmVersion   int32
+	PlannedTrials     int32
+	ScheduledAt       time.Time
+	Notes             *string
+	CreatedBy         string
 }
 
-func (q *Queries) CreateTest(ctx context.Context, arg CreateTestParams) (MiskoTest, error) {
+func (q *Queries) CreateTest(ctx context.Context, arg CreateTestParams) (string, error) {
 	row := q.db.QueryRow(ctx, createTest,
 		arg.ExperimentID,
-		arg.EnrollmentID,
-		arg.SubjectID,
-		arg.PhaseID,
-		arg.GroupID,
+		arg.TimepointID,
 		arg.ProtocolVersionID,
 		arg.StepPosition,
 		arg.ParadigmKey,
 		arg.ParadigmVersion,
-		arg.EnvironmentRevisionID,
 		arg.PlannedTrials,
 		arg.ScheduledAt,
 		arg.Notes,
 		arg.CreatedBy,
 	)
-	var i MiskoTest
-	err := row.Scan(
-		&i.ID,
-		&i.ExperimentID,
-		&i.EnrollmentID,
-		&i.SubjectID,
-		&i.PhaseID,
-		&i.GroupID,
-		&i.ProtocolVersionID,
-		&i.StepPosition,
-		&i.ParadigmKey,
-		&i.ParadigmVersion,
-		&i.EnvironmentRevisionID,
-		&i.PlannedTrials,
-		&i.Status,
-		&i.ScheduledAt,
-		&i.StartedAt,
-		&i.CompletedAt,
-		&i.CancelledAt,
-		&i.CancelReason,
-		&i.Notes,
-		&i.CreatedBy,
-		&i.CreatedAt,
-		&i.UpdatedAt,
+	var id string
+	err := row.Scan(&id)
+	return id, err
+}
+
+const createTestSubject = `-- name: CreateTestSubject :exec
+INSERT INTO misko.test_subjects (experiment_id, test_id, allocation_id, environment_revision_id, paradigm_key, paradigm_version, created_by)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+`
+
+type CreateTestSubjectParams struct {
+	ExperimentID          string
+	TestID                string
+	AllocationID          string
+	EnvironmentRevisionID string
+	ParadigmKey           string
+	ParadigmVersion       int32
+	CreatedBy             string
+}
+
+func (q *Queries) CreateTestSubject(ctx context.Context, arg CreateTestSubjectParams) error {
+	_, err := q.db.Exec(ctx, createTestSubject,
+		arg.ExperimentID,
+		arg.TestID,
+		arg.AllocationID,
+		arg.EnvironmentRevisionID,
+		arg.ParadigmKey,
+		arg.ParadigmVersion,
+		arg.CreatedBy,
 	)
-	return i, err
+	return err
 }
 
 const createTrial = `-- name: CreateTrial :one
-INSERT INTO misko.trials (test_id, number, repetition, attempt, started_at, ended_at, notes, recorded_by)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-RETURNING id, test_id, number, repetition, attempt, started_at, ended_at, notes, recorded_by, created_at
+INSERT INTO misko.trials (test_id, test_subject_id, number, repetition, attempt, started_at, ended_at, notes, recorded_by)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+RETURNING id, test_id, test_subject_id, number, repetition, attempt, started_at, ended_at, notes, recorded_by, created_at
 `
 
 type CreateTrialParams struct {
-	TestID     string
-	Number     int32
-	Repetition int32
-	Attempt    int32
-	StartedAt  time.Time
-	EndedAt    *time.Time
-	Notes      *string
-	RecordedBy string
+	TestID        string
+	TestSubjectID string
+	Number        int32
+	Repetition    int32
+	Attempt       int32
+	StartedAt     time.Time
+	EndedAt       *time.Time
+	Notes         *string
+	RecordedBy    string
 }
 
 func (q *Queries) CreateTrial(ctx context.Context, arg CreateTrialParams) (MiskoTrial, error) {
 	row := q.db.QueryRow(ctx, createTrial,
 		arg.TestID,
+		arg.TestSubjectID,
 		arg.Number,
 		arg.Repetition,
 		arg.Attempt,
@@ -186,6 +171,7 @@ func (q *Queries) CreateTrial(ctx context.Context, arg CreateTrialParams) (Misko
 	err := row.Scan(
 		&i.ID,
 		&i.TestID,
+		&i.TestSubjectID,
 		&i.Number,
 		&i.Repetition,
 		&i.Attempt,
@@ -209,6 +195,23 @@ type DeleteCommentParams struct {
 
 func (q *Queries) DeleteComment(ctx context.Context, arg DeleteCommentParams) (int64, error) {
 	result, err := q.db.Exec(ctx, deleteComment, arg.TestID, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const deleteTestSubject = `-- name: DeleteTestSubject :execrows
+DELETE FROM misko.test_subjects WHERE test_id = $1 AND id = $2
+`
+
+type DeleteTestSubjectParams struct {
+	TestID string
+	ID     string
+}
+
+func (q *Queries) DeleteTestSubject(ctx context.Context, arg DeleteTestSubjectParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteTestSubject, arg.TestID, arg.ID)
 	if err != nil {
 		return 0, err
 	}
@@ -252,38 +255,19 @@ func (q *Queries) GetComment(ctx context.Context, arg GetCommentParams) (GetComm
 	return i, err
 }
 
-const getEnrollmentRef = `-- name: GetEnrollmentRef :one
-SELECT id, experiment_id, subject_id, enrolled_at
-FROM misko.enrollments
-WHERE experiment_id = $1 AND id = $2
+const getExperimentStatus = `-- name: GetExperimentStatus :one
+SELECT status FROM misko.experiments WHERE id = $1
 `
 
-type GetEnrollmentRefParams struct {
-	ExperimentID string
-	ID           string
-}
-
-type GetEnrollmentRefRow struct {
-	ID           string
-	ExperimentID string
-	SubjectID    string
-	EnrolledAt   time.Time
-}
-
-func (q *Queries) GetEnrollmentRef(ctx context.Context, arg GetEnrollmentRefParams) (GetEnrollmentRefRow, error) {
-	row := q.db.QueryRow(ctx, getEnrollmentRef, arg.ExperimentID, arg.ID)
-	var i GetEnrollmentRefRow
-	err := row.Scan(
-		&i.ID,
-		&i.ExperimentID,
-		&i.SubjectID,
-		&i.EnrolledAt,
-	)
-	return i, err
+func (q *Queries) GetExperimentStatus(ctx context.Context, id string) (string, error) {
+	row := q.db.QueryRow(ctx, getExperimentStatus, id)
+	var status string
+	err := row.Scan(&status)
+	return status, err
 }
 
 const getProtocolStep = `-- name: GetProtocolStep :one
-SELECT s.protocol_version_id, s.position, s.paradigm_key, s.paradigm_version, s.environment_revision_id, s.trials
+SELECT s.protocol_version_id, s.position, s.paradigm_key, s.paradigm_version, s.trials
 FROM misko.protocol_steps s
 JOIN misko.protocol_versions v ON v.id = s.protocol_version_id
 WHERE v.experiment_id = $1 AND v.id = $2 AND s.position = $3
@@ -296,12 +280,11 @@ type GetProtocolStepParams struct {
 }
 
 type GetProtocolStepRow struct {
-	ProtocolVersionID     string
-	Position              int32
-	ParadigmKey           string
-	ParadigmVersion       int32
-	EnvironmentRevisionID string
-	Trials                int32
+	ProtocolVersionID string
+	Position          int32
+	ParadigmKey       string
+	ParadigmVersion   int32
+	Trials            int32
 }
 
 func (q *Queries) GetProtocolStep(ctx context.Context, arg GetProtocolStepParams) (GetProtocolStepRow, error) {
@@ -312,31 +295,68 @@ func (q *Queries) GetProtocolStep(ctx context.Context, arg GetProtocolStepParams
 		&i.Position,
 		&i.ParadigmKey,
 		&i.ParadigmVersion,
-		&i.EnvironmentRevisionID,
 		&i.Trials,
 	)
 	return i, err
 }
 
 const getTest = `-- name: GetTest :one
-SELECT id, experiment_id, enrollment_id, subject_id, phase_id, group_id, protocol_version_id, step_position, paradigm_key, paradigm_version, environment_revision_id, planned_trials, status, scheduled_at, started_at, completed_at, cancelled_at, cancel_reason, notes, created_by, created_at, updated_at FROM misko.tests WHERE id = $1
+SELECT t.id, t.experiment_id, e.code AS experiment_code, t.timepoint_id, tp.name AS timepoint_name, tp.study_day,
+       p.id AS protocol_id, p.name AS protocol_name, t.protocol_version_id, pv.number AS protocol_version, t.step_position,
+       t.paradigm_key, t.paradigm_version, t.planned_trials, t.status, t.scheduled_at, t.started_at, t.completed_at, t.cancelled_at,
+       t.cancel_reason, t.notes, t.created_by, t.created_at, t.updated_at
+FROM misko.tests t
+JOIN misko.experiments e ON e.id = t.experiment_id
+JOIN misko.timepoints tp ON tp.id = t.timepoint_id
+JOIN misko.protocol_versions pv ON pv.id = t.protocol_version_id
+JOIN misko.protocols p ON p.id = pv.protocol_id
+WHERE t.id = $1
 `
 
-func (q *Queries) GetTest(ctx context.Context, id string) (MiskoTest, error) {
+type GetTestRow struct {
+	ID                string
+	ExperimentID      string
+	ExperimentCode    string
+	TimepointID       string
+	TimepointName     string
+	StudyDay          int32
+	ProtocolID        string
+	ProtocolName      string
+	ProtocolVersionID string
+	ProtocolVersion   int32
+	StepPosition      int32
+	ParadigmKey       string
+	ParadigmVersion   int32
+	PlannedTrials     int32
+	Status            string
+	ScheduledAt       time.Time
+	StartedAt         *time.Time
+	CompletedAt       *time.Time
+	CancelledAt       *time.Time
+	CancelReason      *string
+	Notes             *string
+	CreatedBy         string
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
+}
+
+func (q *Queries) GetTest(ctx context.Context, id string) (GetTestRow, error) {
 	row := q.db.QueryRow(ctx, getTest, id)
-	var i MiskoTest
+	var i GetTestRow
 	err := row.Scan(
 		&i.ID,
 		&i.ExperimentID,
-		&i.EnrollmentID,
-		&i.SubjectID,
-		&i.PhaseID,
-		&i.GroupID,
+		&i.ExperimentCode,
+		&i.TimepointID,
+		&i.TimepointName,
+		&i.StudyDay,
+		&i.ProtocolID,
+		&i.ProtocolName,
 		&i.ProtocolVersionID,
+		&i.ProtocolVersion,
 		&i.StepPosition,
 		&i.ParadigmKey,
 		&i.ParadigmVersion,
-		&i.EnvironmentRevisionID,
 		&i.PlannedTrials,
 		&i.Status,
 		&i.ScheduledAt,
@@ -352,84 +372,61 @@ func (q *Queries) GetTest(ctx context.Context, id string) (MiskoTest, error) {
 	return i, err
 }
 
-const groupAt = `-- name: GroupAt :one
-SELECT group_id
-FROM misko.group_assignments
-WHERE enrollment_id = $1
-  AND valid_from <= $2::timestamptz
-  AND (valid_to IS NULL OR valid_to > $2::timestamptz)
+const getTimepoint = `-- name: GetTimepoint :one
+SELECT tp.id, tp.study_day,
+       ((e.day_zero + tp.study_day)::timestamp AT TIME ZONE coalesce((SELECT l.timezone FROM misko.laboratory l), 'UTC'))::timestamptz AS default_scheduled_at
+FROM misko.timepoints tp
+JOIN misko.experiments e ON e.id = tp.experiment_id
+WHERE tp.experiment_id = $1 AND tp.id = $2 AND e.day_zero IS NOT NULL
 `
 
-type GroupAtParams struct {
-	EnrollmentID string
-	At           time.Time
+type GetTimepointParams struct {
+	ExperimentID string
+	ID           string
 }
 
-func (q *Queries) GroupAt(ctx context.Context, arg GroupAtParams) (string, error) {
-	row := q.db.QueryRow(ctx, groupAt, arg.EnrollmentID, arg.At)
-	var group_id string
-	err := row.Scan(&group_id)
-	return group_id, err
+type GetTimepointRow struct {
+	ID                 string
+	StudyDay           int32
+	DefaultScheduledAt time.Time
 }
 
-const listAllTests = `-- name: ListAllTests :many
-SELECT id, experiment_id, enrollment_id, subject_id, phase_id, group_id, protocol_version_id, step_position, paradigm_key, paradigm_version, environment_revision_id, planned_trials, status, scheduled_at, started_at, completed_at, cancelled_at, cancel_reason, notes, created_by, created_at, updated_at FROM misko.tests
-WHERE ($1::uuid IS NULL OR experiment_id = $1::uuid)
-  AND ($2::uuid IS NULL OR subject_id = $2::uuid)
-  AND ($3::text = '' OR status = $3::text)
-  AND ($4::text = '' OR paradigm_key = $4::text)
-ORDER BY scheduled_at DESC, id
-LIMIT $6 OFFSET $5
+// GetTimepoint computes the default schedule: day 0 plus the study day, at
+// midnight in the laboratory's time zone. It finds nothing before day 0 is set.
+func (q *Queries) GetTimepoint(ctx context.Context, arg GetTimepointParams) (GetTimepointRow, error) {
+	row := q.db.QueryRow(ctx, getTimepoint, arg.ExperimentID, arg.ID)
+	var i GetTimepointRow
+	err := row.Scan(&i.ID, &i.StudyDay, &i.DefaultScheduledAt)
+	return i, err
+}
+
+const listArenas = `-- name: ListArenas :many
+SELECT id, environment_id, paradigm_key, paradigm_version
+FROM misko.environment_revisions
+WHERE id = ANY($1::uuid[])
 `
 
-type ListAllTestsParams struct {
-	ExperimentID *string
-	SubjectID    *string
-	Status       string
-	ParadigmKey  string
-	PageOffset   int32
-	PageLimit    int32
+type ListArenasRow struct {
+	ID              string
+	EnvironmentID   string
+	ParadigmKey     string
+	ParadigmVersion int32
 }
 
-func (q *Queries) ListAllTests(ctx context.Context, arg ListAllTestsParams) ([]MiskoTest, error) {
-	rows, err := q.db.Query(ctx, listAllTests,
-		arg.ExperimentID,
-		arg.SubjectID,
-		arg.Status,
-		arg.ParadigmKey,
-		arg.PageOffset,
-		arg.PageLimit,
-	)
+func (q *Queries) ListArenas(ctx context.Context, ids []string) ([]ListArenasRow, error) {
+	rows, err := q.db.Query(ctx, listArenas, ids)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []MiskoTest
+	var items []ListArenasRow
 	for rows.Next() {
-		var i MiskoTest
+		var i ListArenasRow
 		if err := rows.Scan(
 			&i.ID,
-			&i.ExperimentID,
-			&i.EnrollmentID,
-			&i.SubjectID,
-			&i.PhaseID,
-			&i.GroupID,
-			&i.ProtocolVersionID,
-			&i.StepPosition,
+			&i.EnvironmentID,
 			&i.ParadigmKey,
 			&i.ParadigmVersion,
-			&i.EnvironmentRevisionID,
-			&i.PlannedTrials,
-			&i.Status,
-			&i.ScheduledAt,
-			&i.StartedAt,
-			&i.CompletedAt,
-			&i.CancelledAt,
-			&i.CancelReason,
-			&i.Notes,
-			&i.CreatedBy,
-			&i.CreatedAt,
-			&i.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -487,34 +484,146 @@ func (q *Queries) ListComments(ctx context.Context, testID string) ([]ListCommen
 	return items, nil
 }
 
+const listTestSubjects = `-- name: ListTestSubjects :many
+SELECT ts.id, ts.test_id, ts.allocation_id, a.subject_id, s.code AS subject_code, (a.excluded_at IS NOT NULL)::boolean AS excluded,
+       ts.environment_revision_id, r.environment_id, env.name AS environment_name, r.number AS environment_revision,
+       ts.created_by, ts.created_at
+FROM misko.test_subjects ts
+JOIN misko.allocations a ON a.id = ts.allocation_id
+JOIN misko.subjects s ON s.id = a.subject_id
+JOIN misko.environment_revisions r ON r.id = ts.environment_revision_id
+JOIN misko.environments env ON env.id = r.environment_id
+WHERE ts.test_id = ANY($1::uuid[])
+ORDER BY ts.test_id, env.name, ts.id
+`
+
+type ListTestSubjectsRow struct {
+	ID                    string
+	TestID                string
+	AllocationID          string
+	SubjectID             string
+	SubjectCode           string
+	Excluded              bool
+	EnvironmentRevisionID string
+	EnvironmentID         string
+	EnvironmentName       string
+	EnvironmentRevision   int32
+	CreatedBy             string
+	CreatedAt             time.Time
+}
+
+func (q *Queries) ListTestSubjects(ctx context.Context, testIds []string) ([]ListTestSubjectsRow, error) {
+	rows, err := q.db.Query(ctx, listTestSubjects, testIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListTestSubjectsRow
+	for rows.Next() {
+		var i ListTestSubjectsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.TestID,
+			&i.AllocationID,
+			&i.SubjectID,
+			&i.SubjectCode,
+			&i.Excluded,
+			&i.EnvironmentRevisionID,
+			&i.EnvironmentID,
+			&i.EnvironmentName,
+			&i.EnvironmentRevision,
+			&i.CreatedBy,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listTests = `-- name: ListTests :many
-SELECT id, experiment_id, enrollment_id, subject_id, phase_id, group_id, protocol_version_id, step_position, paradigm_key, paradigm_version, environment_revision_id, planned_trials, status, scheduled_at, started_at, completed_at, cancelled_at, cancel_reason, notes, created_by, created_at, updated_at FROM misko.tests
-WHERE experiment_id = $1
-  AND ($2::uuid IS NULL OR subject_id = $2::uuid)
-  AND ($3::uuid IS NULL OR phase_id = $3::uuid)
-  AND ($4::text = '' OR status = $4::text)
-  AND ($5::text = '' OR paradigm_key = $5::text)
-ORDER BY scheduled_at, id
-LIMIT $7 OFFSET $6
+WITH lab AS (SELECT coalesce((SELECT l.timezone FROM misko.laboratory l), 'UTC') AS timezone)
+SELECT t.id, t.experiment_id, e.code AS experiment_code, t.timepoint_id, tp.name AS timepoint_name, tp.study_day,
+       p.id AS protocol_id, p.name AS protocol_name, t.protocol_version_id, pv.number AS protocol_version, t.step_position,
+       t.paradigm_key, t.paradigm_version, t.planned_trials, t.status, t.scheduled_at, t.started_at, t.completed_at, t.cancelled_at,
+       t.cancel_reason, t.notes, t.created_by, t.created_at, t.updated_at
+FROM misko.tests t
+JOIN misko.experiments e ON e.id = t.experiment_id
+JOIN misko.timepoints tp ON tp.id = t.timepoint_id
+JOIN misko.protocol_versions pv ON pv.id = t.protocol_version_id
+JOIN misko.protocols p ON p.id = pv.protocol_id
+CROSS JOIN lab
+WHERE ($1::uuid IS NULL OR t.experiment_id = $1::uuid)
+  AND ($2::uuid IS NULL OR t.timepoint_id = $2::uuid)
+  AND ($3::uuid IS NULL OR EXISTS (
+        SELECT 1 FROM misko.test_subjects ts JOIN misko.allocations a ON a.id = ts.allocation_id
+        WHERE ts.test_id = t.id AND a.subject_id = $3::uuid))
+  AND ($4::text = '' OR t.status = $4::text)
+  AND ($5::text = '' OR t.paradigm_key = $5::text)
+  AND ($6::date IS NULL OR t.scheduled_at >= ($6::date)::timestamp AT TIME ZONE lab.timezone)
+  AND ($7::date IS NULL OR t.scheduled_at < ($7::date + 1)::timestamp AT TIME ZONE lab.timezone)
+ORDER BY CASE WHEN $8::boolean THEN t.scheduled_at END DESC,
+         CASE WHEN NOT $8::boolean THEN t.scheduled_at END,
+         t.id
+LIMIT $10 OFFSET $9
 `
 
 type ListTestsParams struct {
-	ExperimentID string
+	ExperimentID *string
+	TimepointID  *string
 	SubjectID    *string
-	PhaseID      *string
 	Status       string
 	ParadigmKey  string
+	FromDate     pgtype.Date
+	ToDate       pgtype.Date
+	NewestFirst  bool
 	PageOffset   int32
 	PageLimit    int32
 }
 
-func (q *Queries) ListTests(ctx context.Context, arg ListTestsParams) ([]MiskoTest, error) {
+type ListTestsRow struct {
+	ID                string
+	ExperimentID      string
+	ExperimentCode    string
+	TimepointID       string
+	TimepointName     string
+	StudyDay          int32
+	ProtocolID        string
+	ProtocolName      string
+	ProtocolVersionID string
+	ProtocolVersion   int32
+	StepPosition      int32
+	ParadigmKey       string
+	ParadigmVersion   int32
+	PlannedTrials     int32
+	Status            string
+	ScheduledAt       time.Time
+	StartedAt         *time.Time
+	CompletedAt       *time.Time
+	CancelledAt       *time.Time
+	CancelReason      *string
+	Notes             *string
+	CreatedBy         string
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
+}
+
+// ListTests filters on the scheduled date in the laboratory's time zone; from
+// and to are inclusive dates.
+func (q *Queries) ListTests(ctx context.Context, arg ListTestsParams) ([]ListTestsRow, error) {
 	rows, err := q.db.Query(ctx, listTests,
 		arg.ExperimentID,
+		arg.TimepointID,
 		arg.SubjectID,
-		arg.PhaseID,
 		arg.Status,
 		arg.ParadigmKey,
+		arg.FromDate,
+		arg.ToDate,
+		arg.NewestFirst,
 		arg.PageOffset,
 		arg.PageLimit,
 	)
@@ -522,21 +631,23 @@ func (q *Queries) ListTests(ctx context.Context, arg ListTestsParams) ([]MiskoTe
 		return nil, err
 	}
 	defer rows.Close()
-	var items []MiskoTest
+	var items []ListTestsRow
 	for rows.Next() {
-		var i MiskoTest
+		var i ListTestsRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.ExperimentID,
-			&i.EnrollmentID,
-			&i.SubjectID,
-			&i.PhaseID,
-			&i.GroupID,
+			&i.ExperimentCode,
+			&i.TimepointID,
+			&i.TimepointName,
+			&i.StudyDay,
+			&i.ProtocolID,
+			&i.ProtocolName,
 			&i.ProtocolVersionID,
+			&i.ProtocolVersion,
 			&i.StepPosition,
 			&i.ParadigmKey,
 			&i.ParadigmVersion,
-			&i.EnvironmentRevisionID,
 			&i.PlannedTrials,
 			&i.Status,
 			&i.ScheduledAt,
@@ -560,7 +671,7 @@ func (q *Queries) ListTests(ctx context.Context, arg ListTestsParams) ([]MiskoTe
 }
 
 const listTrials = `-- name: ListTrials :many
-SELECT id, test_id, number, repetition, attempt, started_at, ended_at, notes, recorded_by, created_at FROM misko.trials WHERE test_id = $1 ORDER BY number
+SELECT id, test_id, test_subject_id, number, repetition, attempt, started_at, ended_at, notes, recorded_by, created_at FROM misko.trials WHERE test_id = $1 ORDER BY test_subject_id, number
 `
 
 func (q *Queries) ListTrials(ctx context.Context, testID string) ([]MiskoTrial, error) {
@@ -575,6 +686,7 @@ func (q *Queries) ListTrials(ctx context.Context, testID string) ([]MiskoTrial, 
 		if err := rows.Scan(
 			&i.ID,
 			&i.TestID,
+			&i.TestSubjectID,
 			&i.Number,
 			&i.Repetition,
 			&i.Attempt,
@@ -594,57 +706,105 @@ func (q *Queries) ListTrials(ctx context.Context, testID string) ([]MiskoTrial, 
 	return items, nil
 }
 
-const lockEnrollmentRef = `-- name: LockEnrollmentRef :one
-SELECT id, experiment_id, subject_id, enrolled_at
-FROM misko.enrollments
-WHERE experiment_id = $1 AND id = $2
-FOR SHARE
+const lockAllocations = `-- name: LockAllocations :many
+SELECT a.id, a.subject_id, (a.excluded_at IS NOT NULL)::boolean AS excluded
+FROM misko.allocations a
+WHERE a.experiment_id = $1 AND a.id = ANY($2::uuid[])
+ORDER BY a.id
+FOR NO KEY UPDATE
 `
 
-type LockEnrollmentRefParams struct {
+type LockAllocationsParams struct {
 	ExperimentID string
-	ID           string
+	Ids          []string
 }
 
-type LockEnrollmentRefRow struct {
-	ID           string
-	ExperimentID string
-	SubjectID    string
-	EnrolledAt   time.Time
+type LockAllocationsRow struct {
+	ID        string
+	SubjectID string
+	Excluded  bool
 }
 
-// LockEnrollmentRef conflicts with the FOR UPDATE lock taken when assigning groups.
-func (q *Queries) LockEnrollmentRef(ctx context.Context, arg LockEnrollmentRefParams) (LockEnrollmentRefRow, error) {
-	row := q.db.QueryRow(ctx, lockEnrollmentRef, arg.ExperimentID, arg.ID)
-	var i LockEnrollmentRefRow
-	err := row.Scan(
-		&i.ID,
-		&i.ExperimentID,
-		&i.SubjectID,
-		&i.EnrolledAt,
-	)
-	return i, err
+// LockAllocations takes a lock that waits for a concurrent plan of the same
+// animal and for exclusions, but not for foreign key checks of other rows.
+func (q *Queries) LockAllocations(ctx context.Context, arg LockAllocationsParams) ([]LockAllocationsRow, error) {
+	rows, err := q.db.Query(ctx, lockAllocations, arg.ExperimentID, arg.Ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []LockAllocationsRow
+	for rows.Next() {
+		var i LockAllocationsRow
+		if err := rows.Scan(&i.ID, &i.SubjectID, &i.Excluded); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const lockTest = `-- name: LockTest :one
-SELECT id, experiment_id, enrollment_id, subject_id, phase_id, group_id, protocol_version_id, step_position, paradigm_key, paradigm_version, environment_revision_id, planned_trials, status, scheduled_at, started_at, completed_at, cancelled_at, cancel_reason, notes, created_by, created_at, updated_at FROM misko.tests WHERE id = $1 FOR UPDATE
+SELECT t.id, t.experiment_id, e.code AS experiment_code, t.timepoint_id, tp.name AS timepoint_name, tp.study_day,
+       p.id AS protocol_id, p.name AS protocol_name, t.protocol_version_id, pv.number AS protocol_version, t.step_position,
+       t.paradigm_key, t.paradigm_version, t.planned_trials, t.status, t.scheduled_at, t.started_at, t.completed_at, t.cancelled_at,
+       t.cancel_reason, t.notes, t.created_by, t.created_at, t.updated_at
+FROM misko.tests t
+JOIN misko.experiments e ON e.id = t.experiment_id
+JOIN misko.timepoints tp ON tp.id = t.timepoint_id
+JOIN misko.protocol_versions pv ON pv.id = t.protocol_version_id
+JOIN misko.protocols p ON p.id = pv.protocol_id
+WHERE t.id = $1
+FOR UPDATE OF t
 `
 
-func (q *Queries) LockTest(ctx context.Context, id string) (MiskoTest, error) {
+type LockTestRow struct {
+	ID                string
+	ExperimentID      string
+	ExperimentCode    string
+	TimepointID       string
+	TimepointName     string
+	StudyDay          int32
+	ProtocolID        string
+	ProtocolName      string
+	ProtocolVersionID string
+	ProtocolVersion   int32
+	StepPosition      int32
+	ParadigmKey       string
+	ParadigmVersion   int32
+	PlannedTrials     int32
+	Status            string
+	ScheduledAt       time.Time
+	StartedAt         *time.Time
+	CompletedAt       *time.Time
+	CancelledAt       *time.Time
+	CancelReason      *string
+	Notes             *string
+	CreatedBy         string
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
+}
+
+func (q *Queries) LockTest(ctx context.Context, id string) (LockTestRow, error) {
 	row := q.db.QueryRow(ctx, lockTest, id)
-	var i MiskoTest
+	var i LockTestRow
 	err := row.Scan(
 		&i.ID,
 		&i.ExperimentID,
-		&i.EnrollmentID,
-		&i.SubjectID,
-		&i.PhaseID,
-		&i.GroupID,
+		&i.ExperimentCode,
+		&i.TimepointID,
+		&i.TimepointName,
+		&i.StudyDay,
+		&i.ProtocolID,
+		&i.ProtocolName,
 		&i.ProtocolVersionID,
+		&i.ProtocolVersion,
 		&i.StepPosition,
 		&i.ParadigmKey,
 		&i.ParadigmVersion,
-		&i.EnvironmentRevisionID,
 		&i.PlannedTrials,
 		&i.Status,
 		&i.ScheduledAt,
@@ -658,22 +818,6 @@ func (q *Queries) LockTest(ctx context.Context, id string) (MiskoTest, error) {
 		&i.UpdatedAt,
 	)
 	return i, err
-}
-
-const phaseExists = `-- name: PhaseExists :one
-SELECT EXISTS (SELECT 1 FROM misko.experiment_phases WHERE experiment_id = $1 AND id = $2)
-`
-
-type PhaseExistsParams struct {
-	ExperimentID string
-	ID           string
-}
-
-func (q *Queries) PhaseExists(ctx context.Context, arg PhaseExistsParams) (bool, error) {
-	row := q.db.QueryRow(ctx, phaseExists, arg.ExperimentID, arg.ID)
-	var exists bool
-	err := row.Scan(&exists)
-	return exists, err
 }
 
 const protocolVersionExists = `-- name: ProtocolVersionExists :one
@@ -690,6 +834,53 @@ func (q *Queries) ProtocolVersionExists(ctx context.Context, arg ProtocolVersion
 	var exists bool
 	err := row.Scan(&exists)
 	return exists, err
+}
+
+const scheduledAllocations = `-- name: ScheduledAllocations :many
+SELECT DISTINCT ts.allocation_id
+FROM misko.test_subjects ts
+JOIN misko.tests t ON t.id = ts.test_id
+WHERE t.timepoint_id = $1
+  AND t.protocol_version_id = $2
+  AND t.step_position = $3
+  AND t.status <> 'CANCELLED'
+  AND ts.allocation_id = ANY($4::uuid[])
+  AND ($5::uuid IS NULL OR t.id <> $5::uuid)
+ORDER BY ts.allocation_id
+`
+
+type ScheduledAllocationsParams struct {
+	TimepointID       string
+	ProtocolVersionID string
+	StepPosition      int32
+	Ids               []string
+	ExceptTestID      *string
+}
+
+func (q *Queries) ScheduledAllocations(ctx context.Context, arg ScheduledAllocationsParams) ([]string, error) {
+	rows, err := q.db.Query(ctx, scheduledAllocations,
+		arg.TimepointID,
+		arg.ProtocolVersionID,
+		arg.StepPosition,
+		arg.Ids,
+		arg.ExceptTestID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var allocation_id string
+		if err := rows.Scan(&allocation_id); err != nil {
+			return nil, err
+		}
+		items = append(items, allocation_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const updateComment = `-- name: UpdateComment :execrows
@@ -711,16 +902,14 @@ func (q *Queries) UpdateComment(ctx context.Context, arg UpdateCommentParams) (i
 	return result.RowsAffected(), nil
 }
 
-const updateTestStatus = `-- name: UpdateTestStatus :one
+const updateTestStatus = `-- name: UpdateTestStatus :execrows
 UPDATE misko.tests
 SET status = $1,
     started_at = $2,
     completed_at = $3,
     cancelled_at = $4,
-    cancel_reason = $5,
-    updated_at = now()
+    cancel_reason = $5
 WHERE id = $6 AND status = $7
-RETURNING id, experiment_id, enrollment_id, subject_id, phase_id, group_id, protocol_version_id, step_position, paradigm_key, paradigm_version, environment_revision_id, planned_trials, status, scheduled_at, started_at, completed_at, cancelled_at, cancel_reason, notes, created_by, created_at, updated_at
 `
 
 type UpdateTestStatusParams struct {
@@ -733,8 +922,8 @@ type UpdateTestStatusParams struct {
 	FromStatus   string
 }
 
-func (q *Queries) UpdateTestStatus(ctx context.Context, arg UpdateTestStatusParams) (MiskoTest, error) {
-	row := q.db.QueryRow(ctx, updateTestStatus,
+func (q *Queries) UpdateTestStatus(ctx context.Context, arg UpdateTestStatusParams) (int64, error) {
+	result, err := q.db.Exec(ctx, updateTestStatus,
 		arg.Status,
 		arg.StartedAt,
 		arg.CompletedAt,
@@ -743,30 +932,8 @@ func (q *Queries) UpdateTestStatus(ctx context.Context, arg UpdateTestStatusPara
 		arg.ID,
 		arg.FromStatus,
 	)
-	var i MiskoTest
-	err := row.Scan(
-		&i.ID,
-		&i.ExperimentID,
-		&i.EnrollmentID,
-		&i.SubjectID,
-		&i.PhaseID,
-		&i.GroupID,
-		&i.ProtocolVersionID,
-		&i.StepPosition,
-		&i.ParadigmKey,
-		&i.ParadigmVersion,
-		&i.EnvironmentRevisionID,
-		&i.PlannedTrials,
-		&i.Status,
-		&i.ScheduledAt,
-		&i.StartedAt,
-		&i.CompletedAt,
-		&i.CancelledAt,
-		&i.CancelReason,
-		&i.Notes,
-		&i.CreatedBy,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }

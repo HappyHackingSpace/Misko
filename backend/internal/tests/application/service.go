@@ -1,23 +1,33 @@
-// Package application contains test, trial and comment use cases. Creating and
-// cancelling tests needs test:write; starting, completing and recording trials
-// needs test:run; reads need *:read. Every authenticated role may comment; only
-// the author edits and the author or a privileged role deletes.
+// Package application contains test, test subject, trial and comment use
+// cases. Planning tests (creating, adding or removing animals, cancelling)
+// needs test:write; starting, completing and recording trials needs test:run;
+// reads need *:read. Every authenticated role may comment; only the author
+// edits and the author or a privileged role deletes.
 package application
 
 import (
 	"context"
 	"errors"
+	"fmt"
 	access "github.com/HappyHackingSpace/Misko/backend/internal/access/domain"
 	"github.com/HappyHackingSpace/Misko/backend/internal/tests/domain"
+	"slices"
 	"time"
 )
 
 var (
-	ErrTestNotFound            = errors.New("test not found")
-	ErrEnrollmentNotFound      = errors.New("enrollment not found in this experiment")
-	ErrPhaseNotFound           = errors.New("phase not found in this experiment")
+	ErrExperimentNotFound      = errors.New("experiment not found")
+	ErrExperimentNotRunning    = errors.New("tests can be planned only while the experiment is running")
+	ErrTimepointNotFound       = errors.New("timepoint not found in this experiment")
 	ErrProtocolVersionNotFound = errors.New("protocol version not found in this experiment")
 	ErrStepNotFound            = errors.New("step not found in this protocol version")
+	ErrAllocationNotFound      = errors.New("animal is not allocated in this experiment")
+	ErrAnimalExcluded          = errors.New("the animal has been excluded from the study")
+	ErrAnimalAlreadyScheduled  = errors.New("the animal is already in another test of this timepoint and protocol step")
+	ErrArenaNotFound           = errors.New("arena (environment revision) not found")
+	ErrArenaParadigmMismatch   = errors.New("the arena is set up for another paradigm or paradigm version than the protocol step")
+	ErrTestNotFound            = errors.New("test not found")
+	ErrTestSubjectNotFound     = errors.New("animal not found in this test")
 	ErrCommentNotFound         = errors.New("comment not found on this test")
 	ErrCannotEditComment       = errors.New("only the author can edit a comment")
 	ErrCannotDeleteComment     = errors.New("only the author or a lab manager can delete a comment")
@@ -25,48 +35,84 @@ var (
 	ErrInvalidQuery            = errors.New("invalid list query")
 )
 
-// EnrollmentRef is the part of an enrollment a test needs.
-type EnrollmentRef struct {
-	ID, ExperimentID, SubjectID string
-	EnrolledAt                  time.Time
+// Running is the experiment status that allows planning tests.
+const Running = "RUNNING"
+
+// TimepointRef is the timepoint a test is planned at. DefaultScheduledAt is
+// day 0 plus the study day at midnight in the laboratory's time zone.
+type TimepointRef struct {
+	ID                 string
+	StudyDay           int
+	DefaultScheduledAt time.Time
 }
 
 // StepRef is the protocol step a test runs.
 type StepRef struct {
-	ProtocolVersionID     string
-	Position              int
-	ParadigmKey           string
-	ParadigmVersion       int
-	EnvironmentRevisionID string
-	Trials                int
+	ProtocolVersionID string
+	Position          int
+	ParadigmKey       string
+	ParadigmVersion   int
+	Trials            int
 }
 
+// AllocationRef is an animal's allocation in the test's experiment.
+type AllocationRef struct {
+	ID, SubjectID string
+	Excluded      bool
+}
+
+// ArenaRef is an environment revision an animal is tested in.
+type ArenaRef struct {
+	ID, EnvironmentID string
+	ParadigmKey       string
+	ParadigmVersion   int
+}
+
+// Slot is what an animal can be tested in at most once: a timepoint and a
+// protocol step.
+type Slot struct {
+	TimepointID, ProtocolVersionID string
+	StepPosition                   int
+}
+
+// TestFilter selects tests. Empty fields do not filter. From and To are
+// inclusive calendar dates in the laboratory's time zone.
 type TestFilter struct {
-	ExperimentID, SubjectID, PhaseID, ParadigmKey string
-	Status                                        domain.Status
-	Limit, Offset                                 int
+	ExperimentID, TimepointID, SubjectID, ParadigmKey string
+	Status                                            domain.Status
+	From, To                                          string
+	NewestFirst                                       bool
+	Limit, Offset                                     int
 }
 
 // Store persists tests. Scoped lookups return the matching not-found error for
-// records of another experiment or test.
+// records of another experiment or test. Tests are returned with their
+// subjects.
 type Store interface {
 	Transaction(ctx context.Context, fn func(Store) error) error
-	Enrollment(ctx context.Context, experimentID, enrollmentID string) (EnrollmentRef, error)
-	// LockEnrollment blocks group reassignments of the enrollment until the transaction ends.
-	LockEnrollment(ctx context.Context, experimentID, enrollmentID string) (EnrollmentRef, error)
-	Phase(ctx context.Context, experimentID, phaseID string) error
-	// GroupAt returns the group assigned to the enrollment at t, or "".
-	GroupAt(ctx context.Context, enrollmentID string, t time.Time) (string, error)
+	// ExperimentStatus returns ErrExperimentNotFound for an unknown experiment.
+	ExperimentStatus(ctx context.Context, experimentID string) (string, error)
+	Timepoint(ctx context.Context, experimentID, timepointID string) (TimepointRef, error)
 	ProtocolStep(ctx context.Context, experimentID, versionID string, position int) (StepRef, error)
+	// LockAllocations returns the allocations of the experiment among ids and
+	// locks them until the transaction ends, so tests of one animal are
+	// planned one at a time and an exclusion waits for the plan.
+	LockAllocations(ctx context.Context, experimentID string, ids []string) ([]AllocationRef, error)
+	Arenas(ctx context.Context, ids []string) ([]ArenaRef, error)
+	// ScheduledAllocations returns those of ids already in a non-cancelled
+	// test of the slot other than exceptTestID.
+	ScheduledAllocations(ctx context.Context, slot Slot, ids []string, exceptTestID string) ([]string, error)
+	// CreateTest stores t with its subjects.
 	CreateTest(ctx context.Context, t domain.Test) (domain.Test, error)
+	AddTestSubject(ctx context.Context, experimentID string, s domain.TestSubject, paradigmKey string, paradigmVersion int) error
+	RemoveTestSubject(ctx context.Context, testID, subjectID string) error
 	Test(ctx context.Context, id string) (domain.Test, error)
 	// LockTest locks the test until the transaction ends.
 	LockTest(ctx context.Context, id string) (domain.Test, error)
 	// UpdateTestStatus stores t only while the stored status is still from.
 	UpdateTestStatus(ctx context.Context, t domain.Test, from domain.Status) (domain.Test, error)
 	ListTests(ctx context.Context, f TestFilter) ([]domain.Test, int, error)
-	// ListAllTests ignores an empty ExperimentID and PhaseID, newest first.
-	ListAllTests(ctx context.Context, f TestFilter) ([]domain.Test, int, error)
+	// Trials returns the trials of every subject of a test.
 	Trials(ctx context.Context, testID string) ([]domain.Trial, error)
 	CreateTrial(ctx context.Context, tr domain.Trial) (domain.Trial, error)
 	Comments(ctx context.Context, testID string) ([]domain.Comment, error)
@@ -92,15 +138,18 @@ func New(store Store, limiter Limiter, now func() time.Time) *Service {
 }
 
 type TestInput struct {
-	EnrollmentID, PhaseID, ProtocolVersionID string
-	StepPosition                             int
-	ScheduledAt                              time.Time
-	Notes                                    string
+	TimepointID, ProtocolVersionID string
+	StepPosition                   int
+	// ScheduledAt defaults to day 0 plus the timepoint's study day.
+	ScheduledAt time.Time
+	Notes       string
+	Subjects    []domain.Participant
 }
 
-// CreateTest plans a test for an enrollment on one protocol step. The subject,
-// paradigm, environment revision and planned trials come from the experiment's
-// records, and the group is the one assigned at the scheduled time.
+// CreateTest plans a session of a running experiment at a timepoint on one
+// protocol step with its animals. The paradigm and planned trials come from
+// the step; every arena must run that paradigm version, and no animal may
+// already be in another non-cancelled test of the same timepoint and step.
 func (s *Service) CreateTest(ctx context.Context, actor access.Actor, experimentID string, in TestInput) (domain.Test, error) {
 	if err := actor.Require(access.TestWrite); err != nil {
 		return domain.Test{}, err
@@ -108,34 +157,38 @@ func (s *Service) CreateTest(ctx context.Context, actor access.Actor, experiment
 	if in.StepPosition < 1 {
 		return domain.Test{}, ErrStepNotFound
 	}
-	scheduled := instant(in.ScheduledAt)
+	if err := domain.ValidateParticipants(in.Subjects); err != nil {
+		return domain.Test{}, err
+	}
 	var created domain.Test
 	err := s.store.Transaction(ctx, func(tx Store) error {
-		e, err := tx.Enrollment(ctx, experimentID, in.EnrollmentID)
+		status, err := tx.ExperimentStatus(ctx, experimentID)
 		if err != nil {
 			return err
 		}
-		if in.PhaseID != "" {
-			if err := tx.Phase(ctx, e.ExperimentID, in.PhaseID); err != nil {
-				return err
-			}
+		if status != Running {
+			return ErrExperimentNotRunning
 		}
-		step, err := tx.ProtocolStep(ctx, e.ExperimentID, in.ProtocolVersionID, in.StepPosition)
+		timepoint, err := tx.Timepoint(ctx, experimentID, in.TimepointID)
 		if err != nil {
 			return err
 		}
-		group := ""
-		if !scheduled.IsZero() {
-			if group, err = tx.GroupAt(ctx, e.ID, scheduled); err != nil {
-				return err
-			}
+		step, err := tx.ProtocolStep(ctx, experimentID, in.ProtocolVersionID, in.StepPosition)
+		if err != nil {
+			return err
+		}
+		scheduled := instant(in.ScheduledAt)
+		if scheduled.IsZero() {
+			scheduled = instant(timepoint.DefaultScheduledAt)
 		}
 		t, err := domain.NewTest(domain.Context{
-			ExperimentID: e.ExperimentID, EnrollmentID: e.ID, SubjectID: e.SubjectID, EnrolledAt: e.EnrolledAt, PhaseID: in.PhaseID, GroupID: group,
-			ProtocolVersionID: step.ProtocolVersionID, StepPosition: step.Position, ParadigmKey: step.ParadigmKey, ParadigmVersion: step.ParadigmVersion,
-			EnvironmentRevisionID: step.EnvironmentRevisionID, PlannedTrials: step.Trials,
-		}, scheduled, in.Notes, actor.UserID)
+			ExperimentID: experimentID, TimepointID: timepoint.ID, ProtocolVersionID: step.ProtocolVersionID, StepPosition: step.Position,
+			ParadigmKey: step.ParadigmKey, ParadigmVersion: step.ParadigmVersion, PlannedTrials: step.Trials,
+		}, scheduled, in.Notes, actor.UserID, in.Subjects)
 		if err != nil {
+			return err
+		}
+		if err := s.admit(ctx, tx, t, in.Subjects); err != nil {
 			return err
 		}
 		created, err = tx.CreateTest(ctx, t)
@@ -147,9 +200,114 @@ func (s *Service) CreateTest(ctx context.Context, actor access.Actor, experiment
 	return created, nil
 }
 
+// AddSubject places another animal in a planned test.
+func (s *Service) AddSubject(ctx context.Context, actor access.Actor, testID string, p domain.Participant) (domain.Test, error) {
+	if err := actor.Require(access.TestWrite); err != nil {
+		return domain.Test{}, err
+	}
+	var out domain.Test
+	err := s.store.Transaction(ctx, func(tx Store) error {
+		t, err := tx.LockTest(ctx, testID)
+		if err != nil {
+			return err
+		}
+		subject, err := t.AddSubject(p, actor.UserID)
+		if err != nil {
+			return err
+		}
+		if err := s.admit(ctx, tx, t, []domain.Participant{p}); err != nil {
+			return err
+		}
+		if err := tx.AddTestSubject(ctx, t.ExperimentID, subject, t.ParadigmKey, t.ParadigmVersion); err != nil {
+			return err
+		}
+		out, err = tx.Test(ctx, t.ID)
+		return err
+	})
+	if err != nil {
+		return domain.Test{}, err
+	}
+	return out, nil
+}
+
+// RemoveSubject takes an animal out of a planned test; the last one stays.
+func (s *Service) RemoveSubject(ctx context.Context, actor access.Actor, testID, subjectID string) (domain.Test, error) {
+	if err := actor.Require(access.TestWrite); err != nil {
+		return domain.Test{}, err
+	}
+	var out domain.Test
+	err := s.store.Transaction(ctx, func(tx Store) error {
+		t, err := tx.LockTest(ctx, testID)
+		if err != nil {
+			return err
+		}
+		if _, ok := t.Subject(subjectID); !ok {
+			return ErrTestSubjectNotFound
+		}
+		if err := t.CanRemoveSubject(); err != nil {
+			return err
+		}
+		if err := tx.RemoveTestSubject(ctx, t.ID, subjectID); err != nil {
+			return err
+		}
+		out, err = tx.Test(ctx, t.ID)
+		return err
+	})
+	if err != nil {
+		return domain.Test{}, err
+	}
+	return out, nil
+}
+
+// admit checks new participants of t: each arena runs the test's paradigm
+// version, each animal is allocated in the experiment and not excluded, and
+// none is already in another non-cancelled test of the same slot.
+func (s *Service) admit(ctx context.Context, tx Store, t domain.Test, participants []domain.Participant) error {
+	animals, arenas := make([]string, 0, len(participants)), make([]string, 0, len(participants))
+	for _, p := range participants {
+		animals, arenas = append(animals, p.AllocationID), append(arenas, p.EnvironmentRevisionID)
+	}
+	found, err := tx.Arenas(ctx, arenas)
+	if err != nil {
+		return err
+	}
+	for _, id := range arenas {
+		i := slices.IndexFunc(found, func(a ArenaRef) bool { return a.ID == id })
+		switch {
+		case i < 0:
+			return fmt.Errorf("%w: %s", ErrArenaNotFound, id)
+		case found[i].ParadigmKey != t.ParadigmKey || found[i].ParadigmVersion != t.ParadigmVersion:
+			return fmt.Errorf("%w: %s", ErrArenaParadigmMismatch, id)
+		}
+	}
+	allocations, err := tx.LockAllocations(ctx, t.ExperimentID, animals)
+	if err != nil {
+		return err
+	}
+	for _, id := range animals {
+		i := slices.IndexFunc(allocations, func(a AllocationRef) bool { return a.ID == id })
+		switch {
+		case i < 0:
+			return fmt.Errorf("%w: %s", ErrAllocationNotFound, id)
+		case allocations[i].Excluded:
+			return fmt.Errorf("%w: %s", ErrAnimalExcluded, id)
+		}
+	}
+	slot := Slot{TimepointID: t.TimepointID, ProtocolVersionID: t.ProtocolVersionID, StepPosition: t.StepPosition}
+	taken, err := tx.ScheduledAllocations(ctx, slot, animals, t.ID)
+	if err != nil {
+		return err
+	}
+	if len(taken) > 0 {
+		return fmt.Errorf("%w: %v", ErrAnimalAlreadyScheduled, taken)
+	}
+	return nil
+}
+
+// TestQuery filters the worklist. From and To are dates (YYYY-MM-DD).
 type TestQuery struct {
-	SubjectID, PhaseID, Status, ParadigmKey string
-	Page, PageSize                          int
+	ExperimentID, TimepointID, SubjectID, Status, ParadigmKey, From, To string
+	Page, PageSize                                                      int
 }
 
 type TestPage struct {
@@ -157,18 +315,50 @@ type TestPage struct {
 	Total, Page, PageSize int
 }
 
-// ListTests lists an experiment's tests by scheduled time.
+// ListTests lists an experiment's tests by scheduled time, earliest first.
 func (s *Service) ListTests(ctx context.Context, actor access.Actor, experimentID string, q TestQuery) (TestPage, error) {
 	if err := actor.Require(access.Read); err != nil {
 		return TestPage{}, err
 	}
-	f := TestFilter{ExperimentID: experimentID, SubjectID: q.SubjectID, PhaseID: q.PhaseID, ParadigmKey: q.ParadigmKey}
+	q.ExperimentID = experimentID
+	return s.list(ctx, q, false)
+}
+
+// ListAllTests lists tests across every experiment, newest scheduled first,
+// so the panel can show one worklist of sessions.
+func (s *Service) ListAllTests(ctx context.Context, actor access.Actor, q TestQuery) (TestPage, error) {
+	if err := actor.Require(access.Read); err != nil {
+		return TestPage{}, err
+	}
+	return s.list(ctx, q, true)
+}
+
+func (s *Service) list(ctx context.Context, q TestQuery, newestFirst bool) (TestPage, error) {
+	f := TestFilter{ExperimentID: q.ExperimentID, TimepointID: q.TimepointID, SubjectID: q.SubjectID, ParadigmKey: q.ParadigmKey, NewestFirst: newestFirst}
 	if q.Status != "" {
 		status, err := domain.ParseStatus(q.Status)
 		if err != nil {
 			return TestPage{}, ErrInvalidQuery
 		}
 		f.Status = status
+	}
+	var from, to time.Time
+	for _, d := range []struct {
+		raw    string
+		parsed *time.Time
+		out    *string
+	}{{q.From, &from, &f.From}, {q.To, &to, &f.To}} {
+		if d.raw == "" {
+			continue
+		}
+		parsed, err := time.Parse(time.DateOnly, d.raw)
+		if err != nil {
+			return TestPage{}, ErrInvalidQuery
+		}
+		*d.parsed, *d.out = parsed, parsed.Format(time.DateOnly)
+	}
+	if !from.IsZero() && !to.IsZero() && to.Before(from) {
+		return TestPage{}, ErrInvalidQuery
 	}
 	page, limit, offset, err := paging(q.Page, q.PageSize)
 	if err != nil {
@@ -176,37 +366,6 @@ func (s *Service) ListTests(ctx context.Context, actor access.Actor, experimentI
 	}
 	f.Limit, f.Offset = limit, offset
 	tests, total, err := s.store.ListTests(ctx, f)
-	if err != nil {
-		return TestPage{}, err
-	}
-	return TestPage{Tests: tests, Total: total, Page: page, PageSize: limit}, nil
-}
-
-type AllTestsQuery struct {
-	ExperimentID, SubjectID, Status, ParadigmKey string
-	Page, PageSize                               int
-}
-
-// ListAllTests lists tests across every experiment, newest scheduled first,
-// so the panel can show one worklist of sessions.
-func (s *Service) ListAllTests(ctx context.Context, actor access.Actor, q AllTestsQuery) (TestPage, error) {
-	if err := actor.Require(access.Read); err != nil {
-		return TestPage{}, err
-	}
-	f := TestFilter{ExperimentID: q.ExperimentID, SubjectID: q.SubjectID, ParadigmKey: q.ParadigmKey}
-	if q.Status != "" {
-		status, err := domain.ParseStatus(q.Status)
-		if err != nil {
-			return TestPage{}, ErrInvalidQuery
-		}
-		f.Status = status
-	}
-	page, limit, offset, err := paging(q.Page, q.PageSize)
-	if err != nil {
-		return TestPage{}, err
-	}
-	f.Limit, f.Offset = limit, offset
-	tests, total, err := s.store.ListAllTests(ctx, f)
 	if err != nil {
 		return TestPage{}, err
 	}
@@ -233,8 +392,7 @@ func (s *Service) Test(ctx context.Context, actor access.Actor, id string) (Test
 	return TestDetail{Test: t, Trials: trials}, nil
 }
 
-// StartTest starts a planned test at at, or now when at is zero. The enrollment
-// is locked so the group cannot change while it is checked.
+// StartTest starts a planned test at at, or now when at is zero.
 func (s *Service) StartTest(ctx context.Context, actor access.Actor, id string, at time.Time) (domain.Test, error) {
 	if err := actor.Require(access.TestRun); err != nil {
 		return domain.Test{}, err
@@ -247,15 +405,7 @@ func (s *Service) StartTest(ctx context.Context, actor access.Actor, id string, 
 		if err != nil {
 			return err
 		}
-		e, err := tx.LockEnrollment(ctx, t.ExperimentID, t.EnrollmentID)
-		if err != nil {
-			return err
-		}
-		group, err := tx.GroupAt(ctx, e.ID, at)
-		if err != nil {
-			return err
-		}
-		started, err := t.Start(at, now, e.EnrolledAt, group)
+		started, err := t.Start(at, now)
 		if err != nil {
 			return err
 		}
@@ -298,7 +448,8 @@ func (s *Service) CompleteTest(ctx context.Context, actor access.Actor, id strin
 	return out, nil
 }
 
-// CancelTest cancels a planned test or one in progress. Its trials are kept.
+// CancelTest cancels a planned test or one in progress. Its animals and
+// trials are kept; the animals become free for another test of the slot.
 func (s *Service) CancelTest(ctx context.Context, actor access.Actor, id, reason string) (domain.Test, error) {
 	if err := actor.Require(access.TestWrite); err != nil {
 		return domain.Test{}, err
@@ -324,19 +475,28 @@ func (s *Service) CancelTest(ctx context.Context, actor access.Actor, id, reason
 	return out, nil
 }
 
-func (s *Service) Trials(ctx context.Context, actor access.Actor, testID string) ([]domain.Trial, error) {
+// Trials lists the trials of one animal of a test.
+func (s *Service) Trials(ctx context.Context, actor access.Actor, testID, subjectID string) ([]domain.Trial, error) {
 	if err := actor.Require(access.Read); err != nil {
 		return nil, err
 	}
-	if _, err := s.store.Test(ctx, testID); err != nil {
+	t, err := s.store.Test(ctx, testID)
+	if err != nil {
 		return nil, err
 	}
-	return s.store.Trials(ctx, testID)
+	if _, ok := t.Subject(subjectID); !ok {
+		return nil, ErrTestSubjectNotFound
+	}
+	trials, err := s.store.Trials(ctx, t.ID)
+	if err != nil {
+		return nil, err
+	}
+	return slices.DeleteFunc(trials, func(tr domain.Trial) bool { return tr.TestSubjectID != subjectID }), nil
 }
 
-// RecordTrial appends a trial. The test is locked so trial numbers are
-// assigned one at a time and a completed test gets no more trials.
-func (s *Service) RecordTrial(ctx context.Context, actor access.Actor, testID string, in domain.TrialInput) (domain.Trial, error) {
+// RecordTrial appends a trial of one animal. The test is locked so trial
+// numbers are assigned one at a time and a completed test gets no more trials.
+func (s *Service) RecordTrial(ctx context.Context, actor access.Actor, testID, subjectID string, in domain.TrialInput) (domain.Trial, error) {
 	if err := actor.Require(access.TestRun); err != nil {
 		return domain.Trial{}, err
 	}
@@ -352,11 +512,14 @@ func (s *Service) RecordTrial(ctx context.Context, actor access.Actor, testID st
 		if err != nil {
 			return err
 		}
+		if _, ok := t.Subject(subjectID); !ok {
+			return ErrTestSubjectNotFound
+		}
 		earlier, err := tx.Trials(ctx, t.ID)
 		if err != nil {
 			return err
 		}
-		trial, err := domain.NextTrial(t, earlier, in, actor.UserID, now)
+		trial, err := domain.NextTrial(t, subjectID, earlier, in, actor.UserID, now)
 		if err != nil {
 			return err
 		}
