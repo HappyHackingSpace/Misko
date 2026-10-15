@@ -1,6 +1,7 @@
 """Misko analysis worker for recorded, fixed-camera, single-subject video of
-the tracked paradigms (OPEN_FIELD, EPM, Y_MAZE, BARNES_MAZE, THREE_CHAMBER,
-MWM, LIGHT_DARK).
+the worker-tracked paradigm, MWM (Morris water maze). The other lab paradigms
+(NOVEL_OBJECT, POLE, TREADMILL) are scored by an observer and never reach a
+worker.
 
 The worker measures where the subject is in every frame and writes a
 misko.trajectory.v1 file and an annotated video. The Go API computes every

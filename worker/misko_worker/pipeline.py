@@ -10,13 +10,9 @@ from typing import Any
 from . import ALGORITHM_VERSION, TRAJECTORY_SCHEMA, video
 from .geometry import to_arena, to_pixels
 from .overlay import Overlay
-from .paradigms import SUPPORTED, Layout, LightDarkLayout, layout
+from .paradigms import SUPPORTED, Layout, layout
 from .tracking import Background, TrackerSettings, detect, luminance
 
-# Confidence given to a position inferred while the subject is hidden. QC on
-# the API ignores it (it averages observed samples only); it only shapes the
-# confidence of events that overlap the hidden stretch.
-INFERRED_CONFIDENCE = 0.5
 # Water: a lower base threshold plus each pixel's noise (see tracking).
 WATER_THRESHOLD = 18
 WATER_NOISE_FACTOR = 4.0
@@ -38,7 +34,8 @@ class Sample:
     confidence: float
     px: float | None = None
     py: float | None = None
-    # Not seen but placed by inference (LIGHT_DARK: hidden in the dark compartment).
+    # Not seen but placed by inference. No supported paradigm infers positions
+    # today; the flag stays part of the trajectory format.
     inferred: bool = False
 
 
@@ -139,10 +136,8 @@ def analyze(source: Path, job: dict[str, Any], overlay_path: Path, settings: Tra
             # The engine treats positions outside the apparatus as lost; so does QC.
             sample = Sample(t, x, y, apparatus.inside(x, y), float(found.confidence), float(found.px), float(found.py))
         analysis.samples.append(sample)
-    if isinstance(apparatus, LightDarkLayout):
-        infer_hidden(analysis.samples, apparatus)
 
-    # The overlay is drawn in a second pass, once inference has settled every sample.
+    # The overlay is drawn in a second pass, once every sample is settled.
     overlay = Overlay(overlay_path, info.width, info.height, apparatus.drawings(transform))
     try:
         samples = iter(analysis.samples)
@@ -159,31 +154,6 @@ def analyze(source: Path, job: dict[str, Any], overlay_path: Path, settings: Tra
     finally:
         overlay.close()
     return analysis
-
-
-def infer_hidden(samples: list[Sample], apparatus: LightDarkLayout) -> None:
-    """Fills stretches where nothing was detected while the subject was in the
-    dark compartment (or at its doorway) both before and after the stretch, or
-    before it with the clip ending hidden: it cannot have crossed the lit
-    compartment unseen, so it is carried inside the dark compartment and every
-    such sample is marked inferred. Stretches anywhere else stay lost."""
-    i, n = 0, len(samples)
-    while i < n:
-        if samples[i].px is not None:
-            i += 1
-            continue
-        end = i
-        while end < n and samples[end].px is None:
-            end += 1
-        before = samples[i - 1] if i > 0 else None
-        after = samples[end] if end < n else None
-        hidden_before = before is not None and before.tracked and apparatus.hidden_side(before.x_cm, before.y_cm)
-        hidden_after = after is None or (after.tracked and apparatus.hidden_side(after.x_cm, after.y_cm))
-        if hidden_before and hidden_after:
-            x, y = apparatus.carried(before.x_cm, before.y_cm)
-            for k in range(i, end):
-                samples[k] = Sample(samples[k].t_us, x, y, True, INFERRED_CONFIDENCE, inferred=True)
-        i = end
 
 
 def trajectory_document(job: dict[str, Any], analysis: Analysis, settings: TrackerSettings = TrackerSettings()) -> bytes:

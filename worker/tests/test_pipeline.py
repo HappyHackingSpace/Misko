@@ -1,5 +1,6 @@
 """Tracking, timing and failure behavior on synthetic recordings.
 
+The default fixture is a calm 50 cm MWM tank, so the water tuning applies.
 Tolerances documented per fixture (320 x 240 frame, about 4.4 px/cm):
 - regular 25 fps walk: mean position error <= 0.25 cm, maximum <= 0.6 cm;
 - sample times equal the decoded presentation timestamps exactly.
@@ -26,7 +27,7 @@ def errors(analysis, truth, offset_us=0):
     return [math.hypot(s.x_cm - by_time[s.t_us].x, s.y_cm - by_time[s.t_us].y) for s in analysis.samples if s.tracked]
 
 
-def test_positions_follow_the_subject_in_arena_centimeters(tmp_path: Path) -> None:
+def test_positions_follow_the_subject_in_tank_centimeters(tmp_path: Path) -> None:
     source = tmp_path / "walk.mp4"
     truth = synthetic.render(source, synthetic.regular(6.0))
     analysis = analyze(source, synthetic.job(), tmp_path / "overlay.mp4")
@@ -64,21 +65,22 @@ def test_occluded_frames_are_lost_not_guessed(tmp_path: Path) -> None:
     assert max(errors(analysis, truth)) <= 0.6
 
 
-def test_positions_outside_the_arena_are_lost(tmp_path: Path) -> None:
-    # The subject climbs over the east wall to x = 53 cm, still inside the crop.
+def test_positions_outside_the_tank_are_lost(tmp_path: Path) -> None:
+    # The subject climbs over the east wall to x = 28 cm (the wall is at 25 cm),
+    # still inside the crop and the detection margin.
     def over_the_wall(t: float):
         if t < 1.0:
-            return 40 + 13 * t, 25.0, True
+            return 15 + 13 * t, 0.0, True
         if t < 2.0:
-            return 53.0, 25.0, True
-        return 53 - 13 * min(t - 2.0, 1.0), 25.0, True
+            return 28.0, 0.0, True
+        return 28 - 13 * min(t - 2.0, 1.0), 0.0, True
 
     source = tmp_path / "wall.mp4"
     truth = synthetic.render(source, synthetic.regular(3.5), over_the_wall)
     analysis = analyze(source, synthetic.job(clip_end_us=3_500_000), tmp_path / "overlay.mp4")
     by_time = {t.t_us: t for t in truth}
-    outside = [s for s in analysis.samples if by_time[s.t_us].x > 50.6]
-    inside = [s for s in analysis.samples if by_time[s.t_us].x < 49.4]
+    outside = [s for s in analysis.samples if by_time[s.t_us].x > 25.6]
+    inside = [s for s in analysis.samples if by_time[s.t_us].x < 24.4]
     assert outside and not any(s.tracked for s in outside) and all(s.px is not None for s in outside)
     assert inside and all(s.tracked for s in inside)
     document = json.loads(trajectory_document(synthetic.job(clip_end_us=3_500_000), analysis))
@@ -87,10 +89,11 @@ def test_positions_outside_the_arena_are_lost(tmp_path: Path) -> None:
 
 def test_low_contrast_lowers_confidence_but_keeps_the_timeline(tmp_path: Path) -> None:
     source = tmp_path / "faint.mp4"
-    truth = synthetic.render(source, synthetic.regular(4.0), subject_level=135)
-    analysis = analyze(source, synthetic.job(clip_end_us=4_000_000), tmp_path / "overlay.mp4")
-    assert len(analysis.samples) == len(truth)
-    # A contrast of about 50 grey levels gives about 0.6: below the paradigm's 0.7 QC rule.
+    truth = synthetic.render(source, synthetic.regular(6.0), subject_level=145)
+    analysis = analyze(source, synthetic.job(), tmp_path / "overlay.mp4")
+    assert len(analysis.samples) == len(truth) and analysis.lost_ratio == 0
+    # On water 50 grey levels count as full contrast; 40 gives about 0.65,
+    # below the paradigm's 0.7 QC rule.
     assert 0.3 < analysis.mean_confidence < 0.7
     assert np.mean(errors(analysis, truth)) <= 0.4
 
@@ -114,11 +117,13 @@ def test_variable_frame_rate_and_missing_frames_keep_their_timestamps(tmp_path: 
 def test_clip_offset_is_removed_from_sample_times(tmp_path: Path) -> None:
     source = tmp_path / "long.mp4"
     truth = synthetic.render(source, synthetic.regular(6.0))
-    job = synthetic.job(clip_start_us=1_500_000, clip_end_us=4_500_000)
+    # On water the background is the median: the window keeps the 1.5 s pause
+    # under half of the clip.
+    job = synthetic.job(clip_start_us=1_000_000, clip_end_us=5_000_000)
     analysis = analyze(source, job, tmp_path / "overlay.mp4")
-    expected = [t.t_us - 1_500_000 for t in truth if 1_500_000 <= t.t_us < 4_500_000]
-    assert [s.t_us for s in analysis.samples] == expected and analysis.duration_us == 3_000_000
-    assert max(errors(analysis, truth, offset_us=1_500_000)) <= 0.6
+    expected = [t.t_us - 1_000_000 for t in truth if 1_000_000 <= t.t_us < 5_000_000]
+    assert [s.t_us for s in analysis.samples] == expected and analysis.duration_us == 4_000_000
+    assert max(errors(analysis, truth, offset_us=1_000_000)) <= 0.6
 
     # The clip is half-open: a frame exactly at its end belongs to the next clip.
     on_frame = synthetic.job(clip_start_us=1_500_000, clip_end_us=4_520_000)
@@ -131,27 +136,27 @@ def test_clip_offset_is_removed_from_sample_times(tmp_path: Path) -> None:
     assert abs(analysis.duration_us - (6_000_000 - 1_500_000)) <= 40_000
 
 
-def test_a_subject_resting_for_most_of_the_clip_stays_tracked(tmp_path: Path) -> None:
-    # Still at one spot for 80% of the clip: a median background would absorb it
-    # and detect its ghost elsewhere.
-    def mostly_still(t: float):
-        return (10 + 30 * t, 10.0, True) if t < 1.0 else (40.0, 10.0, True)
+def test_a_subject_resting_for_part_of_the_clip_stays_tracked(tmp_path: Path) -> None:
+    # Still at one spot for 40% of the clip. On water the background is the
+    # per-pixel median, so resting for more than about half of it would make
+    # the subject part of the background.
+    def resting(t: float):
+        return (-15 + 10 * t, -15.0, True) if t < 3.0 else (15.0, -15.0, True)
 
     source = tmp_path / "resting.mp4"
-    truth = synthetic.render(source, synthetic.regular(5.0), mostly_still)
+    truth = synthetic.render(source, synthetic.regular(5.0), resting)
     analysis = analyze(source, synthetic.job(clip_end_us=5_000_000), tmp_path / "overlay.mp4")
     assert analysis.lost_ratio == 0 and max(errors(analysis, truth)) <= 0.6
 
     # A lighter subject on a dark floor is recognized from the frames.
     light = tmp_path / "light.mp4"
-    truth = synthetic.render(light, synthetic.regular(4.0), floor_level=60, subject_level=210)
-    analysis = analyze(light, synthetic.job(clip_end_us=4_000_000), tmp_path / "overlay2.mp4")
+    truth = synthetic.render(light, synthetic.regular(6.0), floor_level=60, subject_level=210)
+    analysis = analyze(light, synthetic.job(), tmp_path / "overlay2.mp4")
     assert analysis.lost_ratio == 0 and max(errors(analysis, truth)) <= 0.6
-    # Forcing the wrong polarity tracks the spots the subject rested on instead:
-    # the positions are wrong while every sample looks tracked, which is why
-    # "auto" is the default.
-    wrong = analyze(light, synthetic.job(clip_end_us=4_000_000), tmp_path / "overlay3.mp4", TrackerSettings(subject="dark"))
-    assert wrong.lost_ratio < 0.5 and max(errors(wrong, truth)) > 5
+    # Forcing the wrong polarity looks for a dark subject that is not there:
+    # every sample is lost, which is why "auto" is the default.
+    wrong = analyze(light, synthetic.job(), tmp_path / "overlay3.mp4", TrackerSettings(subject="dark"))
+    assert wrong.lost_ratio > 0.9
 
 
 def test_the_overlay_keeps_the_recording_timeline_for_seeking(tmp_path: Path) -> None:
@@ -211,6 +216,7 @@ def test_unsupported_paradigms_are_refused_before_decoding(tmp_path: Path) -> No
     garbage = tmp_path / "garbage.mp4"
     garbage.write_bytes(b"not a video" * 200)
     job = synthetic.job()
-    job["run"]["paradigmKey"] = "ROTAROD"
-    with pytest.raises(NonRetryable, match="UNSUPPORTED_PARADIGM: ROTAROD v1"):
+    # Observer-scored paradigms never reach a worker.
+    job["run"]["paradigmKey"] = "NOVEL_OBJECT"
+    with pytest.raises(NonRetryable, match="UNSUPPORTED_PARADIGM: NOVEL_OBJECT v1"):
         analyze(garbage, job, tmp_path / "o.mp4")

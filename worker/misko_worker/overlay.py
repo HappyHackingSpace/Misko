@@ -1,5 +1,5 @@
 """Annotated video: the source frames with the paradigm's zones (derived from
-parameters or calibrated), the recent path and the tracked position drawn on
+its parameters), the recent path and the tracked position drawn on
 them, encoded as H.264 MP4. A position inferred while the subject was hidden is
 drawn as a ring; a frame without a position gets a red border.
 
@@ -21,7 +21,7 @@ from .paradigms import Drawing
 
 MICROSECOND = Fraction(1, 1_000_000)
 ZONE = (255, 215, 0)
-# Colors for calibrated zones and other zone keys, in order of appearance.
+# Colors for zone keys, in order of appearance.
 ZONE_COLORS = [(255, 215, 0), (255, 105, 180), (0, 191, 255), (186, 85, 211), (255, 140, 0), (127, 255, 212)]
 PATH = (0, 200, 255)
 MARKER = (0, 230, 0)

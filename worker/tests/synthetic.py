@@ -1,10 +1,10 @@
 """Synthetic recordings with known positions.
 
-The default scene is an Open Field: a 50 x 50 cm arena seen by a tilted camera,
-a homography maps arena centimeters to a 320 x 240 frame. Other paradigms use
-their own Scene (see tests/scenes.py): its homography, the floor the subject
-moves on, an optional cover painted over the subject (the lid of a dark
-compartment) and optional per-frame effects (ripples and reflections on water).
+The default scene is a small Morris water maze: a 50 cm tank seen by a tilted
+camera, a homography maps tank-centred centimeters (x east, y north) to a
+320 x 240 frame, with calm water and no reflections. Other fixtures use their
+own Scene (see tests/scenes.py): its homography, the surface the subject moves
+on and optional per-frame effects (ripples and reflections on water).
 The subject is a disc drawn with 4x supersampling around the projected
 position, over a textured floor with per-frame sensor noise. These fixtures
 test the pipeline's geometry, timing and failure handling; they are not
@@ -23,8 +23,10 @@ import av
 import numpy as np
 
 WIDTH, HEIGHT = 320, 240
-ARENA = 50.0
-# Arena corners (0,0), (50,0), (50,50), (0,50) seen by the camera.
+TANK_DIAMETER = 50.0
+RADIUS = TANK_DIAMETER / 2
+# The corners of the square around the tank, (-r, r), (r, r), (r, -r), (-r, -r),
+# seen by the camera: north is up on screen.
 CORNERS_PX = [(52.0, 28.0), (268.0, 36.0), (292.0, 222.0), (30.0, 214.0)]
 
 
@@ -38,7 +40,7 @@ def _homography(src: Sequence[tuple[float, float]], dst: Sequence[tuple[float, f
     return np.append(h, 1.0).reshape(3, 3)
 
 
-CM_TO_PX = _homography([(0, 0), (ARENA, 0), (ARENA, ARENA), (0, ARENA)], CORNERS_PX)
+CM_TO_PX = _homography([(-RADIUS, RADIUS), (RADIUS, RADIUS), (RADIUS, -RADIUS), (-RADIUS, -RADIUS)], CORNERS_PX)
 PX_TO_CM = np.linalg.inv(CM_TO_PX)
 PX_TO_CM = PX_TO_CM / PX_TO_CM[2, 2]
 
@@ -65,6 +67,11 @@ def calibration(frame_width: int = WIDTH, frame_height: int = HEIGHT, *, transfo
     }
 
 
+# MWM parameters of the default scene: platform in the north-east quadrant.
+PARAMETERS = {"tank_diameter_cm": TANK_DIAMETER, "platform_diameter_cm": 8.0, "platform_x_cm": 10.0, "platform_y_cm": 10.0,
+              "wall_annulus_width_cm": 5.0, "max_sample_gap_s": 0.5}
+
+
 Mask = Callable[[np.ndarray, np.ndarray], np.ndarray]
 # effects(frame, t_s, rng) changes a frame in place after the subject is drawn.
 Effects = Callable[[np.ndarray, float, np.random.Generator], None]
@@ -76,22 +83,19 @@ class Scene:
     # floor(rows, cols) marks the pixels of the surface the subject moves on.
     floor: Mask | None = None
     surround_level: float = 120.0
-    # cover(rows, cols) marks pixels painted cover_level over the subject.
-    cover: Mask | None = None
-    cover_level: float = 30.0
     effects: Effects | None = None
 
 
-def polygon_mask(points_px: Sequence[tuple[float, float]]) -> Mask:
-    """Pixels whose centers are inside a convex polygon listed clockwise on screen."""
+def disc_mask(cm_to_px: np.ndarray, radius: float) -> Mask:
+    """Pixels whose centers are within radius cm of the frame's origin."""
+    to_cm = pixel_to_cm(cm_to_px)
 
     def mask(rows: np.ndarray, cols: np.ndarray) -> np.ndarray:
-        inside = np.ones(rows.shape, dtype=bool)
-        n = len(points_px)
-        for i in range(n):
-            (x0, y0), (x1, y1) = points_px[i], points_px[(i + 1) % n]
-            inside &= (x1 - x0) * (rows + 0.5 - y0) - (y1 - y0) * (cols + 0.5 - x0) >= 0
-        return inside
+        px, py = cols + 0.5, rows + 0.5
+        w = to_cm[2, 0] * px + to_cm[2, 1] * py + to_cm[2, 2]
+        x = (to_cm[0, 0] * px + to_cm[0, 1] * py + to_cm[0, 2]) / w
+        y = (to_cm[1, 0] * px + to_cm[1, 1] * py + to_cm[1, 2]) / w
+        return np.hypot(x, y) <= radius
 
     return mask
 
@@ -108,15 +112,15 @@ Path2D = Callable[[float], tuple[float, float, bool]]
 
 
 def walk_with_pauses(t: float) -> tuple[float, float, bool]:
-    """0-2 s east along y=10, 2-3.5 s still, 3.5-5 s north-west to the center, then still."""
+    """0-2 s east along y=-15, 2-3.5 s still, 3.5-5 s north-west to the center, then still."""
     if t < 2.0:
-        return 10 + 15 * t, 10.0, True
+        return -15 + 15 * t, -15.0, True
     if t < 3.5:
-        return 40.0, 10.0, True
+        return 15.0, -15.0, True
     if t < 5.0:
         f = (t - 3.5) / 1.5
-        return 40 - 15 * f, 10 + 15 * f, True
-    return 25.0, 25.0, True
+        return 15 - 15 * f, -15 + 15 * f, True
+    return 0.0, 0.0, True
 
 
 def render(
@@ -131,7 +135,7 @@ def render(
     seed: int = 7,
     scene: Scene | None = None,
 ) -> list[Truth]:
-    scene = scene or Scene(CM_TO_PX, polygon_mask(CORNERS_PX))
+    scene = scene or Scene(CM_TO_PX, disc_mask(CM_TO_PX, RADIUS))
     rng = np.random.default_rng(seed)
     rows, cols = np.mgrid[0:HEIGHT, 0:WIDTH]
     texture = rng.normal(0, 4, (HEIGHT, WIDTH))
@@ -139,7 +143,6 @@ def render(
     # Pixels of the floor get the floor level, the surroundings stay darker.
     inside = scene.floor(rows, cols) if scene.floor else np.ones((HEIGHT, WIDTH), dtype=bool)
     floor[inside] = floor_level + texture[inside]
-    cover = scene.cover(rows, cols) if scene.cover else None
 
     container = av.open(str(path), mode="w", format="mp4")
     stream = container.add_stream("libx264", rate=25)
@@ -156,8 +159,6 @@ def render(
             radius_px = math.hypot(ex - cx, ey - cy)
             coverage = _disc_coverage(cx, cy, radius_px)
             frame = frame * (1 - coverage) + subject_level * coverage
-        if cover is not None:
-            frame[cover] = scene.cover_level + texture[cover]
         if scene.effects:
             scene.effects(frame, t / 1_000_000, rng)
         truth.append(Truth(int(t), x, y, visible))
@@ -192,7 +193,7 @@ def regular(duration_s: float, fps: float = 25.0) -> list[int]:
 
 
 def job(run_id: str = "01a00000-0000-7000-8000-0000000000aa", attempt: int = 1, clip_start_us: int = 0, clip_end_us: int | None = 6_000_000) -> dict:
-    """An OPEN_FIELD job; other paradigms replace its run's paradigm, parameters and calibration."""
+    """An MWM job for the default scene; other fixtures replace its parameters and calibration."""
     return {
         "run": {
             "id": run_id,
@@ -200,9 +201,9 @@ def job(run_id: str = "01a00000-0000-7000-8000-0000000000aa", attempt: int = 1, 
             "testSubjectId": "01a00000-0000-7000-8000-0000000000b1",
             "clipStartUs": clip_start_us,
             "clipEndUs": clip_end_us,
-            "paradigmKey": "OPEN_FIELD",
+            "paradigmKey": "MWM",
             "paradigmVersion": 1,
-            "parameters": {"arena_width_cm": ARENA, "arena_height_cm": ARENA, "center_fraction": 0.5},
+            "parameters": dict(PARAMETERS),
         },
         "testSubject": {"id": "01a00000-0000-7000-8000-0000000000b1", "environmentRevisionId": "01a00000-0000-7000-8000-0000000000b2"},
         "outputPrefix": f"runs/{run_id}/attempts/{attempt}/",
