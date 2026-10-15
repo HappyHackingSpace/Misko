@@ -18,13 +18,25 @@ import (
 	"time"
 )
 
-// constraintErrors maps named constraints to the error a violation means.
+// constraintErrors maps named constraints and trigger rules to the error a
+// violation means, so the API answers with a code instead of a 500.
 var constraintErrors = map[string]error{
-	"analysis_workers_name_key":    application.ErrWorkerNameTaken,
-	"analysis_runs_transition":     domain.ErrStaleAttempt,
-	"analysis_outputs_fenced":      domain.ErrStaleAttempt,
-	"analysis_output_uploads_pkey": application.ErrInvalidOutput,
-	"analysis_runs_recording_fkey": application.ErrRecordingNotFound,
+	"analysis_workers_name_key":            application.ErrWorkerNameTaken,
+	"analysis_runs_transition":             domain.ErrStaleAttempt,
+	"analysis_runs_attempts_check":         domain.ErrStaleAttempt,
+	"analysis_outputs_fenced":              domain.ErrStaleAttempt,
+	"analysis_output_uploads_pkey":         application.ErrInvalidOutput,
+	"analysis_runs_test_subject_fkey":      application.ErrTestSubjectNotFound,
+	"analysis_runs_test_fkey":              application.ErrTestSubjectNotFound,
+	"analysis_runs_recording_fkey":         application.ErrNotReady,
+	"analysis_runs_source_fkey":            application.ErrNotReady,
+	"analysis_runs_paradigm_fkey":          application.ErrNotReady,
+	"analysis_runs_calibration_scope":      application.ErrNotReady,
+	"subject_results_succeeded":            application.ErrRunNotSucceeded,
+	"subject_results_run_fkey":             domain.ErrRunNotChosen,
+	"subject_results_rejection_check":      domain.ErrInvalidRejection,
+	"subject_results_note_check":           domain.ErrInvalidNote,
+	"subject_results_test_subject_id_fkey": application.ErrTestSubjectNotFound,
 }
 
 type Store struct {
@@ -138,45 +150,50 @@ func (s *Store) ActiveCapabilities(ctx context.Context) ([]domain.Capability, er
 	return out, nil
 }
 
-func (s *Store) ReadyRecordings(ctx context.Context) ([]application.Candidate, error) {
-	rows, err := s.queries.ReadyRecordings(ctx)
+func capabilityKeys(capabilities []domain.Capability) []string {
+	keys := make([]string, 0, len(capabilities))
+	for _, c := range capabilities {
+		keys = append(keys, c.ParadigmKey+"@"+strconv.Itoa(c.ParadigmVersion))
+	}
+	return keys
+}
+
+func (s *Store) ReadyTestSubjects(ctx context.Context, capabilities, calibrated []domain.Capability) ([]application.Candidate, error) {
+	rows, err := s.queries.ReadyTestSubjects(ctx, sqlcgen.ReadyTestSubjectsParams{Capabilities: capabilityKeys(capabilities), Calibrated: capabilityKeys(calibrated)})
 	if err != nil {
-		return nil, fmt.Errorf("ready recordings: %w", err)
+		return nil, fmt.Errorf("ready test subjects: %w", err)
 	}
 	out := make([]application.Candidate, 0, len(rows))
 	for _, r := range rows {
-		params, err := parameters(r.Apparatus, r.Session)
-		if err != nil {
-			return nil, err
-		}
+		// A row whose parameters cannot be read is returned as invalid so the
+		// scheduler skips it and still enqueues the others.
+		params, invalid := parameters(r.Parameters, r.Session)
 		out = append(out, application.Candidate{
-			ExperimentID: r.ExperimentID, TestID: r.TestID, RecordingID: r.RecordingID, SourceAssetID: r.SourceAssetID,
+			ExperimentID: r.ExperimentID, TestID: r.TestID, TestSubjectID: r.TestSubjectID, RecordingID: r.RecordingID, SourceAssetID: r.SourceAssetID,
 			SourceGeneration: r.SourceGeneration, SourceCRC32C: uint32(r.SourceCrc32c), ClipStartUs: r.ClipStartUs, ClipEndUs: r.ClipEndUs,
-			CalibrationID: r.CalibrationID, ParadigmKey: r.ParadigmKey, ParadigmVersion: int(r.ParadigmVersion),
-			EnvironmentRevisionID: r.EnvironmentRevisionID, ProtocolVersionID: r.ProtocolVersionID, Parameters: params, VideoVerified: true,
+			CalibrationID: r.CalibrationID, ParadigmKey: r.ParadigmKey, ParadigmVersion: int(r.ParadigmVersion), Parameters: params,
+			// The query returns eligible candidates only.
+			VideoVerified: true, ExperimentStatus: "RUNNING", Invalid: invalid,
 		})
 	}
 	return out, nil
 }
 
-func (s *Store) Candidate(ctx context.Context, testID, recordingID string) (application.Candidate, error) {
-	if !pgtx.ValidUUID(testID) || !pgtx.ValidUUID(recordingID) {
-		return application.Candidate{}, application.ErrRecordingNotFound
+func (s *Store) Candidate(ctx context.Context, testSubjectID string) (application.Candidate, error) {
+	if !pgtx.ValidUUID(testSubjectID) {
+		return application.Candidate{}, application.ErrTestSubjectNotFound
 	}
-	r, err := s.queries.GetCandidate(ctx, sqlcgen.GetCandidateParams{TestID: testID, ID: recordingID})
+	r, err := s.queries.GetCandidate(ctx, testSubjectID)
 	if err != nil {
-		return application.Candidate{}, translate(err, application.ErrRecordingNotFound, "get candidate")
+		return application.Candidate{}, translate(err, application.ErrTestSubjectNotFound, "get candidate")
 	}
-	params, err := parameters(r.Apparatus, r.Session)
-	if err != nil {
-		return application.Candidate{}, err
-	}
+	params, invalid := parameters(r.Parameters, r.Session)
 	return application.Candidate{
-		ExperimentID: r.ExperimentID, TestID: r.TestID, RecordingID: r.RecordingID, SourceAssetID: r.SourceAssetID,
+		ExperimentID: r.ExperimentID, TestID: r.TestID, TestSubjectID: r.TestSubjectID, RecordingID: r.RecordingID, SourceAssetID: r.SourceAssetID,
 		SourceGeneration: r.SourceGeneration, SourceCRC32C: uint32(r.SourceCrc32c), ClipStartUs: r.ClipStartUs, ClipEndUs: r.ClipEndUs,
-		CalibrationID: r.CalibrationID, ParadigmKey: r.ParadigmKey, ParadigmVersion: int(r.ParadigmVersion),
-		EnvironmentRevisionID: r.EnvironmentRevisionID, ProtocolVersionID: r.ProtocolVersionID, Parameters: params,
-		VideoVerified: r.VideoStatus == "VERIFIED" && r.TestStatus != "CANCELLED",
+		CalibrationID: r.CalibrationID, ParadigmKey: r.ParadigmKey, ParadigmVersion: int(r.ParadigmVersion), Parameters: params,
+		VideoVerified: r.VideoStatus == "VERIFIED", TestCancelled: r.TestStatus == "CANCELLED", ExperimentStatus: r.ExperimentStatus, Excluded: r.Excluded,
+		Invalid: invalid,
 	}, nil
 }
 
@@ -186,11 +203,10 @@ func (s *Store) CreateAutomaticRun(ctx context.Context, r domain.Run) (bool, err
 		return false, fmt.Errorf("encode parameters: %w", err)
 	}
 	n, err := s.queries.CreateAutomaticRun(ctx, sqlcgen.CreateAutomaticRunParams{
-		ExperimentID: r.ExperimentID, TestID: r.TestID, RecordingID: r.RecordingID, SourceAssetID: r.SourceAssetID,
+		ExperimentID: r.ExperimentID, TestID: r.TestID, TestSubjectID: r.TestSubjectID, RecordingID: r.RecordingID, SourceAssetID: r.SourceAssetID,
 		SourceGeneration: r.SourceGeneration, SourceCrc32c: int64(r.SourceCRC32C), ClipStartUs: r.ClipStartUs, ClipEndUs: r.ClipEndUs,
 		CalibrationID: optional(r.CalibrationID), ParadigmKey: r.ParadigmKey, ParadigmVersion: int32(r.ParadigmVersion),
-		MetricEngineVersion: int32(r.MetricEngineVersion), ResultSchemaVersion: int32(r.ResultSchemaVersion),
-		EnvironmentRevisionID: r.EnvironmentRevisionID, ProtocolVersionID: r.ProtocolVersionID, Parameters: params,
+		MetricEngineVersion: int32(r.MetricEngineVersion), ResultSchemaVersion: int32(r.ResultSchemaVersion), Parameters: params,
 		MaxAttempts: int32(r.MaxAttempts), AvailableAt: r.AvailableAt,
 	})
 	if err != nil {
@@ -199,15 +215,15 @@ func (s *Store) CreateAutomaticRun(ctx context.Context, r domain.Run) (bool, err
 	return n == 1, nil
 }
 
-func (s *Store) LockRecording(ctx context.Context, recordingID string) error {
-	if err := s.queries.LockRecordingRuns(ctx, recordingID); err != nil {
-		return fmt.Errorf("lock recording runs: %w", err)
+func (s *Store) LockTestSubject(ctx context.Context, testSubjectID string) error {
+	if err := s.queries.LockTestSubjectRuns(ctx, testSubjectID); err != nil {
+		return fmt.Errorf("lock test subject runs: %w", err)
 	}
 	return nil
 }
 
-func (s *Store) PendingRun(ctx context.Context, recordingID string) (bool, error) {
-	pending, err := s.queries.PendingRunExists(ctx, recordingID)
+func (s *Store) PendingRun(ctx context.Context, testSubjectID string) (bool, error) {
+	pending, err := s.queries.PendingRunExists(ctx, testSubjectID)
 	if err != nil {
 		return false, fmt.Errorf("check pending run: %w", err)
 	}
@@ -220,11 +236,10 @@ func (s *Store) CreateRun(ctx context.Context, r domain.Run) (domain.Run, error)
 		return domain.Run{}, fmt.Errorf("encode parameters: %w", err)
 	}
 	row, err := s.queries.CreateManualRun(ctx, sqlcgen.CreateManualRunParams{
-		ExperimentID: r.ExperimentID, TestID: r.TestID, RecordingID: r.RecordingID, SourceAssetID: r.SourceAssetID,
+		ExperimentID: r.ExperimentID, TestID: r.TestID, TestSubjectID: r.TestSubjectID, RecordingID: r.RecordingID, SourceAssetID: r.SourceAssetID,
 		SourceGeneration: r.SourceGeneration, SourceCrc32c: int64(r.SourceCRC32C), ClipStartUs: r.ClipStartUs, ClipEndUs: r.ClipEndUs,
 		CalibrationID: optional(r.CalibrationID), ParadigmKey: r.ParadigmKey, ParadigmVersion: int32(r.ParadigmVersion),
-		MetricEngineVersion: int32(r.MetricEngineVersion), ResultSchemaVersion: int32(r.ResultSchemaVersion),
-		EnvironmentRevisionID: r.EnvironmentRevisionID, ProtocolVersionID: r.ProtocolVersionID, Parameters: params,
+		MetricEngineVersion: int32(r.MetricEngineVersion), ResultSchemaVersion: int32(r.ResultSchemaVersion), Parameters: params,
 		MaxAttempts: int32(r.MaxAttempts), AvailableAt: r.AvailableAt, CreatedBy: optional(r.CreatedBy),
 	})
 	if err != nil {
@@ -242,11 +257,7 @@ func (s *Store) LockExpiredRuns(ctx context.Context, now time.Time) ([]domain.Ru
 }
 
 func (s *Store) ClaimNext(ctx context.Context, capabilities []domain.Capability, now time.Time) (domain.Run, error) {
-	keys := make([]string, 0, len(capabilities))
-	for _, c := range capabilities {
-		keys = append(keys, c.ParadigmKey+"@"+strconv.Itoa(c.ParadigmVersion))
-	}
-	row, err := s.queries.ClaimNext(ctx, sqlcgen.ClaimNextParams{Now: now, Capabilities: keys})
+	row, err := s.queries.ClaimNext(ctx, sqlcgen.ClaimNextParams{Now: now, Capabilities: capabilityKeys(capabilities)})
 	if err != nil {
 		return domain.Run{}, translate(err, application.ErrNoRun, "claim run")
 	}
@@ -286,15 +297,34 @@ func (s *Store) LockRun(ctx context.Context, id string) (domain.Run, error) {
 	return toRun(row)
 }
 
-func (s *Store) Runs(ctx context.Context, testID string) ([]domain.Run, error) {
-	if !pgtx.ValidUUID(testID) {
+func (s *Store) Runs(ctx context.Context, testID, testSubjectID string) ([]domain.Run, error) {
+	if !pgtx.ValidUUID(testID) || (testSubjectID != "" && !pgtx.ValidUUID(testSubjectID)) {
 		return []domain.Run{}, nil
 	}
-	rows, err := s.queries.ListRuns(ctx, testID)
+	rows, err := s.queries.ListRuns(ctx, sqlcgen.ListRunsParams{TestID: testID, TestSubjectID: optional(testSubjectID)})
 	if err != nil {
 		return nil, fmt.Errorf("list runs: %w", err)
 	}
 	return toRuns(rows)
+}
+
+func (s *Store) SubjectRuns(ctx context.Context, testSubjectID string) ([]domain.Run, error) {
+	if !pgtx.ValidUUID(testSubjectID) {
+		return []domain.Run{}, nil
+	}
+	rows, err := s.queries.ListSubjectRuns(ctx, testSubjectID)
+	if err != nil {
+		return nil, fmt.Errorf("list subject runs: %w", err)
+	}
+	return toRuns(rows)
+}
+
+func (s *Store) Arena(ctx context.Context, testSubjectID string) (string, error) {
+	id, err := s.queries.TestSubjectArena(ctx, testSubjectID)
+	if err != nil {
+		return "", translate(err, application.ErrTestSubjectNotFound, "test subject arena")
+	}
+	return id, nil
 }
 
 func (s *Store) Calibration(ctx context.Context, id string) (domain.CalibrationRef, error) {
@@ -388,7 +418,7 @@ func (s *Store) Publish(ctx context.Context, run domain.Run, result domain.Resul
 	}
 	for _, e := range result.Events {
 		err := s.queries.CreateEvent(ctx, sqlcgen.CreateEventParams{
-			RunID: run.ID, Attempt: attempt, TestID: run.TestID, EventType: e.Type, Kind: e.Kind, StartUs: e.StartUs, EndUs: e.EndUs,
+			RunID: run.ID, Attempt: attempt, TestSubjectID: run.TestSubjectID, EventType: e.Type, Kind: e.Kind, StartUs: e.StartUs, EndUs: e.EndUs,
 			Confidence: float32(e.Confidence), TrialID: optional(e.TrialID),
 		})
 		if err != nil {
@@ -444,6 +474,89 @@ func (s *Store) Published(ctx context.Context, runID string) (application.Publis
 	return out, nil
 }
 
+func (s *Store) OpenResult(ctx context.Context, r domain.SubjectResult) error {
+	if err := s.queries.OpenResult(ctx, sqlcgen.OpenResultParams{TestSubjectID: r.TestSubjectID, RunID: r.RunID}); err != nil {
+		return translate(err, nil, "open result")
+	}
+	return nil
+}
+
+func (s *Store) LockResult(ctx context.Context, testSubjectID string) (domain.SubjectResult, string, error) {
+	if !pgtx.ValidUUID(testSubjectID) {
+		return domain.SubjectResult{}, "", application.ErrResultNotFound
+	}
+	row, err := s.queries.LockResult(ctx, testSubjectID)
+	if err != nil {
+		return domain.SubjectResult{}, "", translate(err, application.ErrResultNotFound, "lock result")
+	}
+	return toResult(sqlcgen.MiskoSubjectResult{TestSubjectID: row.TestSubjectID, RunID: row.RunID, Status: row.Status, Reason: row.Reason, Note: row.Note,
+		ReviewedBy: row.ReviewedBy, ReviewedAt: row.ReviewedAt, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt}), row.ExperimentStatus, nil
+}
+
+func (s *Store) UpdateResult(ctx context.Context, r domain.SubjectResult) (domain.SubjectResult, error) {
+	row, err := s.queries.UpdateResult(ctx, sqlcgen.UpdateResultParams{
+		TestSubjectID: r.TestSubjectID, RunID: r.RunID, Status: string(r.Status), Reason: optional(r.Reason), Note: optional(r.Note),
+		ReviewedBy: optional(r.ReviewedBy), ReviewedAt: r.ReviewedAt,
+	})
+	if err != nil {
+		return domain.SubjectResult{}, translate(err, application.ErrResultNotFound, "update result")
+	}
+	return toResult(row), nil
+}
+
+func (s *Store) ReviewItems(ctx context.Context, f application.ReviewFilter) ([]application.ReviewItem, int, error) {
+	rows, err := s.queries.ReviewItems(ctx, sqlcgen.ReviewItemsParams{
+		ExperimentID: optional(f.ExperimentID), TestSubjectID: optional(f.TestSubjectID), Status: f.Status,
+		PageLimit: int32(f.Limit), PageOffset: int32(f.Offset),
+	})
+	if err != nil {
+		return nil, 0, fmt.Errorf("review items: %w", err)
+	}
+	out := make([]application.ReviewItem, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, application.ReviewItem{
+			Result: toResult(sqlcgen.MiskoSubjectResult{TestSubjectID: r.TestSubjectID, RunID: r.RunID, Status: r.Status, Reason: r.Reason, Note: r.Note,
+				ReviewedBy: r.ReviewedBy, ReviewedAt: r.ReviewedAt, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt}),
+			TestID: r.TestID, ExperimentID: r.ExperimentID, ExperimentCode: r.ExperimentCode, ExperimentStatus: r.ExperimentStatus, Blinded: r.Blinded,
+			SubjectCode: r.SubjectCode, Excluded: r.Excluded, EnvironmentRevisionID: r.EnvironmentRevisionID, EnvironmentID: r.EnvironmentID,
+			EnvironmentName: r.EnvironmentName, EnvironmentRevision: int(r.EnvironmentRevision), TimepointID: r.TimepointID, TimepointName: r.TimepointName,
+			ParadigmKey: r.ParadigmKey, ParadigmVersion: int(r.ParadigmVersion), ScheduledAt: r.ScheduledAt.UTC(),
+			Run: application.ReviewRun{ID: r.RunID, Trigger: r.Trigger, ModelVersion: value(r.ModelVersion), CalibrationID: value(r.CalibrationID),
+				RecordingID: r.RecordingID, MetricEngineVersion: int(r.MetricEngineVersion), FinishedAt: utc(r.FinishedAt)},
+			LatestRunID: r.LatestRunID,
+			Group: &application.ReviewGroup{ID: r.GroupID, Code: r.GroupCode, Name: r.GroupName, Role: r.GroupRole, DiseaseModelName: value(r.DiseaseModelName),
+				SubstanceName: value(r.TreatmentSubstanceName), DoseMicro: r.TreatmentDoseMicro, Unit: value(r.TreatmentUnit)},
+		})
+	}
+	if f.TestSubjectID != "" {
+		return out, len(out), nil
+	}
+	total, err := s.queries.CountReviewItems(ctx, sqlcgen.CountReviewItemsParams{ExperimentID: optional(f.ExperimentID), Status: f.Status})
+	if err != nil {
+		return nil, 0, fmt.Errorf("count review items: %w", err)
+	}
+	return out, int(total), nil
+}
+
+func (s *Store) RunMetrics(ctx context.Context, runIDs []string) (map[string][]domain.MetricValue, error) {
+	rows, err := s.queries.RunMetrics(ctx, runIDs)
+	if err != nil {
+		return nil, fmt.Errorf("run metrics: %w", err)
+	}
+	out := map[string][]domain.MetricValue{}
+	for _, m := range rows {
+		out[m.RunID] = append(out[m.RunID], domain.MetricValue{Key: m.MetricKey, Unit: m.Unit, Value: m.Value, MissingReason: value(m.MissingReason)})
+	}
+	return out, nil
+}
+
+func toResult(r sqlcgen.MiskoSubjectResult) domain.SubjectResult {
+	return domain.SubjectResult{
+		TestSubjectID: r.TestSubjectID, RunID: r.RunID, Status: domain.ResultStatus(r.Status), Reason: value(r.Reason), Note: value(r.Note),
+		ReviewedBy: value(r.ReviewedBy), ReviewedAt: utc(r.ReviewedAt), CreatedAt: r.CreatedAt.UTC(), UpdatedAt: r.UpdatedAt.UTC(),
+	}
+}
+
 // translate maps a missing row to notFound and named constraint violations to
 // their errors. Other errors are wrapped so PostgreSQL codes stay inspectable.
 func translate(err, notFound error, operation string) error {
@@ -476,10 +589,9 @@ func toRun(r sqlcgen.MiskoAnalysisRun) (domain.Run, error) {
 	return domain.Run{
 		ID: r.ID,
 		Source: domain.Source{
-			ExperimentID: r.ExperimentID, TestID: r.TestID, RecordingID: r.RecordingID, SourceAssetID: r.SourceAssetID,
+			ExperimentID: r.ExperimentID, TestID: r.TestID, TestSubjectID: r.TestSubjectID, RecordingID: r.RecordingID, SourceAssetID: r.SourceAssetID,
 			SourceGeneration: r.SourceGeneration, SourceCRC32C: uint32(r.SourceCrc32c), ClipStartUs: r.ClipStartUs, ClipEndUs: r.ClipEndUs,
-			CalibrationID: value(r.CalibrationID), ParadigmKey: r.ParadigmKey, ParadigmVersion: int(r.ParadigmVersion),
-			EnvironmentRevisionID: r.EnvironmentRevisionID, ProtocolVersionID: r.ProtocolVersionID, Parameters: params,
+			CalibrationID: value(r.CalibrationID), ParadigmKey: r.ParadigmKey, ParadigmVersion: int(r.ParadigmVersion), Parameters: params,
 		},
 		MetricEngineVersion: int(r.MetricEngineVersion), ResultSchemaVersion: int(r.ResultSchemaVersion), Trigger: domain.Trigger(r.Trigger),
 		Status: domain.Status(r.Status), Attempt: int(r.Attempt), MaxAttempts: int(r.MaxAttempts), WorkerID: value(r.WorkerID),
@@ -488,18 +600,17 @@ func toRun(r sqlcgen.MiskoAnalysisRun) (domain.Run, error) {
 	}, nil
 }
 
-// parameters snapshots the step's session values and the environment's
-// apparatus and analysis values. The environment wins on a shared key: steps
-// written before analysis settings moved to the environment stored their
-// defaults in the session.
-func parameters(apparatus, session []byte) (map[string]float64, error) {
+// parameters snapshots the step's session values and the arena's apparatus
+// and analysis values (its environment revision's parameters). The arena wins
+// on a shared key.
+func parameters(arena, session []byte) (map[string]float64, error) {
 	out := map[string]float64{}
 	if err := json.Unmarshal(session, &out); err != nil {
 		return nil, fmt.Errorf("decode session: %w", err)
 	}
 	environment := map[string]float64{}
-	if err := json.Unmarshal(apparatus, &environment); err != nil {
-		return nil, fmt.Errorf("decode apparatus: %w", err)
+	if err := json.Unmarshal(arena, &environment); err != nil {
+		return nil, fmt.Errorf("decode arena parameters: %w", err)
 	}
 	maps.Copy(out, environment)
 	return out, nil

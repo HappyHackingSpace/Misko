@@ -1961,14 +1961,19 @@ paths:
             application/json:
               schema: {type: object, required: [data], properties: {data: {type: array, items: {$ref: '#/components/schemas/AnalysisCapability'}}}}
         '401': {$ref: '#/components/responses/Problem'}
-  /api/tests/{id}/recordings/{recordingId}/analysis-runs:
+  /api/analysis/test-subjects/{testSubjectId}/runs:
     parameters:
-      - $ref: '#/components/parameters/ID'
-      - {name: recordingId, in: path, required: true, schema: {type: string, format: uuid}}
+      - {name: testSubjectId, in: path, required: true, schema: {type: string, format: uuid}}
     post:
-      operationId: reanalyzeRecording
-      summary: Queue a manual run with the current inputs; earlier runs are kept (test:run)
-      description: Returns analysis.notReady until the video is verified, a VALID calibration applies (its own, else the environment's) when the paradigm requires one, and an enabled worker supports the paradigm version. Returns analysis.runPending while an earlier run of the same recording is still queued or running, so a repeated request cannot flood the workers.
+      operationId: reanalyzeTestSubject
+      summary: Queue a manual run of one animal of a test with the current inputs; earlier runs and the reviewed result are kept (test:run)
+      description: >-
+        The run uses the test's current video and the effective calibration of the animal's arena (its own
+        override for this video, else the arena default). Returns analysis.notReady until the current video is
+        verified, the test is not cancelled, the experiment is running or completed, the animal is not excluded,
+        a VALID calibration applies when the paradigm requires one and an enabled worker supports the paradigm
+        version. Returns analysis.runPending while an earlier run of the same animal is still queued or running,
+        so a repeated request cannot flood the workers.
       requestBody: {required: true, content: {application/json: {schema: {type: object, additionalProperties: false}}}}
       responses:
         '201': {description: Queued, content: {application/json: {schema: {$ref: '#/components/schemas/AnalysisRun'}}}}
@@ -1982,7 +1987,9 @@ paths:
       - $ref: '#/components/parameters/ID'
     get:
       operationId: listAnalysisRuns
-      summary: Analysis runs of a test, oldest first (*:read)
+      summary: Analysis runs of a test, newest first, optionally of one of its animals (*:read)
+      parameters:
+        - {name: testSubjectId, in: query, schema: {type: string, format: uuid}}
       responses:
         '200':
           description: Runs
@@ -2039,10 +2046,138 @@ paths:
         '404': {$ref: '#/components/responses/Problem'}
         '409': {$ref: '#/components/responses/Problem'}
         '503': {$ref: '#/components/responses/Problem'}
+  /api/analysis/results:
+    get:
+      operationId: listAnalysisResults
+      summary: Analysis results of animals for review, oldest first (*:read)
+      description: >-
+        Lists PENDING results by default. In a blinded experiment group is null: the reviewer sees only
+        the animal, arena and test. newerRunAvailable reports a succeeded run newer than the one under review.
+      parameters:
+        - {name: experimentId, in: query, schema: {type: string, format: uuid}}
+        - {name: status, in: query, schema: {type: string, enum: [PENDING, ACCEPTED, REJECTED, ALL], default: PENDING}}
+        - $ref: '#/components/parameters/Page'
+        - {name: pageSize, in: query, schema: {type: integer, minimum: 1, maximum: 200, default: 50}, description: Values above 200 are capped}
+      responses:
+        '200':
+          description: Page of results
+          content:
+            application/json:
+              schema: {type: object, required: [data, total, page, pageSize], properties: {data: {type: array, items: {$ref: '#/components/schemas/AnalysisReviewItem'}}, total: {type: integer}, page: {type: integer}, pageSize: {type: integer}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+  /api/analysis/results/bulk-accept:
+    post:
+      operationId: acceptAnalysisResults
+      summary: Accept several results at once, all or none (test:run)
+      description: Needs 1 to 100 distinct test subjects; any missing result or closed experiment rejects the whole request.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [testSubjectIds]
+              properties:
+                testSubjectIds: {type: array, minItems: 1, maxItems: 100, uniqueItems: true, items: {type: string, format: uuid}}
+                note: {type: string, maxLength: 2000}
+      responses:
+        '200':
+          description: Accepted results in request order
+          content:
+            application/json:
+              schema: {type: object, required: [data], properties: {data: {type: array, items: {$ref: '#/components/schemas/AnalysisReviewItem'}}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/analysis/results/{testSubjectId}:
+    parameters:
+      - {name: testSubjectId, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      operationId: getAnalysisResult
+      summary: One animal's result with every succeeded run a reviewer can choose (*:read)
+      responses:
+        '200':
+          description: Result
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/AnalysisReviewItem'
+                  - type: object
+                    required: [runs]
+                    properties:
+                      runs: {type: array, description: Succeeded runs of the animal, newest first, items: {$ref: '#/components/schemas/AnalysisRun'}}
+        '401': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+  /api/analysis/results/{testSubjectId}/accept:
+    parameters:
+      - {name: testSubjectId, in: path, required: true, schema: {type: string, format: uuid}}
+    post:
+      operationId: acceptAnalysisResult
+      summary: Accept an animal's result so it enters the statistics (test:run)
+      description: Decisions can be revised while the experiment runs; a completed experiment returns analysis.experimentClosed.
+      requestBody: {required: true, content: {application/json: {schema: {type: object, additionalProperties: false, properties: {note: {type: string, maxLength: 2000}}}}}}
+      responses:
+        '200': {description: Accepted, content: {application/json: {schema: {$ref: '#/components/schemas/AnalysisReviewItem'}}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/analysis/results/{testSubjectId}/reject:
+    parameters:
+      - {name: testSubjectId, in: path, required: true, schema: {type: string, format: uuid}}
+    post:
+      operationId: rejectAnalysisResult
+      summary: Reject an animal's result with a reason; it stays visible but out of statistics (test:run)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [reason]
+              properties:
+                reason: {$ref: '#/components/schemas/RejectionReason'}
+                note: {type: string, maxLength: 2000}
+      responses:
+        '200': {description: Rejected, content: {application/json: {schema: {$ref: '#/components/schemas/AnalysisReviewItem'}}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/analysis/results/{testSubjectId}/run:
+    parameters:
+      - {name: testSubjectId, in: path, required: true, schema: {type: string, format: uuid}}
+    post:
+      operationId: chooseAnalysisRun
+      summary: Put another succeeded run of the same animal under review; the result returns to PENDING (test:run)
+      description: A run of another animal or one that has not succeeded returns analysis.runNotChosen. Choosing the current run reopens it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {type: object, additionalProperties: false, required: [runId], properties: {runId: {type: string, format: uuid}}}
+      responses:
+        '200': {description: Back to review, content: {application/json: {schema: {$ref: '#/components/schemas/AnalysisReviewItem'}}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
   /api/worker/claim:
     post:
       operationId: claimAnalysisRun
       summary: Lease the oldest available queued run this worker can analyze (worker token)
+      description: >-
+        A run analyses one animal of a test. The video may be shared by up to three arenas; the calibration's
+        crop is this animal's arena in the frame. The job never names the animal's group or treatment.
       security: [{worker: []}]
       requestBody: {required: true, content: {application/json: {schema: {type: object, additionalProperties: false}}}}
       responses:
@@ -2052,9 +2187,15 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [run, outputPrefix, trajectorySchema, contract, calibration]
+                required: [run, testSubject, outputPrefix, trajectorySchema, contract, calibration]
                 properties:
                   run: {$ref: '#/components/schemas/AnalysisRun'}
+                  testSubject:
+                    type: object
+                    required: [id, environmentRevisionId]
+                    properties:
+                      id: {type: string, format: uuid}
+                      environmentRevisionId: {type: string, format: uuid, description: The arena the animal is filmed in}
                   outputPrefix: {type: string, description: 'runs/{runId}/attempts/{attempt}/'}
                   trajectorySchema: {type: string, enum: [misko.trajectory.v1], description: The trajectory format the result must upload}
                   contract: {$ref: '#/components/schemas/AnalysisContract'}
@@ -2180,161 +2321,58 @@ paths:
         '401': {$ref: '#/components/responses/Problem'}
         '404': {$ref: '#/components/responses/Problem'}
         '409': {$ref: '#/components/responses/Problem'}
-  /api/reports/metrics:
+  /api/experiments/{id}/report:
+    parameters:
+      - $ref: '#/components/parameters/ID'
     get:
-      operationId: reportMetrics
-      summary: Published metric results with subject, test and run provenance (*:read)
-      description: Every filter is optional. selection=latest (default) keeps the newest succeeded run of each test per metric engine version, so reanalysis never counts a test twice; a runId reports that run even when it is superseded. Missing results keep a null value and their reason.
-      parameters:
-        - {name: experimentId, in: query, schema: {type: string, format: uuid}}
-        - {name: subjectId, in: query, schema: {type: string, format: uuid}}
-        - {name: groupId, in: query, schema: {type: string, format: uuid}, description: The group stored on the test}
-        - {name: phaseId, in: query, schema: {type: string, format: uuid}}
-        - {name: testId, in: query, schema: {type: string, format: uuid}}
-        - {name: environmentId, in: query, schema: {type: string, format: uuid}}
-        - {name: videoId, in: query, schema: {type: string, format: uuid}, description: Source video of the run}
-        - {name: runId, in: query, schema: {type: string, format: uuid}}
-        - {name: diseaseModelId, in: query, schema: {type: string, format: uuid}, description: Subjects with any recorded condition of this model}
-        - {name: substanceId, in: query, schema: {type: string, format: uuid}, description: Subjects that received the substance in the test's experiment}
-        - {name: paradigmKey, in: query, schema: {type: string, pattern: '^[A-Z][A-Z_]{0,39}$'}}
-        - {name: paradigmVersion, in: query, schema: {type: integer, minimum: 1}}
-        - {name: metricEngineVersion, in: query, schema: {type: integer, minimum: 1}}
-        - {name: selection, in: query, schema: {type: string, enum: [latest, all], default: latest}}
-        - {name: metricKey, in: query, schema: {type: string, pattern: '^[a-z][a-z0-9_]{0,79}$'}}
-        - {name: sort, in: query, schema: {type: string, enum: [scheduledAt, subjectCode, experimentCode, metricKey, value, runFinishedAt], default: scheduledAt}}
-        - {name: order, in: query, schema: {type: string, enum: [asc, desc], default: asc}}
-        - {name: page, in: query, schema: {type: integer, minimum: 1, default: 1}}
-        - {name: pageSize, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 20}, description: Values above 100 are capped}
-      responses:
-        '200':
-          description: Page of metric rows
-          content:
-            application/json:
-              schema: {type: object, required: [data, total, page, pageSize], properties: {data: {type: array, items: {$ref: '#/components/schemas/MetricReportRow'}}, total: {type: integer}, page: {type: integer}, pageSize: {type: integer}}}
-        '400': {$ref: '#/components/responses/Problem'}
-        '401': {$ref: '#/components/responses/Problem'}
-  /api/reports/metrics/export:
-    get:
-      operationId: exportMetricReport
-      summary: Every matching metric row as CSV or JSON, in the report order (*:read)
-      description: At most 100,000 rows; larger exports return report.exportTooLarge. CSV text cells starting with =, +, -, @, tab or carriage return are prefixed with an apostrophe.
-      parameters:
-        - {name: experimentId, in: query, schema: {type: string, format: uuid}}
-        - {name: subjectId, in: query, schema: {type: string, format: uuid}}
-        - {name: groupId, in: query, schema: {type: string, format: uuid}}
-        - {name: phaseId, in: query, schema: {type: string, format: uuid}}
-        - {name: testId, in: query, schema: {type: string, format: uuid}}
-        - {name: environmentId, in: query, schema: {type: string, format: uuid}}
-        - {name: videoId, in: query, schema: {type: string, format: uuid}}
-        - {name: runId, in: query, schema: {type: string, format: uuid}}
-        - {name: diseaseModelId, in: query, schema: {type: string, format: uuid}}
-        - {name: substanceId, in: query, schema: {type: string, format: uuid}}
-        - {name: paradigmKey, in: query, schema: {type: string}}
-        - {name: paradigmVersion, in: query, schema: {type: integer, minimum: 1}}
-        - {name: metricEngineVersion, in: query, schema: {type: integer, minimum: 1}}
-        - {name: selection, in: query, schema: {type: string, enum: [latest, all], default: latest}}
-        - {name: metricKey, in: query, schema: {type: string}}
-        - {name: sort, in: query, schema: {type: string, enum: [scheduledAt, subjectCode, experimentCode, metricKey, value, runFinishedAt], default: scheduledAt}}
-        - {name: order, in: query, schema: {type: string, enum: [asc, desc], default: asc}}
-        - {name: format, in: query, schema: {type: string, enum: [csv, json], default: csv}}
-        - {name: excel, in: query, description: "1 returns UTF-16 LE with a BOM and tab separators, which Excel opens correctly in every locale", schema: {type: string, enum: ["1"]}}
-      responses:
-        '200':
-          description: Export; CSV columns are the MetricReportRow properties in schema order
-          content:
-            text/csv: {schema: {type: string}}
-            application/json:
-              schema: {type: object, required: [data], properties: {data: {type: array, items: {$ref: '#/components/schemas/MetricReportRow'}}}}
-        '400': {$ref: '#/components/responses/Problem'}
-        '401': {$ref: '#/components/responses/Problem'}
-  /api/reports/events:
-    get:
-      operationId: reportEvents
-      summary: Published events with trial, test and run provenance (*:read)
-      parameters:
-        - {name: experimentId, in: query, schema: {type: string, format: uuid}}
-        - {name: subjectId, in: query, schema: {type: string, format: uuid}}
-        - {name: groupId, in: query, schema: {type: string, format: uuid}}
-        - {name: phaseId, in: query, schema: {type: string, format: uuid}}
-        - {name: testId, in: query, schema: {type: string, format: uuid}}
-        - {name: environmentId, in: query, schema: {type: string, format: uuid}}
-        - {name: videoId, in: query, schema: {type: string, format: uuid}}
-        - {name: runId, in: query, schema: {type: string, format: uuid}}
-        - {name: diseaseModelId, in: query, schema: {type: string, format: uuid}}
-        - {name: substanceId, in: query, schema: {type: string, format: uuid}}
-        - {name: paradigmKey, in: query, schema: {type: string}}
-        - {name: paradigmVersion, in: query, schema: {type: integer, minimum: 1}}
-        - {name: metricEngineVersion, in: query, schema: {type: integer, minimum: 1}}
-        - {name: selection, in: query, schema: {type: string, enum: [latest, all], default: latest}}
-        - {name: eventType, in: query, schema: {type: string, pattern: '^[a-z][a-z0-9_]{0,79}$'}}
-        - {name: sort, in: query, schema: {type: string, enum: [scheduledAt, subjectCode, eventType], default: scheduledAt}}
-        - {name: order, in: query, schema: {type: string, enum: [asc, desc], default: asc}}
-        - {name: page, in: query, schema: {type: integer, minimum: 1, default: 1}}
-        - {name: pageSize, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 20}}
-      responses:
-        '200':
-          description: Page of event rows
-          content:
-            application/json:
-              schema: {type: object, required: [data, total, page, pageSize], properties: {data: {type: array, items: {$ref: '#/components/schemas/EventReportRow'}}, total: {type: integer}, page: {type: integer}, pageSize: {type: integer}}}
-        '400': {$ref: '#/components/responses/Problem'}
-        '401': {$ref: '#/components/responses/Problem'}
-  /api/reports/events/export:
-    get:
-      operationId: exportEventReport
-      summary: Every matching event row as CSV or JSON (*:read)
-      description: Same filters and sorts as /api/reports/events, plus format; at most 100,000 rows.
-      parameters:
-        - {name: experimentId, in: query, schema: {type: string, format: uuid}}
-        - {name: testId, in: query, schema: {type: string, format: uuid}}
-        - {name: runId, in: query, schema: {type: string, format: uuid}}
-        - {name: eventType, in: query, schema: {type: string}}
-        - {name: selection, in: query, schema: {type: string, enum: [latest, all], default: latest}}
-        - {name: format, in: query, schema: {type: string, enum: [csv, json], default: csv}}
-        - {name: excel, in: query, description: "1 returns UTF-16 LE with a BOM and tab separators, which Excel opens correctly in every locale", schema: {type: string, enum: ["1"]}}
-      responses:
-        '200':
-          description: Export; CSV columns are the EventReportRow properties in schema order
-          content:
-            text/csv: {schema: {type: string}}
-            application/json:
-              schema: {type: object, required: [data], properties: {data: {type: array, items: {$ref: '#/components/schemas/EventReportRow'}}}}
-        '400': {$ref: '#/components/responses/Problem'}
-        '401': {$ref: '#/components/responses/Problem'}
-  /api/reports/metric-summary:
-    get:
-      operationId: summarizeMetric
-      summary: Compare the groups of one experiment on one metric (*:read)
+      operationId: experimentReport
+      summary: Study report per endpoint and timepoint with group statistics and role-based comparisons (*:read)
       description: >-
-        Uses the latest run of each test. Each subject contributes one value, the
-        mean of its tests, because repeated tests and trials of one animal are not
-        independent; n is the number of subjects with a value. Missing results are
-        counted per reason and never treated as zero. Results of different
-        paradigm versions, metric engine versions or units return 409
-        report.incompatibleVersions listing them; add paradigmVersion and
-        metricEngineVersion. Accepts the metric report filters except runId and selection.
+        The experimental unit is the animal: each animal contributes one value per timepoint, the mean of its
+        accepted results there. Only ACCEPTED results of animals that are not excluded count; pending, rejected,
+        unanalysed and missing results are counted per group so a half-reviewed report is never mistaken for a
+        final one. Values of different paradigm versions, metric engine versions or units are never pooled: the
+        section lists them in versions and sets comparable to false, with no means or comparisons. Comparisons
+        follow the group roles: model validity (disease control vs healthy control and sham), assay sensitivity
+        (positive control vs disease control) and efficacy (treatment vs disease control), both with rescue
+        percent, and dose response (treatment groups of one substance by dose).
       parameters:
-        - {name: experimentId, in: query, required: true, schema: {type: string, format: uuid}}
-        - {name: metricKey, in: query, required: true, schema: {type: string}}
-        - {name: paradigmKey, in: query, schema: {type: string}}
-        - {name: paradigmVersion, in: query, schema: {type: integer, minimum: 1}}
-        - {name: metricEngineVersion, in: query, schema: {type: integer, minimum: 1}}
-        - {name: phaseId, in: query, schema: {type: string, format: uuid}}
-        - {name: environmentId, in: query, schema: {type: string, format: uuid}}
+        - {name: endpointId, in: query, schema: {type: string, format: uuid}, description: Report this endpoint only}
       responses:
-        '200': {description: Group summary, content: {application/json: {schema: {$ref: '#/components/schemas/MetricSummary'}}}}
+        '200': {description: Report, content: {application/json: {schema: {$ref: '#/components/schemas/StudyReport'}}}}
         '400': {$ref: '#/components/responses/Problem'}
         '401': {$ref: '#/components/responses/Problem'}
-        '409': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+  /api/experiments/{id}/report/export:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      operationId: exportExperimentReport
+      summary: The report as CSV, per animal or per group and timepoint (*:read)
+      description: >-
+        level=animals (default) writes one row per animal and test at each endpoint's timepoint and baseline
+        with its review status and value; level=groups writes the group statistics of each endpoint at every
+        timepoint. At most 100,000 measurements per endpoint; larger reports return report.exportTooLarge. CSV
+        text cells starting with =, +, -, @, tab or carriage return are prefixed with an apostrophe.
+      parameters:
+        - {name: endpointId, in: query, schema: {type: string, format: uuid}}
+        - {name: level, in: query, schema: {type: string, enum: [animals, groups], default: animals}}
+        - {name: excel, in: query, description: "1 returns UTF-16 LE with a BOM and tab separators, which Excel opens correctly in every locale", schema: {type: string, enum: ["1"]}}
+      responses:
+        '200': {description: CSV export, content: {text/csv: {schema: {type: string}}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
   /api/dashboard/summary:
     get:
       operationId: dashboardSummary
       summary: Counts and short lists the dashboard shows on landing (*:read)
       description: >-
-        Test status counts across every experiment, queued/running/failed
-        analysis counts, how many verified recordings still need a
-        calibration their paradigm requires, the 5 most recently published
-        analysis results, and the 5 soonest planned tests.
+        Experiment and test status counts, queued/running/failed analysis
+        counts, analysis results by review status, how many animals filmed
+        in a verified video still wait for a calibration of their arena that
+        their paradigm requires, the 5 most recently published analysis
+        results, and the 5 soonest planned sessions with their animals.
       responses:
         '200': {description: Summary, content: {application/json: {schema: {$ref: '#/components/schemas/DashboardSummary'}}}}
         '401': {$ref: '#/components/responses/Problem'}
@@ -3495,26 +3533,25 @@ components:
         createdAt: {type: string, format: date-time}
     AnalysisRun:
       type: object
-      required: [id, experimentId, testId, recordingId, sourceVideoId, sourceGeneration, sourceCrc32c, clipStartUs, clipEndUs, calibrationId, paradigmKey, paradigmVersion, metricEngineVersion, resultSchemaVersion, environmentRevisionId, protocolVersionId, parameters, trigger, status, attempt, maxAttempts, workerId, leaseExpiresAt, modelVersion, failureReason, createdBy, createdAt, finishedAt]
-      description: Inputs are pinned at creation and never change; reanalysis is a new run
+      required: [id, experimentId, testId, testSubjectId, recordingId, sourceVideoId, sourceGeneration, sourceCrc32c, clipStartUs, clipEndUs, calibrationId, paradigmKey, paradigmVersion, metricEngineVersion, resultSchemaVersion, parameters, trigger, status, attempt, maxAttempts, workerId, leaseExpiresAt, modelVersion, failureReason, createdBy, createdAt, finishedAt]
+      description: One animal of a test analysed in the test's video. Inputs are pinned at creation and never change; reanalysis is a new run
       properties:
         id: {type: string, format: uuid}
         experimentId: {type: string, format: uuid}
         testId: {type: string, format: uuid}
+        testSubjectId: {type: string, format: uuid, description: The animal of the test this run analyses}
         recordingId: {type: string, format: uuid}
         sourceVideoId: {type: string, format: uuid}
         sourceGeneration: {type: string, pattern: '^[0-9]+$', description: GCS generation of the analyzed original}
         sourceCrc32c: {type: string, description: Base64 big-endian CRC32C}
         clipStartUs: {type: integer, format: int64}
         clipEndUs: {type: [integer, 'null'], format: int64}
-        calibrationId: {type: [string, 'null'], format: uuid, description: Set only for paradigms that require calibration}
+        calibrationId: {type: [string, 'null'], format: uuid, description: The effective calibration of the animal's arena when the run was created; set only for paradigms that require calibration}
         paradigmKey: {type: string}
         paradigmVersion: {type: integer}
         metricEngineVersion: {type: integer}
         resultSchemaVersion: {type: integer}
-        environmentRevisionId: {type: string, format: uuid}
-        protocolVersionId: {type: string, format: uuid}
-        parameters: {type: object, additionalProperties: {type: number}, description: Apparatus parameters merged with the step's session parameters}
+        parameters: {type: object, additionalProperties: {type: number}, description: The arena's parameters merged with the step's session parameters}
         trigger: {type: string, enum: [AUTOMATIC, MANUAL]}
         status: {type: string, enum: [QUEUED, RUNNING, SUCCEEDED, FAILED]}
         attempt: {type: integer, minimum: 0, description: Number of claims; the current attempt is the fencing token}
@@ -3641,104 +3678,235 @@ components:
             sourceOffsetUs: {type: integer, format: int64}
             outputOffsetUs: {type: integer, format: int64}
             timeMappingVersion: {type: string}
-    ReportProvenance:
+    RejectionReason: {type: string, enum: [TRACKING_LOST, WRONG_ANIMAL, VIDEO_DEFECT, PROTOCOL_DEVIATION, OTHER]}
+    AnalysisReviewItem:
       type: object
-      required: [runId, latest, trigger, modelVersion, metricEngineVersion, resultSchemaVersion, calibrationId, recordingId, sourceVideoId, runFinishedAt, testId, testStatus, scheduledAt, trialCount, experimentId, experimentCode, subjectId, subjectCode, species, sex, phaseId, phaseName, groupId, groupName, groupRole, paradigmKey, paradigmVersion, environmentId, environmentName, environmentRevision]
+      required: [testSubjectId, status, reason, note, reviewedBy, reviewedAt, createdAt, updatedAt, testId, experimentId, experimentCode, experimentStatus, blinded, subjectCode, excluded, arena, timepointId, timepointName, paradigmKey, paradigmVersion, scheduledAt, run, latestRunId, newerRunAvailable, group]
+      description: One animal's result as the review screen shows it
       properties:
-        runId: {type: string, format: uuid}
-        latest: {type: boolean, description: The newest succeeded run of its test for this metric engine version}
-        trigger: {type: string, enum: [AUTOMATIC, MANUAL]}
-        modelVersion: {type: [string, 'null']}
-        metricEngineVersion: {type: integer}
-        resultSchemaVersion: {type: integer}
-        calibrationId: {type: [string, 'null'], format: uuid}
-        recordingId: {type: string, format: uuid}
-        sourceVideoId: {type: string, format: uuid}
-        runFinishedAt: {type: string, format: date-time}
+        testSubjectId: {type: string, format: uuid}
+        status: {type: string, enum: [PENDING, ACCEPTED, REJECTED]}
+        reason: {oneOf: [{$ref: '#/components/schemas/RejectionReason'}, {type: 'null'}]}
+        note: {type: [string, 'null']}
+        reviewedBy: {type: [string, 'null'], format: uuid}
+        reviewedAt: {type: [string, 'null'], format: date-time}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
         testId: {type: string, format: uuid}
-        testStatus: {type: string, enum: [PLANNED, IN_PROGRESS, COMPLETED, CANCELLED]}
-        scheduledAt: {type: string, format: date-time}
-        trialCount: {type: integer}
         experimentId: {type: string, format: uuid}
         experimentCode: {type: string}
-        subjectId: {type: string, format: uuid}
+        experimentStatus: {type: string, enum: [DRAFT, RUNNING, COMPLETED]}
+        blinded: {type: boolean}
         subjectCode: {type: string}
-        species: {type: string}
-        sex: {type: string}
-        phaseId: {type: [string, 'null'], format: uuid}
-        phaseName: {type: [string, 'null']}
-        groupId: {type: [string, 'null'], format: uuid, description: The group stored on the test}
-        groupName: {type: [string, 'null']}
-        groupRole: {type: [string, 'null'], enum: [CONTROL, TREATMENT, null]}
+        excluded: {type: boolean}
+        arena:
+          type: object
+          required: [environmentId, environmentName, environmentRevisionId, revision]
+          properties:
+            environmentId: {type: string, format: uuid}
+            environmentName: {type: string}
+            environmentRevisionId: {type: string, format: uuid}
+            revision: {type: integer}
+        timepointId: {type: string, format: uuid}
+        timepointName: {type: string}
         paradigmKey: {type: string}
         paradigmVersion: {type: integer}
-        environmentId: {type: string, format: uuid}
-        environmentName: {type: string}
-        environmentRevision: {type: integer}
-    MetricReportRow:
-      allOf:
-        - $ref: '#/components/schemas/ReportProvenance'
-        - type: object
-          required: [metricKey, unit, value, missingReason]
+        scheduledAt: {type: string, format: date-time}
+        run:
+          type: object
+          required: [id, trigger, modelVersion, metricEngineVersion, calibrationId, recordingId, finishedAt, metrics]
+          description: The run under review; its analysed video is at /api/analysis-runs/{id}/video-pair
           properties:
-            metricKey: {type: string}
-            unit: {type: string}
-            value: {type: [number, 'null'], description: Null exactly when missingReason is set; never zero for a missing result}
-            missingReason: {type: [string, 'null']}
-    EventReportRow:
-      allOf:
-        - $ref: '#/components/schemas/ReportProvenance'
-        - type: object
-          required: [eventId, eventType, kind, startUs, endUs, confidence, trialId, trialNumber, trialRepetition, trialAttempt]
-          properties:
-            eventId: {type: string, format: uuid}
-            eventType: {type: string}
-            kind: {type: string, enum: [INTERVAL, POINT]}
-            startUs: {type: integer, format: int64}
-            endUs: {type: integer, format: int64}
-            confidence: {type: number}
-            trialId: {type: [string, 'null'], format: uuid}
-            trialNumber: {type: [integer, 'null']}
-            trialRepetition: {type: [integer, 'null']}
-            trialAttempt: {type: [integer, 'null']}
-    MetricSummary:
-      type: object
-      required: [metricKey, version, groups]
-      properties:
-        metricKey: {type: string}
-        version:
+            id: {type: string, format: uuid}
+            trigger: {type: string, enum: [AUTOMATIC, MANUAL]}
+            modelVersion: {type: [string, 'null']}
+            metricEngineVersion: {type: integer}
+            calibrationId: {type: [string, 'null'], format: uuid}
+            recordingId: {type: string, format: uuid}
+            finishedAt: {type: [string, 'null'], format: date-time}
+            metrics:
+              type: array
+              items:
+                type: object
+                required: [key, unit, value, missingReason]
+                properties:
+                  key: {type: string}
+                  unit: {type: string}
+                  value: {type: [number, 'null']}
+                  missingReason: {type: [string, 'null']}
+        latestRunId: {type: string, format: uuid, description: The newest succeeded run of the animal}
+        newerRunAvailable: {type: boolean}
+        group:
+          description: Null in a blinded experiment
           oneOf:
             - type: 'null'
             - type: object
-              required: [paradigmKey, paradigmVersion, metricEngineVersion, unit]
+              required: [id, code, name, role, diseaseModelName, substanceName, doseMicro, unit]
               properties:
-                paradigmKey: {type: string}
-                paradigmVersion: {type: integer}
-                metricEngineVersion: {type: integer}
-                unit: {type: string}
+                id: {type: string, format: uuid}
+                code: {type: string}
+                name: {type: string}
+                role: {type: string, enum: [HEALTHY_CONTROL, SHAM, DISEASE_CONTROL, POSITIVE_CONTROL, TREATMENT]}
+                diseaseModelName: {type: [string, 'null']}
+                substanceName: {type: [string, 'null']}
+                doseMicro: {type: [integer, 'null'], format: int64, description: Treatment dose in millionths of unit}
+                unit: {type: [string, 'null']}
+    Descriptives:
+      type: object
+      required: [n, mean, sd, sem, min, max]
+      properties:
+        n: {type: integer, description: Animals with an accepted value}
+        mean: {type: [number, 'null']}
+        sd: {type: [number, 'null'], description: Sample standard deviation of per-animal values; null below two animals}
+        sem: {type: [number, 'null']}
+        min: {type: [number, 'null']}
+        max: {type: [number, 'null']}
+    GroupStats:
+      allOf:
+        - $ref: '#/components/schemas/Descriptives'
+        - type: object
+          required: [groupId, tested, pending, awaitingAnalysis, rejected, missing, excluded, change]
+          properties:
+            groupId: {type: string, format: uuid}
+            tested: {type: integer, description: Animals filmed at this timepoint}
+            pending: {type: integer, description: Results of animals that are not excluded still waiting for review}
+            awaitingAnalysis: {type: integer, description: Animals that are not excluded without a succeeded run}
+            rejected: {type: integer}
+            missing: {type: integer, description: Accepted results without a value for the metric}
+            excluded: {type: integer, description: Excluded animals of the group}
+            change:
+              description: Change from the endpoint's baseline timepoint per animal; null without a baseline
+              oneOf: [{type: 'null'}, {$ref: '#/components/schemas/Descriptives'}]
+    StudyReport:
+      type: object
+      required: [experiment, groups, timepoints, sections]
+      properties:
+        experiment:
+          type: object
+          required: [id, code, title, status, blinded]
+          properties:
+            id: {type: string, format: uuid}
+            code: {type: string}
+            title: {type: string}
+            status: {type: string, enum: [DRAFT, RUNNING, COMPLETED]}
+            blinded: {type: boolean}
         groups:
           type: array
-          description: Control groups first, then treatment groups by name, then tests without a group
           items:
             type: object
-            required: [groupId, groupName, groupRole, tests, subjects, missingSubjects, missingReasons, mean, sd, sem, min, max]
+            required: [id, code, name, role, diseaseModelId, diseaseModelName, treatment, allocated, excluded]
             properties:
-              groupId: {type: [string, 'null'], format: uuid}
-              groupName: {type: [string, 'null']}
-              groupRole: {type: [string, 'null']}
-              tests: {type: integer}
-              subjects: {type: integer, description: Subjects with at least one value; the n of the statistics}
-              missingSubjects: {type: integer, description: Subjects whose every result is missing}
-              missingReasons: {type: object, additionalProperties: {type: integer}, description: Tests per missing reason}
-              mean: {type: [number, 'null']}
-              sd: {type: [number, 'null'], description: Sample standard deviation of subject values; null below two subjects}
-              sem: {type: [number, 'null']}
-              min: {type: [number, 'null']}
-              max: {type: [number, 'null']}
+              id: {type: string, format: uuid}
+              code: {type: string}
+              name: {type: string}
+              role: {type: string, enum: [HEALTHY_CONTROL, SHAM, DISEASE_CONTROL, POSITIVE_CONTROL, TREATMENT]}
+              diseaseModelId: {type: [string, 'null'], format: uuid}
+              diseaseModelName: {type: [string, 'null']}
+              treatment:
+                oneOf:
+                  - type: 'null'
+                  - type: object
+                    required: [substanceId, substanceName, doseMicro, unit]
+                    properties:
+                      substanceId: {type: string, format: uuid}
+                      substanceName: {type: string}
+                      doseMicro: {type: integer, format: int64}
+                      unit: {type: string}
+              allocated: {type: integer}
+              excluded: {type: integer}
+        timepoints:
+          type: array
+          items:
+            type: object
+            required: [id, name, studyDay, position]
+            properties:
+              id: {type: string, format: uuid}
+              name: {type: string}
+              studyDay: {type: integer}
+              position: {type: integer}
+        sections:
+          type: array
+          description: One per endpoint, the primary endpoint first
+          items:
+            type: object
+            required: [endpoint, versions, comparable, groups, comparisons, doseResponse, timeCourse]
+            properties:
+              endpoint:
+                type: object
+                required: [id, kind, paradigmKey, metricKey, direction, timepointId, baselineTimepointId]
+                properties:
+                  id: {type: string, format: uuid}
+                  kind: {type: string, enum: [PRIMARY, SECONDARY]}
+                  paradigmKey: {type: string}
+                  metricKey: {type: string}
+                  direction: {type: string, enum: [HIGHER_IS_BETTER, LOWER_IS_BETTER]}
+                  timepointId: {type: string, format: uuid}
+                  baselineTimepointId: {type: [string, 'null'], format: uuid}
+              versions:
+                type: array
+                items:
+                  type: object
+                  required: [paradigmVersion, metricEngineVersion, unit]
+                  properties:
+                    paradigmVersion: {type: integer}
+                    metricEngineVersion: {type: integer}
+                    unit: {type: string}
+              comparable: {type: boolean, description: False when accepted values come from more than one version or unit}
+              groups: {type: array, description: Every group at the endpoint's timepoint, items: {$ref: '#/components/schemas/GroupStats'}}
+              comparisons:
+                type: array
+                items:
+                  type: object
+                  required: [kind, groupId, referenceGroupId, healthyReferenceGroupId, difference, percentDifference, effect, rescuePercent]
+                  properties:
+                    kind: {type: string, enum: [MODEL_VALIDITY, ASSAY_SENSITIVITY, EFFICACY]}
+                    groupId: {type: string, format: uuid}
+                    referenceGroupId: {type: string, format: uuid}
+                    healthyReferenceGroupId: {type: [string, 'null'], format: uuid, description: Healthy control, else a sham of the same disease model}
+                    difference: {type: [number, 'null'], description: Group mean minus reference mean}
+                    percentDifference: {type: [number, 'null']}
+                    effect: {type: [number, 'null'], description: The difference signed so that positive is better in the endpoint's direction}
+                    rescuePercent: {type: [number, 'null'], description: '(group - disease control) / (healthy reference - disease control) x 100'}
+              doseResponse:
+                type: array
+                items:
+                  type: object
+                  required: [substanceId, substanceName, unit, points]
+                  properties:
+                    substanceId: {type: string, format: uuid}
+                    substanceName: {type: string}
+                    unit: {type: string}
+                    points:
+                      type: array
+                      items:
+                        type: object
+                        required: [groupId, doseMicro, n, mean, rescuePercent]
+                        properties:
+                          groupId: {type: string, format: uuid}
+                          doseMicro: {type: integer, format: int64}
+                          n: {type: integer}
+                          mean: {type: [number, 'null']}
+                          rescuePercent: {type: [number, 'null']}
+              timeCourse:
+                type: array
+                description: Group statistics at every timepoint with measurements, in timepoint order
+                items:
+                  type: object
+                  required: [timepointId, groups]
+                  properties:
+                    timepointId: {type: string, format: uuid}
+                    groups: {type: array, items: {$ref: '#/components/schemas/GroupStats'}}
     DashboardSummary:
       type: object
-      required: [tests, analysisQueued, analysisRunning, analysisFailed, calibrationWaiting, recentActivity, upcomingTests]
+      required: [experiments, tests, analysisQueued, analysisRunning, analysisFailed, results, calibrationWaiting, recentActivity, upcomingTests]
       properties:
+        experiments:
+          type: object
+          required: [draft, running, completed]
+          properties:
+            draft: {type: integer}
+            running: {type: integer}
+            completed: {type: integer}
         tests:
           type: object
           required: [planned, inProgress, completed, cancelled]
@@ -3750,15 +3918,24 @@ components:
         analysisQueued: {type: integer}
         analysisRunning: {type: integer}
         analysisFailed: {type: integer}
-        calibrationWaiting: {type: integer, description: Verified recordings whose paradigm requires a calibration and that have no valid one, of their own or from their environment}
+        results:
+          type: object
+          description: Animals' analysis results by review status
+          required: [pending, accepted, rejected]
+          properties:
+            pending: {type: integer}
+            accepted: {type: integer}
+            rejected: {type: integer}
+        calibrationWaiting: {type: integer, description: Animals of tests that are not cancelled, not excluded, filmed in a verified current video, whose paradigm requires a calibration and whose arena has no valid one (its own override for the video, else the arena default)}
         recentActivity:
           type: array
           description: The 5 most recently published analysis results, newest first
           items:
             type: object
-            required: [testId, subjectCode, experimentCode, paradigmKey, paradigmVersion, finishedAt]
+            required: [testId, testSubjectId, subjectCode, experimentCode, paradigmKey, paradigmVersion, finishedAt]
             properties:
               testId: {type: string, format: uuid}
+              testSubjectId: {type: string, format: uuid}
               subjectCode: {type: string}
               experimentCode: {type: string}
               paradigmKey: {$ref: '#/components/schemas/ConstantKey'}
@@ -3766,14 +3943,15 @@ components:
               finishedAt: {type: string, format: date-time}
         upcomingTests:
           type: array
-          description: The 5 soonest planned tests
+          description: The 5 soonest planned sessions
           items:
             type: object
-            required: [id, subjectCode, experimentCode, paradigmKey, paradigmVersion, scheduledAt]
+            required: [id, subjectCodes, experimentCode, timepointName, paradigmKey, paradigmVersion, scheduledAt]
             properties:
               id: {type: string, format: uuid}
-              subjectCode: {type: string}
+              subjectCodes: {type: array, items: {type: string}, description: Animals of the session by code}
               experimentCode: {type: string}
+              timepointName: {type: string}
               paradigmKey: {$ref: '#/components/schemas/ConstantKey'}
               paradigmVersion: {type: integer}
               scheduledAt: {type: string, format: date-time}

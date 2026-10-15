@@ -493,9 +493,13 @@ observation-only paradigms such as ROTAROD report `NOT_REQUIRED`.
 Computer vision runs outside the API in analysis workers. The API schedules runs,
 leases them to workers, verifies what they upload and publishes it; it never
 reads video bytes. Workers measure positions only: the Go metric engine computes
-every published metric and event from the stored trajectory. The first worker,
-for single-subject Open Field video and tested only on synthetic video so far,
-is in [`worker/`](../worker/README.md).
+every published metric and event from the stored trajectory. A test (one
+session) has one video and one or more animals (test subjects), each in its own
+arena; a run analyses one animal in that video with its arena's calibration,
+whose crop is the arena's region of the frame. The first worker, for Open Field
+video and tested only on synthetic video so far, is in
+[`worker/`](../worker/README.md); it refuses every other paradigm with
+`UNSUPPORTED_PARADIGM`.
 
 Workers are service identities, not users:
 
@@ -513,26 +517,35 @@ Workers are service identities, not users:
   A user bearer token there returns 401 `worker.unauthenticated`, and a worker
   token on a user route returns 401 `auth.unauthenticated`.
 
-A run pins its inputs when it is created: test, recording, source video and its
-GCS generation and CRC32C, clip range, calibration (only for paradigms that
-require one), paradigm version with its metric engine and result schema
-versions, environment revision, protocol version and the merged apparatus and
-session parameters. The inputs never change; reanalysis is a new run.
+A run pins its inputs when it is created: test, test subject, the test's
+current recording, source video and its GCS generation and CRC32C, clip range,
+the effective calibration of the animal's arena (only for paradigms that require
+one), paradigm version with its metric engine and result schema versions, and
+the arena's parameters merged with the step's session parameters. The inputs
+never change; reanalysis is a new run.
 
 - `cmd/jobs` ticks every `JOB_INTERVAL`. A tick first returns runs whose lease
   expired to the queue, or fails them with `LEASE_EXPIRED` after the last
-  attempt, then creates one `AUTOMATIC` run for every recording whose video is
-  `VERIFIED`, with a valid calibration (its own, else the environment's) when the paradigm requires it,
-  and whose paradigm version an enabled worker supports. A partial unique index on
-  recording, source generation, paradigm version and calibration makes concurrent
-  ticks create each automatic run once; a new calibration of the recording creates a
-  new run, a corrected environment calibration does not.
-- `POST /api/tests/{id}/recordings/{recordingId}/analysis-runs` (`test:run`)
-  queues a `MANUAL` run with the current inputs, or returns 409
-  `analysis.notReady`. Earlier runs and their results stay unchanged.
+  attempt, then creates one `AUTOMATIC` run for every animal of a test that is
+  not cancelled, in an experiment that is running or completed, not excluded,
+  whose test's current video is `VERIFIED`, with a valid calibration of its arena
+  (its own override for this video, else the arena default) when the paradigm
+  requires it, and whose paradigm version an enabled worker supports. The query
+  returns only candidates it can plan (at most 500, oldest video first), so
+  animals waiting for a calibration never starve newer ones; a candidate that
+  fails (for example arena parameters that are not numbers) is logged and
+  skipped while the others are enqueued. A partial unique index on test subject,
+  recording, source generation, paradigm version and calibration makes
+  concurrent ticks create each automatic run once; a new override of the animal
+  creates a new run, a corrected arena default does not.
+- `POST /api/analysis/test-subjects/{testSubjectId}/runs` (`test:run`) queues a
+  `MANUAL` run of one animal with the current inputs, or returns 409
+  `analysis.notReady`, and 409 `analysis.runPending` while a run of the animal
+  is queued or running. Earlier runs and their results stay unchanged.
 - `POST /api/worker/claim` leases the oldest available queued run the worker can
   analyze (`FOR UPDATE SKIP LOCKED`), increments `attempt` and returns the run,
-  its output prefix `runs/{runId}/attempts/{attempt}/`, the trajectory schema
+  the test subject and its arena, its output prefix
+  `runs/{runId}/attempts/{attempt}/`, the trajectory schema
   `misko.trajectory.v1`, the contract (the metrics, event types, missing reasons
   and QC rules the engine will apply) and the pinned calibration (frame size, crop,
   plane and the pixel to centimeter homography, or null). With
@@ -566,76 +579,83 @@ session parameters. The inputs never change; reanalysis is a new run.
   with the run's pinned parameters and duration; an event's confidence is the
   mean confidence of the tracked samples it covers. Metrics, events, artifacts,
   the analyzed video asset and the pair are written with the `SUCCEEDED` status
-  in one transaction; a deferred trigger refuses success without the pair.
-  Delivering the accepted result again returns the run.
+  in one transaction; a deferred trigger refuses success without the pair. The
+  first successful run of an animal also opens its result (`subject_results`) as
+  `PENDING`. Delivering the accepted result again returns the run.
 - `.../failure` records a reason. A retryable failure returns the run to the
   queue while attempts remain; otherwise the run is `FAILED`.
 
-Users read the results with `*:read`: `GET /api/tests/{id}/analysis-runs`,
-`GET /api/analysis-runs/{runId}` (with the published result when it succeeded)
-and `GET /api/analysis-runs/{runId}/video-pair`, which signs reads of the pinned
-original generation and that run's own analyzed video, with the time offsets and
-mapping version for synchronized playback.
+Users read the results with `*:read`: `GET /api/tests/{id}/analysis-runs`
+(`?testSubjectId=` for one animal), `GET /api/analysis-runs/{runId}` (with the
+published result when it succeeded) and `GET /api/analysis-runs/{runId}/video-pair`,
+which signs reads of the pinned original generation and that run's own analyzed
+video, with the time offsets and mapping version for synchronized playback.
 
-The integration tests cover concurrent schedulers and claims, lease expiry and a
-late attempt, missing and corrupt outputs, duplicate delivery, reanalysis next to
-earlier results and the database triggers, with a fake object store. They do not
-prove real GCS behavior or any tracking accuracy.
+Every result is approved by a person before it counts:
+
+- `GET /api/analysis/results` (`*:read`) lists results for review, `PENDING` by
+  default (`status=ACCEPTED|REJECTED|ALL`, `experimentId`, `page`, `pageSize` up
+  to 200), oldest first, with the animal, its arena, the test, the run under
+  review with its metrics and whether a newer succeeded run exists. In a
+  `blinded` experiment `group` is null: the reviewer sees no group, disease,
+  substance or dose. `GET /api/analysis/results/{testSubjectId}` adds every
+  succeeded run of the animal.
+- `POST .../{testSubjectId}/accept` (`test:run`, optional `note`) and
+  `POST .../{testSubjectId}/reject` (`reason`: `TRACKING_LOST`, `WRONG_ANIMAL`,
+  `VIDEO_DEFECT`, `PROTOCOL_DEVIATION`, `OTHER`, optional `note`) record the
+  decision and the reviewer; a decision can be revised while the experiment
+  runs. `POST .../{testSubjectId}/run` with `runId` puts another succeeded run of
+  the same animal under review and sends the result back to `PENDING`.
+  `POST /api/analysis/results/bulk-accept` accepts 1 to 100 results at once, all
+  or none. A newer run never replaces the reviewed one by itself, and once the
+  experiment is completed every decision returns 409 `analysis.experimentClosed`.
+
+The integration tests cover concurrent schedulers and claims, starvation by
+candidates waiting for a calibration, skipped bad rows, per-animal calibration
+and overrides, lease expiry and a late attempt, missing and corrupt outputs,
+duplicate delivery, reanalysis next to earlier results, the review with
+blinding and the database triggers, with a fake object store. They do not prove
+real GCS behavior or any tracking accuracy.
 
 ## Reports and exports
 
-Reports read published results through the read-only views of
-`schema/012_reports.sql` (`report_runs`, `report_tests`); they never write, and
-the views reject writes. Each domain keeps its own list endpoints; reports join
-them for questions that start anywhere. Every role has `*:read`, and there is one
-laboratory per installation.
+The study report reads the design tables and the read-only views of
+`schema/012_reports.sql` (`report_test_subjects`, `report_accepted_metrics`);
+it never writes. Every role has `*:read`.
 
-- `GET /api/reports/metrics` returns metric results with their provenance:
-  experiment, subject, phase and group stored on the test, test and its trial
-  count, paradigm version, environment revision, recording, source video, run,
-  trigger, model version, metric engine and result schema versions, and
-  calibration. Filters: `experimentId`, `subjectId`, `groupId`, `phaseId`,
-  `testId`, `environmentId`, `videoId`, `runId`, `diseaseModelId` (subjects with
-  any recorded condition of that model), `substanceId` (subjects that received it
-  in the test's experiment), `paradigmKey`, `paradigmVersion`,
-  `metricEngineVersion` and `metricKey`. Sorts are allowlisted and end with test,
-  run and metric keys, so pages are stable; `pageSize` defaults to 20 and is
-  capped at 100.
-- `selection=latest` (default) keeps the newest succeeded run of each test for
-  each metric engine version, so a reanalysis never counts a test twice.
-  `selection=all` lists every succeeded run, and `runId` reports that run even
-  when it is superseded.
-- A missing result keeps `value: null` with its `missingReason`; it is never
-  turned into zero, and it sorts last.
-- `GET /api/reports/events` lists published events with the same provenance plus
-  the trial number, repetition and attempt; it filters by `eventType` instead of
-  `metricKey`.
-- `.../metrics/export` and `.../events/export` return every matching row as
-  `format=csv` (default) or `format=json`, in report order, up to 100,000 rows
-  (`report.exportTooLarge` otherwise). CSV text cells that start with `=`, `+`,
-  `-`, `@`, tab or carriage return get a leading apostrophe so spreadsheets do not
-  run them as formulas.
-- `GET /api/reports/metric-summary?experimentId=...&metricKey=...` compares groups
-  using the latest runs. Each subject contributes one value, the mean of its
-  tests, because repeated tests and trials of one animal are not independent; `n`
-  is the number of subjects with a value, and the summary reports mean, sample
-  SD, SEM, minimum, maximum, subjects without any value and tests per missing
-  reason. When the rows mix paradigm versions, metric engine versions or units,
-  it returns 409 `report.incompatibleVersions` naming them; add `paradigmVersion`
-  and `metricEngineVersion`.
+- `GET /api/experiments/{id}/report` (`?endpointId=` for one endpoint) returns,
+  for every endpoint (the primary first), the groups at the endpoint's timepoint
+  and a time course over every timepoint with measurements. The experimental
+  unit is the animal: each animal contributes one value per timepoint, the mean
+  of its accepted results there. Only `ACCEPTED` results of animals that are not
+  excluded count. Per group: `n`, mean, sample SD, SEM, minimum, maximum, the
+  change from the endpoint's baseline timepoint per animal, and how many animals
+  were tested, are pending review, wait for analysis, were rejected, have an
+  accepted result without the metric, and are excluded.
+- Comparisons come from the group roles: model validity (disease control vs
+  healthy control, and vs sham of the same disease model), assay sensitivity
+  (positive control vs disease control) and efficacy (each treatment vs the
+  disease control of its disease model). Each gives the difference, the percent
+  difference and the effect signed by the endpoint's direction; assay
+  sensitivity and efficacy add rescue % = (group - disease control) /
+  (healthy reference - disease control) x 100, where the healthy reference is a
+  healthy control, else a sham of the same disease model. Dose response lists
+  the treatment groups of one substance and unit by dose.
+- Values of different paradigm versions, metric engine versions or units are
+  never pooled: the section lists them in `versions`, sets `comparable` to
+  false and computes no means or comparisons. Statistical tests come later.
+- `GET /api/experiments/{id}/report/export` returns CSV: `level=animals`
+  (default) one row per animal and test at each endpoint's timepoint and
+  baseline with the review status and value, `level=groups` the group
+  statistics of each endpoint at every timepoint. `excel=1` writes UTF-16 LE
+  with tab separators. CSV text cells that start with `=`, `+`, `-`, `@`, tab or
+  carriage return get a leading apostrophe. One endpoint reads at most 100,000
+  measurements (`report.exportTooLarge` otherwise).
 
-The indexes added with the views cover the latest-run check and the group, phase,
-environment and source video filters. An integration test generates 50
-experiments, 2,000 subjects, 10,000 tests and trials, and 10,400 published runs
-with 31,200 metric results and 20,800 events through the normal triggers, runs
-`ANALYZE`, and explains the filtered statements the store actually sends. With
-sequential scans disabled, every one of them reaches runs, results, events,
-tests, recordings, videos and trials through index conditions (a full index scan
-fails the test); the latest-run check uses `analysis_runs_report_idx`. In the
-cost-based plans on this dataset only the event count over every run of an
-experiment still scans `analysis_runs`, and small lookup tables such as subjects
-may be hashed. The dataset is synthetic;
-plans on a real installation depend on its data.
+`GET /api/dashboard/summary` (`*:read`) counts experiments and tests by status,
+queued, running and failed runs, results by review status and animals waiting
+for a calibration of their arena, and lists the five latest published results
+and the five soonest planned sessions with their animals.
 
 ## Local container run
 

@@ -55,8 +55,21 @@ type statusCountsJSON struct {
 	Cancelled  int `json:"cancelled"`
 }
 
+type experimentCountsJSON struct {
+	Draft     int `json:"draft"`
+	Running   int `json:"running"`
+	Completed int `json:"completed"`
+}
+
+type resultCountsJSON struct {
+	Pending  int `json:"pending"`
+	Accepted int `json:"accepted"`
+	Rejected int `json:"rejected"`
+}
+
 type activityJSON struct {
 	TestID          string    `json:"testId"`
+	TestSubjectID   string    `json:"testSubjectId"`
 	SubjectCode     string    `json:"subjectCode"`
 	ExperimentCode  string    `json:"experimentCode"`
 	ParadigmKey     string    `json:"paradigmKey"`
@@ -66,28 +79,31 @@ type activityJSON struct {
 
 type upcomingTestJSON struct {
 	ID              string    `json:"id"`
-	SubjectCode     string    `json:"subjectCode"`
+	SubjectCodes    []string  `json:"subjectCodes"`
 	ExperimentCode  string    `json:"experimentCode"`
+	TimepointName   string    `json:"timepointName"`
 	ParadigmKey     string    `json:"paradigmKey"`
 	ParadigmVersion int       `json:"paradigmVersion"`
 	ScheduledAt     time.Time `json:"scheduledAt"`
 }
 
 type summaryJSONBody struct {
-	Tests              statusCountsJSON   `json:"tests"`
-	AnalysisQueued     int                `json:"analysisQueued"`
-	AnalysisRunning    int                `json:"analysisRunning"`
-	AnalysisFailed     int                `json:"analysisFailed"`
-	CalibrationWaiting int                `json:"calibrationWaiting"`
-	RecentActivity     []activityJSON     `json:"recentActivity"`
-	UpcomingTests      []upcomingTestJSON `json:"upcomingTests"`
+	Experiments        experimentCountsJSON `json:"experiments"`
+	Tests              statusCountsJSON     `json:"tests"`
+	Results            resultCountsJSON     `json:"results"`
+	AnalysisQueued     int                  `json:"analysisQueued"`
+	AnalysisRunning    int                  `json:"analysisRunning"`
+	AnalysisFailed     int                  `json:"analysisFailed"`
+	CalibrationWaiting int                  `json:"calibrationWaiting"`
+	RecentActivity     []activityJSON       `json:"recentActivity"`
+	UpcomingTests      []upcomingTestJSON   `json:"upcomingTests"`
 }
 
 func summaryJSON(s domain.Summary) summaryJSONBody {
 	activity := make([]activityJSON, 0, len(s.RecentActivity))
 	for _, a := range s.RecentActivity {
 		activity = append(activity, activityJSON{
-			TestID: a.TestID, SubjectCode: a.SubjectCode, ExperimentCode: a.ExperimentCode,
+			TestID: a.TestID, TestSubjectID: a.TestSubjectID, SubjectCode: a.SubjectCode, ExperimentCode: a.ExperimentCode,
 			ParadigmKey: a.ParadigmKey, ParadigmVersion: a.ParadigmVersion,
 			FinishedAt: a.FinishedAt,
 		})
@@ -95,12 +111,14 @@ func summaryJSON(s domain.Summary) summaryJSONBody {
 	upcoming := make([]upcomingTestJSON, 0, len(s.UpcomingTests))
 	for _, u := range s.UpcomingTests {
 		upcoming = append(upcoming, upcomingTestJSON{
-			ID: u.ID, SubjectCode: u.SubjectCode, ExperimentCode: u.ExperimentCode,
+			ID: u.ID, SubjectCodes: nonNil(u.SubjectCodes), ExperimentCode: u.ExperimentCode, TimepointName: u.TimepointName,
 			ParadigmKey: u.ParadigmKey, ParadigmVersion: u.ParadigmVersion,
 			ScheduledAt: u.ScheduledAt,
 		})
 	}
 	return summaryJSONBody{
+		Experiments: experimentCountsJSON{Draft: s.Experiments.Draft, Running: s.Experiments.Running, Completed: s.Experiments.Completed},
+		Results:     resultCountsJSON{Pending: s.Results.Pending, Accepted: s.Results.Accepted, Rejected: s.Results.Rejected},
 		Tests: statusCountsJSON{
 			Planned: s.Tests.Planned, InProgress: s.Tests.InProgress,
 			Completed: s.Tests.Completed, Cancelled: s.Tests.Cancelled,
@@ -114,4 +132,11 @@ func summaryJSON(s domain.Summary) summaryJSONBody {
 
 func (h handler) fail(w http.ResponseWriter, r *http.Request, err error) {
 	httpjson.Fail(w, r, h.logger, err, failures)
+}
+
+func nonNil(codes []string) []string {
+	if codes == nil {
+		return []string{}
+	}
+	return codes
 }

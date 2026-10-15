@@ -177,7 +177,8 @@ func NewAPI(pool *pgxpool.Pool, cfg config.Config, auth config.Auth, logger *slo
 	reportshttp.Register(mux, reportsapp.New(reportspostgres.NewStore(pool), reportExportLimit), authenticate, logger)
 	dashboardhttp.Register(mux, dashboardapp.New(dashboardpostgres.NewStore(pool), dashboardcatalog.New()), authenticate, logger)
 	tick := func(ctx context.Context) error {
-		_, err := analysis.Tick(ctx)
+		report, err := analysis.Tick(ctx)
+		logTick(ctx, logger, report, err)
 		return err
 	}
 	return API{Handler: mux, BeginDrain: readiness.BeginDrain, AnalysisTick: tick}, nil

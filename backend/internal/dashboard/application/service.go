@@ -1,9 +1,10 @@
-// Package application computes the dashboard summary: counts, a short recent
-// activity feed and the next planned tests. Everything here is a read; it
-// never writes and needs only *:read. The one rule it applies itself, rather
-// than reading from a column, is whether a candidate recording still needs a
-// calibration — that comes from the paradigm catalog, the same source the
-// single-recording calibration status uses, so the two never disagree.
+// Package application computes the dashboard summary: experiment, test,
+// analysis and review counts, a short recent activity feed and the next
+// planned tests. Everything here is a read; it never writes and needs only
+// *:read. The one rule it applies itself, rather than reading from a column,
+// is whether an animal filmed in a verified video still needs a calibration of
+// its arena: that comes from the paradigm catalog, the same source the
+// calibration context and the analysis scheduler use, so they never disagree.
 package application
 
 import (
@@ -13,8 +14,9 @@ import (
 	"github.com/HappyHackingSpace/Misko/backend/internal/dashboard/domain"
 )
 
-// CalibrationCandidate is a verified recording with no valid, unsuperseded
-// calibration yet. Whether it actually needs one depends on its paradigm.
+// CalibrationCandidate is an animal of a test with a verified current video
+// whose arena has no valid effective calibration. Whether it actually needs
+// one depends on its paradigm.
 type CalibrationCandidate struct {
 	ParadigmKey     string
 	ParadigmVersion int
@@ -22,8 +24,10 @@ type CalibrationCandidate struct {
 }
 
 type Store interface {
+	ExperimentStatusCounts(ctx context.Context) (domain.ExperimentCounts, error)
 	TestStatusCounts(ctx context.Context) (domain.StatusCounts, error)
 	AnalysisStatusCounts(ctx context.Context) (queued, running, failed int, err error)
+	ResultStatusCounts(ctx context.Context) (domain.ResultCounts, error)
 	RecentActivity(ctx context.Context, limit int) ([]domain.Activity, error)
 	UpcomingTests(ctx context.Context, limit int) ([]domain.UpcomingTest, error)
 	CalibrationCandidates(ctx context.Context) ([]CalibrationCandidate, error)
@@ -52,7 +56,15 @@ func (s *Service) Summary(ctx context.Context, actor access.Actor) (domain.Summa
 	if err := actor.Require(access.Read); err != nil {
 		return domain.Summary{}, err
 	}
+	experiments, err := s.store.ExperimentStatusCounts(ctx)
+	if err != nil {
+		return domain.Summary{}, err
+	}
 	tests, err := s.store.TestStatusCounts(ctx)
+	if err != nil {
+		return domain.Summary{}, err
+	}
+	results, err := s.store.ResultStatusCounts(ctx)
 	if err != nil {
 		return domain.Summary{}, err
 	}
@@ -86,7 +98,9 @@ func (s *Service) Summary(ctx context.Context, actor access.Actor) (domain.Summa
 		}
 	}
 	return domain.Summary{
+		Experiments:        experiments,
 		Tests:              tests,
+		Results:            results,
 		AnalysisQueued:     queued,
 		AnalysisRunning:    running,
 		AnalysisFailed:     failed,

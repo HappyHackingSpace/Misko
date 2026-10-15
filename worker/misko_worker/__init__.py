@@ -9,4 +9,7 @@ published metric and event from that trajectory; the worker computes none.
 # changes whenever detection or trajectory output changes.
 ALGORITHM_VERSION = "misko-open-field-bgsub 1.0.0"
 TRAJECTORY_SCHEMA = "misko.trajectory.v1"
+# SUPPORTED is the only paradigm version this worker can measure. A job for any
+# other one is failed with UNSUPPORTED_PARADIGM before its video is downloaded.
+SUPPORTED_PARADIGM = ("OPEN_FIELD", 1)
 TIME_MAPPING_VERSION = "identity-v1"

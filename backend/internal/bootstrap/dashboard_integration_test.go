@@ -4,111 +4,62 @@ package bootstrap
 
 import (
 	"context"
-	calibration "github.com/HappyHackingSpace/Misko/backend/internal/calibration/domain"
-	mediaapp "github.com/HappyHackingSpace/Misko/backend/internal/media/application"
-	"github.com/HappyHackingSpace/Misko/backend/internal/media/domain"
-	"github.com/HappyHackingSpace/Misko/backend/internal/platform/config"
-	"github.com/HappyHackingSpace/Misko/backend/internal/platform/pgtest"
-	"golang.org/x/crypto/bcrypt"
-	"io"
-	"log/slog"
-	"net/http/httptest"
-	"strings"
 	"testing"
-	"time"
 )
 
-// The dashboard reads across the tests, media, calibration and analysis
+// The dashboard reads across the experiments, tests, calibration and analysis
 // domains without owning any of their tables, so what it needs proving is
-// that its counts and lists actually track what those domains hold.
+// that its counts and lists track what those domains hold.
 func TestDashboardSummaryOverHTTP(t *testing.T) {
-	ctx := context.Background()
-	pool := pgtest.Database(t)
-	setup, err := Setup(ctx, pool, config.Setup{AdminEmail: "admin@lab.io", LabName: "Lab", LabTimezone: "UTC", BcryptCost: bcrypt.MinCost})
-	if err != nil {
-		t.Fatal(err)
-	}
-	objects := &fakeObjects{stored: map[string]domain.ObjectAttrs{}}
-	api, err := NewAPI(pool, config.Config{ProbeTimeout: time.Second},
-		config.Auth{JWTSecret: []byte(strings.Repeat("s", 32)), JWTIssuer: "misko", JWTAudience: "misko-api", TokenTTL: time.Hour, BcryptCost: bcrypt.MinCost},
-		slog.New(slog.NewJSONHandler(io.Discard, nil)), WithStorage(objects, mediaapp.Settings{MaxBytes: 1 << 30, UploadTTL: time.Hour, ReadTTL: time.Minute}))
-	if err != nil {
-		t.Fatal(err)
-	}
-	server := httptest.NewServer(api.Handler)
-	defer server.Close()
-	c := client{t: t, url: server.URL, http: server.Client()}
-	admin := c.login("admin@lab.io", setup.AdminPassword)
-
-	// A fresh database: the dashboard starts at zero.
-	empty := c.expect("empty dashboard", c.call("GET", "/api/dashboard/summary", admin, nil), 200, "").body
-	tests := empty["tests"].(map[string]any)
-	if tests["planned"] != float64(0) || empty["calibrationWaiting"] != float64(0) ||
-		len(empty["recentActivity"].([]any)) != 0 || len(empty["upcomingTests"].([]any)) != 0 {
+	a := newStudyAPI(t, newStudyObjects())
+	empty := a.expect("empty dashboard", "GET", "/api/dashboard/summary", "VIEWER", nil, 200, "")
+	if empty["tests"].(map[string]any)["planned"] != float64(0) || empty["calibrationWaiting"] != float64(0) ||
+		empty["results"].(map[string]any)["pending"] != float64(0) || len(empty["upcomingTests"].([]any)) != 0 {
 		t.Fatalf("empty dashboard: %v", empty)
 	}
 
-	subject := c.create("/api/subjects", admin, map[string]any{"code": "M-1", "species": "MOUSE", "sex": "MALE"})
-	exp := c.create("/api/experiments", admin, map[string]any{"code": "EXP-D", "title": "Dashboard"})
-	base := "/api/experiments/" + id(exp)
-	enrollment := c.create(base+"/enrollments", admin, map[string]any{"subjectId": id(subject), "enrolledAt": time.Now().UTC().Add(-48 * time.Hour).Format(time.RFC3339)})
-	arena := c.create("/api/environments", admin, map[string]any{"name": "Arena", "paradigmKey": "OPEN_FIELD",
-		"revision": map[string]any{"paradigmVersion": 1, "apparatus": map[string]any{"arena_width_cm": 50, "arena_height_cm": 40, "center_fraction": 0.5}}})
-	protocol := c.create(base+"/protocols", admin, map[string]any{"name": "Open field", "version": map[string]any{"steps": []any{map[string]any{
-		"position": 1, "paradigmKey": "OPEN_FIELD", "paradigmVersion": 1, "environmentRevisionId": id(arena["revision"].(map[string]any)), "trialType": "STANDARD", "trials": 1,
-	}}}})
-
-	// One test kept planned, in the near future, so it is both a status count
-	// and the dashboard's one upcoming test.
-	soon := time.Now().UTC().Add(2 * time.Hour)
-	planned := c.create(base+"/tests", admin, map[string]any{"enrollmentId": id(enrollment), "protocolVersionId": id(protocol["version"].(map[string]any)),
-		"stepPosition": 1, "scheduledAt": soon.Format(time.RFC3339)})
-
-	// A second test is started, uploaded and verified, but never calibrated:
-	// it should be the dashboard's one recording waiting for calibration.
-	running := c.create(base+"/tests", admin, map[string]any{"enrollmentId": id(enrollment), "protocolVersionId": id(protocol["version"].(map[string]any)),
-		"stepPosition": 1, "scheduledAt": time.Now().UTC().Add(-time.Hour).Format(time.RFC3339)})
-	c.expect("start", c.call("POST", "/api/tests/"+id(running)+"/start", admin, map[string]any{}), 200, "")
-	recordings := "/api/tests/" + id(running) + "/recordings"
-	rec := c.create(recordings, admin, map[string]any{"fileName": "trial.mp4", "contentType": "video/mp4", "sizeBytes": 4096, "crc32c": domain.FormatCRC32C(1), "clipStartUs": 0, "clipEndUs": 6000000})["recording"].(map[string]any)
-	recPath := recordings + "/" + id(rec)
-	objects.finishUpload(4096, 1)
-	c.expect("finalize", c.call("POST", recPath+"/finalize", admin, map[string]any{}), 200, "")
-
-	after := c.expect("dashboard after planning", c.call("GET", "/api/dashboard/summary", admin, nil), 200, "").body
-	tests = after["tests"].(map[string]any)
-	if tests["planned"] != float64(1) || tests["inProgress"] != float64(1) || after["calibrationWaiting"] != float64(1) {
-		t.Fatalf("counts: %v", after)
+	newStudyWorld(t, a.pool, "EXP-DRAFT")
+	w := newStudyWorld(t, a.pool, "EXP-D")
+	m1, m2, m3 := w.allocate("G1", "M-1"), w.allocate("G2", "M-2"), w.allocate("G3", "M-3")
+	w.start()
+	// A planned session in the near future with two animals.
+	planned := w.id(`INSERT INTO misko.tests (experiment_id, timepoint_id, protocol_version_id, step_position, paradigm_key, paradigm_version, planned_trials, scheduled_at, created_by)
+		VALUES ($1, $2, $3, 1, 'OPEN_FIELD', 1, 1, now() + interval '2 hours', $4) RETURNING id`, w.exp, w.timepoints["Day 14"], w.version, studyAuthor)
+	for i, allocation := range []string{m2, m1} {
+		w.exec(`INSERT INTO misko.test_subjects (experiment_id, test_id, allocation_id, environment_revision_id, paradigm_key, paradigm_version, created_by)
+			VALUES ($1, $2, $3, $4, 'OPEN_FIELD', 1, $5)`, w.exp, planned, allocation, w.arenas[i], studyAuthor)
 	}
-	upcoming := after["upcomingTests"].([]any)[0].(map[string]any)
-	if upcoming["id"] != id(planned) || upcoming["subjectCode"] != "M-1" || upcoming["experimentCode"] != "EXP-D" || upcoming["paradigmKey"] != "OPEN_FIELD" {
-		t.Fatalf("upcoming test: %v", upcoming)
-	}
+	// A session in progress: the third animal's override was rejected, so it waits for a calibration.
+	_, subjects := w.session("Baseline", m1, m2, m3)
+	w.exec(`INSERT INTO misko.calibrations (environment_revision_id, test_subject_id, recording_id, reference_frame_us, camera_id, frame_width, frame_height,
+		crop_x, crop_y, crop_width, crop_height, measurement_plane, fit_points, check_points, transform, fit_rms_error_cm, check_rms_error_cm, check_max_error_cm,
+		tolerance_cm, algorithm_version, status, rejection_reason, created_by)
+		SELECT ts.environment_revision_id, ts.id, r.id, 0, 'cam', 1920, 1080, 1280, 0, 640, 1080, 'ARENA_FLOOR', '[{},{},{},{}]', '[{},{},{}]', '{1,0,0,0,1,0,0,0,1}',
+		5, 5, 5, 2, 'v1', 'REJECTED', 'EXCESSIVE_CHECK_ERROR', $2
+		FROM misko.test_subjects ts JOIN misko.current_recordings r ON r.test_id = ts.test_id WHERE ts.id = $1`, subjects[2], studyAuthor)
+	w.publish(subjects[0], distance(10), "PENDING")
 
-	// Calibrating the recording (OPEN_FIELD requires one) drops it out of the
-	// waiting count and, once a worker exists, queues its analysis.
-	truth := calibration.Homography{0.03, 0.002, -5, -0.001, 0.045, -3, 0.00001, 0.00002, 1}
-	pt := func(px, py float64) map[string]any {
-		x, y, _ := truth.Apply(px, py)
-		return map[string]any{"pixelX": px, "pixelY": py, "worldX": x, "worldY": y}
-	}
-	c.create(recPath+"/calibrations", admin, map[string]any{"cameraId": "cam", "frameWidth": 1920, "frameHeight": 1080,
-		"crop": map[string]any{"x": 0, "y": 0, "width": 1920, "height": 1080}, "referenceFrameUs": 0, "measurementPlane": "ARENA_FLOOR",
-		"fitPoints": []any{pt(200, 150), pt(1700, 120), pt(1750, 1000), pt(250, 980)}, "checkPoints": []any{pt(900, 500), pt(400, 700), pt(1400, 300)}})
-	c.create("/api/analysis/workers", admin, map[string]any{"name": "tracker", "modelVersion": "tracker 1.0",
-		"capabilities": []any{map[string]any{"paradigmKey": "OPEN_FIELD", "paradigmVersion": 1}}})
-	if err := api.AnalysisTick(ctx); err != nil {
+	a.expect("register", "POST", "/api/analysis/workers", "SUPERADMIN", map[string]any{"name": "tracker", "modelVersion": "tracker 1.0",
+		"capabilities": []any{map[string]any{"paradigmKey": "OPEN_FIELD", "paradigmVersion": 1}}}, 201, "")
+	if err := a.api.AnalysisTick(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 
-	calibrated := c.expect("dashboard after calibrating", c.call("GET", "/api/dashboard/summary", admin, nil), 200, "").body
-	if calibrated["calibrationWaiting"] != float64(0) || calibrated["analysisQueued"] != float64(1) {
-		t.Fatalf("after calibration: %v", calibrated)
+	summary := a.expect("dashboard", "GET", "/api/dashboard/summary", "VIEWER", nil, 200, "")
+	experiments, tests, results := summary["experiments"].(map[string]any), summary["tests"].(map[string]any), summary["results"].(map[string]any)
+	// Two animals have a calibrated arena; the first one also has its own published run.
+	if experiments["draft"] != float64(1) || experiments["running"] != float64(1) || tests["planned"] != float64(1) || tests["inProgress"] != float64(1) ||
+		summary["calibrationWaiting"] != float64(1) || summary["analysisQueued"] != float64(2) || results["pending"] != float64(1) {
+		t.Fatalf("counts: %v", summary)
 	}
-
-	// Reading the dashboard needs only *:read: a viewer sees it too.
-	c.create("/api/users", admin, map[string]any{"email": "viewer@lab.io", "name": "Viewer", "role": "VIEWER", "password": "Password-123"})
-	viewer := c.login("viewer@lab.io", "Password-123")
-	c.expect("viewer reads the dashboard", c.call("GET", "/api/dashboard/summary", viewer, nil), 200, "")
-	c.expect("anonymous cannot", c.call("GET", "/api/dashboard/summary", "", nil), 401, "auth.unauthenticated")
+	upcoming := summary["upcomingTests"].([]any)[0].(map[string]any)
+	if upcoming["id"] != planned || upcoming["experimentCode"] != "EXP-D" || upcoming["timepointName"] != "Day 14" ||
+		len(upcoming["subjectCodes"].([]any)) != 2 || upcoming["subjectCodes"].([]any)[0] != "M-1" {
+		t.Fatalf("upcoming: %v", upcoming)
+	}
+	activity := summary["recentActivity"].([]any)
+	if len(activity) != 1 || activity[0].(map[string]any)["subjectCode"] != "M-1" || activity[0].(map[string]any)["testSubjectId"] != subjects[0] {
+		t.Fatalf("activity: %v", activity)
+	}
+	a.expect("anonymous", "GET", "/api/dashboard/summary", "", nil, 401, "auth.unauthenticated")
 }

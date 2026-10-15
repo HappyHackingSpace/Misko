@@ -3,63 +3,128 @@
 package bootstrap
 
 import (
-	"context"
 	"encoding/csv"
-	"github.com/HappyHackingSpace/Misko/backend/internal/platform/config"
-	"github.com/HappyHackingSpace/Misko/backend/internal/platform/pgtest"
-	"golang.org/x/crypto/bcrypt"
 	"io"
-	"log/slog"
-	"net/http"
-	"net/http/httptest"
-	"strings"
+	"math"
 	"testing"
-	"time"
 )
 
+// A study whose animals were analysed and reviewed: the report counts only
+// accepted results of animals that are not excluded, shows what is still
+// pending, and derives the comparisons from the group roles.
 func TestReportsOverHTTP(t *testing.T) {
-	ctx := context.Background()
-	pool := pgtest.Database(t)
-	setup, err := Setup(ctx, pool, config.Setup{AdminEmail: "admin@lab.io", LabName: "Lab", LabTimezone: "UTC", BcryptCost: bcrypt.MinCost})
-	if err != nil {
-		t.Fatal(err)
+	a := newStudyAPI(t, nil)
+	w := newStudyWorld(t, a.pool, "EXP-R")
+	animals := map[string]string{}
+	for _, a := range []struct{ group, code string }{
+		{"G1", "M-11"}, {"G1", "M-12"}, {"G2", "M-21"}, {"G2", "M-22"}, {"G2", "M-23"}, {"G3", "M-31"},
+		{"G4", "M-41"}, {"G4", "M-42"}, {"G5", "M-51"}, {"G5", "M-52"}, {"G5", "M-53"},
+	} {
+		animals[a.code] = w.allocate(a.group, a.code)
 	}
-	api, err := NewAPI(pool, config.Config{ProbeTimeout: time.Second},
-		config.Auth{JWTSecret: []byte(strings.Repeat("s", 32)), JWTIssuer: "misko", JWTAudience: "misko-api", TokenTTL: time.Hour, BcryptCost: bcrypt.MinCost},
-		slog.New(slog.NewJSONHandler(io.Discard, nil)))
-	if err != nil {
-		t.Fatal(err)
+	w.start()
+	subjects := map[string]string{}
+	for _, session := range [][]string{{"M-11", "M-12", "M-21"}, {"M-22", "M-23", "M-31"}, {"M-41", "M-42", "M-51"}, {"M-52", "M-53"}} {
+		var allocations []string
+		for _, code := range session {
+			allocations = append(allocations, animals[code])
+		}
+		_, ids := w.session("Day 14", allocations...)
+		for i, code := range session {
+			subjects[code] = ids[i]
+		}
 	}
-	server := httptest.NewServer(api.Handler)
-	defer server.Close()
-	c := client{t: t, url: server.URL, http: server.Client()}
-	admin := c.login("admin@lab.io", setup.AdminPassword)
-	c.create("/api/users", admin, map[string]any{"email": "viewer@lab.io", "name": "Viewer", "role": "VIEWER", "password": "Password-123"})
-	viewer := c.login("viewer@lab.io", "Password-123")
-	exp := c.create("/api/experiments", admin, map[string]any{"code": "EXP-R", "title": "Reports"})
+	_, baseline := w.session("Baseline", animals["M-11"], animals["M-21"])
+	w.publish(baseline[0], distance(90), "ACCEPTED")
+	w.publish(baseline[1], distance(100), "ACCEPTED")
+	for code, value := range map[string]float64{"M-11": 100, "M-12": 120, "M-21": 40, "M-22": 60, "M-31": 90, "M-41": 60, "M-51": 80, "M-52": 1000} {
+		w.publish(subjects[code], distance(value), "ACCEPTED")
+	}
+	w.publish(subjects["M-23"], distance(999), "PENDING")
+	w.publish(subjects["M-42"], distance(5), "REJECTED")
+	w.publish(subjects["M-53"], nil, "ACCEPTED")
+	w.exec("UPDATE misko.allocations SET excluded_at = now(), exclusion_reason = 'HUMANE_ENDPOINT' WHERE id = $1", animals["M-52"])
 
-	page := c.expect("viewer reads metrics", c.call("GET", "/api/reports/metrics?experimentId="+id(exp)+"&metricKey=distance_cm", viewer, nil), 200, "").body
-	if data, ok := page["data"].([]any); !ok || len(data) != 0 || page["total"] != float64(0) || page["pageSize"] != float64(20) {
-		t.Fatalf("empty report: %v", page)
+	path := "/api/experiments/" + w.exp + "/report"
+	a.expect("anonymous", "GET", path, "", nil, 401, "auth.unauthenticated")
+	a.expect("unknown experiment", "GET", "/api/experiments/"+w.endpoint+"/report", "VIEWER", nil, 404, "report.experimentNotFound")
+	a.expect("malformed endpoint", "GET", path+"?endpointId=E1", "VIEWER", nil, 400, "report.invalidQuery")
+	a.expect("endpoint of another experiment", "GET", path+"?endpointId="+w.exp, "VIEWER", nil, 404, "report.endpointNotFound")
+	report := a.expect("report", "GET", path, "VIEWER", nil, 200, "")
+	if report["experiment"].(map[string]any)["code"] != "EXP-R" || len(report["groups"].([]any)) != 5 || len(report["timepoints"].([]any)) != 2 {
+		t.Fatalf("report: %v", report)
 	}
-	c.expect("events", c.call("GET", "/api/reports/events?selection=all&sort=eventType", viewer, nil), 200, "")
-	c.expect("anonymous", c.call("GET", "/api/reports/metrics", "", nil), 401, "auth.unauthenticated")
-	c.expect("malformed id", c.call("GET", "/api/reports/metrics?subjectId=S1", viewer, nil), 400, "report.invalidQuery")
-	c.expect("summary without metric", c.call("GET", "/api/reports/metric-summary?experimentId="+id(exp), viewer, nil), 400, "report.invalidSummary")
-	summary := c.expect("summary", c.call("GET", "/api/reports/metric-summary?experimentId="+id(exp)+"&metricKey=distance_cm", viewer, nil), 200, "").body
-	if groups, ok := summary["groups"].([]any); !ok || len(groups) != 0 || summary["version"] != nil {
-		t.Fatalf("empty summary: %v", summary)
+	codes := map[string]string{}
+	for _, g := range report["groups"].([]any) {
+		group := g.(map[string]any)
+		codes[group["id"].(string)] = group["code"].(string)
+		if group["code"] == "G5" && (group["excluded"] != float64(1) || group["allocated"] != float64(3) || group["treatment"].(map[string]any)["doseMicro"] != float64(3_000_000)) {
+			t.Fatalf("group G5: %v", group)
+		}
+	}
+	section := report["sections"].([]any)[0].(map[string]any)
+	if section["endpoint"].(map[string]any)["id"] != w.endpoint || section["comparable"] != true || len(section["versions"].([]any)) != 1 {
+		t.Fatalf("section: %v", section)
+	}
+	stats := map[string]map[string]any{}
+	for _, g := range section["groups"].([]any) {
+		stats[codes[g.(map[string]any)["groupId"].(string)]] = g.(map[string]any)
+	}
+	near := func(label string, got any, want float64) {
+		t.Helper()
+		if v, ok := got.(float64); !ok || math.Abs(v-want) > 1e-9 {
+			t.Errorf("%s: %v want %v", label, got, want)
+		}
+	}
+	near("healthy mean", stats["G1"]["mean"], 110)
+	near("healthy sem", stats["G1"]["sem"], 10)
+	near("healthy change", stats["G1"]["change"].(map[string]any)["mean"], 10)
+	near("disease mean", stats["G2"]["mean"], 50)
+	near("disease change", stats["G2"]["change"].(map[string]any)["mean"], -60)
+	near("disease pending", stats["G2"]["pending"], 1)
+	near("low dose rejected", stats["G4"]["rejected"], 1)
+	near("high dose n", stats["G5"]["n"], 1)
+	near("high dose mean without the excluded animal", stats["G5"]["mean"], 80)
+	near("high dose missing", stats["G5"]["missing"], 1)
+	near("high dose excluded", stats["G5"]["excluded"], 1)
+	rescue := map[string]any{}
+	for _, c := range section["comparisons"].([]any) {
+		comparison := c.(map[string]any)
+		rescue[comparison["kind"].(string)+" "+codes[comparison["groupId"].(string)]] = comparison["rescuePercent"]
+		if comparison["kind"] == "MODEL_VALIDITY" {
+			near("model validity", comparison["difference"], -60)
+		}
+	}
+	near("assay sensitivity", rescue["ASSAY_SENSITIVITY G3"], 40.0/60*100)
+	near("efficacy low dose", rescue["EFFICACY G4"], 10.0/60*100)
+	near("efficacy high dose", rescue["EFFICACY G5"], 30.0/60*100)
+	dose := section["doseResponse"].([]any)
+	if len(dose) != 1 || len(dose[0].(map[string]any)["points"].([]any)) != 2 {
+		t.Fatalf("dose response: %v", dose)
+	}
+	if course := section["timeCourse"].([]any); len(course) != 2 {
+		t.Fatalf("time course: %v", course)
 	}
 
-	req, _ := http.NewRequest(http.MethodGet, server.URL+"/api/reports/events/export?experimentId="+id(exp), nil)
-	req.Header.Set("Authorization", "Bearer "+viewer)
-	res, err := server.Client().Do(req)
-	if err != nil {
-		t.Fatal(err)
+	read := func(query string) [][]string {
+		t.Helper()
+		res := a.raw("GET", path+"/export"+query, a.tokens["VIEWER"], nil)
+		defer res.Body.Close()
+		if res.StatusCode != 200 || res.Header.Get("Content-Type") != "text/csv; charset=utf-8" {
+			body, _ := io.ReadAll(res.Body)
+			t.Fatalf("export %s: %d %s", query, res.StatusCode, body)
+		}
+		records, err := csv.NewReader(res.Body).ReadAll()
+		if err != nil {
+			t.Fatal(err)
+		}
+		return records
 	}
-	defer res.Body.Close()
-	records, err := csv.NewReader(res.Body).ReadAll()
-	if res.StatusCode != 200 || err != nil || len(records) != 1 || records[0][0] != "runId" || res.Header.Get("Content-Type") != "text/csv; charset=utf-8" {
-		t.Fatalf("csv export: %d %v %v", res.StatusCode, records, err)
+	if animals := read(""); len(animals) != 1+11+2 || animals[0][0] != "experimentCode" {
+		t.Fatalf("animal export: %d rows %v", len(animals), animals[0])
 	}
+	if groups := read("?level=groups&endpointId=" + w.endpoint); len(groups) != 1+2*5 || groups[0][len(groups[0])-1] != "comparable" {
+		t.Fatalf("group export: %d rows", len(groups))
+	}
+	a.expect("unknown level", "GET", path+"/export?level=cages", "VIEWER", nil, 400, "report.invalidQuery")
 }

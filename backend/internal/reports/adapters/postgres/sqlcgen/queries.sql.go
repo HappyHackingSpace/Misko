@@ -7,292 +7,43 @@ package sqlcgen
 
 import (
 	"context"
+	"time"
 )
 
-const countEventRows = `-- name: CountEventRows :one
-SELECT count(*)
-FROM misko.analysis_events ev
-JOIN misko.report_runs r ON r.id = ev.run_id
-JOIN misko.report_tests t ON t.test_id = r.test_id
-WHERE (NOT $1::boolean OR r.latest)
-  AND ($2::uuid IS NULL OR t.experiment_id = $2::uuid)
-  AND ($3::uuid IS NULL OR t.subject_id = $3::uuid)
-  AND ($4::uuid IS NULL OR t.group_id = $4::uuid)
-  AND ($5::uuid IS NULL OR t.phase_id = $5::uuid)
-  AND ($6::uuid IS NULL OR t.test_id = $6::uuid)
-  AND ($7::uuid IS NULL OR t.environment_revision_id IN (
-        SELECT er.id FROM misko.environment_revisions er WHERE er.environment_id = $7::uuid))
-  AND ($8::uuid IS NULL OR r.source_asset_id = $8::uuid)
-  AND ($9::uuid IS NULL OR r.id = $9::uuid)
-  AND ($10::text = '' OR t.paradigm_key = $10::text)
-  AND ($11::integer = 0 OR t.paradigm_version = $11::integer)
-  AND ($12::integer = 0 OR r.metric_engine_version = $12::integer)
-  AND ($13::text = '' OR ev.event_type = $13::text)
-  AND ($14::uuid IS NULL OR EXISTS (
-        SELECT 1 FROM misko.subject_conditions c WHERE c.subject_id = t.subject_id AND c.disease_model_id = $14::uuid))
-  AND ($15::uuid IS NULL OR EXISTS (
-        SELECT 1 FROM misko.administrations a
-        WHERE a.subject_id = t.subject_id AND a.experiment_id = t.experiment_id AND a.substance_id = $15::uuid))
+const reportEndpoints = `-- name: ReportEndpoints :many
+SELECT id, timepoint_id, baseline_timepoint_id, paradigm_key, metric_key, kind, direction
+FROM misko.endpoints
+WHERE experiment_id = $1
+ORDER BY CASE kind WHEN 'PRIMARY' THEN 0 ELSE 1 END, paradigm_key, metric_key, created_at, id
 `
 
-type CountEventRowsParams struct {
-	LatestOnly          bool
-	ExperimentID        *string
-	SubjectID           *string
-	GroupID             *string
-	PhaseID             *string
-	TestID              *string
-	EnvironmentID       *string
-	VideoID             *string
-	RunID               *string
+type ReportEndpointsRow struct {
+	ID                  string
+	TimepointID         string
+	BaselineTimepointID *string
 	ParadigmKey         string
-	ParadigmVersion     int32
-	MetricEngineVersion int32
-	EventType           string
-	DiseaseModelID      *string
-	SubstanceID         *string
-}
-
-func (q *Queries) CountEventRows(ctx context.Context, arg CountEventRowsParams) (int64, error) {
-	row := q.db.QueryRow(ctx, countEventRows,
-		arg.LatestOnly,
-		arg.ExperimentID,
-		arg.SubjectID,
-		arg.GroupID,
-		arg.PhaseID,
-		arg.TestID,
-		arg.EnvironmentID,
-		arg.VideoID,
-		arg.RunID,
-		arg.ParadigmKey,
-		arg.ParadigmVersion,
-		arg.MetricEngineVersion,
-		arg.EventType,
-		arg.DiseaseModelID,
-		arg.SubstanceID,
-	)
-	var count int64
-	err := row.Scan(&count)
-	return count, err
-}
-
-const countMetricRows = `-- name: CountMetricRows :one
-SELECT count(*)
-FROM misko.metric_results m
-JOIN misko.report_runs r ON r.id = m.run_id
-JOIN misko.report_tests t ON t.test_id = r.test_id
-WHERE (NOT $1::boolean OR r.latest)
-  AND ($2::uuid IS NULL OR t.experiment_id = $2::uuid)
-  AND ($3::uuid IS NULL OR t.subject_id = $3::uuid)
-  AND ($4::uuid IS NULL OR t.group_id = $4::uuid)
-  AND ($5::uuid IS NULL OR t.phase_id = $5::uuid)
-  AND ($6::uuid IS NULL OR t.test_id = $6::uuid)
-  AND ($7::uuid IS NULL OR t.environment_revision_id IN (
-        SELECT er.id FROM misko.environment_revisions er WHERE er.environment_id = $7::uuid))
-  AND ($8::uuid IS NULL OR r.source_asset_id = $8::uuid)
-  AND ($9::uuid IS NULL OR r.id = $9::uuid)
-  AND ($10::text = '' OR t.paradigm_key = $10::text)
-  AND ($11::integer = 0 OR t.paradigm_version = $11::integer)
-  AND ($12::integer = 0 OR r.metric_engine_version = $12::integer)
-  AND ($13::text = '' OR m.metric_key = $13::text)
-  AND ($14::uuid IS NULL OR EXISTS (
-        SELECT 1 FROM misko.subject_conditions c WHERE c.subject_id = t.subject_id AND c.disease_model_id = $14::uuid))
-  AND ($15::uuid IS NULL OR EXISTS (
-        SELECT 1 FROM misko.administrations a
-        WHERE a.subject_id = t.subject_id AND a.experiment_id = t.experiment_id AND a.substance_id = $15::uuid))
-`
-
-type CountMetricRowsParams struct {
-	LatestOnly          bool
-	ExperimentID        *string
-	SubjectID           *string
-	GroupID             *string
-	PhaseID             *string
-	TestID              *string
-	EnvironmentID       *string
-	VideoID             *string
-	RunID               *string
-	ParadigmKey         string
-	ParadigmVersion     int32
-	MetricEngineVersion int32
 	MetricKey           string
-	DiseaseModelID      *string
-	SubstanceID         *string
+	Kind                string
+	Direction           string
 }
 
-func (q *Queries) CountMetricRows(ctx context.Context, arg CountMetricRowsParams) (int64, error) {
-	row := q.db.QueryRow(ctx, countMetricRows,
-		arg.LatestOnly,
-		arg.ExperimentID,
-		arg.SubjectID,
-		arg.GroupID,
-		arg.PhaseID,
-		arg.TestID,
-		arg.EnvironmentID,
-		arg.VideoID,
-		arg.RunID,
-		arg.ParadigmKey,
-		arg.ParadigmVersion,
-		arg.MetricEngineVersion,
-		arg.MetricKey,
-		arg.DiseaseModelID,
-		arg.SubstanceID,
-	)
-	var count int64
-	err := row.Scan(&count)
-	return count, err
-}
-
-const eventRows = `-- name: EventRows :many
-SELECT r.id, r.experiment_id, r.test_id, r.recording_id, r.source_asset_id, r.calibration_id, r.paradigm_key, r.paradigm_version, r.metric_engine_version, r.result_schema_version, r.trigger, r.model_version, r.finished_at, r.latest, t.test_id, t.experiment_id, t.experiment_code, t.subject_id, t.subject_code, t.species, t.sex, t.phase_id, t.phase_name, t.group_id, t.group_name, t.group_role, t.paradigm_key, t.paradigm_version, t.environment_revision_id, t.environment_id, t.environment_name, t.environment_revision, t.test_status, t.scheduled_at, t.trial_count,
-       ev.id AS event_id, ev.event_type, ev.kind, ev.start_us, ev.end_us, ev.confidence,
-       ev.trial_id, tr.number AS trial_number, tr.repetition AS trial_repetition, tr.attempt AS trial_attempt
-FROM misko.analysis_events ev
-JOIN misko.report_runs r ON r.id = ev.run_id
-JOIN misko.report_tests t ON t.test_id = r.test_id
-LEFT JOIN misko.trials tr ON tr.id = ev.trial_id
-WHERE (NOT $1::boolean OR r.latest)
-  AND ($2::uuid IS NULL OR t.experiment_id = $2::uuid)
-  AND ($3::uuid IS NULL OR t.subject_id = $3::uuid)
-  AND ($4::uuid IS NULL OR t.group_id = $4::uuid)
-  AND ($5::uuid IS NULL OR t.phase_id = $5::uuid)
-  AND ($6::uuid IS NULL OR t.test_id = $6::uuid)
-  AND ($7::uuid IS NULL OR t.environment_revision_id IN (
-        SELECT er.id FROM misko.environment_revisions er WHERE er.environment_id = $7::uuid))
-  AND ($8::uuid IS NULL OR r.source_asset_id = $8::uuid)
-  AND ($9::uuid IS NULL OR r.id = $9::uuid)
-  AND ($10::text = '' OR t.paradigm_key = $10::text)
-  AND ($11::integer = 0 OR t.paradigm_version = $11::integer)
-  AND ($12::integer = 0 OR r.metric_engine_version = $12::integer)
-  AND ($13::text = '' OR ev.event_type = $13::text)
-  AND ($14::uuid IS NULL OR EXISTS (
-        SELECT 1 FROM misko.subject_conditions c WHERE c.subject_id = t.subject_id AND c.disease_model_id = $14::uuid))
-  AND ($15::uuid IS NULL OR EXISTS (
-        SELECT 1 FROM misko.administrations a
-        WHERE a.subject_id = t.subject_id AND a.experiment_id = t.experiment_id AND a.substance_id = $15::uuid))
-ORDER BY
-    CASE WHEN $16::text = 'scheduledAt' AND NOT $17::boolean THEN t.scheduled_at END ASC,
-    CASE WHEN $16::text = 'scheduledAt' AND $17::boolean THEN t.scheduled_at END DESC,
-    CASE WHEN $16::text = 'subjectCode' AND NOT $17::boolean THEN lower(t.subject_code) END ASC,
-    CASE WHEN $16::text = 'subjectCode' AND $17::boolean THEN lower(t.subject_code) END DESC,
-    CASE WHEN $16::text = 'eventType' AND NOT $17::boolean THEN ev.event_type END ASC,
-    CASE WHEN $16::text = 'eventType' AND $17::boolean THEN ev.event_type END DESC,
-    t.test_id, r.id, ev.start_us, ev.id
-LIMIT $19::integer OFFSET $18::integer
-`
-
-type EventRowsParams struct {
-	LatestOnly          bool
-	ExperimentID        *string
-	SubjectID           *string
-	GroupID             *string
-	PhaseID             *string
-	TestID              *string
-	EnvironmentID       *string
-	VideoID             *string
-	RunID               *string
-	ParadigmKey         string
-	ParadigmVersion     int32
-	MetricEngineVersion int32
-	EventType           string
-	DiseaseModelID      *string
-	SubstanceID         *string
-	SortKey             string
-	Descending          bool
-	PageOffset          int32
-	PageLimit           int32
-}
-
-type EventRowsRow struct {
-	MiskoReportRun  MiskoReportRun
-	MiskoReportTest MiskoReportTest
-	EventID         string
-	EventType       string
-	Kind            string
-	StartUs         int64
-	EndUs           int64
-	Confidence      float32
-	TrialID         *string
-	TrialNumber     *int32
-	TrialRepetition *int32
-	TrialAttempt    *int32
-}
-
-func (q *Queries) EventRows(ctx context.Context, arg EventRowsParams) ([]EventRowsRow, error) {
-	rows, err := q.db.Query(ctx, eventRows,
-		arg.LatestOnly,
-		arg.ExperimentID,
-		arg.SubjectID,
-		arg.GroupID,
-		arg.PhaseID,
-		arg.TestID,
-		arg.EnvironmentID,
-		arg.VideoID,
-		arg.RunID,
-		arg.ParadigmKey,
-		arg.ParadigmVersion,
-		arg.MetricEngineVersion,
-		arg.EventType,
-		arg.DiseaseModelID,
-		arg.SubstanceID,
-		arg.SortKey,
-		arg.Descending,
-		arg.PageOffset,
-		arg.PageLimit,
-	)
+func (q *Queries) ReportEndpoints(ctx context.Context, experimentID string) ([]ReportEndpointsRow, error) {
+	rows, err := q.db.Query(ctx, reportEndpoints, experimentID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []EventRowsRow
+	var items []ReportEndpointsRow
 	for rows.Next() {
-		var i EventRowsRow
+		var i ReportEndpointsRow
 		if err := rows.Scan(
-			&i.MiskoReportRun.ID,
-			&i.MiskoReportRun.ExperimentID,
-			&i.MiskoReportRun.TestID,
-			&i.MiskoReportRun.RecordingID,
-			&i.MiskoReportRun.SourceAssetID,
-			&i.MiskoReportRun.CalibrationID,
-			&i.MiskoReportRun.ParadigmKey,
-			&i.MiskoReportRun.ParadigmVersion,
-			&i.MiskoReportRun.MetricEngineVersion,
-			&i.MiskoReportRun.ResultSchemaVersion,
-			&i.MiskoReportRun.Trigger,
-			&i.MiskoReportRun.ModelVersion,
-			&i.MiskoReportRun.FinishedAt,
-			&i.MiskoReportRun.Latest,
-			&i.MiskoReportTest.TestID,
-			&i.MiskoReportTest.ExperimentID,
-			&i.MiskoReportTest.ExperimentCode,
-			&i.MiskoReportTest.SubjectID,
-			&i.MiskoReportTest.SubjectCode,
-			&i.MiskoReportTest.Species,
-			&i.MiskoReportTest.Sex,
-			&i.MiskoReportTest.PhaseID,
-			&i.MiskoReportTest.PhaseName,
-			&i.MiskoReportTest.GroupID,
-			&i.MiskoReportTest.GroupName,
-			&i.MiskoReportTest.GroupRole,
-			&i.MiskoReportTest.ParadigmKey,
-			&i.MiskoReportTest.ParadigmVersion,
-			&i.MiskoReportTest.EnvironmentRevisionID,
-			&i.MiskoReportTest.EnvironmentID,
-			&i.MiskoReportTest.EnvironmentName,
-			&i.MiskoReportTest.EnvironmentRevision,
-			&i.MiskoReportTest.TestStatus,
-			&i.MiskoReportTest.ScheduledAt,
-			&i.MiskoReportTest.TrialCount,
-			&i.EventID,
-			&i.EventType,
+			&i.ID,
+			&i.TimepointID,
+			&i.BaselineTimepointID,
+			&i.ParadigmKey,
+			&i.MetricKey,
 			&i.Kind,
-			&i.StartUs,
-			&i.EndUs,
-			&i.Confidence,
-			&i.TrialID,
-			&i.TrialNumber,
-			&i.TrialRepetition,
-			&i.TrialAttempt,
+			&i.Direction,
 		); err != nil {
 			return nil, err
 		}
@@ -304,152 +55,214 @@ func (q *Queries) EventRows(ctx context.Context, arg EventRowsParams) ([]EventRo
 	return items, nil
 }
 
-const metricRows = `-- name: MetricRows :many
+const reportExperiment = `-- name: ReportExperiment :one
 
-SELECT r.id, r.experiment_id, r.test_id, r.recording_id, r.source_asset_id, r.calibration_id, r.paradigm_key, r.paradigm_version, r.metric_engine_version, r.result_schema_version, r.trigger, r.model_version, r.finished_at, r.latest, t.test_id, t.experiment_id, t.experiment_code, t.subject_id, t.subject_code, t.species, t.sex, t.phase_id, t.phase_name, t.group_id, t.group_name, t.group_role, t.paradigm_key, t.paradigm_version, t.environment_revision_id, t.environment_id, t.environment_name, t.environment_revision, t.test_status, t.scheduled_at, t.trial_count,
-       m.metric_key, m.unit, m.value, m.missing_reason
-FROM misko.metric_results m
-JOIN misko.report_runs r ON r.id = m.run_id
-JOIN misko.report_tests t ON t.test_id = r.test_id
-WHERE (NOT $1::boolean OR r.latest)
-  AND ($2::uuid IS NULL OR t.experiment_id = $2::uuid)
-  AND ($3::uuid IS NULL OR t.subject_id = $3::uuid)
-  AND ($4::uuid IS NULL OR t.group_id = $4::uuid)
-  AND ($5::uuid IS NULL OR t.phase_id = $5::uuid)
-  AND ($6::uuid IS NULL OR t.test_id = $6::uuid)
-  AND ($7::uuid IS NULL OR t.environment_revision_id IN (
-        SELECT er.id FROM misko.environment_revisions er WHERE er.environment_id = $7::uuid))
-  AND ($8::uuid IS NULL OR r.source_asset_id = $8::uuid)
-  AND ($9::uuid IS NULL OR r.id = $9::uuid)
-  AND ($10::text = '' OR t.paradigm_key = $10::text)
-  AND ($11::integer = 0 OR t.paradigm_version = $11::integer)
-  AND ($12::integer = 0 OR r.metric_engine_version = $12::integer)
-  AND ($13::text = '' OR m.metric_key = $13::text)
-  AND ($14::uuid IS NULL OR EXISTS (
-        SELECT 1 FROM misko.subject_conditions c WHERE c.subject_id = t.subject_id AND c.disease_model_id = $14::uuid))
-  AND ($15::uuid IS NULL OR EXISTS (
-        SELECT 1 FROM misko.administrations a
-        WHERE a.subject_id = t.subject_id AND a.experiment_id = t.experiment_id AND a.substance_id = $15::uuid))
-ORDER BY
-    CASE WHEN $16::text = 'scheduledAt' AND NOT $17::boolean THEN t.scheduled_at END ASC,
-    CASE WHEN $16::text = 'scheduledAt' AND $17::boolean THEN t.scheduled_at END DESC,
-    CASE WHEN $16::text = 'subjectCode' AND NOT $17::boolean THEN lower(t.subject_code) END ASC,
-    CASE WHEN $16::text = 'subjectCode' AND $17::boolean THEN lower(t.subject_code) END DESC,
-    CASE WHEN $16::text = 'experimentCode' AND NOT $17::boolean THEN lower(t.experiment_code) END ASC,
-    CASE WHEN $16::text = 'experimentCode' AND $17::boolean THEN lower(t.experiment_code) END DESC,
-    CASE WHEN $16::text = 'metricKey' AND NOT $17::boolean THEN m.metric_key END ASC,
-    CASE WHEN $16::text = 'metricKey' AND $17::boolean THEN m.metric_key END DESC,
-    CASE WHEN $16::text = 'value' AND NOT $17::boolean THEN m.value END ASC NULLS LAST,
-    CASE WHEN $16::text = 'value' AND $17::boolean THEN m.value END DESC NULLS LAST,
-    CASE WHEN $16::text = 'runFinishedAt' AND NOT $17::boolean THEN r.finished_at END ASC,
-    CASE WHEN $16::text = 'runFinishedAt' AND $17::boolean THEN r.finished_at END DESC,
-    t.test_id, r.id, m.metric_key
-LIMIT $19::integer OFFSET $18::integer
+SELECT id, code, title, status, blinded
+FROM misko.experiments
+WHERE id = $1
 `
 
-type MetricRowsParams struct {
-	LatestOnly          bool
-	ExperimentID        *string
-	SubjectID           *string
-	GroupID             *string
-	PhaseID             *string
-	TestID              *string
-	EnvironmentID       *string
-	VideoID             *string
-	RunID               *string
-	ParadigmKey         string
+type ReportExperimentRow struct {
+	ID      string
+	Code    string
+	Title   string
+	Status  string
+	Blinded bool
+}
+
+// Read-only queries over the study design and the reporting views of
+// schema/012_reports.sql. Statistics use only accepted results of animals that
+// are not excluded (report_accepted_metrics); report_test_subjects supplies the
+// pending, rejected and unanalysed animals so a half-reviewed report is never
+// mistaken for a final one.
+func (q *Queries) ReportExperiment(ctx context.Context, id string) (ReportExperimentRow, error) {
+	row := q.db.QueryRow(ctx, reportExperiment, id)
+	var i ReportExperimentRow
+	err := row.Scan(
+		&i.ID,
+		&i.Code,
+		&i.Title,
+		&i.Status,
+		&i.Blinded,
+	)
+	return i, err
+}
+
+const reportGroups = `-- name: ReportGroups :many
+SELECT g.id, g.code, g.name, g.role, g.disease_model_id, dm.name AS disease_model_name,
+       tr.substance_id AS treatment_substance_id, sub.name AS treatment_substance_name,
+       tr.dose_micro AS treatment_dose_micro, tr.unit AS treatment_unit,
+       (SELECT count(*) FROM misko.allocations a WHERE a.group_id = g.id)::integer AS allocated,
+       (SELECT count(*) FROM misko.allocations a WHERE a.group_id = g.id AND a.excluded_at IS NOT NULL)::integer AS excluded
+FROM misko.experiment_groups g
+LEFT JOIN misko.disease_models dm ON dm.id = g.disease_model_id
+LEFT JOIN misko.regimen_items tr ON tr.group_id = g.id AND tr.purpose = 'TREATMENT'
+LEFT JOIN misko.substances sub ON sub.id = tr.substance_id
+WHERE g.experiment_id = $1
+ORDER BY lower(g.code), g.id
+`
+
+type ReportGroupsRow struct {
+	ID                     string
+	Code                   string
+	Name                   string
+	Role                   string
+	DiseaseModelID         *string
+	DiseaseModelName       *string
+	TreatmentSubstanceID   *string
+	TreatmentSubstanceName *string
+	TreatmentDoseMicro     *int64
+	TreatmentUnit          *string
+	Allocated              int32
+	Excluded               int32
+}
+
+func (q *Queries) ReportGroups(ctx context.Context, experimentID string) ([]ReportGroupsRow, error) {
+	rows, err := q.db.Query(ctx, reportGroups, experimentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ReportGroupsRow
+	for rows.Next() {
+		var i ReportGroupsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Code,
+			&i.Name,
+			&i.Role,
+			&i.DiseaseModelID,
+			&i.DiseaseModelName,
+			&i.TreatmentSubstanceID,
+			&i.TreatmentSubstanceName,
+			&i.TreatmentDoseMicro,
+			&i.TreatmentUnit,
+			&i.Allocated,
+			&i.Excluded,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const reportMeasurements = `-- name: ReportMeasurements :many
+SELECT rts.test_subject_id, rts.test_id, rts.allocation_id, rts.subject_id, rts.subject_code, rts.group_id, rts.excluded::boolean AS excluded,
+       rts.result_status, rts.result_run_id, rts.timepoint_id, rts.paradigm_version, rts.environment_name, rts.scheduled_at,
+       m.unit AS metric_unit, m.value AS metric_value, m.missing_reason, m.metric_engine_version
+FROM misko.report_test_subjects rts
+LEFT JOIN misko.report_accepted_metrics m ON m.test_subject_id = rts.test_subject_id AND m.metric_key = $1::text
+WHERE rts.experiment_id = $2 AND rts.paradigm_key = $3::text AND rts.test_status <> 'CANCELLED'
+ORDER BY rts.scheduled_at, lower(rts.subject_code), rts.test_subject_id
+LIMIT $4::integer
+`
+
+type ReportMeasurementsParams struct {
+	MetricKey    string
+	ExperimentID string
+	ParadigmKey  string
+	RowLimit     int32
+}
+
+type ReportMeasurementsRow struct {
+	TestSubjectID       string
+	TestID              string
+	AllocationID        string
+	SubjectID           string
+	SubjectCode         string
+	GroupID             string
+	Excluded            bool
+	ResultStatus        *string
+	ResultRunID         *string
+	TimepointID         string
 	ParadigmVersion     int32
-	MetricEngineVersion int32
-	MetricKey           string
-	DiseaseModelID      *string
-	SubstanceID         *string
-	SortKey             string
-	Descending          bool
-	PageOffset          int32
-	PageLimit           int32
+	EnvironmentName     string
+	ScheduledAt         time.Time
+	MetricUnit          *string
+	MetricValue         *float64
+	MissingReason       *string
+	MetricEngineVersion *int32
 }
 
-type MetricRowsRow struct {
-	MiskoReportRun  MiskoReportRun
-	MiskoReportTest MiskoReportTest
-	MetricKey       string
-	Unit            string
-	Value           *float64
-	MissingReason   *string
-}
-
-// Every filter is optional: NULL ids, empty keys and zero versions match all
-// rows. The sort key is allowlisted by the application; the trailing keys make
-// paging stable.
-func (q *Queries) MetricRows(ctx context.Context, arg MetricRowsParams) ([]MetricRowsRow, error) {
-	rows, err := q.db.Query(ctx, metricRows,
-		arg.LatestOnly,
-		arg.ExperimentID,
-		arg.SubjectID,
-		arg.GroupID,
-		arg.PhaseID,
-		arg.TestID,
-		arg.EnvironmentID,
-		arg.VideoID,
-		arg.RunID,
-		arg.ParadigmKey,
-		arg.ParadigmVersion,
-		arg.MetricEngineVersion,
+// ReportMeasurements returns every animal filmed for one paradigm in tests of
+// the experiment that were not cancelled, at every timepoint, with its review
+// state and, when its result is accepted and the animal is not excluded, the
+// value of one metric.
+func (q *Queries) ReportMeasurements(ctx context.Context, arg ReportMeasurementsParams) ([]ReportMeasurementsRow, error) {
+	rows, err := q.db.Query(ctx, reportMeasurements,
 		arg.MetricKey,
-		arg.DiseaseModelID,
-		arg.SubstanceID,
-		arg.SortKey,
-		arg.Descending,
-		arg.PageOffset,
-		arg.PageLimit,
+		arg.ExperimentID,
+		arg.ParadigmKey,
+		arg.RowLimit,
 	)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []MetricRowsRow
+	var items []ReportMeasurementsRow
 	for rows.Next() {
-		var i MetricRowsRow
+		var i ReportMeasurementsRow
 		if err := rows.Scan(
-			&i.MiskoReportRun.ID,
-			&i.MiskoReportRun.ExperimentID,
-			&i.MiskoReportRun.TestID,
-			&i.MiskoReportRun.RecordingID,
-			&i.MiskoReportRun.SourceAssetID,
-			&i.MiskoReportRun.CalibrationID,
-			&i.MiskoReportRun.ParadigmKey,
-			&i.MiskoReportRun.ParadigmVersion,
-			&i.MiskoReportRun.MetricEngineVersion,
-			&i.MiskoReportRun.ResultSchemaVersion,
-			&i.MiskoReportRun.Trigger,
-			&i.MiskoReportRun.ModelVersion,
-			&i.MiskoReportRun.FinishedAt,
-			&i.MiskoReportRun.Latest,
-			&i.MiskoReportTest.TestID,
-			&i.MiskoReportTest.ExperimentID,
-			&i.MiskoReportTest.ExperimentCode,
-			&i.MiskoReportTest.SubjectID,
-			&i.MiskoReportTest.SubjectCode,
-			&i.MiskoReportTest.Species,
-			&i.MiskoReportTest.Sex,
-			&i.MiskoReportTest.PhaseID,
-			&i.MiskoReportTest.PhaseName,
-			&i.MiskoReportTest.GroupID,
-			&i.MiskoReportTest.GroupName,
-			&i.MiskoReportTest.GroupRole,
-			&i.MiskoReportTest.ParadigmKey,
-			&i.MiskoReportTest.ParadigmVersion,
-			&i.MiskoReportTest.EnvironmentRevisionID,
-			&i.MiskoReportTest.EnvironmentID,
-			&i.MiskoReportTest.EnvironmentName,
-			&i.MiskoReportTest.EnvironmentRevision,
-			&i.MiskoReportTest.TestStatus,
-			&i.MiskoReportTest.ScheduledAt,
-			&i.MiskoReportTest.TrialCount,
-			&i.MetricKey,
-			&i.Unit,
-			&i.Value,
+			&i.TestSubjectID,
+			&i.TestID,
+			&i.AllocationID,
+			&i.SubjectID,
+			&i.SubjectCode,
+			&i.GroupID,
+			&i.Excluded,
+			&i.ResultStatus,
+			&i.ResultRunID,
+			&i.TimepointID,
+			&i.ParadigmVersion,
+			&i.EnvironmentName,
+			&i.ScheduledAt,
+			&i.MetricUnit,
+			&i.MetricValue,
 			&i.MissingReason,
+			&i.MetricEngineVersion,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const reportTimepoints = `-- name: ReportTimepoints :many
+SELECT id, name, study_day, position
+FROM misko.timepoints
+WHERE experiment_id = $1
+ORDER BY position
+`
+
+type ReportTimepointsRow struct {
+	ID       string
+	Name     string
+	StudyDay int32
+	Position int32
+}
+
+func (q *Queries) ReportTimepoints(ctx context.Context, experimentID string) ([]ReportTimepointsRow, error) {
+	rows, err := q.db.Query(ctx, reportTimepoints, experimentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ReportTimepointsRow
+	for rows.Next() {
+		var i ReportTimepointsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.StudyDay,
+			&i.Position,
 		); err != nil {
 			return nil, err
 		}

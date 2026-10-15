@@ -1,6 +1,8 @@
 // Package application contains analysis use cases. Workers authenticate with
-// their own token and act only on runs they claimed; users read runs with
-// *:read, start reanalysis with test:run and manage workers with lab:configure.
+// their own token and act only on runs they claimed; users read runs and
+// results with *:read, start reanalysis and review results with test:run and
+// manage workers with lab:configure. A run analyses one animal of a test (a
+// test subject) in the test's current video.
 package application
 
 import (
@@ -19,9 +21,9 @@ var (
 	ErrWorkerNameTaken       = errors.New("worker name is already in use")
 	ErrUnknownCapability     = errors.New("capability names a paradigm version outside the catalog or one that cannot be computed from a trajectory")
 	ErrRunNotFound           = errors.New("analysis run not found")
-	ErrRecordingNotFound     = errors.New("recording not found on this test")
-	ErrNotReady              = errors.New("the recording needs a verified video, a valid calibration when the paradigm requires one and an active worker capability")
-	ErrRunPending            = errors.New("an analysis of this recording is already queued or running")
+	ErrTestSubjectNotFound   = errors.New("test subject not found")
+	ErrNotReady              = errors.New("the animal needs a verified current video of a test that is not cancelled, a running or completed experiment, no exclusion, a valid calibration of its arena when the paradigm requires one and an active worker capability")
+	ErrRunPending            = errors.New("an analysis of this animal is already queued or running")
 	ErrNoRun                 = errors.New("no queued run matches the worker's capabilities")
 	ErrUnknownOutput         = errors.New("artifacts must name outputs requested for this attempt")
 	ErrOutputNotVerified     = errors.New("an output object is missing or differs from its declared size, checksum or content type")
@@ -72,20 +74,33 @@ type Tokens interface {
 	Hash(token string) []byte
 }
 
-// Candidate is a recording the scheduler may analyze. CalibrationID is the
-// latest valid calibration, or empty.
+// Candidate is one animal of a test that may be analysed in the test's
+// current video. RecordingID is empty while the test has no video and
+// CalibrationID is empty while the animal's arena has no valid effective
+// calibration (its own override for this video, else the arena default).
 type Candidate struct {
-	ExperimentID, TestID, RecordingID, SourceAssetID string
-	SourceGeneration                                 int64
-	SourceCRC32C                                     uint32
-	ClipStartUs                                      int64
-	ClipEndUs                                        *int64
-	CalibrationID                                    string
-	ParadigmKey                                      string
-	ParadigmVersion                                  int
-	EnvironmentRevisionID, ProtocolVersionID         string
-	Parameters                                       map[string]float64
-	VideoVerified                                    bool
+	ExperimentID, TestID, TestSubjectID, RecordingID, SourceAssetID string
+	SourceGeneration                                                int64
+	SourceCRC32C                                                    uint32
+	ClipStartUs                                                     int64
+	ClipEndUs                                                       *int64
+	CalibrationID                                                   string
+	ParadigmKey                                                     string
+	ParadigmVersion                                                 int
+	Parameters                                                      map[string]float64
+	VideoVerified                                                   bool
+	TestCancelled                                                   bool
+	ExperimentStatus                                                string
+	Excluded                                                        bool
+	// Invalid is set when the candidate's stored inputs cannot be read, such
+	// as arena parameters that are not numbers; it is never planned.
+	Invalid error
+}
+
+// eligible reports whether the animal's video and study state allow an analysis.
+func (c Candidate) eligible() bool {
+	return c.RecordingID != "" && c.VideoVerified && !c.TestCancelled && !c.Excluded &&
+		(c.ExperimentStatus == "RUNNING" || c.ExperimentStatus == "COMPLETED")
 }
 
 type OutputUpload struct {
@@ -131,16 +146,19 @@ type Store interface {
 	// WorkerByToken returns ErrWorkerUnauthenticated for unknown or disabled workers.
 	WorkerByToken(ctx context.Context, tokenHash []byte) (domain.Worker, error)
 	ActiveCapabilities(ctx context.Context) ([]domain.Capability, error)
-	// ReadyRecordings lists recordings with a verified video, a test that is not
-	// cancelled and no automatic run for the current source and calibration.
-	ReadyRecordings(ctx context.Context) ([]Candidate, error)
-	Candidate(ctx context.Context, testID, recordingID string) (Candidate, error)
+	// ReadyTestSubjects lists animals that can be analysed now with one of the
+	// capabilities, with a valid calibration when their paradigm version is
+	// among calibrated, and no automatic run for the current video generation
+	// and calibration. Every returned candidate is eligible.
+	ReadyTestSubjects(ctx context.Context, capabilities, calibrated []domain.Capability) ([]Candidate, error)
+	// Candidate returns ErrTestSubjectNotFound for an unknown test subject.
+	Candidate(ctx context.Context, testSubjectID string) (Candidate, error)
 	// CreateAutomaticRun reports false when an equal automatic run already exists.
 	CreateAutomaticRun(ctx context.Context, r domain.Run) (bool, error)
-	// LockRecording serializes run creation for one recording until the transaction
-	// ends; PendingRun then reports a queued or running run of it.
-	LockRecording(ctx context.Context, recordingID string) error
-	PendingRun(ctx context.Context, recordingID string) (bool, error)
+	// LockTestSubject serializes run creation for one animal of a test until
+	// the transaction ends; PendingRun then reports a queued or running run of it.
+	LockTestSubject(ctx context.Context, testSubjectID string) error
+	PendingRun(ctx context.Context, testSubjectID string) (bool, error)
 	CreateRun(ctx context.Context, r domain.Run) (domain.Run, error)
 	LockExpiredRuns(ctx context.Context, now time.Time) ([]domain.Run, error)
 	// ClaimNext locks the oldest available queued run for one of the
@@ -149,14 +167,26 @@ type Store interface {
 	UpdateRun(ctx context.Context, r domain.Run) (domain.Run, error)
 	Run(ctx context.Context, id string) (domain.Run, error)
 	LockRun(ctx context.Context, id string) (domain.Run, error)
-	Runs(ctx context.Context, testID string) ([]domain.Run, error)
+	// Runs lists the runs of a test, of one of its animals when testSubjectID is set.
+	Runs(ctx context.Context, testID, testSubjectID string) ([]domain.Run, error)
+	SubjectRuns(ctx context.Context, testSubjectID string) ([]domain.Run, error)
 	Calibration(ctx context.Context, id string) (domain.CalibrationRef, error)
+	// Arena returns the environment revision a test subject is filmed in.
+	Arena(ctx context.Context, testSubjectID string) (string, error)
 	SourceObject(ctx context.Context, assetID string) (string, error)
 	CreateOutputUpload(ctx context.Context, u OutputUpload) error
 	OutputUploads(ctx context.Context, runID string, attempt int) ([]OutputUpload, error)
 	// Publish stores the result, analyzed video asset, pair and artifacts in the caller's transaction.
 	Publish(ctx context.Context, run domain.Run, result domain.Result, outputs []VerifiedOutput) error
 	Published(ctx context.Context, runID string) (Published, error)
+	// OpenResult creates the PENDING result of the run's animal unless it has one.
+	OpenResult(ctx context.Context, r domain.SubjectResult) error
+	// LockResult locks an animal's result and returns its experiment's status,
+	// or ErrResultNotFound.
+	LockResult(ctx context.Context, testSubjectID string) (domain.SubjectResult, string, error)
+	UpdateResult(ctx context.Context, r domain.SubjectResult) (domain.SubjectResult, error)
+	ReviewItems(ctx context.Context, f ReviewFilter) ([]ReviewItem, int, error)
+	RunMetrics(ctx context.Context, runIDs []string) (map[string][]domain.MetricValue, error)
 }
 
 type Settings struct {
@@ -251,12 +281,16 @@ func (s *Service) AuthenticateWorker(ctx context.Context, token string) (domain.
 	return s.store.WorkerByToken(ctx, s.tokens.Hash(token))
 }
 
+// TickReport counts what a scheduler tick did. Skipped holds candidates and
+// capabilities that could not be planned or enqueued; a tick logs them and
+// carries on, so one bad row never blocks the others.
 type TickReport struct {
 	Enqueued, Requeued, Failed int
+	Skipped                    []error
 }
 
 // Tick returns expired leases to the queue and enqueues one automatic run per
-// ready recording. Concurrent ticks create each automatic run once.
+// ready animal. Concurrent ticks create each automatic run once.
 func (s *Service) Tick(ctx context.Context) (TickReport, error) {
 	var report TickReport
 	now := s.clock()
@@ -284,28 +318,42 @@ func (s *Service) Tick(ctx context.Context) (TickReport, error) {
 	if err != nil {
 		return TickReport{}, err
 	}
-	capabilities, err := s.store.ActiveCapabilities(ctx)
+	active, err := s.store.ActiveCapabilities(ctx)
 	if err != nil {
 		return TickReport{}, err
 	}
-	candidates, err := s.store.ReadyRecordings(ctx)
+	var capabilities, calibrated []domain.Capability
+	for _, c := range active {
+		contract, err := s.catalog.Contract(c.ParadigmKey, c.ParadigmVersion)
+		if err != nil {
+			report.Skipped = append(report.Skipped, fmt.Errorf("capability %s v%d: %w", c.ParadigmKey, c.ParadigmVersion, err))
+			continue
+		}
+		capabilities = append(capabilities, c)
+		if contract.CalibrationRequired {
+			calibrated = append(calibrated, c)
+		}
+	}
+	if len(capabilities) == 0 {
+		return report, nil
+	}
+	candidates, err := s.store.ReadyTestSubjects(ctx, capabilities, calibrated)
 	if err != nil {
 		return TickReport{}, err
 	}
 	for _, c := range candidates {
 		run, ok, err := s.plan(c, capabilities, domain.Automatic, "", now)
+		if err == nil && !ok {
+			err = ErrNotReady
+		}
+		if err == nil {
+			var created bool
+			if created, err = s.store.CreateAutomaticRun(ctx, run); created {
+				report.Enqueued++
+			}
+		}
 		if err != nil {
-			return TickReport{}, err
-		}
-		if !ok {
-			continue
-		}
-		created, err := s.store.CreateAutomaticRun(ctx, run)
-		if err != nil {
-			return TickReport{}, err
-		}
-		if created {
-			report.Enqueued++
+			report.Skipped = append(report.Skipped, fmt.Errorf("test subject %s: %w", c.TestSubjectID, err))
 		}
 	}
 	return report, nil
@@ -313,7 +361,10 @@ func (s *Service) Tick(ctx context.Context) (TickReport, error) {
 
 // plan decides whether a candidate is ready and pins its inputs.
 func (s *Service) plan(c Candidate, capabilities []domain.Capability, trigger domain.Trigger, createdBy string, now time.Time) (domain.Run, bool, error) {
-	if !c.VideoVerified {
+	if c.Invalid != nil {
+		return domain.Run{}, false, c.Invalid
+	}
+	if !c.eligible() {
 		return domain.Run{}, false, nil
 	}
 	contract, err := s.catalog.Contract(c.ParadigmKey, c.ParadigmVersion)
@@ -334,21 +385,21 @@ func (s *Service) plan(c Candidate, capabilities []domain.Capability, trigger do
 		return domain.Run{}, false, nil
 	}
 	source := domain.Source{
-		ExperimentID: c.ExperimentID, TestID: c.TestID, RecordingID: c.RecordingID, SourceAssetID: c.SourceAssetID,
+		ExperimentID: c.ExperimentID, TestID: c.TestID, TestSubjectID: c.TestSubjectID, RecordingID: c.RecordingID, SourceAssetID: c.SourceAssetID,
 		SourceGeneration: c.SourceGeneration, SourceCRC32C: c.SourceCRC32C, ClipStartUs: c.ClipStartUs, ClipEndUs: c.ClipEndUs,
-		CalibrationID: c.CalibrationID, ParadigmKey: c.ParadigmKey, ParadigmVersion: c.ParadigmVersion,
-		EnvironmentRevisionID: c.EnvironmentRevisionID, ProtocolVersionID: c.ProtocolVersionID, Parameters: c.Parameters,
+		CalibrationID: c.CalibrationID, ParadigmKey: c.ParadigmKey, ParadigmVersion: c.ParadigmVersion, Parameters: c.Parameters,
 	}
 	return domain.NewRun(source, trigger, createdBy, now, s.settings.MaxAttempts, contract.MetricEngineVersion, contract.ResultSchemaVersion), true, nil
 }
 
-// Reanalyze queues a new manual run with the current inputs. Earlier runs and
-// their results stay unchanged.
-func (s *Service) Reanalyze(ctx context.Context, actor access.Actor, testID, recordingID string) (domain.Run, error) {
+// Reanalyze queues a new manual run of one animal with the current inputs:
+// the test's current video and the arena's current effective calibration.
+// Earlier runs, their results and the reviewed result stay unchanged.
+func (s *Service) Reanalyze(ctx context.Context, actor access.Actor, testSubjectID string) (domain.Run, error) {
 	if err := actor.Require(access.TestRun); err != nil {
 		return domain.Run{}, err
 	}
-	c, err := s.store.Candidate(ctx, testID, recordingID)
+	c, err := s.store.Candidate(ctx, testSubjectID)
 	if err != nil {
 		return domain.Run{}, err
 	}
@@ -357,19 +408,19 @@ func (s *Service) Reanalyze(ctx context.Context, actor access.Actor, testID, rec
 		return domain.Run{}, err
 	}
 	run, ok, err := s.plan(c, capabilities, domain.Manual, actor.UserID, s.clock())
+	if c.Invalid != nil || errors.Is(err, ErrUnknownCapability) || (err == nil && !ok) {
+		return domain.Run{}, ErrNotReady
+	}
 	if err != nil {
 		return domain.Run{}, err
 	}
-	if !ok {
-		return domain.Run{}, ErrNotReady
-	}
 	var created domain.Run
 	err = s.store.Transaction(ctx, func(tx Store) error {
-		// One analysis per recording at a time: a repeated request must not flood the workers.
-		if err := tx.LockRecording(ctx, recordingID); err != nil {
+		// One analysis per animal at a time: a repeated request must not flood the workers.
+		if err := tx.LockTestSubject(ctx, c.TestSubjectID); err != nil {
 			return err
 		}
-		pending, err := tx.PendingRun(ctx, recordingID)
+		pending, err := tx.PendingRun(ctx, c.TestSubjectID)
 		if err != nil {
 			return err
 		}
@@ -382,11 +433,14 @@ func (s *Service) Reanalyze(ctx context.Context, actor access.Actor, testID, rec
 	return created, err
 }
 
-// Job is a claimed run with its contract and, when the paradigm needs one, the
-// pinned calibration that maps pixels to arena centimeters.
+// Job is a claimed run with its contract, the arena (environment revision)
+// its animal is filmed in and, when the paradigm needs one, the pinned
+// calibration whose crop is that arena's region of the frame and whose
+// transform maps its pixels to arena centimeters.
 type Job struct {
 	Run         domain.Run
 	Contract    domain.Contract
+	Arena       string
 	Calibration *domain.CalibrationRef
 }
 
@@ -410,6 +464,9 @@ func (s *Service) Claim(ctx context.Context, w domain.Worker) (Job, error) {
 			return err
 		}
 		if job.Contract, err = s.catalog.Contract(claimed.ParadigmKey, claimed.ParadigmVersion); err != nil {
+			return err
+		}
+		if job.Arena, err = tx.Arena(ctx, claimed.TestSubjectID); err != nil {
 			return err
 		}
 		if claimed.CalibrationID != "" {
@@ -582,8 +639,11 @@ func (s *Service) Submit(ctx context.Context, w domain.Worker, runID string, sub
 		if err := tx.Publish(ctx, done, result, outputs); err != nil {
 			return err
 		}
-		out, err = tx.UpdateRun(ctx, done)
-		return err
+		if out, err = tx.UpdateRun(ctx, done); err != nil {
+			return err
+		}
+		// The first successful run of an animal opens its result for review.
+		return tx.OpenResult(ctx, domain.OpenResult(out))
 	})
 	if err != nil {
 		return domain.Run{}, err
@@ -644,11 +704,12 @@ func (s *Service) Fail(ctx context.Context, w domain.Worker, runID string, attem
 	return out, err
 }
 
-func (s *Service) Runs(ctx context.Context, actor access.Actor, testID string) ([]domain.Run, error) {
+// Runs lists the runs of a test, newest first, optionally of one of its animals.
+func (s *Service) Runs(ctx context.Context, actor access.Actor, testID, testSubjectID string) ([]domain.Run, error) {
 	if err := actor.Require(access.Read); err != nil {
 		return nil, err
 	}
-	return s.store.Runs(ctx, testID)
+	return s.store.Runs(ctx, testID, testSubjectID)
 }
 
 type Detail struct {

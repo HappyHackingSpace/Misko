@@ -31,6 +31,8 @@ class FakeCloud:
         self.heartbeats = 0
         self.stale = False
         self.source_status = 0
+        self.downloads = 0
+        self.source_urls = 0
         server = self
 
         class Handler(BaseHTTPRequestHandler):
@@ -50,6 +52,7 @@ class FakeCloud:
                 return self.rfile.read(int(self.headers.get("Content-Length") or 0))
 
             def do_GET(self) -> None:
+                server.downloads += 1
                 if server.source_status:
                     self.reply(server.source_status)
                 elif self.path == "/gcs/source?generation=42":
@@ -100,6 +103,7 @@ class FakeCloud:
                     else:
                         self.reply(200, {})
                 elif parts[-1] == "source-url":
+                    server.source_urls += 1
                     self.reply(200, {"url": f"http://127.0.0.1:{server.port}/gcs/source?generation=42", "expiresAt": "2026-09-12T00:00:00Z"})
                 elif parts[-1] == "outputs":
                     name = f"runs/{parts[3]}/attempts/{body['attempt']}/{body['fileName']}"
@@ -198,6 +202,26 @@ def test_failures_are_reported_with_their_retry_policy(tmp_path: Path, walk: byt
     expired.source_status = 403
     run_once(WorkerApi(f"http://127.0.0.1:{expired.port}", TOKEN), tmp_path)
     assert expired.failures == [{"attempt": 1, "reason": "SOURCE_DOWNLOAD_FAILED: HTTP 403", "retryable": True}]
+
+
+@pytest.mark.parametrize(("key", "version"), [("EPM", 1), ("OPEN_FIELD", 2), ("ROTAROD", 1), (None, None)])
+def test_unsupported_paradigms_fail_without_downloading(tmp_path: Path, walk: bytes, key, version) -> None:
+    job = synthetic.job()
+    job["run"]["paradigmKey"], job["run"]["paradigmVersion"] = key, version
+    cloud = FakeCloud(walk, [job])
+    assert run_once(WorkerApi(f"http://127.0.0.1:{cloud.port}", TOKEN), tmp_path, heartbeat_s=0.01) is True
+    assert len(cloud.failures) == 1 and not cloud.results and not cloud.declared
+    failure = cloud.failures[0]
+    assert failure["retryable"] is False and failure["reason"].startswith(f"UNSUPPORTED_PARADIGM: {key} v{version}")
+    assert cloud.downloads == 0 and cloud.source_urls == 0 and cloud.heartbeats == 0
+
+
+def test_the_trajectory_names_the_analysed_animal(tmp_path: Path, walk: bytes) -> None:
+    job = synthetic.job()
+    cloud = FakeCloud(walk, [job])
+    run_once(WorkerApi(f"http://127.0.0.1:{cloud.port}", TOKEN), tmp_path)
+    trajectory = json.loads(cloud.uploaded(job["outputPrefix"] + "trajectory.json"))
+    assert trajectory["worker"]["testSubjectId"] == job["testSubject"]["id"]
 
 
 def test_a_lost_lease_stops_without_a_report(tmp_path: Path, walk: bytes) -> None:
