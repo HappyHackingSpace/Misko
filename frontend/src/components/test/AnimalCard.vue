@@ -16,8 +16,10 @@ const props = defineProps({
   // This animal's row of the test's calibration status, if loaded.
   calibration: { type: Object, default: null },
   canRun: { type: Boolean, default: false },
+  // The paradigm is scored by an observer on the video.
+  scorable: { type: Boolean, default: false },
 });
-const emit = defineEmits(["changed", "calibrate"]);
+const emit = defineEmits(["changed", "calibrate", "score"]);
 const { t } = useI18n();
 const message = useMessage();
 const fmt = useExecutionFormat();
@@ -164,6 +166,12 @@ const canCalibrate = computed(() => props.canRun && props.calibration && props.c
       <NButton v-if="canCalibrate" size="small" secondary data-test="calibrate" @click="emit('calibrate', subject)">
         {{ source === "OVERRIDE" ? $t("execution.calibration.correct") : $t("execution.calibration.override") }}
       </NButton>
+    </div>
+
+    <div v-if="scorable" class="block" data-test="animal-scoring">
+      <strong>{{ $t("scoring.cardTitle") }}</strong>
+      <p class="muted small">{{ $t("scoring.cardHint") }}</p>
+      <NButton size="small" secondary data-test="score-open" @click="emit('score', subject)">{{ $t("scoring.open") }}</NButton>
     </div>
   </NCard>
 </template>
