@@ -1,29 +1,30 @@
 ---
 title: Usage
-description: How to use the Mişko panel day to day, from first login to running tests.
+description: How to use the Mişko panel day to day, from the catalog and study design to dosing, test sessions, result review and reports.
 ---
 
 This page is the practical guide to using Mişko once it is installed. It is
 written for everyone in the lab, not only developers. If you have not installed
 Mişko yet, start with [Installation](../installation/).
 
-## The big picture (non-technical)
+## The big picture
 
-Think of Mişko as the logbook for your behavioral experiments. Instead of
-spreadsheets and scattered video files, every test is recorded in one place:
-**which animal was tested, under which scenario, by whom, and what the result
-was**. The heavy video and tracking work is handled by a
-separate camera system; Mişko keeps the organized summary so you can find and
-compare results later.
+Mişko is the logbook of a preclinical behaviour study. A study asks one
+question: does a substance at a given dose reverse the deficit caused by a
+disease model? Everything in the panel follows that question:
 
-A normal session looks like this:
+1. The **catalog** lists the substances and disease models the lab uses.
+2. **Subjects** are the animals, with their body weights.
+3. **Environments** are the arenas, each calibrated once for its fixed camera.
+4. An **experiment** is designed as groups (each with a role, a disease model and
+   what it receives), timepoints, protocols and endpoints, then started.
+5. Animals are **allocated** to groups, **dosed** every day and filmed in
+   **test sessions**.
+6. An analysis worker measures every animal on the session video. A person
+   **reviews** each result, and only accepted results enter the **report**.
 
-1. An administrator sets up the lab: users, subjects (mice), environments and scenarios.
-2. An operator creates a test by choosing a scenario and a subject.
-3. The test moves through its lifecycle: it starts as **pending**, becomes
-   **running** when the experiment is underway, and ends as **done** or
-   **failed**.
-4. The result summary is stored and visible on the dashboard.
+The panel is in Turkish by default. Use the language switch in the top bar to
+change it to English; your choice is remembered.
 
 ## First login
 
@@ -33,167 +34,279 @@ exists, and its password was printed once to the backend log (see
 
 1. Open the panel (default [http://localhost:8080](http://localhost:8080)).
 2. Log in with `ADMIN_EMAIL` and the generated password.
-3. Change the password immediately from your account.
-4. Create the rest of the team from the **Users** screen.
+3. Create the rest of the team from the **Users** screen.
 
-## Users and roles
+## Roles
 
-Users are managed internally by an administrator from the **Users** screen.
-There is no self-registration, which keeps the system closed and suitable for a
-single lab.
+There are five roles. The API decides what each role may do, and the panel
+hides buttons the API would refuse.
 
-There are five roles: `SUPERADMIN`, `LAB_MANAGER`, `RESEARCHER`, `TECHNICIAN`,
-and `VIEWER`.
+| Role | What it can do |
+|---|---|
+| `SUPERADMIN`, `LAB_MANAGER` | Everything, including users and lab settings. |
+| `RESEARCHER` | Everything except users and lab settings: catalog, subjects, environments, study design, planning sessions, dosing, running sessions, review. |
+| `TECHNICIAN` | The lab day: record doses and weights, start and complete sessions, record trials, upload videos, calibrate an animal on a video, review results. Cannot plan or cancel sessions or change a study. |
+| `VIEWER` | Reads everything, changes nothing. |
 
-- A **SUPERADMIN** or **LAB_MANAGER** can manage users and configure the lab.
-- Anyone with the `apparatus:write` permission (RESEARCHER and above) can create
-  named environments from the read-only paradigm catalog.
-- Other users work with the lab data according to their role.
-- When you create a user, you may leave the password blank and let the system
-  generate a strong one; it is shown only once, so copy it before closing.
+When you create a user on the **Users** screen you may leave the password blank
+and let the system generate a strong one. It is shown only once, so copy it
+before closing.
 
-## Configuring the lab
+## Common controls
 
-Mişko runs as a single laboratory per installation. The lab record (its name and
-settings) is created by the installation wizard at first startup and is used for
-branding across the panel.
+Lists work the same everywhere: a search box, filters, sortable columns and
+paging at the bottom. New records and edits open in a side drawer or a dialog,
+a green message confirms a save, and an error is shown in words next to the
+form. Deleting always asks for confirmation. Many screens keep their filters in
+the address bar, so you can bookmark or share a filtered list.
 
-The **Paradigms** screen lists the test templates defined in code, each with a
-short description of what it measures, in the panel's language. A paradigm's
-detail page shows its parameters grouped by where they are set, each with what
-to measure, its allowed range and default; its metrics with a plain
-explanation (the technical definition and formula open on demand); and its
-zones, events and quality rules. The parameter set and ranges are fixed in code
-and cannot be edited here.
+## Catalog
 
-Parameters come in three groups:
+Open **Catalog** in the menu. It has two tabs.
 
-- **Apparatus measurements** are measured once on the physical setup and are
-  required when you create an environment.
-- **Analysis settings** tune tracking and scoring. They belong to the
-  environment, start at defaults that suit most setups, and are folded away
-  under **Show analysis settings**.
-- **Session settings** describe how a trial is run, such as the trial cut-off or
-  the rotarod speeds, and are chosen on each protocol step.
+**Substances** are compounds, reference drugs, vehicles (saline, CMC, DMSO) and
+disease inducers (MPTP, LPS). To add one:
 
-To put a paradigm to use, anyone with the `apparatus:write` permission
-(RESEARCHER and above) creates an **environment** from it. An environment is a
-named, persisted test setup based on a paradigm template, and a lab can hold many
-environments for the same paradigm (for example two Morris water tanks, "Tank A"
-and "Tank B"). From a paradigm detail page, use **Create environment from this
-paradigm**, give it a name, and fill in the apparatus measurements within the
-allowed ranges. Ratios are typed as percentages and switches are on or off. Manage environments from the **Environments** menu,
-which supports create, edit and delete; on edit, the paradigm cannot be changed.
-The apparatus values are locked at test time.
+1. Click **New substance**.
+2. Type the name, choose the kind and optionally a description.
+3. Click **Save**.
 
-## Setting up the lab data
+The kind only sorts the pickers; the role of a substance in a study comes from
+where it is used. Names are unique: a second "Saline" (in any letter case) is
+refused. A substance used by a regimen or a recorded dose cannot be deleted;
+the panel says so.
 
-Before running tests, populate the building blocks. These live on their own
-screens in the panel.
+**Disease models** describe how a deficit is produced (chemical, surgical, diet,
+stress or other) and how it is confirmed. They are added the same way. A model
+used by a group cannot be deleted.
 
-### Scenarios
+## Subjects and weights
 
-A scenario is the reusable definition of an experiment. You build it once: give
-it a name and select one or more **environments** (so a scenario can span one or
-more paradigms; each environment's paradigm fixes which metrics it collects).
-After that, running a test means choosing a subject and the scenario. A scenario
-has no pass/fail criteria - results are data, interpreted later in analysis.
+Open **Subjects**. Each animal has a code (letters, digits, `.`, `_`, `/`,
+`-`), a species (mouse or rat) and a sex.
 
-### Subjects
+1. Click **New subject**, type the code, choose species and sex, and save.
+2. Use the search box and the species and sex filters to find animals. Tick
+   **Only animals not in a group** to see animals that belong to no group yet.
+3. Click a code to open the animal's page. It shows its study and group (or that
+   it is unallocated) and its body weights, newest first, with the change from
+   the weighing before.
+4. To weigh an animal, type the grams and the time on its page and click
+   **Record weight**. Weights are never edited afterwards.
 
-Subjects are the mice. Each subject has a code, sex, group, and notes. Use a
-consistent coding scheme (for example `F-001`) so subjects are easy to find.
+Codes are unique. An animal that is in a group or has weights cannot be deleted.
 
-## Browsing and finding data
+## Environments and calibration
 
-Every listing screen (Users, Subjects, Scenarios, Paradigms, Tests and
-Environments) uses the same table, so the controls work the same way everywhere:
+An environment is a physical arena built from a paradigm (open field, rotarod,
+Morris water maze and so on). Open **Environments** and click **New
+environment**:
 
-- **Search box** at the top filters the list by free text across the main
-  columns (for example a subject code, a user email or a scenario name).
-- **Sortable headers** show an arrow when active. Click a header to sort, click
-  again to flip the direction.
-- **Pagination** lives in the footer: choose how many rows per page (10, 20 or
-  50), see the "from-to of total" summary, and move with Prev / Next.
-- A leading **# column** numbers the rows and keeps counting across pages, so the
-  first row on page 2 continues where page 1 left off.
-- An **Export** dropdown at the top right saves the current page. CSV opens in
-  Excel or Google Sheets; PDF opens the browser print dialog, where you can pick
-  "Save as PDF" or print on paper. The export uses the values you see, including
-  the current search and sort order.
+1. Type a name (for example "Box A").
+2. Choose the paradigm. The form then shows the measurements that paradigm
+   needs, filled with typical values.
+3. Enter the real measurements (for example the arena width and height in cm).
+   Analysis settings are folded away and rarely need changing.
+4. Click **Save**. The environment's page opens.
 
-All of this runs on the server, so the table stays fast no matter how many
-records the lab accumulates: only the current page is fetched, and the search
-and sort are applied by the database. When a screen has no records yet, the table
-shows a short message naming what is missing instead of an empty grid.
+**Default calibration.** A camera that does not move is calibrated once per
+arena, and every video filmed in that arena uses it:
 
-Each listing is read-only. A **Create** button in the page header opens a
-dedicated form page for a new record, and clicking a row's first column opens
-that record's **detail page**, where you edit it, delete it, or run
-record-specific actions (for example starting or finishing a test, or resetting
-a user's password). Saving or deleting returns you to the list.
+1. On the environment's page click **Calibrate this revision**.
+2. Fill in the camera, the frame size and the crop of this arena in the frame.
+3. Enter four fit points (pixel position and real position in cm, usually the
+   corners) and at least three check points.
+4. Click **Save**. The panel shows the fit and check errors and the tolerance.
+   A calibration whose check error is above the tolerance is rejected; enter it
+   again with better points.
 
-## Running a test
+**Revisions.** Measurements are never edited in place, so every test keeps the
+values it was run with. Click **Change the measurements** to create a new
+revision. A new revision needs its own calibration.
 
-The test is the central record in Mişko. To run one:
+## Designing a study
 
-1. Go to the **Tests** screen and click **Create** to open the new-test page.
-2. Choose a **scenario** and a **subject**, then create. The operator is the
-   signed-in user.
-3. The test is created with status **pending**. Open its **detail page** (click
-   the row) to run it.
-4. The detail page lists the scenario's environments. Run them one by one: click
-   **Start** on an environment, then **log events** as the run unfolds. Each event
-   has a type (from the environment's paradigm), a timestamp in seconds, and an
-   optional payload such as the zone entered.
-5. Each environment panel shows a **metric counter bar** on top with the live
-   metric values, and two tabs below it: a **Timeline** (the logged events placed
-   in time order, plus the editable event list) and **Charts** (a parameter-based
-   bar chart). Metrics recompute live as events are added or removed.
-6. Click **Finish** to record that environment's result. Repeat for each
-   environment.
-7. When every environment is done the test becomes **done**. The result is stored
-   as data per environment - there is no pass/fail verdict; interpretation and
-   comparison happen later in the analysis views.
+Open **Experiments** and click **New experiment**. Fill in the code, the title,
+the hypothesis, how animals are randomised and whether the study is blinded,
+then save. The experiment opens on its **Groups and regimens** tab. A new study
+is a **Draft**; its design can be changed until it starts.
 
-Logging events by hand today and receiving them from the camera system later use
-the **same event types and the same validation** - the manual flow just mirrors
-what the CV service will push.
+**Groups and regimens.**
 
-Once a test is done, its summary metrics and any artifact links are kept by
-Mişko. The raw video and frame-by-frame data stay in the separate camera
-service.
+1. Click **Add group**. Give a code (G1, G2), a name, a role and a target number
+   of animals. Every role except healthy control needs a disease model.
+2. On the group's card click **Add item** to say what the group receives: the
+   purpose (induction, vehicle or treatment), the substance, the dose and unit
+   (for example 10 mg/kg), the route, how often (once, daily, twice daily,
+   weekly or every N days) and the first and last study day.
 
-## Commenting on a test
+The roles are: healthy control, sham, disease control, positive control and
+treatment. A treatment or positive control group has exactly one treatment
+item (its dose level) and an induction item; a disease control has an induction
+and a vehicle; a sham has a vehicle and no induction.
 
-Every test detail page has a **Comments** thread at the bottom, so the lab can
-discuss a run in context (an unusual observation, a follow-up question, a note
-for whoever analyzes the data later).
+**Timepoints and protocols.** On the **Timepoints and protocols** tab:
 
-- **Anyone signed in can comment.** Writing a comment is open to every role,
-  including `VIEWER`. Reading is open to everyone too.
-- Type in the box and click **Post**. A comment is limited to 2000 characters
-  and cannot be empty; the counter under the box shows how much you have used.
-- You can **edit** or **delete** your own comments. A `SUPERADMIN` or
-  `LAB_MANAGER` can also delete any comment for moderation, but cannot edit
-  someone else's words.
-- Comments are plain text. Anything you type - including things that look like
-  HTML or code - is shown exactly as written and is never executed, so the thread
-  is safe to paste into. Line breaks are preserved.
+1. Click **Add timepoint** for each moment animals are tested, with a name
+   (Baseline, Day 7) and a study day (negative before day 0).
+2. Click **New protocol**, name it and add one step per test: the paradigm, the
+   trial type and the number of trials. Paradigms with session settings (for
+   example rotarod speeds) show them on the step.
+3. To change a protocol later, click **New version**. Earlier versions never
+   change, so sessions keep the version they were planned with.
 
-To keep the thread useful, comments are lightly rate-limited: a single user can
-post at most 20 comments per minute. If you hit the limit, wait a moment and try
-again.
+**Endpoints.** On the **Endpoints** tab, click **Add endpoint** to add what the study is judged on: a
+metric of a paradigm in the protocols, at a timepoint, optionally compared with
+a baseline timepoint, and which direction is better. Exactly one endpoint is
+**primary**; a second primary is refused.
 
-## The dashboard
+**Starting.** The **Overview** tab lists every start rule that is not met yet,
+each with a link to the tab that fixes it. When the list says the study is
+ready, click **Start study**, choose day 0 (the date study days count from,
+usually the induction) and confirm. The study becomes **Running**: groups,
+regimens, timepoints and endpoints are now shown read-only. New protocol
+versions are still possible.
 
-The **Dashboard** is the home screen. It shows summary counts (how many
-subjects, scenarios, tests) and the most recent tests, so you can see lab activity
-at a glance.
+## Allocation and exclusion
+
+On the **Animals** tab:
+
+1. Click **Allocate animals**. The drawer lists animals that belong to no group.
+2. Search and tick the animals.
+3. Either choose **One group** and the group, or **Randomise** to let the
+   system spread them over the groups up to their targets (optionally only over
+   some groups). A cage can be added.
+4. Click **Allocate** or **Randomise**.
+
+The group cards at the top show how full each group is. An animal belongs to
+exactly one group and, once the study runs, never changes group. If an animal
+dies or must leave the study, click **Exclude**, choose the reason (died, humane
+endpoint, induction failed, technical problem, other) and add a note. Excluded
+animals stay on the list with their reason and are left out of statistics.
+
+## Daily dosing
+
+The **Dosing** tab shows the doses due on a day, grouped by group and animal,
+with each animal's latest weight. Use the arrows or the date picker to move to
+another day and **Today** to come back. A dose is **Due** today, **Given** once
+recorded, **Missing** on a past day and **Planned** on a future day.
+
+1. Click **Record** next to a due dose. The dialog shows the planned dose;
+   change the time, amount or route only if what was given differs.
+2. A dose per kilogram needs a weight from the last seven days. If there is
+   none, the dialog asks for the weight first, records it, and then records the
+   dose with it. The list shows the dose in mg next to the planned mg/kg.
+3. For a dose that is not in the plan, click **Unplanned dose** and choose the
+   animal, the purpose, the substance, the amount, unit and route.
+
+**Induction outcomes.** Animals that received an induction are listed under
+**Induction outcomes**. Click **Record outcome**, choose confirmed or not
+confirmed and save. An outcome is recorded once.
+
+The **Dose history** at the bottom lists every recorded dose and can be
+filtered by animal and purpose.
+
+## Planning and running test sessions
+
+A test session is one timepoint, one protocol step and **one video**, with one
+or more animals, each in its own arena (for example three open field boxes
+filmed by one camera).
+
+**Planning** (researchers and above), on the experiment's **Tests** tab:
+
+1. Click **Plan a session**.
+2. Choose the timepoint; the protocol, version and step are preselected.
+3. The time defaults to day 0 plus the timepoint's study day.
+4. Choose the first animal and its arena, then **Add animal** for each further
+   animal. Only animals that are not excluded and not already planned at the
+   same timepoint and step are offered, and only arenas of the step's paradigm.
+5. Click **Plan**.
+
+While a session is planned, **Edit animals** on its page adds or removes
+animals. **Cancel session** asks for a reason, which is kept on the session.
+
+**The worklist.** The **Tests** menu lists sessions across studies in four
+views: **Today**, **Overdue** (planned or still running from an earlier day),
+**Upcoming** and **All**, with filters for experiment, status and paradigm.
+The view and filters are kept in the address.
+
+**Running** (technicians and above), on the session's page:
+
+1. Click **Start**. A session with an excluded animal cannot start until that
+   animal is removed.
+2. For each animal, click **Record trial** in its card, check the repetition and
+   times and save. The card counts the trials done against the planned number.
+3. Upload the session video with **Upload video**. It is checked after upload
+   and then shown as the video in use. **Replace video** uploads a new one after
+   a confirmation; earlier videos stay listed under **Earlier videos**.
+4. Each animal's card shows which calibration its part of the frame uses:
+   normally the **Arena default**. If the camera or an arena moved, click
+   **Calibrate on this video** on that animal and enter the points for this
+   video only. The other animals keep their arena default.
+5. Click **Complete** when every animal has at least one trial; until then the
+   button stays disabled and the page says why.
+
+Comments at the bottom of the page let the lab note anything unusual. Anyone
+can comment; you can edit your own, and lab managers can delete any.
+
+## Analysis and result review
+
+When a running session's video is verified, the analysis worker measures each
+animal in its arena. The **Analysis** block of the session page shows the state
+of each animal, and **Analyse again** queues a new run (for example after a new
+calibration).
+
+Every result must be approved by a person before it counts. Open **Result
+review**:
+
+1. The list shows results waiting for review, filtered by experiment and status
+   (pending, accepted, rejected, all). The filters are kept in the address.
+2. Click a row to open the analysed video, the quality checks and the metrics.
+3. Click **Accept**, or choose a reason (tracking lost, wrong animal, video
+   defect, protocol deviation, other), add a note and click **Reject**. The
+   drawer then moves to the next pending result.
+4. If an animal was analysed again, the checks say **A newer run is available**.
+   Pick a run in the run list and click **Review this run instead**; the result
+   goes back to pending with that run.
+5. **Select clean rows** ticks every pending result with all metrics measured,
+   no newer run and no exclusion; **Accept selected** accepts them together.
+
+In a **blinded** study the review screen shows only the animal, the arena and
+the session, never the group, dose or substance.
+
+## Results and reports
+
+The experiment's **Results** tab, and the same report on the **Reports**
+screen, show each endpoint at its timepoint:
+
+- per group: n, mean, SD, SEM and the change from baseline, plus how many
+  results are pending, waiting for analysis, rejected, missing or excluded;
+- a chart of the group means;
+- the comparisons in words: model validity, assay sensitivity, efficacy with
+  rescue %, dose response and the time course.
+
+Only accepted results of animals that are not excluded count. A banner on top
+says whether the numbers are **provisional** (some results are still pending,
+with a link to review them), **interim** (all reviewed, study still running) or
+**final** (study completed). **Export** saves the report as CSV or Excel, one
+row per animal or one row per group. A blinded study's report carries a
+reminder before it is shared.
+
+To finish a study, click **Complete study** on the **Overview** tab once every
+planned session is completed or cancelled. A completed study is read-only.
+
+## Dashboard
+
+The **Dashboard** is the home screen. Its tiles count results (pending,
+accepted, rejected), analysis (queued, running, failed, waiting for
+calibration), sessions (planned, in progress, completed, cancelled) and
+experiments (draft, running, completed). Click a tile to open the list it
+counts, already filtered: for example **Pending** opens the review queue and
+**In progress** opens the worklist of running sessions. Below the tiles are the
+latest results and the upcoming sessions.
 
 ## Where the heavy data lives
 
-Mişko deliberately does not store raw video or computer-vision telemetry. That
-data belongs to an independent camera service. Mişko stores only the **summary
-metrics and artifact URLs** for each test. The contract between the two systems
-is described in [Integration](../integration/).
+Videos are uploaded straight to object storage; Mişko keeps their records,
+calibrations, analysis runs, metrics and review decisions. The contract with the
+analysis worker is described in [Integration](../integration/).

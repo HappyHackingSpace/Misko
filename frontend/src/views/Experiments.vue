@@ -1,7 +1,7 @@
 <script setup>
 import { computed, h, ref } from "vue";
 import { useI18n } from "vue-i18n";
-import { RouterLink } from "vue-router";
+import { RouterLink, useRoute } from "vue-router";
 import { NButton, NCard, NDataTable, NSelect, NTag } from "naive-ui";
 import { useDataTable } from "../composables/useDataTable.js";
 import { useTableExport } from "../composables/useTableExport.js";
@@ -16,7 +16,9 @@ const fmt = useDesignFormat();
 // Creating a study needs study:write, so the control is offered only to a role
 // the API would actually accept.
 const canWrite = computed(() => auth.can("study:write"));
-const status = ref(null);
+// The dashboard links here with ?status=, so a tile opens the list it counts.
+const route = useRoute();
+const status = ref(["DRAFT", "RUNNING", "COMPLETED"].includes(route.query.status) ? route.query.status : null);
 const table = useDataTable("/experiments", {
   defaultSort: { field: "createdAt", order: "desc" },
   extraParams: () => ({ status: status.value }),

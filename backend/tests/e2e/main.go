@@ -1,12 +1,14 @@
-// Command e2e runs the API for browser tests with storage on local disk.
+// Command e2e runs the API for browser tests with storage in memory.
 //
 // It installs the schema into an empty database whose name contains "e2e",
-// creates the administrator, seeds a running study through the real API (users
-// per role, catalog entries, calibrated arenas, groups with regimens,
-// timepoints, a protocol, allocated and weighed animals, doses, a planned and an
-// in-progress test session with a verified video) and serves signed upload and
-// read URLs itself. It is test support: it never talks to Cloud Storage and must not run
-// against a real installation.
+// creates the administrator, seeds two running studies through the real API
+// (users per role, catalog entries, calibrated arenas, groups with regimens,
+// timepoints, a protocol, allocated and weighed animals, doses, planned and
+// in-progress test sessions with verified videos), registers an analysis
+// worker and drives it through the worker protocol (claim, outputs, result) so
+// there are results to review, and serves signed upload and read URLs itself.
+// It is test support: it never talks to Cloud Storage and must not run against
+// a real installation.
 package main
 
 import (
@@ -385,15 +387,24 @@ func (s *seeder) post(path string, body any) map[string]any {
 	return out
 }
 
-// seedStudy builds a running study in the lab's time zone (UTC): day 0 was
-// three days ago, so daily doses are due today. It returns the identifiers and
-// credentials the browser tests need.
+// seedStudy builds two running studies in the lab's time zone (UTC) and drives
+// their analysis through the worker protocol.
 //
-// TODO(analysis package): seed analysis workers, runs, metric results and
-// subject results on the in-progress test once the analysis screens are
-// rebuilt on the session model.
+// The main study (E2E): day 0 was three days ago, so daily doses are due today.
+// It has an overdue planned baseline session, a baseline session in progress
+// with two animals whose results wait for review (M02 has a newer run as well),
+// and a Day 14 session with three animals: two accepted results and one still
+// pending, so the study report has numbers and a provisional banner.
+//
+// The blinded study (E2E-BLIND) has one session with two pending results.
+//
+// It returns the identifiers and credentials the browser tests need.
 func seedStudy(api bootstrap.API, store *diskStore, fixtures, adminPassword string) (map[string]any, error) {
 	video, err := os.ReadFile(fixtures + "/analyzed.mp4")
+	if err != nil {
+		return nil, err
+	}
+	trajectory, err := os.ReadFile(fixtures + "/trajectory.json")
 	if err != nil {
 		return nil, err
 	}
@@ -409,6 +420,14 @@ func seedStudy(api bootstrap.API, store *diskStore, fixtures, adminPassword stri
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
 	dayZero := today.AddDate(0, 0, -3)
 	at := func(t time.Time) string { return t.Format(time.RFC3339) }
+	// Sessions running now were scheduled an hour ago, started half an hour
+	// ago and filmed a trial since, all on today's date even just after midnight.
+	scheduled := now.Add(-time.Hour)
+	if scheduled.Before(today) {
+		scheduled = today
+	}
+	started := scheduled.Add(now.Sub(scheduled) / 2)
+	trialStart, trialEnd := started.Add(now.Sub(started)/4), started.Add(now.Sub(started)/2)
 
 	accounts := map[string]any{}
 	for _, role := range []string{"LAB_MANAGER", "RESEARCHER", "TECHNICIAN", "VIEWER"} {
@@ -426,20 +445,21 @@ func seedStudy(api bootstrap.API, store *diskStore, fixtures, adminPassword stri
 	model := text(s.post("/api/catalog/disease-models", map[string]any{"name": "MPTP Parkinson", "inductionType": "CHEMICAL",
 		"confirmationCriterion": "Rotarod latency below 50% of baseline"}), "id")
 
-	// Three open field arenas filmed by one camera; Box A has a default calibration.
+	// Three calibrated open field arenas filmed by one camera.
 	arena := func(name string) (string, string) {
 		created := s.post("/api/environments", map[string]any{"name": name, "paradigmKey": "OPEN_FIELD",
 			"revision": map[string]any{"paradigmVersion": 1, "parameters": map[string]any{"arena_width_cm": 50, "arena_height_cm": 50}}})
-		return text(nested(created, "environment"), "id"), text(nested(created, "revision"), "id")
+		id := text(nested(created, "environment"), "id")
+		s.post("/api/environments/"+id+"/revisions/1/calibrations", map[string]any{
+			"cameraId": "e2e-camera", "frameWidth": 320, "frameHeight": 240,
+			"crop": map[string]any{"x": 0, "y": 0, "width": 320, "height": 240}, "measurementPlane": "ARENA_FLOOR",
+			"fitPoints": correspondences(fitPoints), "checkPoints": correspondences(checkPoints),
+		})
+		return id, text(nested(created, "revision"), "id")
 	}
 	boxA, boxARevision := arena("Box A")
 	boxB, boxBRevision := arena("Box B")
-	boxC, _ := arena("Box C")
-	s.post("/api/environments/"+boxA+"/revisions/1/calibrations", map[string]any{
-		"cameraId": "e2e-camera", "frameWidth": 320, "frameHeight": 240,
-		"crop": map[string]any{"x": 0, "y": 0, "width": 320, "height": 240}, "measurementPlane": "ARENA_FLOOR",
-		"fitPoints": correspondences(fitPoints), "checkPoints": correspondences(checkPoints),
-	})
+	boxC, boxCRevision := arena("Box C")
 
 	// The study design.
 	experiment := s.post("/api/experiments", map[string]any{"code": "E2E", "title": "Compound X in MPTP mice",
@@ -465,16 +485,16 @@ func seedStudy(api bootstrap.API, store *diskStore, fixtures, adminPassword stri
 	item(disease, "VEHICLE", saline, "10", "mL/kg", "ORAL", "DAILY", 0, 14)
 	item(treated, "INDUCTION", mptp, "20", "mg/kg", "INTRAPERITONEAL", "ONCE", 0, 0)
 	item(treated, "TREATMENT", compound, "5", "mg/kg", "ORAL", "DAILY", 0, 14)
-	timepoint := func(name string, day, position int) string {
+	timepoint := func(base, name string, day, position int) string {
 		return text(s.post(base+"/timepoints", map[string]any{"name": name, "studyDay": day, "position": position}), "id")
 	}
-	baseline := timepoint("Baseline", -1, 1)
-	day7 := timepoint("Day 7", 7, 2)
-	day14 := timepoint("Day 14", 14, 3)
-	protocol := s.post(base+"/protocols", map[string]any{"name": "Open field", "version": map[string]any{"steps": []any{
+	baseline := timepoint(base, "Baseline", -1, 1)
+	day7 := timepoint(base, "Day 7", 7, 2)
+	day14 := timepoint(base, "Day 14", 14, 3)
+	openField := map[string]any{"name": "Open field", "version": map[string]any{"steps": []any{
 		map[string]any{"position": 1, "paradigmKey": "OPEN_FIELD", "paradigmVersion": 1, "trialType": "STANDARD", "trials": 2},
-	}}})
-	versionID := text(nested(protocol, "version"), "id")
+	}}}
+	versionID := text(nested(s.post(base+"/protocols", openField), "version"), "id")
 	s.post(base+"/endpoints", map[string]any{"timepointId": day14, "baselineTimepointId": baseline, "paradigmKey": "OPEN_FIELD",
 		"metricKey": "distance_cm", "kind": "PRIMARY", "direction": "HIGHER_IS_BETTER"})
 
@@ -505,40 +525,132 @@ func seedStudy(api bootstrap.API, store *diskStore, fixtures, adminPassword stri
 	}
 	s.post(base+"/allocations/"+allocations["M03"]+"/induction-outcome", map[string]any{"status": "CONFIRMED", "assessedAt": at(dayZero.AddDate(0, 0, 2).Add(10 * time.Hour))})
 
-	// Sessions: a planned baseline session that is now overdue, and one in
-	// progress today with two animals in two arenas and a verified video.
+	// film uploads the fixture as the session's video and verifies it.
+	film := func(testID string) {
+		started := s.post("/api/tests/"+testID+"/recordings", map[string]any{
+			"fileName": "session.mp4", "contentType": "video/mp4", "sizeBytes": len(video), "crc32c": mediadomain.FormatCRC32C(crc32c(video)),
+		})
+		if s.err != nil {
+			return
+		}
+		uploaded, err := url.Parse(text(nested(started, "upload"), "url"))
+		if err != nil {
+			s.err = err
+			return
+		}
+		store.put(uploaded.Query().Get("object"), video, "video/mp4")
+		s.post("/api/tests/"+testID+"/recordings/"+text(nested(started, "recording"), "id")+"/finalize", map[string]any{})
+	}
+	// running plans a session with animals in arenas (allocation, arena
+	// revision pairs), starts it and returns it with its animals by allocation.
+	running := func(base, timepointID, version, notes string, seats ...string) (string, map[string]string) {
+		var list []any
+		for i := 0; i+1 < len(seats); i += 2 {
+			list = append(list, map[string]any{"allocationId": seats[i], "environmentRevisionId": seats[i+1]})
+		}
+		created := s.post(base+"/tests", map[string]any{"timepointId": timepointID, "protocolVersionId": version, "stepPosition": 1,
+			"scheduledAt": at(scheduled), "notes": notes, "subjects": list})
+		id := text(created, "id")
+		s.post("/api/tests/"+id+"/start", map[string]any{"startedAt": at(started)})
+		animals := map[string]string{}
+		items, _ := created["subjects"].([]any)
+		for _, raw := range items {
+			if m, ok := raw.(map[string]any); ok {
+				animals[text(m, "allocationId")] = text(m, "id")
+			}
+		}
+		return id, animals
+	}
+
+	// Sessions: a planned baseline session that is now overdue, one in
+	// progress today with two animals in two arenas and a verified video, and
+	// a Day 14 session with three animals.
 	overdue := s.post(base+"/tests", map[string]any{"timepointId": baseline, "protocolVersionId": versionID, "stepPosition": 1,
 		"subjects": []any{map[string]any{"allocationId": allocations["M01"], "environmentRevisionId": boxARevision}}})
-	running := s.post(base+"/tests", map[string]any{"timepointId": baseline, "protocolVersionId": versionID, "stepPosition": 1,
-		"scheduledAt": at(now.Add(-time.Hour)), "notes": "Morning session",
-		"subjects": []any{
-			map[string]any{"allocationId": allocations["M02"], "environmentRevisionId": boxARevision},
-			map[string]any{"allocationId": allocations["M03"], "environmentRevisionId": boxBRevision},
-		}})
-	runningID := text(running, "id")
-	s.post("/api/tests/"+runningID+"/start", map[string]any{"startedAt": at(now.Add(-30 * time.Minute))})
+	runningID, baselineAnimals := running(base, baseline, versionID, "Morning session",
+		allocations["M02"], boxARevision, allocations["M03"], boxBRevision)
 	if s.err != nil {
 		return nil, s.err
 	}
-	first, _ := running["subjects"].([]any)
-	if len(first) != 2 {
+	if len(baselineAnimals) != 2 {
 		return nil, errors.New("the running session has no animals")
 	}
-	s.post("/api/tests/"+runningID+"/subjects/"+text(first[0].(map[string]any), "id")+"/trials", map[string]any{"repetition": 1,
-		"startedAt": at(now.Add(-25 * time.Minute)), "endedAt": at(now.Add(-20 * time.Minute))})
+	m02, m03 := baselineAnimals[allocations["M02"]], baselineAnimals[allocations["M03"]]
+	s.post("/api/tests/"+runningID+"/subjects/"+m02+"/trials", map[string]any{"repetition": 1,
+		"startedAt": at(trialStart), "endedAt": at(trialEnd)})
 	s.post("/api/tests/"+runningID+"/comments", map[string]any{"body": "Box B lamp flickered at the start."})
-	started := s.post("/api/tests/"+runningID+"/recordings", map[string]any{
-		"fileName": "session.mp4", "contentType": "video/mp4", "sizeBytes": len(video), "crc32c": mediadomain.FormatCRC32C(crc32c(video)),
-	})
+	film(runningID)
+	day14ID, day14Animals := running(base, day14, versionID, "Day 14 session",
+		allocations["M04"], boxARevision, allocations["M06"], boxBRevision, allocations["M07"], boxCRevision)
+	film(day14ID)
+	m04, m06, m07 := day14Animals[allocations["M04"]], day14Animals[allocations["M06"]], day14Animals[allocations["M07"]]
+
+	// The blinded study: one healthy group, one timepoint, one session.
+	blind := s.post("/api/experiments", map[string]any{"code": "E2E-BLIND", "title": "Blinded open field",
+		"hypothesis": "Handling does not change exploration", "randomisation": "Simple randomisation", "blinded": true})
+	blindID := text(blind, "id")
+	blindBase := "/api/experiments/" + blindID
+	blindGroup := text(s.post(blindBase+"/groups", map[string]any{"code": "G1", "name": "Handled", "role": "HEALTHY_CONTROL", "targetSize": 2}), "id")
+	blindDay := timepoint(blindBase, "Baseline", 0, 1)
+	blindVersion := text(nested(s.post(blindBase+"/protocols", openField), "version"), "id")
+	s.post(blindBase+"/endpoints", map[string]any{"timepointId": blindDay, "paradigmKey": "OPEN_FIELD",
+		"metricKey": "distance_cm", "kind": "PRIMARY", "direction": "HIGHER_IS_BETTER"})
+	blindAllocations := map[string]string{}
+	for _, code := range []string{"B01", "B02"} {
+		subject := text(s.post("/api/subjects", map[string]any{"code": code, "species": "MOUSE", "sex": "MALE"}), "id")
+		blindAllocations[code] = text(s.post(blindBase+"/allocations", map[string]any{"subjectId": subject, "groupId": blindGroup}), "id")
+	}
+	s.post(blindBase+"/start", map[string]any{"dayZero": today.Format("2006-01-02")})
+	blindTestID, blindAnimals := running(blindBase, blindDay, blindVersion, "Blinded session",
+		blindAllocations["B01"], boxARevision, blindAllocations["B02"], boxBRevision)
+	film(blindTestID)
 	if s.err != nil {
 		return nil, s.err
 	}
-	uploaded, err := url.Parse(text(nested(started, "upload"), "url"))
-	if err != nil {
+
+	// Analysis: a worker analyses every queued animal; M02 is analysed again
+	// so its review offers a newer run; two Day 14 results are accepted.
+	registered := s.post("/api/analysis/workers", map[string]any{"name": "e2e-tracker", "modelVersion": "tracker 1.0",
+		"capabilities": []any{map[string]any{"paradigmKey": "OPEN_FIELD", "paradigmVersion": 1}}})
+	if s.err != nil {
+		return nil, s.err
+	}
+	worker := &caller{handler: api.Handler, worker: text(registered, "token")}
+	runs := 0
+	analyse := func() error {
+		if err := api.AnalysisTick(context.Background()); err != nil {
+			return err
+		}
+		for {
+			job, err := worker.do(http.MethodPost, "/api/worker/claim", map[string]any{})
+			if err != nil {
+				return err
+			}
+			if nested(job, "run") == nil {
+				return nil
+			}
+			if err := submitRun(worker, store, job, video, trajectory); err != nil {
+				return err
+			}
+			runs++
+		}
+	}
+	if err := analyse(); err != nil {
 		return nil, err
 	}
-	store.put(uploaded.Query().Get("object"), video, "video/mp4")
-	s.post("/api/tests/"+runningID+"/recordings/"+text(nested(started, "recording"), "id")+"/finalize", map[string]any{})
+	s.post("/api/analysis/test-subjects/"+m02+"/runs", map[string]any{})
+	if s.err != nil {
+		return nil, s.err
+	}
+	if err := analyse(); err != nil {
+		return nil, err
+	}
+	if runs != 8 {
+		return nil, fmt.Errorf("the worker analysed %d runs, want 8", runs)
+	}
+	for _, accepted := range []string{m04, m06} {
+		s.post("/api/analysis/results/"+accepted+"/accept", map[string]any{"note": "Clean track"})
+	}
 	if s.err != nil {
 		return nil, s.err
 	}
@@ -548,6 +660,56 @@ func seedStudy(api bootstrap.API, store *diskStore, fixtures, adminPassword stri
 		"timepoints":        map[string]any{"baseline": baseline, "day7": day7, "day14": day14},
 		"protocolVersionId": versionID, "allocations": allocations, "subjects": subjects,
 		"environments":  map[string]any{"boxA": boxA, "boxB": boxB, "boxC": boxC},
-		"plannedTestId": text(overdue, "id"), "runningTestId": runningID, "accounts": accounts,
+		"arenas":        map[string]any{"boxA": boxARevision, "boxB": boxBRevision, "boxC": boxCRevision},
+		"plannedTestId": text(overdue, "id"), "runningTestId": runningID, "day14TestId": day14ID, "accounts": accounts,
+		// Test subjects (an animal in a session) with analysis results.
+		"results": map[string]any{"M02": m02, "M03": m03, "M04": m04, "M06": m06, "M07": m07},
+		"blind": map[string]any{"experimentId": blindID, "experimentCode": "E2E-BLIND", "testId": blindTestID,
+			"results": map[string]any{"B01": blindAnimals[blindAllocations["B01"]], "B02": blindAnimals[blindAllocations["B02"]]}},
 	}, nil
+}
+
+// submitRun does a worker's part for one claimed run: it uploads the analysed
+// video and the fixture trajectory, rewritten for this run, to the store and
+// submits the result. The API computes the metrics from the trajectory.
+func submitRun(worker *caller, store *diskStore, job map[string]any, video, trajectory []byte) error {
+	run := nested(job, "run")
+	runID, attempt := text(run, "id"), run["attempt"]
+	var track map[string]any
+	if err := json.Unmarshal(trajectory, &track); err != nil {
+		return err
+	}
+	track["runId"], track["attempt"] = runID, attempt
+	duration, _ := track["durationUs"].(float64)
+	rewritten, err := json.Marshal(track)
+	if err != nil {
+		return err
+	}
+	path := "/api/worker/runs/" + runID
+	outputs := []struct {
+		kind, fileName, contentType string
+		data                        []byte
+	}{
+		{"ANALYZED_VIDEO", "overlay.mp4", "video/mp4", video},
+		{"TRAJECTORY", "trajectory.json", "application/json", rewritten},
+	}
+	var artifacts []any
+	analyzed := ""
+	for _, o := range outputs {
+		out, err := worker.do(http.MethodPost, path+"/outputs", map[string]any{"attempt": attempt, "kind": o.kind, "fileName": o.fileName,
+			"contentType": o.contentType, "sizeBytes": len(o.data), "crc32c": mediadomain.FormatCRC32C(crc32c(o.data))})
+		if err != nil {
+			return err
+		}
+		object := text(out, "objectName")
+		store.put(object, o.data, o.contentType)
+		artifacts = append(artifacts, map[string]any{"kind": o.kind, "objectName": object})
+		if o.kind == "ANALYZED_VIDEO" {
+			analyzed = object
+		}
+	}
+	_, err = worker.do(http.MethodPost, path+"/result", map[string]any{"attempt": attempt, "modelVersion": "tracker 1.0",
+		"recordingDurationUs": int64(duration), "artifacts": artifacts,
+		"pair": map[string]any{"analyzedObjectName": analyzed, "sourceOffsetUs": 0, "outputOffsetUs": 0, "timeMappingVersion": "identity-v1"}})
+	return err
 }

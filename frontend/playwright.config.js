@@ -1,9 +1,11 @@
 import { defineConfig, devices } from "@playwright/test";
 
 // Browser tests run against the real Go API started by backend/tests/e2e, which
-// serves signed upload and read URLs from local disk instead of Cloud Storage.
-// E2E_DATABASE_URL must name an empty PostgreSQL database; the server installs
-// the schema and seeds one analyzed test.
+// keeps uploads in memory instead of Cloud Storage. E2E_DATABASE_URL must name a
+// PostgreSQL database whose name contains "e2e"; the server reinstalls the
+// schema and seeds two running studies with results to review. The specs
+// change that seed, so run one project per server start:
+//   E2E_DATABASE_URL=... npx playwright test --project=chromium
 const API_PORT = process.env.E2E_API_PORT || "4010";
 const APP_PORT = process.env.E2E_APP_PORT || "5273";
 
@@ -19,12 +21,14 @@ export default defineConfig({
     // The panel marks its test hooks with data-test.
     testIdAttribute: "data-test",
     trace: "retain-on-failure",
+    // Dates on screen and the lab (UTC in the seed) agree on what today is.
+    timezoneId: "UTC",
+    locale: "en-US",
     video: "off",
   },
-  // The panel leans on <video> behaviour that differs between engines: played
-  // ranges, when a seek settles, how often timeupdate fires and what a failed
-  // source resets. A laboratory on macOS or an iPad gets WebKit, so all three
-  // engines run the same suite.
+  // The panel leans on <video> and upload behaviour that differs between
+  // engines. A laboratory on macOS or an iPad gets WebKit, so CI runs the same
+  // suite on all three, each against its own freshly seeded server.
   projects: [
     { name: "chromium", use: { ...devices["Desktop Chrome"] } },
     { name: "firefox", use: { ...devices["Desktop Firefox"] } },

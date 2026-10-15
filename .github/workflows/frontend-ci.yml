@@ -5,12 +5,14 @@ on:
     branches: [main]
     paths:
       - "frontend/**"
-      - "backend/tests/e2e/**"
+      # The browser suite drives the real API, seeded by backend/tests/e2e.
+      - "backend/**"
       - ".github/workflows/frontend-ci.yml"
   pull_request:
     paths:
       - "frontend/**"
-      - "backend/tests/e2e/**"
+      # The browser suite drives the real API, seeded by backend/tests/e2e.
+      - "backend/**"
       - ".github/workflows/frontend-ci.yml"
 
 concurrency:
@@ -53,8 +55,15 @@ jobs:
           retention-days: 7
 
   browser:
-    name: Browser tests
+    name: Browser tests (${{ matrix.project }})
     runs-on: ubuntu-latest
+    # One job per engine: the specs change the seeded studies (results are
+    # reviewed, doses recorded), so every engine needs its own freshly seeded
+    # server, which each `playwright test` run starts.
+    strategy:
+      fail-fast: false
+      matrix:
+        project: [chromium, firefox, webkit]
     services:
       postgres:
         image: postgres:18.6-alpine@sha256:d3e1620b530c944afa6e887d22eb899824da68e19c52024bf98f5220c88a65b2
@@ -87,22 +96,22 @@ jobs:
         working-directory: frontend
         run: npm ci
 
-      # All three engines: the video panel depends on <video> behaviour that
-      # differs between them, and a laboratory on macOS or an iPad gets WebKit.
-      - name: Install the browsers
+      # Every engine: the panel's video and upload behaviour differs between
+      # them, and a laboratory on macOS or an iPad gets WebKit.
+      - name: Install the browser
         working-directory: frontend
-        run: npx playwright install --with-deps chromium firefox webkit
+        run: npx playwright install --with-deps ${{ matrix.project }}
 
       - name: Browser tests
         working-directory: frontend
-        run: npx playwright test
+        run: npx playwright test --project=${{ matrix.project }}
 
       - name: Upload the report on failure
         if: failure()
         uses: actions/upload-artifact@v7.0.1
         with:
-          name: playwright-report
-          path: frontend/playwright-report
+          name: playwright-results-${{ matrix.project }}
+          path: frontend/test-results
           retention-days: 7
 
   docker:
