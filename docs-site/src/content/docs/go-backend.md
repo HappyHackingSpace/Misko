@@ -426,11 +426,20 @@ to know how camera pixels map to centimeters in each arena.
   centimeters. The FIT points define the mapping and the CHECK points test it. If
   a CHECK point is off by more than the paradigm allows (2 cm for the trajectory
   paradigms), the calibration is stored as `REJECTED`.
+- Paradigms with `calibrated` zones (elevated plus maze, Y maze, Barnes maze,
+  three-chamber) also need those zones drawn on the same frame. Send them as
+  `zones` in pixels, for example
+  `{"key": "open_arms", "polygon": [{"x": 300, "y": 480}, ...]}` or
+  `{"key": "center", "circle": {"x": 960, "y": 540, "radius": 60}}`; a key may
+  have several shapes, such as the two open arms. Every required zone needs a
+  shape and every shape must lie inside the frame. Misko converts them to
+  centimeters with the calibration and returns each zone in both. The worker
+  receives them with its job, and the metrics use the centimeter shapes.
 - To fix a calibration, send a new one with `supersedesId` set to the latest
   calibration of the same arena or animal. Earlier calibrations are kept.
 - `GET /api/tests/{id}/calibration-status` lists every animal of a test:
   `WAITING_FOR_VIDEO`, `WAITING_FOR_CALIBRATION` until a valid calibration
-  applies, then `CALIBRATED`. Paradigms without video measurements, such as the
+  with every required zone applies, then `CALIBRATED`. Paradigms without video measurements, such as the
   rotarod, show `NOT_REQUIRED`.
 
 ### Video analysis and review

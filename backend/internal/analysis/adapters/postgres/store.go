@@ -171,7 +171,7 @@ func (s *Store) ReadyTestSubjects(ctx context.Context, capabilities, calibrated 
 		out = append(out, application.Candidate{
 			ExperimentID: r.ExperimentID, TestID: r.TestID, TestSubjectID: r.TestSubjectID, RecordingID: r.RecordingID, SourceAssetID: r.SourceAssetID,
 			SourceGeneration: r.SourceGeneration, SourceCRC32C: uint32(r.SourceCrc32c), ClipStartUs: r.ClipStartUs, ClipEndUs: r.ClipEndUs,
-			CalibrationID: r.CalibrationID, ParadigmKey: r.ParadigmKey, ParadigmVersion: int(r.ParadigmVersion), Parameters: params,
+			CalibrationID: r.CalibrationID, ZoneKeys: r.ZoneKeys, ParadigmKey: r.ParadigmKey, ParadigmVersion: int(r.ParadigmVersion), Parameters: params,
 			// The query returns eligible candidates only.
 			VideoVerified: true, ExperimentStatus: "RUNNING", Invalid: invalid,
 		})
@@ -191,7 +191,7 @@ func (s *Store) Candidate(ctx context.Context, testSubjectID string) (applicatio
 	return application.Candidate{
 		ExperimentID: r.ExperimentID, TestID: r.TestID, TestSubjectID: r.TestSubjectID, RecordingID: r.RecordingID, SourceAssetID: r.SourceAssetID,
 		SourceGeneration: r.SourceGeneration, SourceCRC32C: uint32(r.SourceCrc32c), ClipStartUs: r.ClipStartUs, ClipEndUs: r.ClipEndUs,
-		CalibrationID: r.CalibrationID, ParadigmKey: r.ParadigmKey, ParadigmVersion: int(r.ParadigmVersion), Parameters: params,
+		CalibrationID: r.CalibrationID, ZoneKeys: r.ZoneKeys, ParadigmKey: r.ParadigmKey, ParadigmVersion: int(r.ParadigmVersion), Parameters: params,
 		VideoVerified: r.VideoStatus == "VERIFIED", TestCancelled: r.TestStatus == "CANCELLED", ExperimentStatus: r.ExperimentStatus, Excluded: r.Excluded,
 		Invalid: invalid,
 	}, nil
@@ -340,7 +340,40 @@ func (s *Store) Calibration(ctx context.Context, id string) (domain.CalibrationR
 		CropWidth: int(row.CropWidth), CropHeight: int(row.CropHeight), Plane: row.MeasurementPlane,
 	}
 	copy(ref.Transform[:], row.Transform)
+	zones, err := s.queries.CalibrationZones(ctx, id)
+	if err != nil {
+		return domain.CalibrationRef{}, fmt.Errorf("calibration zones: %w", err)
+	}
+	for _, z := range zones {
+		pixels, err := decodeShape(z.Kind, z.Pixels)
+		if err != nil {
+			return domain.CalibrationRef{}, err
+		}
+		centimeters, err := decodeShape(z.Kind, z.Centimeters)
+		if err != nil {
+			return domain.CalibrationRef{}, err
+		}
+		ref.Zones = append(ref.Zones, domain.Zone{Key: z.ZoneKey, Pixels: pixels, Centimeters: centimeters})
+	}
 	return ref, nil
+}
+
+// decodeShape reads a zone shape stored by the calibration context: a circle
+// as {"x", "y", "radius"}, a polygon as an array of {"x", "y"} vertices.
+func decodeShape(kind string, raw []byte) (domain.Shape, error) {
+	if kind == "CIRCLE" {
+		// Field names match the stored keys case-insensitively.
+		var c domain.Circle
+		if err := json.Unmarshal(raw, &c); err != nil {
+			return domain.Shape{}, fmt.Errorf("decode zone circle: %w", err)
+		}
+		return domain.Shape{Circle: &c}, nil
+	}
+	var out domain.Shape
+	if err := json.Unmarshal(raw, &out.Polygon); err != nil {
+		return domain.Shape{}, fmt.Errorf("decode zone polygon: %w", err)
+	}
+	return out, nil
 }
 
 func (s *Store) SourceObject(ctx context.Context, assetID string) (string, error) {

@@ -106,6 +106,32 @@ func (q *Queries) CreateCalibration(ctx context.Context, arg CreateCalibrationPa
 	return i, err
 }
 
+const createCalibrationZone = `-- name: CreateCalibrationZone :exec
+INSERT INTO misko.calibration_zones (calibration_id, zone_key, position, kind, pixels, centimeters)
+VALUES ($1, $2, $3, $4, $5, $6)
+`
+
+type CreateCalibrationZoneParams struct {
+	CalibrationID string
+	ZoneKey       string
+	Position      int32
+	Kind          string
+	Pixels        []byte
+	Centimeters   []byte
+}
+
+func (q *Queries) CreateCalibrationZone(ctx context.Context, arg CreateCalibrationZoneParams) error {
+	_, err := q.db.Exec(ctx, createCalibrationZone,
+		arg.CalibrationID,
+		arg.ZoneKey,
+		arg.Position,
+		arg.Kind,
+		arg.Pixels,
+		arg.Centimeters,
+	)
+	return err
+}
+
 const getCalibration = `-- name: GetCalibration :one
 SELECT id, environment_revision_id, test_subject_id, recording_id, chain_id, supersedes_id, camera_id, frame_width, frame_height, crop_x, crop_y, crop_width, crop_height, reference_frame_us, measurement_plane, fit_points, check_points, transform, fit_rms_error_cm, check_rms_error_cm, check_max_error_cm, tolerance_cm, algorithm_version, status, rejection_reason, created_by, created_at FROM misko.calibrations WHERE id = $1
 `
@@ -240,6 +266,40 @@ func (q *Queries) GetTestSubjectRef(ctx context.Context, arg GetTestSubjectRefPa
 		&i.Parameters,
 	)
 	return i, err
+}
+
+const listCalibrationZones = `-- name: ListCalibrationZones :many
+SELECT calibration_id, zone_key, position, kind, pixels, centimeters
+FROM misko.calibration_zones
+WHERE calibration_id = ANY($1::uuid[])
+ORDER BY calibration_id, zone_key, position
+`
+
+func (q *Queries) ListCalibrationZones(ctx context.Context, calibrationIds []string) ([]MiskoCalibrationZone, error) {
+	rows, err := q.db.Query(ctx, listCalibrationZones, calibrationIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []MiskoCalibrationZone
+	for rows.Next() {
+		var i MiskoCalibrationZone
+		if err := rows.Scan(
+			&i.CalibrationID,
+			&i.ZoneKey,
+			&i.Position,
+			&i.Kind,
+			&i.Pixels,
+			&i.Centimeters,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listEffective = `-- name: ListEffective :many

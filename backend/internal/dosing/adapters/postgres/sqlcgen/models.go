@@ -162,6 +162,15 @@ type MiskoCalibration struct {
 	CreatedAt             time.Time
 }
 
+type MiskoCalibrationZone struct {
+	CalibrationID string
+	ZoneKey       string
+	Position      int32
+	Kind          string
+	Pixels        []byte
+	Centimeters   []byte
+}
+
 type MiskoCurrentRecording struct {
 	ID           string
 	ExperimentID string

@@ -59,11 +59,11 @@ func TestWorkerTrajectoriesMatchTheEngineContract(t *testing.T) {
 		truth.Samples = append(truth.Samples, domain.Sample{TUs: tUs, X: fixture.Truth.X[i], Y: fixture.Truth.Y[i], Tracked: true, Confidence: 1})
 	}
 
-	got, err := New().Evaluate("OPEN_FIELD", 1, fixture.Parameters, measured, header.DurationUs)
+	got, err := New().Evaluate("OPEN_FIELD", 1, fixture.Parameters, measured, nil, header.DurationUs)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want, err := New().Evaluate("OPEN_FIELD", 1, fixture.Parameters, truth, header.DurationUs)
+	want, err := New().Evaluate("OPEN_FIELD", 1, fixture.Parameters, truth, nil, header.DurationUs)
 	if err != nil {
 		t.Fatal(err)
 	}

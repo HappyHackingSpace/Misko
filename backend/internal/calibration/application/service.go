@@ -230,7 +230,9 @@ type Drift string
 const DriftUnchecked Drift = "UNCHECKED"
 
 // StatusView is a calibration state. Source is empty when nothing has been
-// calibrated; Drift is empty unless a calibration applies.
+// calibrated; Drift is empty unless a calibration applies. A valid calibration
+// without a shape for every required calibrated zone of the paradigm leaves the
+// state WAITING_FOR_CALIBRATION.
 type StatusView struct {
 	Status  CalibrationStatus
 	Current *domain.Calibration
@@ -314,7 +316,7 @@ func (s *Service) subjectStatus(ctx context.Context, row Effective) (SubjectStat
 		if err != nil {
 			return SubjectStatus{}, err
 		}
-		out.StatusView = StatusView{Status: Calibrated, Current: &c, Source: row.Source, Drift: DriftUnchecked}
+		out.StatusView = resolved(c, req, row.Source)
 	}
 	return out, nil
 }
@@ -344,5 +346,15 @@ func (s *Service) EnvironmentStatus(ctx context.Context, actor access.Actor, env
 	if r.Calibration == nil {
 		return StatusView{Status: Waiting, Source: r.Source}, nil
 	}
-	return StatusView{Status: Calibrated, Current: r.Calibration, Source: r.Source, Drift: DriftUnchecked}, nil
+	return resolved(*r.Calibration, req, r.Source), nil
+}
+
+// resolved is the state of a valid calibration that applies: CALIBRATED, or
+// WAITING_FOR_CALIBRATION while one of the paradigm's required calibrated
+// zones has no shape in it.
+func resolved(c domain.Calibration, req domain.Requirement, source domain.Source) StatusView {
+	if len(domain.MissingZones(c, req.Zones)) > 0 {
+		return StatusView{Status: Waiting, Source: source}
+	}
+	return StatusView{Status: Calibrated, Current: &c, Source: source, Drift: DriftUnchecked}
 }

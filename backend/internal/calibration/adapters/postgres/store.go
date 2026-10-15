@@ -19,12 +19,15 @@ import (
 
 // constraintErrors maps named constraints to the error a violation means.
 var constraintErrors = map[string]error{
-	"calibrations_first_key":       domain.ErrStaleCorrection,
-	"calibrations_supersedes_key":  domain.ErrStaleCorrection,
-	"calibrations_supersedes_fkey": domain.ErrStaleCorrection,
-	"calibrations_crop_check":      domain.ErrInvalidCrop,
-	"calibrations_scope":           application.ErrInvalidScope,
-	"calibrations_override_check":  application.ErrInvalidScope,
+	"calibrations_first_key":        domain.ErrStaleCorrection,
+	"calibrations_supersedes_key":   domain.ErrStaleCorrection,
+	"calibrations_supersedes_fkey":  domain.ErrStaleCorrection,
+	"calibrations_crop_check":       domain.ErrInvalidCrop,
+	"calibrations_scope":            application.ErrInvalidScope,
+	"calibrations_override_check":   application.ErrInvalidScope,
+	"calibration_zones_frame":       domain.ErrZoneOutsideFrame,
+	"calibration_zones_shape_check": domain.ErrInvalidZone,
+	"calibration_zones_frozen":      domain.ErrZonesFrozen,
 }
 
 type Store struct {
@@ -114,7 +117,7 @@ func (s *Store) Overrides(ctx context.Context, testSubjectID string) ([]domain.C
 	if err != nil {
 		return nil, fmt.Errorf("list overrides: %w", err)
 	}
-	return toCalibrations(rows)
+	return s.toCalibrations(ctx, rows)
 }
 
 func (s *Store) EnvironmentCalibrations(ctx context.Context, revisionID string) ([]domain.Calibration, error) {
@@ -125,7 +128,7 @@ func (s *Store) EnvironmentCalibrations(ctx context.Context, revisionID string) 
 	if err != nil {
 		return nil, fmt.Errorf("list environment calibrations: %w", err)
 	}
-	return toCalibrations(rows)
+	return s.toCalibrations(ctx, rows)
 }
 
 func (s *Store) Calibration(ctx context.Context, id string) (domain.Calibration, error) {
@@ -133,7 +136,11 @@ func (s *Store) Calibration(ctx context.Context, id string) (domain.Calibration,
 	if err != nil {
 		return domain.Calibration{}, fmt.Errorf("get calibration: %w", err)
 	}
-	return toCalibration(row)
+	list, err := s.toCalibrations(ctx, []sqlcgen.MiskoCalibration{row})
+	if err != nil {
+		return domain.Calibration{}, err
+	}
+	return list[0], nil
 }
 
 func (s *Store) Effective(ctx context.Context, testID string) ([]application.Effective, error) {
@@ -157,14 +164,35 @@ func (s *Store) Effective(ctx context.Context, testID string) ([]application.Eff
 	return out, nil
 }
 
-func toCalibrations(rows []sqlcgen.MiskoCalibration) ([]domain.Calibration, error) {
+// toCalibrations converts rows and reads their zones in one query.
+func (s *Store) toCalibrations(ctx context.Context, rows []sqlcgen.MiskoCalibration) ([]domain.Calibration, error) {
 	out := make([]domain.Calibration, 0, len(rows))
+	ids := make([]string, 0, len(rows))
 	for _, row := range rows {
 		c, err := toCalibration(row)
 		if err != nil {
 			return nil, err
 		}
 		out = append(out, c)
+		ids = append(ids, c.ID)
+	}
+	if len(ids) == 0 {
+		return out, nil
+	}
+	zones, err := s.queries.ListCalibrationZones(ctx, ids)
+	if err != nil {
+		return nil, fmt.Errorf("list calibration zones: %w", err)
+	}
+	byCalibration := map[string][]domain.Zone{}
+	for _, z := range zones {
+		zone, err := toZone(z)
+		if err != nil {
+			return nil, err
+		}
+		byCalibration[z.CalibrationID] = append(byCalibration[z.CalibrationID], zone)
+	}
+	for i := range out {
+		out[i].Zones = byCalibration[out[i].ID]
 	}
 	return out, nil
 }
@@ -190,7 +218,92 @@ func (s *Store) CreateCalibration(ctx context.Context, c domain.Calibration) (do
 	if err != nil {
 		return domain.Calibration{}, translate(err, nil, "create calibration")
 	}
-	return toCalibration(row)
+	created, err := toCalibration(row)
+	if err != nil {
+		return domain.Calibration{}, err
+	}
+	positions := map[string]int32{}
+	for _, z := range c.Zones {
+		kind, pixels, err := encodeShape(z.Pixels)
+		if err != nil {
+			return domain.Calibration{}, err
+		}
+		_, centimeters, err := encodeShape(z.Centimeters)
+		if err != nil {
+			return domain.Calibration{}, err
+		}
+		if err := s.queries.CreateCalibrationZone(ctx, sqlcgen.CreateCalibrationZoneParams{CalibrationID: created.ID, ZoneKey: z.Key,
+			Position: positions[z.Key], Kind: kind, Pixels: pixels, Centimeters: centimeters}); err != nil {
+			return domain.Calibration{}, translate(err, nil, "create calibration zone")
+		}
+		positions[z.Key]++
+		created.Zones = append(created.Zones, z)
+	}
+	return created, nil
+}
+
+type vertexJSON struct {
+	X float64 `json:"x"`
+	Y float64 `json:"y"`
+}
+
+type circleJSON struct {
+	X      float64 `json:"x"`
+	Y      float64 `json:"y"`
+	Radius float64 `json:"radius"`
+}
+
+// encodeShape stores a circle as {"x", "y", "radius"} and a polygon as an
+// array of {"x", "y"} vertices.
+func encodeShape(s domain.Shape) (string, []byte, error) {
+	var kind string
+	var v any
+	if s.Circle != nil {
+		kind, v = "CIRCLE", circleJSON(*s.Circle)
+	} else {
+		vertices := make([]vertexJSON, 0, len(s.Polygon))
+		for _, p := range s.Polygon {
+			vertices = append(vertices, vertexJSON(p))
+		}
+		kind, v = "POLYGON", vertices
+	}
+	raw, err := json.Marshal(v)
+	if err != nil {
+		return "", nil, fmt.Errorf("encode zone shape: %w", err)
+	}
+	return kind, raw, nil
+}
+
+func decodeShape(kind string, raw []byte) (domain.Shape, error) {
+	if kind == "CIRCLE" {
+		var c circleJSON
+		if err := json.Unmarshal(raw, &c); err != nil {
+			return domain.Shape{}, fmt.Errorf("decode zone circle: %w", err)
+		}
+		circle := domain.Circle(c)
+		return domain.Shape{Circle: &circle}, nil
+	}
+	var vertices []vertexJSON
+	if err := json.Unmarshal(raw, &vertices); err != nil {
+		return domain.Shape{}, fmt.Errorf("decode zone polygon: %w", err)
+	}
+	out := domain.Shape{Polygon: make([]domain.Vertex, 0, len(vertices))}
+	for _, v := range vertices {
+		out.Polygon = append(out.Polygon, domain.Vertex(v))
+	}
+	return out, nil
+}
+
+func toZone(r sqlcgen.MiskoCalibrationZone) (domain.Zone, error) {
+	pixels, err := decodeShape(r.Kind, r.Pixels)
+	if err != nil {
+		return domain.Zone{}, err
+	}
+	centimeters, err := decodeShape(r.Kind, r.Centimeters)
+	if err != nil {
+		return domain.Zone{}, err
+	}
+	return domain.Zone{Key: r.ZoneKey, Pixels: pixels, Centimeters: centimeters}, nil
 }
 
 // translate maps a missing row to notFound and named constraint violations to

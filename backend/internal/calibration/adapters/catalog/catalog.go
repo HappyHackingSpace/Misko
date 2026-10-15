@@ -17,6 +17,18 @@ func (Catalog) Requirement(key string, version int, parameters map[string]float6
 		return domain.Requirement{}, fmt.Errorf("calibration requirement of %s v%d: %w", key, version, err)
 	}
 	req := domain.Requirement{Required: needs.Required, ToleranceCm: needs.ToleranceCm}
+	if !needs.Required {
+		return req, nil
+	}
+	p, err := paradigms.Version(key, version)
+	if err != nil {
+		return domain.Requirement{}, fmt.Errorf("zones of %s v%d: %w", key, version, err)
+	}
+	for _, z := range p.Zones {
+		if z.Calibrated {
+			req.Zones = append(req.Zones, domain.ZoneRequirement{Key: z.Key, Required: z.Required})
+		}
+	}
 	if needs.Bounds != nil {
 		req.Bounds = &domain.Bounds{MinX: needs.Bounds.MinX, MinY: needs.Bounds.MinY, MaxX: needs.Bounds.MaxX, MaxY: needs.Bounds.MaxY}
 	}
