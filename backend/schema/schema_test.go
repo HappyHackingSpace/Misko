@@ -147,9 +147,9 @@ func TestPendingMigrationRunsAndBlocksReadiness(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Simulate a database one release behind: undo the last migration (the
-	// users' last login column) and forget it.
-	latest := fmt.Sprintf("%03d_user_last_login.sql", schema.Latest())
-	if _, err := pool.Exec(ctx, fmt.Sprintf(`ALTER TABLE misko.users DROP COLUMN last_login_at;
+	// calibration zones) and forget it.
+	latest := fmt.Sprintf("%03d_calibration_zones.sql", schema.Latest())
+	if _, err := pool.Exec(ctx, fmt.Sprintf(`DROP TABLE misko.calibration_zones; DROP FUNCTION misko.check_calibration_zone();
 		DELETE FROM misko.schema_migrations WHERE version = %d`, schema.Latest())); err != nil {
 		t.Fatal(err)
 	}

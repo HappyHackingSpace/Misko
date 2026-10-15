@@ -56,7 +56,8 @@ WITH candidates AS (
     SELECT ts.experiment_id, ts.test_id, ts.id AS test_subject_id, r.id AS recording_id, a.id AS source_asset_id,
            a.generation AS source_generation, a.crc32c AS source_crc32c, r.clip_start_us, r.clip_end_us,
            t.paradigm_key, t.paradigm_version, er.parameters, ps.session, r.created_at,
-           coalesce(ec.calibration_id::text, '')::text AS calibration_id, coalesce(ec.source, '')::text AS calibration_source
+           coalesce(ec.calibration_id::text, '')::text AS calibration_id, coalesce(ec.source, '')::text AS calibration_source,
+           ARRAY(SELECT DISTINCT z.zone_key FROM misko.calibration_zones z WHERE z.calibration_id = ec.calibration_id)::text[] AS zone_keys
     FROM misko.test_subjects ts
     JOIN misko.effective_calibrations ec ON ec.test_subject_id = ts.id
     JOIN misko.test_recordings r ON r.id = ec.recording_id
@@ -71,7 +72,7 @@ WITH candidates AS (
       AND (ec.calibration_id IS NOT NULL OR NOT (t.paradigm_key || '@' || t.paradigm_version::text) = ANY(@calibrated::text[]))
 )
 SELECT c.experiment_id, c.test_id, c.test_subject_id, c.recording_id, c.source_asset_id, c.source_generation::bigint AS source_generation,
-       c.source_crc32c, c.clip_start_us, c.clip_end_us, c.paradigm_key, c.paradigm_version, c.parameters, c.session, c.calibration_id
+       c.source_crc32c, c.clip_start_us, c.clip_end_us, c.paradigm_key, c.paradigm_version, c.parameters, c.session, c.calibration_id, c.zone_keys
 FROM candidates c
 WHERE NOT EXISTS (
     SELECT 1 FROM misko.analysis_runs x
@@ -89,7 +90,8 @@ SELECT ts.experiment_id, ts.test_id, ts.id AS test_subject_id, coalesce(r.id::te
        coalesce(a.crc32c, 0)::bigint AS source_crc32c, coalesce(r.clip_start_us, 0)::bigint AS clip_start_us, r.clip_end_us,
        t.paradigm_key, t.paradigm_version, er.parameters, ps.session, coalesce(a.status, '')::text AS video_status,
        t.status AS test_status, e.status AS experiment_status, (al.excluded_at IS NOT NULL)::boolean AS excluded,
-       coalesce(ec.calibration_id::text, '')::text AS calibration_id
+       coalesce(ec.calibration_id::text, '')::text AS calibration_id,
+       ARRAY(SELECT DISTINCT z.zone_key FROM misko.calibration_zones z WHERE z.calibration_id = ec.calibration_id)::text[] AS zone_keys
 FROM misko.test_subjects ts
 JOIN misko.tests t ON t.id = ts.test_id
 JOIN misko.experiments e ON e.id = ts.experiment_id
@@ -165,6 +167,12 @@ SELECT environment_revision_id FROM misko.test_subjects WHERE id = @id;
 SELECT id, frame_width, frame_height, crop_x, crop_y, crop_width, crop_height, measurement_plane, transform
 FROM misko.calibrations
 WHERE id = @id;
+
+-- name: CalibrationZones :many
+SELECT zone_key, kind, pixels, centimeters
+FROM misko.calibration_zones
+WHERE calibration_id = @calibration_id
+ORDER BY zone_key, position;
 
 -- name: SourceObject :one
 SELECT object_name FROM misko.video_assets WHERE id = @id;

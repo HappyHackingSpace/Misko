@@ -289,7 +289,10 @@ func (h handler) claim(w http.ResponseWriter, r *http.Request, worker domain.Wor
 	var calibration *calibrationJSON
 	if c := job.Calibration; c != nil {
 		calibration = &calibrationJSON{ID: c.ID, FrameWidth: c.FrameWidth, FrameHeight: c.FrameHeight,
-			Crop: cropJSON{c.CropX, c.CropY, c.CropWidth, c.CropHeight}, MeasurementPlane: c.Plane, Transform: c.Transform}
+			Crop: cropJSON{c.CropX, c.CropY, c.CropWidth, c.CropHeight}, MeasurementPlane: c.Plane, Transform: c.Transform,
+			Zones: mapSlice(c.Zones, func(z domain.Zone) zoneJSON {
+				return zoneJSON{Key: z.Key, Pixels: toShapeJSON(z.Pixels), Centimeters: toShapeJSON(z.Centimeters)}
+			})}
 	}
 	h.respond(w, r, http.StatusOK, struct {
 		Run              runJSON          `json:"run"`
@@ -677,6 +680,44 @@ type calibrationJSON struct {
 	Crop             cropJSON   `json:"crop"`
 	MeasurementPlane string     `json:"measurementPlane"`
 	Transform        [9]float64 `json:"transform"`
+	Zones            []zoneJSON `json:"zones"`
+}
+
+type vertexJSON struct {
+	X float64 `json:"x"`
+	Y float64 `json:"y"`
+}
+
+type circleJSON struct {
+	X      float64 `json:"x"`
+	Y      float64 `json:"y"`
+	Radius float64 `json:"radius"`
+}
+
+// shapeJSON is a circle or a polygon; exactly one is set.
+type shapeJSON struct {
+	Circle  *circleJSON  `json:"circle,omitempty"`
+	Polygon []vertexJSON `json:"polygon,omitempty"`
+}
+
+// zoneJSON is one calibrated zone shape in full-frame pixels and in the
+// calibration's centimetres.
+type zoneJSON struct {
+	Key         string    `json:"key"`
+	Pixels      shapeJSON `json:"pixels"`
+	Centimeters shapeJSON `json:"centimeters"`
+}
+
+func toShapeJSON(s domain.Shape) shapeJSON {
+	out := shapeJSON{}
+	if s.Circle != nil {
+		c := circleJSON(*s.Circle)
+		out.Circle = &c
+	}
+	for _, v := range s.Polygon {
+		out.Polygon = append(out.Polygon, vertexJSON(v))
+	}
+	return out
 }
 
 func mapSlice[T, U any](items []T, convert func(T) U) []U {

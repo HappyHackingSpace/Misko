@@ -435,12 +435,21 @@ gerekir.
   noktaları dönüşümü belirler, CHECK noktaları onu sınar. Bir CHECK noktası
   paradigmanın izin verdiğinden fazla saparsa (yörünge paradigmaları için 2 cm)
   kalibrasyon `REJECTED` olarak kaydedilir.
+- `calibrated` bölgeleri olan paradigmalar (yükseltilmiş artı labirent, Y
+  labirenti, Barnes labirenti, üç bölmeli test) bu bölgelerin aynı kare üzerinde
+  çizilmesini de ister. Bunları piksel cinsinden `zones` olarak gönderin; örneğin
+  `{"key": "open_arms", "polygon": [{"x": 300, "y": 480}, ...]}` ya da
+  `{"key": "center", "circle": {"x": 960, "y": 540, "radius": 60}}`. Bir
+  anahtarın iki açık kol gibi birden çok şekli olabilir. Her zorunlu bölgenin bir
+  şekli olmalı ve her şekil karenin içinde kalmalıdır. Misko bunları kalibrasyonla
+  santimetreye çevirir ve her bölgeyi iki birimde de döndürür. Worker bölgeleri
+  işiyle birlikte alır; metrikler santimetre şekilleriyle hesaplanır.
 - Bir kalibrasyonu düzeltmek için, `supersedesId` alanına aynı arenanın ya da
   hayvanın en son kalibrasyonunu yazarak yeni bir kalibrasyon gönderin. Önceki
   kalibrasyonlar saklanır.
 - `GET /api/tests/{id}/calibration-status` bir testin tüm hayvanlarını
-  listeler: `WAITING_FOR_VIDEO`, geçerli bir kalibrasyon uygulanana kadar
-  `WAITING_FOR_CALIBRATION`, sonra `CALIBRATED`. Rotarod gibi video ölçümü
+  listeler: `WAITING_FOR_VIDEO`, her zorunlu bölgesi çizilmiş geçerli bir
+  kalibrasyon uygulanana kadar `WAITING_FOR_CALIBRATION`, sonra `CALIBRATED`. Rotarod gibi video ölçümü
   olmayan paradigmalar `NOT_REQUIRED` gösterir.
 
 ### Video analizi ve onay

@@ -138,6 +138,8 @@ func TestSubjectStatusFollowsTheEffectiveCalibration(t *testing.T) {
 	viewer := access.Actor{UserID: "viewer", Role: access.Viewer}
 	valid, _ := domain.New(input(), domain.Requirement{Required: true, ToleranceCm: 2}, "tech", now)
 	valid.ID = "c1"
+	withZones := valid
+	withZones.Zones = []domain.Zone{{Key: "open_arms"}}
 	for name, tc := range map[string]struct {
 		store   *fakeStore
 		status  CalibrationStatus
@@ -151,6 +153,9 @@ func TestSubjectStatusFollowsTheEffectiveCalibration(t *testing.T) {
 		"no video yet":              {&fakeStore{video: "NONE", source: domain.SourceEnvironment, calibrationID: "c1", stored: valid}, WaitingForVideo, "", ""},
 		"unverified video":          {&fakeStore{video: "PENDING", source: domain.SourceEnvironment, calibrationID: "c1", stored: valid}, WaitingForVideo, "", ""},
 		"observation-only paradigm": {&fakeStore{paradigm: "ROTAROD"}, NotRequired, "", ""},
+		// A calibration stored before its paradigm's zones were drawn cannot be analysed.
+		"required zone missing": {&fakeStore{paradigm: "EPM", source: domain.SourceEnvironment, calibrationID: "c1", stored: valid}, Waiting, domain.SourceEnvironment, ""},
+		"zones drawn":           {&fakeStore{paradigm: "EPM", source: domain.SourceOverride, calibrationID: "c1", stored: withZones}, Calibrated, domain.SourceOverride, "c1"},
 	} {
 		view, err := New(tc.store, fakeCatalog{}, clock).SubjectStatus(ctx, viewer, "test", "subject")
 		got := ""
@@ -181,6 +186,9 @@ type fakeCatalog struct{}
 func (fakeCatalog) Requirement(key string, _ int, _ map[string]float64) (domain.Requirement, error) {
 	if key == "ROTAROD" {
 		return domain.Requirement{}, nil
+	}
+	if key == "EPM" {
+		return domain.Requirement{Required: true, ToleranceCm: 2, Zones: []domain.ZoneRequirement{{Key: "open_arms", Required: true}, {Key: "extra", Required: false}}}, nil
 	}
 	return domain.Requirement{Required: true, ToleranceCm: 2, Bounds: &domain.Bounds{MinX: -10, MinY: -10, MaxX: 100, MaxY: 100}}, nil
 }
@@ -358,6 +366,10 @@ func TestEnvironmentStatusUsesTheLatestDefault(t *testing.T) {
 	view, err = New(&fakeStore{}, fakeCatalog{}, clock).EnvironmentStatus(ctx, viewer, "env", 1)
 	if err != nil || view.Status != Waiting || view.Source != "" || view.Drift != "" {
 		t.Fatalf("uncalibrated: %+v %v", view, err)
+	}
+	view, err = New(&fakeStore{paradigm: "EPM", envChain: []domain.Calibration{env}}, fakeCatalog{}, clock).EnvironmentStatus(ctx, viewer, "env", 1)
+	if err != nil || view.Status != Waiting || view.Source != domain.SourceEnvironment || view.Current != nil {
+		t.Fatalf("environment without its zones: %+v %v", view, err)
 	}
 	view, err = New(&fakeStore{paradigm: "ROTAROD"}, fakeCatalog{}, clock).EnvironmentStatus(ctx, viewer, "env", 1)
 	if err != nil || view.Status != NotRequired {

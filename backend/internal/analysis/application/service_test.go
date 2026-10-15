@@ -199,11 +199,31 @@ func TestReanalysisNeedsAnEligibleAnimal(t *testing.T) {
 	}
 }
 
+// A paradigm with calibrated zones is analysed only with a calibration that
+// has a shape for every required zone.
+func TestCalibratedZonesGateTheAnalysis(t *testing.T) {
+	capabilities := []domain.Capability{{ParadigmKey: "EPM", ParadigmVersion: 1}}
+	partial := ready("partial", "EPM", "cal-1")
+	partial.ZoneKeys = []string{"open_arms"}
+	complete := ready("complete", "EPM", "cal-2")
+	complete.ZoneKeys = []string{"center", "open_arms"}
+	store := &fakeStore{candidates: []Candidate{ready("none", "EPM", "cal-0"), partial, complete}, capabilities: capabilities}
+	report, err := newService(store, &fakeObjects{}).Tick(ctx)
+	if err != nil || report.Enqueued != 1 || len(report.Skipped) != 2 || store.created[0].TestSubjectID != "complete" || store.created[0].CalibrationID != "cal-2" {
+		t.Fatalf("tick: %+v %v %+v", report, err, store.created)
+	}
+	technician := access.Actor{UserID: "tech", Role: access.Technician}
+	if _, err := newService(&fakeStore{candidate: partial, capabilities: capabilities}, &fakeObjects{}).Reanalyze(ctx, technician, "partial"); !errors.Is(err, ErrNotReady) {
+		t.Fatalf("reanalysis without every zone: %v", err)
+	}
+}
+
 func TestClaimCarriesThePinnedCalibration(t *testing.T) {
 	queued := domain.Run{ID: "run-1", TestID: "test", ParadigmKey: "OPEN_FIELD", ParadigmVersion: 1, CalibrationID: "cal-1", Status: domain.Queued, MaxAttempts: 3, AvailableAt: now}
 	store := &fakeStore{next: &queued}
 	job, err := newService(store, &fakeObjects{}).Claim(ctx, worker)
-	if err != nil || job.Run.Attempt != 1 || job.Arena != "arena-1" || job.Calibration == nil || job.Calibration.ID != "cal-1" || job.Calibration.Transform[8] != 1 || len(job.Contract.QC) == 0 {
+	if err != nil || job.Run.Attempt != 1 || job.Arena != "arena-1" || job.Calibration == nil || job.Calibration.ID != "cal-1" || job.Calibration.Transform[8] != 1 ||
+		len(job.Calibration.Zones) != 1 || len(job.Contract.QC) == 0 {
 		t.Fatalf("job: %+v %v", job, err)
 	}
 	queued.CalibrationID = ""
@@ -325,8 +345,17 @@ func TestSubmitComputesMetricsFromTheVerifiedTrajectory(t *testing.T) {
 		t.Fatalf("opened results: %+v", store.opened)
 	}
 	// The engine received the pinned parameters, the recording duration and the stored samples.
-	if catalog.duration != 8_000_000 || catalog.parameters["arena_width_cm"] != 50 || len(catalog.samples) != 4 || objects.lastGeneration != 12 {
+	if catalog.duration != 8_000_000 || catalog.parameters["arena_width_cm"] != 50 || len(catalog.samples) != 4 || catalog.zones != nil || objects.lastGeneration != 12 {
 		t.Fatalf("engine input: %+v generation %d", catalog, objects.lastGeneration)
+	}
+	// A run with a pinned calibration hands the engine its zones.
+	zoned := run
+	zoned.CalibrationID = "cal-1"
+	zonedCatalog := &fakeCatalog{}
+	if _, err := New(&fakeStore{run: zoned, uploads: uploads}, stored(good, 9), zonedCatalog, fakeTokens{}, settings, func() time.Time { return now }).
+		Submit(ctx, worker, run.ID, submission(run)); err != nil || len(zonedCatalog.zones) != 1 || zonedCatalog.zones[0].Key != "open_arms" ||
+		zonedCatalog.zones[0].Centimeters.Circle.Radius != 5 {
+		t.Fatalf("zones handed to the engine: %+v %v", zonedCatalog.zones, err)
 	}
 	r := store.publishedResult
 	if len(r.Metrics) != 1 || r.Metrics[0].Key != "distance_cm" || *r.Metrics[0].Value != 3 ||
@@ -370,6 +399,7 @@ func TestTrajectoriesFailingQualityFailTheRun(t *testing.T) {
 type fakeCatalog struct {
 	parameters map[string]float64
 	samples    []domain.Sample
+	zones      []domain.Zone
 	duration   int64
 }
 
@@ -377,8 +407,12 @@ func (*fakeCatalog) Contract(key string, version int) (domain.Contract, error) {
 	if (key != "OPEN_FIELD" && key != "ROTAROD" && key != "EPM") || version != 1 {
 		return domain.Contract{}, ErrUnknownCapability
 	}
+	var zones []string
+	if key == "EPM" {
+		zones = []string{"center", "open_arms"}
+	}
 	return domain.Contract{
-		MetricEngineVersion: 1, ResultSchemaVersion: 1, CalibrationRequired: key != "ROTAROD", TrajectoryAnalyzable: key != "ROTAROD",
+		MetricEngineVersion: 1, ResultSchemaVersion: 1, CalibrationRequired: key != "ROTAROD", TrajectoryAnalyzable: key != "ROTAROD", RequiredZones: zones,
 		Metrics: []domain.MetricSpec{{Key: "distance_cm", Unit: "cm", Max: 1e6}},
 		Events:  []domain.EventSpec{{Type: "in_center", Kind: "INTERVAL"}},
 		QC:      []domain.QCRule{{Key: "max_lost_frame_ratio", Operator: "<=", Value: 0.5}},
@@ -386,8 +420,8 @@ func (*fakeCatalog) Contract(key string, version int) (domain.Contract, error) {
 }
 
 // Evaluate reports the tracked sample count as the distance and one interval over the trajectory.
-func (f *fakeCatalog) Evaluate(_ string, _ int, parameters map[string]float64, t domain.Track, durationUs int64) (domain.Computed, error) {
-	f.parameters, f.samples, f.duration = parameters, t.Samples, durationUs
+func (f *fakeCatalog) Evaluate(_ string, _ int, parameters map[string]float64, t domain.Track, zones []domain.Zone, durationUs int64) (domain.Computed, error) {
+	f.parameters, f.samples, f.zones, f.duration = parameters, t.Samples, zones, durationUs
 	tracked := 0.0
 	for _, s := range t.Samples {
 		if s.Tracked {
@@ -532,7 +566,9 @@ func (f *fakeStore) ClaimNext(context.Context, []domain.Capability, time.Time) (
 
 func (f *fakeStore) Calibration(_ context.Context, id string) (domain.CalibrationRef, error) {
 	return domain.CalibrationRef{ID: id, FrameWidth: 1920, FrameHeight: 1080, CropWidth: 1920, CropHeight: 1080, Plane: "ARENA_FLOOR",
-		Transform: [9]float64{0.1, 0, 0, 0, 0.1, 0, 0, 0, 1}}, nil
+		Transform: [9]float64{0.1, 0, 0, 0, 0.1, 0, 0, 0, 1},
+		Zones: []domain.Zone{{Key: "open_arms", Pixels: domain.Shape{Circle: &domain.Circle{X: 100, Y: 100, Radius: 50}},
+			Centimeters: domain.Shape{Circle: &domain.Circle{X: 10, Y: 10, Radius: 5}}}}}, nil
 }
 
 func (f *fakeStore) UpdateRun(_ context.Context, r domain.Run) (domain.Run, error) {

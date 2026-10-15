@@ -1924,7 +1924,7 @@ paths:
     post:
       operationId: registerAnalysisWorker
       summary: Register an analysis worker; the token is returned once (lab:configure)
-      description: Capabilities must name paradigm versions whose metrics the engine can compute from a trajectory alone, without scored observations or calibrated zone shapes; others return worker.unknownCapability.
+      description: Capabilities must name tracked paradigm versions, whose metrics the engine computes from a trajectory and, for calibrated zones, the shapes of the run's pinned calibration; observer-scored paradigms and versions outside the catalog return worker.unknownCapability.
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/AnalysisWorkerInput'}}}}
       responses:
         '201':
@@ -2206,7 +2206,7 @@ paths:
                     oneOf:
                       - type: 'null'
                       - type: object
-                        required: [id, frameWidth, frameHeight, crop, measurementPlane, transform]
+                        required: [id, frameWidth, frameHeight, crop, measurementPlane, transform, zones]
                         properties:
                           id: {type: string, format: uuid}
                           frameWidth: {type: integer}
@@ -2214,6 +2214,7 @@ paths:
                           crop: {$ref: '#/components/schemas/CalibrationCrop'}
                           measurementPlane: {type: string, enum: [ARENA_FLOOR, WATER_SURFACE, APPARATUS_TOP]}
                           transform: {type: array, minItems: 9, maxItems: 9, items: {type: number}, description: Row-major homography from full-frame pixels (top-left corner at 0,0) to arena centimeters}
+                          zones: {type: array, items: {$ref: '#/components/schemas/CalibrationZone'}, description: 'The paradigm''s calibrated zone shapes in full-frame pixels (tracking limits, overlay) and centimetres (the engine computes zone metrics with them); empty for paradigms whose zones come from parameters'}
         '204': {description: No run is available}
         '400': {$ref: '#/components/responses/Problem'}
         '401': {$ref: '#/components/responses/Problem'}
@@ -3447,11 +3448,16 @@ components:
         fitPoints: {type: array, minItems: 4, maxItems: 100, items: {$ref: '#/components/schemas/CalibrationPoint'}, description: Inside the crop, no three on a line, inside the environment revision}
         checkPoints: {type: array, minItems: 3, maxItems: 100, items: {$ref: '#/components/schemas/CalibrationPoint'}, description: Independent of the FIT points (at least 1 pixel away)}
         supersedesId: {type: string, format: uuid, description: The latest calibration of the revision; required for corrections}
+        zones:
+          type: array
+          maxItems: 1000
+          items: {$ref: '#/components/schemas/CalibrationZoneInput'}
+          description: 'Shapes of the paradigm''s calibrated zones in full-frame pixels, required for paradigms with calibrated zones (EPM, Y_MAZE, BARNES_MAZE, THREE_CHAMBER): keys must be calibrated zones of the paradigm version (400 calibration.unknownZone), every required one needs a shape (calibration.missingZone), shapes are a circle with a positive radius or a polygon of 3 to 100 vertices, at most 100 per key (calibration.invalidZone), inside the frame (calibration.zoneOutsideFrame). They are converted to centimetres with the fitted transform and stored with the calibration.'
     CalibrationStatus:
       type: object
       required: [status, source, drift, calibration]
       properties:
-        status: {type: string, enum: [NOT_REQUIRED, WAITING_FOR_VIDEO, WAITING_FOR_CALIBRATION, CALIBRATED], description: 'WAITING_FOR_VIDEO (test subjects only) while the test has no current verified video; WAITING_FOR_CALIBRATION until a VALID calibration applies'}
+        status: {type: string, enum: [NOT_REQUIRED, WAITING_FOR_VIDEO, WAITING_FOR_CALIBRATION, CALIBRATED], description: 'WAITING_FOR_VIDEO (test subjects only) while the test has no current verified video; WAITING_FOR_CALIBRATION until a VALID calibration applies that has a shape for every required calibrated zone of the paradigm'}
         source: {type: [string, 'null'], enum: [ENVIRONMENT, OVERRIDE, null], description: Which calibration decides. OVERRIDE with WAITING_FOR_CALIBRATION means the animal's override on the current video was rejected. Null when nothing was calibrated}
         drift: {type: [string, 'null'], enum: [UNCHECKED, null], description: Whether camera or arena movement was checked. No check exists yet, so a calibration in use is UNCHECKED; null while waiting}
         calibration: {oneOf: [{$ref: '#/components/schemas/Calibration'}, {type: 'null'}]}
@@ -3479,9 +3485,57 @@ components:
         fitPoints: {type: array, minItems: 4, maxItems: 100, items: {$ref: '#/components/schemas/CalibrationPoint'}, description: Inside the crop, no three on a line; inside the environment when the paradigm derives its zones from parameters}
         checkPoints: {type: array, minItems: 3, maxItems: 100, items: {$ref: '#/components/schemas/CalibrationPoint'}, description: Independent of the FIT points (at least 1 pixel away)}
         supersedesId: {type: string, format: uuid, description: The latest override of the animal over all videos of the test; required for corrections}
+        zones:
+          type: array
+          maxItems: 1000
+          items: {$ref: '#/components/schemas/CalibrationZoneInput'}
+          description: 'Shapes of the paradigm''s calibrated zones in full-frame pixels, required for paradigms with calibrated zones (EPM, Y_MAZE, BARNES_MAZE, THREE_CHAMBER): keys must be calibrated zones of the paradigm version (400 calibration.unknownZone), every required one needs a shape (calibration.missingZone), shapes are a circle with a positive radius or a polygon of 3 to 100 vertices, at most 100 per key (calibration.invalidZone), inside the frame (calibration.zoneOutsideFrame). They are converted to centimetres with the fitted transform and stored with the calibration.'
+    ZoneVertex:
+      type: object
+      additionalProperties: false
+      required: [x, y]
+      properties:
+        x: {type: number}
+        y: {type: number}
+    ZoneShape:
+      description: A circle or a polygon; exactly one of them is present
+      oneOf:
+        - type: object
+          additionalProperties: false
+          required: [circle]
+          properties:
+            circle:
+              type: object
+              additionalProperties: false
+              required: [x, y, radius]
+              properties:
+                x: {type: number}
+                y: {type: number}
+                radius: {type: number, exclusiveMinimum: 0}
+        - type: object
+          additionalProperties: false
+          required: [polygon]
+          properties:
+            polygon: {type: array, minItems: 3, maxItems: 100, items: {$ref: '#/components/schemas/ZoneVertex'}}
+    CalibrationZoneInput:
+      description: One shape of a calibrated zone as drawn, in full-frame pixels; a key may have several shapes (EPM open arms are two polygons)
+      allOf:
+        - type: object
+          required: [key]
+          properties:
+            key: {type: string, description: A calibrated zone key of the paradigm version, such as open_arms}
+        - $ref: '#/components/schemas/ZoneShape'
+    CalibrationZone:
+      type: object
+      required: [key, pixels, centimeters]
+      description: One shape of a calibrated zone. A circle keeps its mapped centre and gets the mean distance to its mapped boundary as the radius, since a homography does not keep circles round.
+      properties:
+        key: {type: string}
+        pixels: {$ref: '#/components/schemas/ZoneShape'}
+        centimeters: {$ref: '#/components/schemas/ZoneShape'}
     Calibration:
       type: object
-      required: [id, scope, testSubjectId, recordingId, environmentRevisionId, supersedesId, cameraId, frameWidth, frameHeight, crop, referenceFrameUs, measurementPlane, fitPoints, checkPoints, transform, fitRmsErrorCm, checkRmsErrorCm, checkMaxErrorCm, toleranceCm, algorithmVersion, status, rejectionReason, createdBy, createdAt]
+      required: [id, scope, testSubjectId, recordingId, environmentRevisionId, supersedesId, cameraId, frameWidth, frameHeight, crop, referenceFrameUs, measurementPlane, fitPoints, checkPoints, transform, zones, fitRmsErrorCm, checkRmsErrorCm, checkMaxErrorCm, toleranceCm, algorithmVersion, status, rejectionReason, createdBy, createdAt]
       description: Immutable; analysis runs reference a fixed calibration
       properties:
         id: {type: string, format: uuid}
@@ -3499,6 +3553,7 @@ components:
         fitPoints: {type: array, items: {$ref: '#/components/schemas/CalibrationPoint'}}
         checkPoints: {type: array, items: {$ref: '#/components/schemas/CalibrationPoint'}}
         transform: {type: array, minItems: 9, maxItems: 9, items: {type: number}, description: Row-major 3x3 homography from pixels to centimeters, normalized so the last entry is 1}
+        zones: {type: array, items: {$ref: '#/components/schemas/CalibrationZone'}, description: 'Calibrated zone shapes sorted by key, shapes of one key in drawing order; empty for paradigms whose zones come from parameters'}
         fitRmsErrorCm: {type: number}
         checkRmsErrorCm: {type: number}
         checkMaxErrorCm: {type: number}

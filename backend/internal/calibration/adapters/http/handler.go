@@ -38,6 +38,11 @@ var failures = []httpjson.Failure{
 	{Err: domain.ErrPointOutsideEnvironment, Status: http.StatusBadRequest, Code: "calibration.pointOutsideEnvironment"},
 	{Err: domain.ErrCheckPointReused, Status: http.StatusBadRequest, Code: "calibration.checkPointReused"},
 	{Err: domain.ErrDegenerateFit, Status: http.StatusBadRequest, Code: "calibration.degenerateFit"},
+	{Err: domain.ErrUnknownZone, Status: http.StatusBadRequest, Code: "calibration.unknownZone"},
+	{Err: domain.ErrMissingZone, Status: http.StatusBadRequest, Code: "calibration.missingZone"},
+	{Err: domain.ErrInvalidZone, Status: http.StatusBadRequest, Code: "calibration.invalidZone"},
+	{Err: domain.ErrZoneOutsideFrame, Status: http.StatusBadRequest, Code: "calibration.zoneOutsideFrame"},
+	{Err: domain.ErrZonesFrozen, Status: http.StatusConflict, Code: "calibration.zonesFrozen"},
 }
 
 type handler struct {
@@ -117,15 +122,16 @@ func (h handler) createEnvironment(w http.ResponseWriter, r *http.Request, actor
 // environment, which has no video.
 func (h handler) decodeInput(w http.ResponseWriter, r *http.Request) (domain.Input, bool) {
 	var body struct {
-		CameraID         string      `json:"cameraId"`
-		FrameWidth       int         `json:"frameWidth"`
-		FrameHeight      int         `json:"frameHeight"`
-		Crop             cropJSON    `json:"crop"`
-		ReferenceFrameUs int64       `json:"referenceFrameUs"`
-		MeasurementPlane string      `json:"measurementPlane"`
-		FitPoints        []pointJSON `json:"fitPoints"`
-		CheckPoints      []pointJSON `json:"checkPoints"`
-		SupersedesID     string      `json:"supersedesId"`
+		CameraID         string          `json:"cameraId"`
+		FrameWidth       int             `json:"frameWidth"`
+		FrameHeight      int             `json:"frameHeight"`
+		Crop             cropJSON        `json:"crop"`
+		ReferenceFrameUs int64           `json:"referenceFrameUs"`
+		MeasurementPlane string          `json:"measurementPlane"`
+		FitPoints        []pointJSON     `json:"fitPoints"`
+		CheckPoints      []pointJSON     `json:"checkPoints"`
+		SupersedesID     string          `json:"supersedesId"`
+		Zones            []zoneInputJSON `json:"zones"`
 	}
 	if err := httpjson.Decode(w, r, &body); err != nil {
 		h.fail(w, r, err)
@@ -135,7 +141,71 @@ func (h handler) decodeInput(w http.ResponseWriter, r *http.Request) (domain.Inp
 		CameraID: body.CameraID, FrameWidth: body.FrameWidth, FrameHeight: body.FrameHeight, Crop: domain.Rect(body.Crop),
 		ReferenceFrameUs: body.ReferenceFrameUs, Plane: domain.Plane(body.MeasurementPlane),
 		Fit: correspondences(body.FitPoints), Check: correspondences(body.CheckPoints), SupersedesID: body.SupersedesID,
+		Zones: mapZones(body.Zones, func(z zoneInputJSON) domain.ZoneInput { return domain.ZoneInput{Key: z.Key, Shape: z.toShape()} }),
 	}, true
+}
+
+type vertexJSON struct {
+	X float64 `json:"x"`
+	Y float64 `json:"y"`
+}
+
+type circleJSON struct {
+	X      float64 `json:"x"`
+	Y      float64 `json:"y"`
+	Radius float64 `json:"radius"`
+}
+
+// shapeJSON is a circle or a polygon; exactly one is set.
+type shapeJSON struct {
+	Circle  *circleJSON  `json:"circle,omitempty"`
+	Polygon []vertexJSON `json:"polygon,omitempty"`
+}
+
+func (s shapeJSON) toShape() domain.Shape {
+	out := domain.Shape{}
+	if s.Circle != nil {
+		c := domain.Circle(*s.Circle)
+		out.Circle = &c
+	}
+	for _, v := range s.Polygon {
+		out.Polygon = append(out.Polygon, domain.Vertex(v))
+	}
+	return out
+}
+
+func toShapeJSON(s domain.Shape) shapeJSON {
+	out := shapeJSON{}
+	if s.Circle != nil {
+		c := circleJSON(*s.Circle)
+		out.Circle = &c
+	}
+	for _, v := range s.Polygon {
+		out.Polygon = append(out.Polygon, vertexJSON(v))
+	}
+	return out
+}
+
+// zoneInputJSON is one calibrated zone shape as drawn, in full-frame pixels.
+type zoneInputJSON struct {
+	Key string `json:"key"`
+	shapeJSON
+}
+
+// zoneJSON is one calibrated zone shape as drawn in pixels and converted to
+// centimetres.
+type zoneJSON struct {
+	Key         string    `json:"key"`
+	Pixels      shapeJSON `json:"pixels"`
+	Centimeters shapeJSON `json:"centimeters"`
+}
+
+func mapZones[T, U any](items []T, convert func(T) U) []U {
+	out := make([]U, 0, len(items))
+	for _, item := range items {
+		out = append(out, convert(item))
+	}
+	return out
 }
 
 func revisionNumber(r *http.Request) (int, bool) {
@@ -269,6 +339,7 @@ type calibrationJSONBody struct {
 	FitPoints             []pointJSON `json:"fitPoints"`
 	CheckPoints           []pointJSON `json:"checkPoints"`
 	Transform             [9]float64  `json:"transform"`
+	Zones                 []zoneJSON  `json:"zones"`
 	FitRMSErrorCm         float64     `json:"fitRmsErrorCm"`
 	CheckRMSErrorCm       float64     `json:"checkRmsErrorCm"`
 	CheckMaxErrorCm       float64     `json:"checkMaxErrorCm"`
@@ -285,6 +356,9 @@ func calibrationJSON(c domain.Calibration) calibrationJSONBody {
 		ID: c.ID, Scope: string(c.Scope()), TestSubjectID: nullable(c.TestSubjectID), RecordingID: nullable(c.RecordingID), EnvironmentRevisionID: c.EnvironmentRevisionID, SupersedesID: nullable(c.SupersedesID), CameraID: c.CameraID,
 		FrameWidth: c.FrameWidth, FrameHeight: c.FrameHeight, Crop: cropJSON(c.Crop), ReferenceFrameUs: referenceFrame(c),
 		MeasurementPlane: string(c.Plane), FitPoints: pointsJSON(c.Fit), CheckPoints: pointsJSON(c.Check), Transform: c.Transform,
+		Zones: mapZones(c.Zones, func(z domain.Zone) zoneJSON {
+			return zoneJSON{Key: z.Key, Pixels: toShapeJSON(z.Pixels), Centimeters: toShapeJSON(z.Centimeters)}
+		}),
 		FitRMSErrorCm: c.FitRMSErrorCm, CheckRMSErrorCm: c.CheckRMSErrorCm, CheckMaxErrorCm: c.CheckMaxErrorCm, ToleranceCm: c.ToleranceCm,
 		AlgorithmVersion: c.AlgorithmVersion, Status: string(c.Status), RejectionReason: nullable(c.RejectionReason),
 		CreatedBy: c.CreatedBy, CreatedAt: c.CreatedAt,

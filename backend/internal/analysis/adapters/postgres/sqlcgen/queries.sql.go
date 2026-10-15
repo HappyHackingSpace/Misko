@@ -59,6 +59,45 @@ func (q *Queries) AddCapability(ctx context.Context, arg AddCapabilityParams) er
 	return err
 }
 
+const calibrationZones = `-- name: CalibrationZones :many
+SELECT zone_key, kind, pixels, centimeters
+FROM misko.calibration_zones
+WHERE calibration_id = $1
+ORDER BY zone_key, position
+`
+
+type CalibrationZonesRow struct {
+	ZoneKey     string
+	Kind        string
+	Pixels      []byte
+	Centimeters []byte
+}
+
+func (q *Queries) CalibrationZones(ctx context.Context, calibrationID string) ([]CalibrationZonesRow, error) {
+	rows, err := q.db.Query(ctx, calibrationZones, calibrationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CalibrationZonesRow
+	for rows.Next() {
+		var i CalibrationZonesRow
+		if err := rows.Scan(
+			&i.ZoneKey,
+			&i.Kind,
+			&i.Pixels,
+			&i.Centimeters,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const claimNext = `-- name: ClaimNext :one
 SELECT id, experiment_id, test_id, test_subject_id, recording_id, source_asset_id, source_generation, source_crc32c, clip_start_us, clip_end_us, calibration_id, paradigm_key, paradigm_version, metric_engine_version, result_schema_version, parameters, trigger, status, attempt, max_attempts, worker_id, lease_expires_at, available_at, model_version, failure_reason, created_by, created_at, finished_at FROM misko.analysis_runs r
 WHERE r.status = 'QUEUED' AND r.available_at <= $1::timestamptz
@@ -573,7 +612,8 @@ SELECT ts.experiment_id, ts.test_id, ts.id AS test_subject_id, coalesce(r.id::te
        coalesce(a.crc32c, 0)::bigint AS source_crc32c, coalesce(r.clip_start_us, 0)::bigint AS clip_start_us, r.clip_end_us,
        t.paradigm_key, t.paradigm_version, er.parameters, ps.session, coalesce(a.status, '')::text AS video_status,
        t.status AS test_status, e.status AS experiment_status, (al.excluded_at IS NOT NULL)::boolean AS excluded,
-       coalesce(ec.calibration_id::text, '')::text AS calibration_id
+       coalesce(ec.calibration_id::text, '')::text AS calibration_id,
+       ARRAY(SELECT DISTINCT z.zone_key FROM misko.calibration_zones z WHERE z.calibration_id = ec.calibration_id)::text[] AS zone_keys
 FROM misko.test_subjects ts
 JOIN misko.tests t ON t.id = ts.test_id
 JOIN misko.experiments e ON e.id = ts.experiment_id
@@ -605,6 +645,7 @@ type GetCandidateRow struct {
 	ExperimentStatus string
 	Excluded         bool
 	CalibrationID    string
+	ZoneKeys         []string
 }
 
 // GetCandidate reads one animal of a test with its current video, if any, and
@@ -631,6 +672,7 @@ func (q *Queries) GetCandidate(ctx context.Context, id string) (GetCandidateRow,
 		&i.ExperimentStatus,
 		&i.Excluded,
 		&i.CalibrationID,
+		&i.ZoneKeys,
 	)
 	return i, err
 }
@@ -1251,7 +1293,8 @@ WITH candidates AS (
     SELECT ts.experiment_id, ts.test_id, ts.id AS test_subject_id, r.id AS recording_id, a.id AS source_asset_id,
            a.generation AS source_generation, a.crc32c AS source_crc32c, r.clip_start_us, r.clip_end_us,
            t.paradigm_key, t.paradigm_version, er.parameters, ps.session, r.created_at,
-           coalesce(ec.calibration_id::text, '')::text AS calibration_id, coalesce(ec.source, '')::text AS calibration_source
+           coalesce(ec.calibration_id::text, '')::text AS calibration_id, coalesce(ec.source, '')::text AS calibration_source,
+           ARRAY(SELECT DISTINCT z.zone_key FROM misko.calibration_zones z WHERE z.calibration_id = ec.calibration_id)::text[] AS zone_keys
     FROM misko.test_subjects ts
     JOIN misko.effective_calibrations ec ON ec.test_subject_id = ts.id
     JOIN misko.test_recordings r ON r.id = ec.recording_id
@@ -1266,7 +1309,7 @@ WITH candidates AS (
       AND (ec.calibration_id IS NOT NULL OR NOT (t.paradigm_key || '@' || t.paradigm_version::text) = ANY($2::text[]))
 )
 SELECT c.experiment_id, c.test_id, c.test_subject_id, c.recording_id, c.source_asset_id, c.source_generation::bigint AS source_generation,
-       c.source_crc32c, c.clip_start_us, c.clip_end_us, c.paradigm_key, c.paradigm_version, c.parameters, c.session, c.calibration_id
+       c.source_crc32c, c.clip_start_us, c.clip_end_us, c.paradigm_key, c.paradigm_version, c.parameters, c.session, c.calibration_id, c.zone_keys
 FROM candidates c
 WHERE NOT EXISTS (
     SELECT 1 FROM misko.analysis_runs x
@@ -1297,6 +1340,7 @@ type ReadyTestSubjectsRow struct {
 	Parameters       []byte
 	Session          []byte
 	CalibrationID    string
+	ZoneKeys         []string
 }
 
 // ReadyTestSubjects lists the animals the scheduler can analyse now: the
@@ -1333,6 +1377,7 @@ func (q *Queries) ReadyTestSubjects(ctx context.Context, arg ReadyTestSubjectsPa
 			&i.Parameters,
 			&i.Session,
 			&i.CalibrationID,
+			&i.ZoneKeys,
 		); err != nil {
 			return nil, err
 		}

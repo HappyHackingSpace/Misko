@@ -68,3 +68,13 @@ VALUES (@environment_revision_id, sqlc.narg(test_subject_id), sqlc.narg(recordin
     @crop_x, @crop_y, @crop_width, @crop_height, sqlc.narg(reference_frame_us), @measurement_plane, @fit_points, @check_points, @transform,
     @fit_rms_error_cm, @check_rms_error_cm, @check_max_error_cm, @tolerance_cm, @algorithm_version, @status, sqlc.narg(rejection_reason), @created_by)
 RETURNING *;
+
+-- name: CreateCalibrationZone :exec
+INSERT INTO misko.calibration_zones (calibration_id, zone_key, position, kind, pixels, centimeters)
+VALUES (@calibration_id, @zone_key, @position, @kind, @pixels, @centimeters);
+
+-- name: ListCalibrationZones :many
+SELECT calibration_id, zone_key, position, kind, pixels, centimeters
+FROM misko.calibration_zones
+WHERE calibration_id = ANY(@calibration_ids::uuid[])
+ORDER BY calibration_id, zone_key, position;

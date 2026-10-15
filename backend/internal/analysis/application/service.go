@@ -22,7 +22,7 @@ var (
 	ErrUnknownCapability     = errors.New("capability names a paradigm version outside the catalog or one that cannot be computed from a trajectory")
 	ErrRunNotFound           = errors.New("analysis run not found")
 	ErrTestSubjectNotFound   = errors.New("test subject not found")
-	ErrNotReady              = errors.New("the animal needs a verified current video of a test that is not cancelled, a running or completed experiment, no exclusion, a valid calibration of its arena when the paradigm requires one and an active worker capability")
+	ErrNotReady              = errors.New("the animal needs a verified current video of a test that is not cancelled, a running or completed experiment, no exclusion, a valid calibration of its arena with every required zone when the paradigm requires one and an active worker capability")
 	ErrRunPending            = errors.New("an analysis of this animal is already queued or running")
 	ErrNoRun                 = errors.New("no queued run matches the worker's capabilities")
 	ErrUnknownOutput         = errors.New("artifacts must name outputs requested for this attempt")
@@ -64,8 +64,9 @@ type Catalog interface {
 	// Contract returns ErrUnknownCapability for versions outside the catalog.
 	Contract(key string, version int) (domain.Contract, error)
 	// Evaluate computes metrics and events from a trajectory with pinned
-	// parameters; samples the engine rejects are domain.ErrInvalidTrajectory.
-	Evaluate(key string, version int, parameters map[string]float64, t domain.Track, durationUs int64) (domain.Computed, error)
+	// parameters and the pinned calibration's zones; samples the engine
+	// rejects are domain.ErrInvalidTrajectory.
+	Evaluate(key string, version int, parameters map[string]float64, t domain.Track, zones []domain.Zone, durationUs int64) (domain.Computed, error)
 }
 
 // Tokens issues worker tokens and hashes them for storage and lookup.
@@ -85,13 +86,15 @@ type Candidate struct {
 	ClipStartUs                                                     int64
 	ClipEndUs                                                       *int64
 	CalibrationID                                                   string
-	ParadigmKey                                                     string
-	ParadigmVersion                                                 int
-	Parameters                                                      map[string]float64
-	VideoVerified                                                   bool
-	TestCancelled                                                   bool
-	ExperimentStatus                                                string
-	Excluded                                                        bool
+	// ZoneKeys are the calibrated zones the effective calibration has shapes for.
+	ZoneKeys         []string
+	ParadigmKey      string
+	ParadigmVersion  int
+	Parameters       map[string]float64
+	VideoVerified    bool
+	TestCancelled    bool
+	ExperimentStatus string
+	Excluded         bool
 	// Invalid is set when the candidate's stored inputs cannot be read, such
 	// as arena parameters that are not numbers; it is never planned.
 	Invalid error
@@ -371,7 +374,7 @@ func (s *Service) plan(c Candidate, capabilities []domain.Capability, trigger do
 	if err != nil {
 		return domain.Run{}, false, err
 	}
-	if contract.CalibrationRequired && c.CalibrationID == "" {
+	if contract.CalibrationRequired && (c.CalibrationID == "" || len(domain.MissingZones(contract.RequiredZones, c.ZoneKeys)) > 0) {
 		return domain.Run{}, false, nil
 	}
 	if !contract.CalibrationRequired {
@@ -435,8 +438,9 @@ func (s *Service) Reanalyze(ctx context.Context, actor access.Actor, testSubject
 
 // Job is a claimed run with its contract, the arena (environment revision)
 // its animal is filmed in and, when the paradigm needs one, the pinned
-// calibration whose crop is that arena's region of the frame and whose
-// transform maps its pixels to arena centimeters.
+// calibration whose crop is that arena's region of the frame, whose
+// transform maps its pixels to arena centimeters and whose zones are the
+// paradigm's calibrated zone shapes.
 type Job struct {
 	Run         domain.Run
 	Contract    domain.Contract
@@ -616,7 +620,15 @@ func (s *Service) Submit(ctx context.Context, w domain.Worker, runID string, sub
 	if reason := domain.CheckQC(contract.QC, track); reason != "" {
 		return s.Fail(ctx, w, runID, sub.Attempt, reason, false)
 	}
-	computed, err := s.catalog.Evaluate(run.ParadigmKey, run.ParadigmVersion, run.Parameters, track, result.DurationUs)
+	var zones []domain.Zone
+	if run.CalibrationID != "" {
+		calibration, err := s.store.Calibration(ctx, run.CalibrationID)
+		if err != nil {
+			return domain.Run{}, err
+		}
+		zones = calibration.Zones
+	}
+	computed, err := s.catalog.Evaluate(run.ParadigmKey, run.ParadigmVersion, run.Parameters, track, zones, result.DurationUs)
 	if err != nil {
 		return domain.Run{}, err
 	}

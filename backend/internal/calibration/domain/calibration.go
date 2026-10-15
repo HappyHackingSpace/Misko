@@ -89,6 +89,8 @@ type Requirement struct {
 	Required    bool
 	ToleranceCm float64
 	Bounds      *Bounds
+	// Zones are the paradigm's calibrated zones, drawn with the calibration.
+	Zones []ZoneRequirement
 }
 
 type Input struct {
@@ -101,6 +103,8 @@ type Input struct {
 	Plane            Plane
 	Fit, Check       []Correspondence
 	SupersedesID     string
+	// Zones are the shapes of the paradigm's calibrated zones in full-frame pixels.
+	Zones []ZoneInput
 }
 
 type Calibration struct {
@@ -120,15 +124,17 @@ type Calibration struct {
 	Plane                   Plane
 	Fit, Check              []Correspondence
 	Transform               Homography
-	FitRMSErrorCm           float64
-	CheckRMSErrorCm         float64
-	CheckMaxErrorCm         float64
-	ToleranceCm             float64
-	AlgorithmVersion        string
-	Status                  Status
-	RejectionReason         string
-	CreatedBy               string
-	CreatedAt               time.Time
+	// Zones are the calibrated zone shapes in pixels and centimetres.
+	Zones            []Zone
+	FitRMSErrorCm    float64
+	CheckRMSErrorCm  float64
+	CheckMaxErrorCm  float64
+	ToleranceCm      float64
+	AlgorithmVersion string
+	Status           Status
+	RejectionReason  string
+	CreatedBy        string
+	CreatedAt        time.Time
 }
 
 // New fits the transform and validates it against the CHECK points. Invalid
@@ -189,10 +195,14 @@ func New(in Input, req Requirement, createdBy string, now time.Time) (Calibratio
 	if err != nil {
 		return Calibration{}, err
 	}
+	zones, err := buildZones(in.Zones, req.Zones, in.FrameWidth, in.FrameHeight, h)
+	if err != nil {
+		return Calibration{}, err
+	}
 	c := Calibration{
 		SupersedesID: in.SupersedesID, CameraID: camera, FrameWidth: in.FrameWidth, FrameHeight: in.FrameHeight, Crop: in.Crop,
 		ReferenceFrameUs: in.ReferenceFrameUs, Plane: in.Plane, Fit: append([]Correspondence{}, in.Fit...), Check: append([]Correspondence{}, in.Check...),
-		Transform: h, FitRMSErrorCm: fitRMS, CheckRMSErrorCm: checkRMS, CheckMaxErrorCm: checkMax, ToleranceCm: req.ToleranceCm,
+		Transform: h, Zones: zones, FitRMSErrorCm: fitRMS, CheckRMSErrorCm: checkRMS, CheckMaxErrorCm: checkMax, ToleranceCm: req.ToleranceCm,
 		AlgorithmVersion: AlgorithmVersion, Status: Valid, CreatedBy: createdBy, CreatedAt: now,
 	}
 	// A small epsilon keeps an error exactly at the tolerance valid despite rounding.
