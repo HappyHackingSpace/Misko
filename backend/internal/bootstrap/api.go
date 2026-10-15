@@ -12,6 +12,9 @@ import (
 	dashboardhttp "github.com/HappyHackingSpace/Misko/backend/internal/dashboard/adapters/http"
 	dashboardpostgres "github.com/HappyHackingSpace/Misko/backend/internal/dashboard/adapters/postgres"
 	dashboardapp "github.com/HappyHackingSpace/Misko/backend/internal/dashboard/application"
+	dosinghttp "github.com/HappyHackingSpace/Misko/backend/internal/dosing/adapters/http"
+	dosingpostgres "github.com/HappyHackingSpace/Misko/backend/internal/dosing/adapters/postgres"
+	dosingapp "github.com/HappyHackingSpace/Misko/backend/internal/dosing/application"
 	environmentscatalog "github.com/HappyHackingSpace/Misko/backend/internal/environments/adapters/catalog"
 	environmentshttp "github.com/HappyHackingSpace/Misko/backend/internal/environments/adapters/http"
 	environmentspostgres "github.com/HappyHackingSpace/Misko/backend/internal/environments/adapters/postgres"
@@ -27,9 +30,6 @@ import (
 	identitypostgres "github.com/HappyHackingSpace/Misko/backend/internal/identity/adapters/postgres"
 	"github.com/HappyHackingSpace/Misko/backend/internal/identity/adapters/token"
 	identityapp "github.com/HappyHackingSpace/Misko/backend/internal/identity/application"
-	interventionshttp "github.com/HappyHackingSpace/Misko/backend/internal/interventions/adapters/http"
-	interventionspostgres "github.com/HappyHackingSpace/Misko/backend/internal/interventions/adapters/postgres"
-	interventionsapp "github.com/HappyHackingSpace/Misko/backend/internal/interventions/application"
 	laboratoryhttp "github.com/HappyHackingSpace/Misko/backend/internal/laboratory/adapters/http"
 	laboratorypostgres "github.com/HappyHackingSpace/Misko/backend/internal/laboratory/adapters/postgres"
 	laboratoryapp "github.com/HappyHackingSpace/Misko/backend/internal/laboratory/application"
@@ -140,7 +140,7 @@ func NewAPI(pool *pgxpool.Pool, cfg config.Config, auth config.Auth, logger *slo
 	laboratory := laboratoryapp.New(laboratorypostgres.NewStore(pool))
 	subjects := subjectsapp.New(subjectspostgres.NewStore(pool))
 	experiments := experimentsapp.New(experimentspostgres.NewStore(pool))
-	interventions := interventionsapp.New(interventionspostgres.NewStore(pool), time.Now)
+	dosing := dosingapp.New(dosingpostgres.NewStore(pool), time.Now)
 	environments := environmentsapp.New(environmentspostgres.NewStore(pool), environmentscatalog.New())
 	protocols := protocolsapp.New(protocolspostgres.NewStore(pool), protocolscatalog.New())
 	// One user may create or edit at most 20 comments per minute on this instance.
@@ -159,7 +159,7 @@ func NewAPI(pool *pgxpool.Pool, cfg config.Config, auth config.Auth, logger *slo
 	laboratoryhttp.Register(mux, laboratory, authenticate, logger)
 	subjectshttp.Register(mux, subjects, authenticate, logger)
 	experimentshttp.Register(mux, experiments, authenticate, logger)
-	interventionshttp.Register(mux, interventions, authenticate, logger)
+	dosinghttp.Register(mux, dosing, authenticate, logger)
 	paradigmshttp.Register(mux, paradigmsapp.New(newWorkerCapabilities(pool)), authenticate, logger)
 	environmentshttp.Register(mux, environments, authenticate, logger)
 	protocolshttp.Register(mux, protocols, authenticate, logger)
