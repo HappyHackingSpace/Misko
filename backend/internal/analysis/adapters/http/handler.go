@@ -461,6 +461,8 @@ type runJSON struct {
 	ResultSchemaVersion int                `json:"resultSchemaVersion"`
 	Parameters          map[string]float64 `json:"parameters"`
 	Trigger             string             `json:"trigger"`
+	Method              string             `json:"method"`
+	ScoredBy            *string            `json:"scoredBy"`
 	Status              string             `json:"status"`
 	Attempt             int                `json:"attempt"`
 	MaxAttempts         int                `json:"maxAttempts"`
@@ -482,7 +484,7 @@ func toRun(r domain.Run) runJSON {
 		ID: r.ID, ExperimentID: r.ExperimentID, TestID: r.TestID, TestSubjectID: r.TestSubjectID, RecordingID: r.RecordingID, SourceVideoID: r.SourceAssetID,
 		SourceGeneration: itoa(r.SourceGeneration), SourceCRC32C: media.FormatCRC32C(r.SourceCRC32C), ClipStartUs: r.ClipStartUs, ClipEndUs: r.ClipEndUs,
 		CalibrationID: nullable(r.CalibrationID), ParadigmKey: r.ParadigmKey, ParadigmVersion: r.ParadigmVersion,
-		MetricEngineVersion: r.MetricEngineVersion, ResultSchemaVersion: r.ResultSchemaVersion, Parameters: params, Trigger: string(r.Trigger), Status: string(r.Status), Attempt: r.Attempt,
+		MetricEngineVersion: r.MetricEngineVersion, ResultSchemaVersion: r.ResultSchemaVersion, Parameters: params, Trigger: string(r.Trigger), Method: string(r.Method), ScoredBy: nullable(r.ScoredBy), Status: string(r.Status), Attempt: r.Attempt,
 		MaxAttempts: r.MaxAttempts, WorkerID: nullable(r.WorkerID), LeaseExpiresAt: r.LeaseExpiresAt, ModelVersion: nullable(r.ModelVersion),
 		FailureReason: nullable(r.FailureReason), CreatedBy: nullable(r.CreatedBy), CreatedAt: r.CreatedAt, FinishedAt: r.FinishedAt,
 	}
@@ -509,6 +511,8 @@ type reviewGroupJSON struct {
 type reviewRunJSON struct {
 	ID                  string       `json:"id"`
 	Trigger             string       `json:"trigger"`
+	Method              string       `json:"method"`
+	ScoredBy            *string      `json:"scoredBy"`
 	ModelVersion        *string      `json:"modelVersion"`
 	MetricEngineVersion int          `json:"metricEngineVersion"`
 	CalibrationID       *string      `json:"calibrationId"`
@@ -561,7 +565,7 @@ func toReview(i application.ReviewItem) reviewJSON {
 		SubjectCode: i.SubjectCode, Excluded: i.Excluded,
 		Arena:       arenaJSON{i.EnvironmentID, i.EnvironmentName, i.EnvironmentRevisionID, i.EnvironmentRevision},
 		TimepointID: i.TimepointID, TimepointName: i.TimepointName, ParadigmKey: i.ParadigmKey, ParadigmVersion: i.ParadigmVersion, ScheduledAt: i.ScheduledAt,
-		Run: reviewRunJSON{ID: i.Run.ID, Trigger: i.Run.Trigger, ModelVersion: nullable(i.Run.ModelVersion), MetricEngineVersion: i.Run.MetricEngineVersion,
+		Run: reviewRunJSON{ID: i.Run.ID, Trigger: i.Run.Trigger, Method: i.Run.Method, ScoredBy: nullable(i.Run.ScoredBy), ModelVersion: nullable(i.Run.ModelVersion), MetricEngineVersion: i.Run.MetricEngineVersion,
 			CalibrationID: nullable(i.Run.CalibrationID), RecordingID: i.Run.RecordingID, FinishedAt: i.Run.FinishedAt, Metrics: []metricJSON{}},
 		LatestRunID: i.LatestRunID, NewerRunAvailable: i.NewerRunAvailable(),
 	}

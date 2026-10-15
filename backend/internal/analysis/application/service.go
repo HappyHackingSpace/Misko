@@ -329,6 +329,10 @@ func (s *Service) Tick(ctx context.Context) (TickReport, error) {
 			report.Skipped = append(report.Skipped, fmt.Errorf("capability %s v%d: %w", c.ParadigmKey, c.ParadigmVersion, err))
 			continue
 		}
+		if contract.ObserverScored {
+			report.Skipped = append(report.Skipped, fmt.Errorf("capability %s v%d: %w", c.ParadigmKey, c.ParadigmVersion, ErrUnknownCapability))
+			continue
+		}
 		capabilities = append(capabilities, c)
 		if contract.CalibrationRequired {
 			calibrated = append(calibrated, c)
@@ -370,6 +374,10 @@ func (s *Service) plan(c Candidate, capabilities []domain.Capability, trigger do
 	contract, err := s.catalog.Contract(c.ParadigmKey, c.ParadigmVersion)
 	if err != nil {
 		return domain.Run{}, false, err
+	}
+	// Observer scored paradigms are never queued for a worker.
+	if contract.ObserverScored {
+		return domain.Run{}, false, nil
 	}
 	if contract.CalibrationRequired && c.CalibrationID == "" {
 		return domain.Run{}, false, nil

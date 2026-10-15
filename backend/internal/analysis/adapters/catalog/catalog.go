@@ -34,6 +34,7 @@ func (Catalog) Contract(key string, version int) (domain.Contract, error) {
 		// A trajectory supplies samples only: no scored observations and no
 		// calibrated zone shapes.
 		TrajectoryAnalyzable: len(p.InputEvents) == 0 && !slices.ContainsFunc(p.Zones, func(z paradigms.Zone) bool { return z.Calibrated && z.Required }),
+		ObserverScored:       p.ObserverScored(),
 	}
 	for _, m := range p.Metrics {
 		c.Metrics = append(c.Metrics, domain.MetricSpec{Key: m.Key, Unit: string(m.Unit), Integer: m.Integer, Min: m.Min, Max: m.Max})

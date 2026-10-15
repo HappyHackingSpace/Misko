@@ -42,10 +42,13 @@ type Contract struct {
 	// TrajectoryAnalyzable is false when the engine needs inputs a trajectory
 	// cannot provide, such as calibrated zone shapes or scored observations.
 	TrajectoryAnalyzable bool
-	Metrics              []MetricSpec
-	Events               []EventSpec
-	MissingReasons       []string
-	QC                   []QCRule
+	// ObserverScored paradigms are scored by a person on the video; no worker
+	// ever analyses them.
+	ObserverScored bool
+	Metrics        []MetricSpec
+	Events         []EventSpec
+	MissingReasons []string
+	QC             []QCRule
 }
 
 // CalibrationRef is the pinned calibration a worker needs to map full-frame

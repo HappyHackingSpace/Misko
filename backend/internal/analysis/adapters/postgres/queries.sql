@@ -261,7 +261,7 @@ SELECT sr.test_subject_id, sr.run_id, sr.status, sr.reason, sr.note, sr.reviewed
        tp.id AS timepoint_id, tp.name AS timepoint_name, t.paradigm_key, t.paradigm_version, t.scheduled_at,
        g.id AS group_id, g.code AS group_code, g.name AS group_name, g.role AS group_role, dm.name AS disease_model_name,
        sub.name AS treatment_substance_name, tr.dose_micro AS treatment_dose_micro, tr.unit AS treatment_unit,
-       r.trigger, r.model_version, r.metric_engine_version, r.finished_at, r.calibration_id, r.recording_id,
+       r.trigger, r.method, r.scored_by, r.model_version, r.metric_engine_version, r.finished_at, r.calibration_id, r.recording_id,
        latest.id AS latest_run_id
 FROM misko.subject_results sr
 JOIN misko.test_subjects ts ON ts.id = sr.test_subject_id
