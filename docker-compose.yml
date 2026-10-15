@@ -1,4 +1,7 @@
-# Isolated new-backend stack: never reuses the old misko/db-data volume.
+# The database lives on the postgres-data volume. Earlier stacks used
+# foundation-db (older schema of this backend) and db-data (the Node.js era,
+# PostgreSQL 16); neither is referenced, so both are left untouched rather than
+# deleted. Remove them with `docker volume rm` once they are no longer needed.
 # Credentials and the signing secret below are for local development only.
 name: misko
 
@@ -12,7 +15,7 @@ services:
       POSTGRES_PASSWORD: misko_local_only
       POSTGRES_DB: misko_foundation
     volumes:
-      - foundation-db:/var/lib/postgresql
+      - postgres-data:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U misko -d misko_foundation"]
       interval: 2s
@@ -50,9 +53,14 @@ services:
       DATABASE_URL: *database-url
       HTTP_ADDR: :4000
       JWT_SECRET: ${JWT_SECRET:-local-development-only-signing-secret}
-      # Video routes return 503 until a private bucket is configured.
+      # Videos and analysis outputs are kept on the local-videos volume and
+      # served by the API under /api/local-storage. Set GCS_BUCKET to use a
+      # private Cloud Storage bucket instead; a bucket takes precedence.
+      LOCAL_STORAGE_DIR: /data/videos
       GCS_BUCKET: ${GCS_BUCKET:-}
       GCS_SIGNER_EMAIL: ${GCS_SIGNER_EMAIL:-}
+    volumes:
+      - local-videos:/data/videos
     ports:
       - "127.0.0.1:4000:4000"
     depends_on:
@@ -82,7 +90,8 @@ services:
         condition: service_healthy
 
   # Open Field analysis worker; start it with --profile worker after registering
-  # a worker and setting MISKO_WORKER_TOKEN. It needs GCS for sources and outputs.
+  # a worker and setting MISKO_WORKER_TOKEN. It reads sources and writes outputs
+  # through signed URLs, from local storage on the API or from GCS.
   worker:
     build: ./worker
     profiles: [worker]
@@ -93,4 +102,5 @@ services:
       - backend
 
 volumes:
-  foundation-db:
+  postgres-data:
+  local-videos:

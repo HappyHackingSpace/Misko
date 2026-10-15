@@ -39,6 +39,7 @@ import (
 	laboratoryapp "github.com/HappyHackingSpace/Misko/backend/internal/laboratory/application"
 	mediagcs "github.com/HappyHackingSpace/Misko/backend/internal/media/adapters/gcs"
 	mediahttp "github.com/HappyHackingSpace/Misko/backend/internal/media/adapters/http"
+	medialocalfs "github.com/HappyHackingSpace/Misko/backend/internal/media/adapters/localfs"
 	mediapostgres "github.com/HappyHackingSpace/Misko/backend/internal/media/adapters/postgres"
 	mediaapp "github.com/HappyHackingSpace/Misko/backend/internal/media/application"
 	paradigmshttp "github.com/HappyHackingSpace/Misko/backend/internal/paradigms/adapters/http"
@@ -82,15 +83,27 @@ func Run(ctx context.Context, cfg config.Config, auth config.Auth, storage confi
 	}
 	defer pool.Close()
 	var options []Option
-	if storage.Enabled() {
+	mediaSettings := mediaapp.Settings{MaxBytes: storage.MaxVideoBytes, UploadTTL: storage.UploadURLTTL, ReadTTL: storage.ReadURLTTL}
+	switch {
+	case storage.Local():
+		objects, err := medialocalfs.New(storage.LocalDir, auth.JWTSecret, time.Now)
+		if err != nil {
+			return errors.New("could not open the local storage directory")
+		}
+		options = append(options, WithLocalStorage(objects, mediaSettings))
+		logger.Info("videos are stored in a local directory", "prefix", medialocalfs.Prefix)
+	case storage.Enabled():
+		if storage.LocalDir != "" {
+			logger.Warn("GCS_BUCKET is set; LOCAL_STORAGE_DIR is ignored")
+		}
 		objects, err := mediagcs.New(ctx, storage.Bucket, storage.SignerEmail)
 		if err != nil {
 			return errors.New("could not initialize Cloud Storage client")
 		}
 		defer objects.Close()
-		options = append(options, WithStorage(objects, mediaapp.Settings{MaxBytes: storage.MaxVideoBytes, UploadTTL: storage.UploadURLTTL, ReadTTL: storage.ReadURLTTL}))
-	} else {
-		logger.Warn("GCS_BUCKET is not set; video upload and read routes return 503")
+		options = append(options, WithStorage(objects, mediaSettings))
+	default:
+		logger.Warn("neither GCS_BUCKET nor LOCAL_STORAGE_DIR is set; video upload and read routes return 503")
 	}
 	api, err := NewAPI(pool, cfg, auth, logger, options...)
 	if err != nil {
@@ -118,6 +131,8 @@ type API struct {
 type options struct {
 	objects       mediaapp.ObjectStore
 	mediaSettings mediaapp.Settings
+	// storageHandler serves signed storage URLs on the API itself.
+	storageHandler http.Handler
 }
 
 type Option func(*options)
@@ -125,6 +140,14 @@ type Option func(*options)
 // WithStorage enables video routes with an object store.
 func WithStorage(objects mediaapp.ObjectStore, settings mediaapp.Settings) Option {
 	return func(o *options) { o.objects, o.mediaSettings = objects, settings }
+}
+
+// WithLocalStorage keeps videos and analysis outputs in a local directory and
+// serves their signed URLs under medialocalfs.Prefix on the API.
+func WithLocalStorage(objects *medialocalfs.Store, settings mediaapp.Settings) Option {
+	return func(o *options) {
+		o.objects, o.mediaSettings, o.storageHandler = objects, settings, objects.Handler()
+	}
 }
 
 // NewAPI wires concrete adapters into use cases and mounts every HTTP route.
@@ -176,6 +199,9 @@ func NewAPI(pool *pgxpool.Pool, cfg config.Config, auth config.Auth, logger *slo
 	analysishttp.Register(mux, analysis, authenticate, logger)
 	reportshttp.Register(mux, reportsapp.New(reportspostgres.NewStore(pool), reportExportLimit), authenticate, logger)
 	dashboardhttp.Register(mux, dashboardapp.New(dashboardpostgres.NewStore(pool), dashboardcatalog.New()), authenticate, logger)
+	if o.storageHandler != nil {
+		mux.Handle(medialocalfs.Prefix+"/", o.storageHandler)
+	}
 	tick := func(ctx context.Context) error {
 		report, err := analysis.Tick(ctx)
 		logTick(ctx, logger, report, err)

@@ -6,6 +6,7 @@ from __future__ import annotations
 import base64
 import shutil
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 from typing import Any
@@ -47,6 +48,8 @@ def upload(signed: dict[str, Any], path: Path, timeout: float = 60.0) -> None:
         raise StorageError(f"UPLOAD_START_FAILED: HTTP {error.code}") from None
     if not session:
         raise StorageError("UPLOAD_START_FAILED: no session")
+    # Local storage answers with a session path; resolve it against the start URL.
+    session = urllib.parse.urljoin(signed["url"], session)
     size = path.stat().st_size
     offset = 0
     with path.open("rb") as f:

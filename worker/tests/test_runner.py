@@ -33,6 +33,9 @@ class FakeCloud:
         self.source_status = 0
         self.downloads = 0
         self.source_urls = 0
+        # relative answers like an API with local storage: signed URLs and
+        # upload sessions are paths on the API's own origin.
+        self.relative = False
         server = self
 
         class Handler(BaseHTTPRequestHandler):
@@ -84,7 +87,8 @@ class FakeCloud:
                     name = self.path.removeprefix("/gcs/start/")
                     assert self.headers["x-goog-resumable"] == "start"
                     server.objects[name] = bytearray()
-                    self.reply(201, headers={"Location": f"http://127.0.0.1:{server.port}/gcs/session/{name}"})
+                    origin = "" if server.relative else f"http://127.0.0.1:{server.port}"
+                    self.reply(201, headers={"Location": f"{origin}/gcs/session/{name}"})
                     return
                 if self.headers.get("Authorization") != "Worker " + TOKEN:
                     self.reply(401, {"code": "worker.unauthenticated", "error": "worker authentication required"})
@@ -104,12 +108,14 @@ class FakeCloud:
                         self.reply(200, {})
                 elif parts[-1] == "source-url":
                     server.source_urls += 1
-                    self.reply(200, {"url": f"http://127.0.0.1:{server.port}/gcs/source?generation=42", "expiresAt": "2026-09-12T00:00:00Z"})
+                    origin = "" if server.relative else f"http://127.0.0.1:{server.port}"
+                    self.reply(200, {"url": f"{origin}/gcs/source?generation=42", "expiresAt": "2026-09-12T00:00:00Z"})
                 elif parts[-1] == "outputs":
                     name = f"runs/{parts[3]}/attempts/{body['attempt']}/{body['fileName']}"
                     server.declared[name] = body
                     key = name.replace("/", "_")
-                    self.reply(201, {"objectName": name, "upload": {"method": "POST", "url": f"http://127.0.0.1:{server.port}/gcs/start/{key}",
+                    origin = "" if server.relative else f"http://127.0.0.1:{server.port}"
+                    self.reply(201, {"objectName": name, "upload": {"method": "POST", "url": f"{origin}/gcs/start/{key}",
                                                                      "headers": {"Content-Type": body["contentType"], "x-goog-resumable": "start"}}})
                 elif parts[-1] == "result":
                     server.results.append(body)
@@ -166,6 +172,21 @@ def test_a_job_uploads_verified_outputs_and_submits_no_metrics(tmp_path: Path, w
     assert cloud.declared[prefix + "trajectory.json"]["contentType"] == "application/json"
     # Neither the token nor signed URLs reach the logs.
     assert TOKEN not in caplog.text and "gcs/" not in caplog.text
+
+
+def test_relative_signed_urls_resolve_against_the_api(tmp_path: Path, walk: bytes) -> None:
+    # An API with LOCAL_STORAGE_DIR signs paths on itself and answers upload
+    # sessions with a path; the worker prefixes its API base URL.
+    job = synthetic.job(clip_start_us=500_000, clip_end_us=2_500_000)
+    cloud = FakeCloud(walk, [job])
+    cloud.relative = True
+    api = WorkerApi(f"http://127.0.0.1:{cloud.port}/", TOKEN)
+    assert run_once(api, tmp_path, heartbeat_s=0.05) is True
+    assert not cloud.failures and len(cloud.results) == 1 and cloud.downloads == 1
+    for name, declared in cloud.declared.items():
+        data = cloud.uploaded(name)
+        assert declared["sizeBytes"] == len(data) and declared["crc32c"] == crc(data)
+    assert api.absolute("https://storage.example/o?sig=1") == "https://storage.example/o?sig=1"
 
 
 def test_open_clips_report_their_measured_duration(tmp_path: Path, walk: bytes) -> None:

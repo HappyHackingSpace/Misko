@@ -15,7 +15,7 @@ Mişko birlikte çalışan birkaç parçadan oluşur:
 - **Backend** (Go API) iş mantığını barındırır ve veritabanıyla konuşur.
 - **Jobs**, analiz çalıştırmalarını kuyruklayan ve süresi dolanları yeniden kuyruğa alan küçük bir süreçtir.
 - **Frontend** (Vue 3 tek sayfa uygulaması, Nginx ile sunulur) tarayıcıda kullandığınız web panelidir.
-- **Worker** (Python) kaydedilen videoları analiz eder. Opsiyoneldir ve bulut depolama ister.
+- **Worker** (Python) kaydedilen videoları analiz eder. Opsiyoneldir.
 
 Docker ile hepsini birlikte başlatırsınız. Geliştirme için veritabanını Docker'da,
 uygulamaları ise kaynaktan çalıştırabilirsiniz.
@@ -78,19 +78,32 @@ reddeder. Giriş yapın, şifreyi değiştirin, ardından diğer kullanıcılar�
 
 ### Video depolama
 
-Video yüklemek ve oynatmak için özel bir Google Cloud Storage bucket'ı gerekir;
-bunun için `GCS_BUCKET` (ve `GCS_SIGNER_EMAIL`) değerlerini verin. Bucket yoksa
-bu uçlar 503 döner ve geri kalan her şey normal çalışır; sistemi incelemek için
-bu yeterlidir.
+Varsayılan olarak videolar ve analiz çıktıları bu makinede, `local-videos` Docker
+volume'unda tutulur. Backend `LOCAL_STORAGE_DIR=/data/videos` ile çalışır ve
+yükleme ile oynatma URL'lerini `/api/local-storage/` altında kendisi sunar; bulut
+hesabı gerekmez. URL'ler `JWT_SECRET` ile imzalanır ve bulut depolamadaki gibi
+süresi dolar.
+
+Bunun yerine özel bir Google Cloud Storage bucket'ı kullanmak için `GCS_BUCKET`
+(ve `GCS_SIGNER_EMAIL`) değerlerini verin. Bucket ayarlıysa yerel klasörün önüne
+geçer.
+
+### Önceki bir sürümden yükseltme
+
+Veritabanı volume'unun adı artık `postgres-data`. Eski `foundation-db` ve `db-data`
+volume'ları artık bağlanmaz ve olduğu gibi bırakılır, asla silinmez; bu yüzden
+yükseltmeden sonra yığın boş bir veritabanıyla başlar: `migrate` ve `setup`
+komutlarını tekrar çalıştırın. Eski bir volume'a artık ihtiyacınız yoksa
+`docker volume rm` ile kaldırın (`docker volume ls` hepsini listeler).
 
 ### Durdurma ve sıfırlama
 
 ```bash
 docker compose down            # konteynerleri durdurur, veriyi korur
-docker compose down -v         # durdurur VE veritabanı volume'unu siler (tam sıfırlama)
+docker compose down -v         # durdurur VE veritabanı ile video volume'larını siler (tam sıfırlama)
 ```
 
-`down -v` sonrasında veritabanı yeniden boştur; yığını başlatmadan önce `migrate`
+`down -v` sonrasında veritabanı ve saklanan videolar silinmiştir; yığını başlatmadan önce `migrate`
 ve `setup` komutlarını tekrar çalıştırın.
 
 ## Seçenek B: Yerel geliştirme
@@ -110,8 +123,13 @@ export DATABASE_URL='postgres://misko:misko_local_only@127.0.0.1:5432/misko_foun
 export JWT_SECRET="$(openssl rand -base64 48)"
 go run ./cmd/bootstrap migrate  # şemayı kurar veya günceller
 go run ./cmd/bootstrap setup    # laboratuvarı ve yöneticiyi oluşturur
+export LOCAL_STORAGE_DIR="$PWD/.local-storage"   # opsiyonel: videoları bir klasörde tutar
 go run ./cmd/api                # API: http://localhost:4000
 ```
+
+`LOCAL_STORAGE_DIR` ayarlıyken API videoları o klasörde tutar ve panel aynı `/api`
+yönlendirmesi üzerinden oraya yükler. Kaynaktan çalışan bir worker
+`MISKO_API_URL=http://localhost:4000` ile dosyalara aynı yoldan ulaşır.
 
 **Frontend** (ikinci terminal):
 
@@ -138,9 +156,14 @@ yığın yalnızca geliştirme içindir.
 | `LAB_TIMEZONE` | `UTC` | Laboratuvar kayıtlarının kullandığı saat dilimi. |
 | `FRONTEND_PORT` | `8080` | Web panelinin host portu. |
 | `JOB_INTERVAL` | `10s` | Jobs sürecinin analiz çalıştırmalarını kuyruklama sıklığı. |
-| `GCS_BUCKET` | boş | Videolar için özel bucket. Boşsa video uçları 503 döner. |
+| `GCS_BUCKET` | boş | Videolar için özel bucket. Ayarlıysa yerel depolama yerine kullanılır. |
 | `GCS_SIGNER_EMAIL` | boş | Yükleme ve okuma URL'lerini imzalayan servis hesabı. |
 | `MISKO_WORKER_TOKEN` | boş | Yalnızca `worker` profili için, API'de bir worker kaydettikten sonra. |
+
+`docker-compose.yml` içinde backend ayrıca `local-videos` volume'unda
+`LOCAL_STORAGE_DIR=/data/videos` ile çalışır. Docker dışında videoları bir klasörde
+tutmak için `LOCAL_STORAGE_DIR` değerini verin; o da `GCS_BUCKET` da yoksa video
+uçları 503 döner.
 
 Docker dışında çalışan backend için `TOKEN_TTL`, `BCRYPT_COST`, `UPLOAD_URL_TTL`
 ve `READ_URL_TTL` dahil tam liste `backend/.env.example` içindedir.
@@ -164,5 +187,6 @@ içinde anlatılır.
 - **Port kullanımda**: `.env` içinde `FRONTEND_PORT` değerini değiştirin ya da 4000 portunu tutan süreci durdurup tekrar `docker compose up -d` çalıştırın.
 - **Giriş yapamıyorum, şifre kayboldu**: şifre bir kez gösterilir ve geri alınamaz. `docker compose down -v` ile sıfırlayıp `migrate` ve `setup` komutlarını tekrar çalıştırın.
 - **`setup` çalışmayı reddediyor**: şifreyi yazmak için bir terminale ihtiyacı var. Betik içinde çalıştırıyorsanız, henüz var olmayan bir yol ile `-credentials-file` verin.
-- **Video yükleme 503 dönüyor**: `GCS_BUCKET` ayarlı değil. Bucket olmadan bu beklenen davranıştır.
+- **Video yükleme 503 dönüyor**: backend'de ne `LOCAL_STORAGE_DIR` ne de `GCS_BUCKET` ayarlı.
+- **Yükseltmeden sonra veritabanı boş**: yığın artık `postgres-data` volume'unu kullanır. `migrate` ve `setup` çalıştırın; verisine ihtiyacınız olursa eski volume hâlâ yerindedir.
 - **Backend veritabanına ulaşamıyor**: `db` konteynerinin sağlıklı olduğundan emin olun (`docker compose ps`).

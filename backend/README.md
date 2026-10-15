@@ -415,11 +415,22 @@ no cloud resources:
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `GCS_BUCKET` | empty | Bucket name; empty makes video routes return 503 `media.storageNotConfigured` |
+| `GCS_BUCKET` | empty | Bucket name; takes precedence over `LOCAL_STORAGE_DIR`. With neither, video routes return 503 `media.storageNotConfigured` |
+| `LOCAL_STORAGE_DIR` | empty | Keep objects as files in this directory instead of GCS (development, single machine) |
 | `GCS_SIGNER_EMAIL` | empty | Service account used to sign URLs through IAM |
 | `VIDEO_MAX_BYTES` | 21474836480 | Largest accepted video, 1 MiB to 5 TiB |
 | `UPLOAD_URL_TTL` | 1h | Validity of the signed upload start, 1m to 168h |
 | `READ_URL_TTL` | 15m | Validity of read URLs, 1m to 12h |
+
+Local storage (`internal/media/adapters/localfs`) keeps each object under
+`LOCAL_STORAGE_DIR/objects` with its generation, size, CRC32C and content type,
+and never overwrites one (`if-generation-match: 0`). The API serves its signed
+URLs under `/api/local-storage/`: the same resumable upload (POST start, PUT
+chunks answered by 308 with `Range`, a 256 KiB granularity) and generation
+pinned ranged reads as a bucket, so the panel and the worker need no changes.
+The URLs are relative, HMAC-SHA256 signed with a key derived from `JWT_SECRET`,
+and expire after `UPLOAD_URL_TTL` or `READ_URL_TTL`; the worker prefixes
+`MISKO_API_URL`.
 
 The unit and integration tests use a fake object store and an offline signer;
 they do not prove real GCS behavior. The live smoke test uploads a 3 MiB object
@@ -683,8 +694,10 @@ curl -X POST http://127.0.0.1:4000/api/auth/login \
 curl http://127.0.0.1:4000/api/auth/me -H 'Authorization: Bearer TOKEN'
 ```
 
-The Compose project `misko` uses a new `foundation-db` volume; it
-does not mount the old installation's volume. Credentials and `JWT_SECRET` in
+The Compose project `misko` keeps the database on the `postgres-data` volume;
+it does not mount the older `foundation-db` or `db-data` volumes, which are left
+untouched. Videos are kept on the `local-videos` volume through
+`LOCAL_STORAGE_DIR`. Credentials and `JWT_SECRET` in
 `docker-compose.yml` are development-only and the API binds to loopback. No
 frontend or GCP deployment is started. Re-running `migrate` applies only pending
 migrations and does nothing on an up-to-date database.

@@ -8,10 +8,14 @@ import (
 	"time"
 )
 
-// Storage configures Google Cloud Storage for videos. An empty Bucket disables
-// video routes. Credentials come from Application Default Credentials.
+// Storage configures video storage: Google Cloud Storage when Bucket is set,
+// otherwise a local directory when LocalDir is set. With neither, video routes
+// are disabled. GCS credentials come from Application Default Credentials.
 type Storage struct {
 	Bucket string
+	// LocalDir keeps objects as files on this machine, for development and
+	// single machine installations; the API serves the signed URLs itself.
+	LocalDir string
 	// SignerEmail is the service account that signs URLs through IAM when the
 	// credentials themselves cannot sign, for example with workload identity.
 	SignerEmail   string
@@ -20,13 +24,16 @@ type Storage struct {
 	ReadURLTTL    time.Duration
 }
 
-func (s Storage) Enabled() bool { return s.Bucket != "" }
+func (s Storage) Enabled() bool { return s.Bucket != "" || s.LocalDir != "" }
+
+// Local reports whether videos are kept in LocalDir; a bucket takes precedence.
+func (s Storage) Local() bool { return s.Bucket == "" && s.LocalDir != "" }
 
 var bucketName = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{1,61}[a-z0-9]$`)
 
 // LoadStorage reads storage settings. Errors never echo configured values.
 func LoadStorage(getenv func(string) string) (Storage, error) {
-	s := Storage{Bucket: getenv("GCS_BUCKET"), SignerEmail: getenv("GCS_SIGNER_EMAIL"), MaxVideoBytes: 20 << 30}
+	s := Storage{Bucket: getenv("GCS_BUCKET"), SignerEmail: getenv("GCS_SIGNER_EMAIL"), LocalDir: getenv("LOCAL_STORAGE_DIR"), MaxVideoBytes: 20 << 30}
 	if s.Bucket != "" && !bucketName.MatchString(s.Bucket) {
 		return Storage{}, errors.New("GCS_BUCKET must be a valid bucket name of 3 to 63 lowercase characters")
 	}
