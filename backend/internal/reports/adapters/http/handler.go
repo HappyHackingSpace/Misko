@@ -1,15 +1,10 @@
-// Package reportshttp exposes read-only reports, their CSV and JSON exports and
-// group comparisons.
+// Package reportshttp exposes the study report of an experiment and its CSV
+// export.
 package reportshttp
 
 import (
 	"bytes"
 	"encoding/csv"
-	"errors"
-	access "github.com/HappyHackingSpace/Misko/backend/internal/access/domain"
-	"github.com/HappyHackingSpace/Misko/backend/internal/platform/httpjson"
-	"github.com/HappyHackingSpace/Misko/backend/internal/reports/application"
-	"github.com/HappyHackingSpace/Misko/backend/internal/reports/domain"
 	"io"
 	"log/slog"
 	"net/http"
@@ -17,15 +12,20 @@ import (
 	"strings"
 	"time"
 	"unicode/utf16"
+
+	access "github.com/HappyHackingSpace/Misko/backend/internal/access/domain"
+	"github.com/HappyHackingSpace/Misko/backend/internal/platform/httpjson"
+	"github.com/HappyHackingSpace/Misko/backend/internal/reports/application"
+	"github.com/HappyHackingSpace/Misko/backend/internal/reports/domain"
 )
 
 var failures = []httpjson.Failure{
 	{Err: access.ErrUnauthenticated, Status: http.StatusUnauthorized, Code: "auth.unauthenticated"},
 	{Err: access.ErrForbidden, Status: http.StatusForbidden, Code: "auth.forbidden"},
 	{Err: application.ErrInvalidQuery, Status: http.StatusBadRequest, Code: "report.invalidQuery"},
-	{Err: application.ErrSummaryScope, Status: http.StatusBadRequest, Code: "report.invalidSummary"},
+	{Err: application.ErrExperimentNotFound, Status: http.StatusNotFound, Code: "report.experimentNotFound"},
+	{Err: application.ErrEndpointNotFound, Status: http.StatusNotFound, Code: "report.endpointNotFound"},
 	{Err: application.ErrExportTooLarge, Status: http.StatusBadRequest, Code: "report.exportTooLarge"},
-	{Err: domain.ErrIncompatibleVersions, Status: http.StatusConflict, Code: "report.incompatibleVersions"},
 }
 
 type handler struct {
@@ -36,11 +36,8 @@ type handler struct {
 
 func Register(mux *http.ServeMux, service *application.Service, authenticate func(*http.Request) (access.Actor, error), logger *slog.Logger) {
 	h := handler{service: service, authenticate: authenticate, logger: logger}
-	mux.HandleFunc("GET /api/reports/metrics", h.with(h.metrics))
-	mux.HandleFunc("GET /api/reports/metrics/export", h.with(h.exportMetrics))
-	mux.HandleFunc("GET /api/reports/events", h.with(h.events))
-	mux.HandleFunc("GET /api/reports/events/export", h.with(h.exportEvents))
-	mux.HandleFunc("GET /api/reports/metric-summary", h.with(h.summary))
+	mux.HandleFunc("GET /api/experiments/{id}/report", h.with(h.report))
+	mux.HandleFunc("GET /api/experiments/{id}/report/export", h.with(h.export))
 }
 
 func (h handler) with(next func(http.ResponseWriter, *http.Request, access.Actor)) http.HandlerFunc {
@@ -54,125 +51,36 @@ func (h handler) with(next func(http.ResponseWriter, *http.Request, access.Actor
 	}
 }
 
-func query(r *http.Request) application.Query {
-	v := r.URL.Query()
-	return application.Query{
-		ExperimentID: v.Get("experimentId"), SubjectID: v.Get("subjectId"), GroupID: v.Get("groupId"), PhaseID: v.Get("phaseId"),
-		TestID: v.Get("testId"), EnvironmentID: v.Get("environmentId"), VideoID: v.Get("videoId"), RunID: v.Get("runId"),
-		DiseaseModelID: v.Get("diseaseModelId"), SubstanceID: v.Get("substanceId"), ParadigmKey: v.Get("paradigmKey"),
-		MetricKey: v.Get("metricKey"), EventType: v.Get("eventType"),
-		ParadigmVersion: httpjson.QueryInt(v.Get("paradigmVersion")), MetricEngineVersion: httpjson.QueryInt(v.Get("metricEngineVersion")),
-		Selection: v.Get("selection"), Sort: v.Get("sort"), Order: v.Get("order"),
-		Page: httpjson.QueryInt(v.Get("page")), PageSize: httpjson.QueryInt(v.Get("pageSize")),
-	}
-}
-
-func (h handler) metrics(w http.ResponseWriter, r *http.Request, actor access.Actor) {
-	page, err := h.service.Metrics(r.Context(), actor, query(r))
+func (h handler) report(w http.ResponseWriter, r *http.Request, actor access.Actor) {
+	data, err := h.service.Report(r.Context(), actor, r.PathValue("id"), r.URL.Query().Get("endpointId"))
 	if err != nil {
 		h.fail(w, r, err)
 		return
 	}
-	httpjson.Write(w, http.StatusOK, pageJSON{mapSlice(page.Rows, toMetric), page.Total, page.Page, page.PageSize})
+	httpjson.Write(w, http.StatusOK, toReport(data.Report))
 }
 
-func (h handler) events(w http.ResponseWriter, r *http.Request, actor access.Actor) {
-	page, err := h.service.Events(r.Context(), actor, query(r))
+// export writes one row per animal and test at the endpoint's timepoint and
+// baseline (level=animals, the default) or one row per group and timepoint
+// (level=groups).
+func (h handler) export(w http.ResponseWriter, r *http.Request, actor access.Actor) {
+	level := r.URL.Query().Get("level")
+	if level != "" && level != "animals" && level != "groups" {
+		h.fail(w, r, application.ErrInvalidQuery)
+		return
+	}
+	data, err := h.service.Report(r.Context(), actor, r.PathValue("id"), r.URL.Query().Get("endpointId"))
 	if err != nil {
 		h.fail(w, r, err)
 		return
 	}
-	httpjson.Write(w, http.StatusOK, pageJSON{mapSlice(page.Rows, toEvent), page.Total, page.Page, page.PageSize})
-}
-
-func (h handler) exportMetrics(w http.ResponseWriter, r *http.Request, actor access.Actor) {
-	format, ok := h.format(w, r)
-	if !ok {
+	if level == "groups" {
+		header, records := groupRecords(data.Report)
+		h.csv(w, r, "misko-report-groups.csv", header, records)
 		return
 	}
-	rows, err := h.service.ExportMetrics(r.Context(), actor, query(r))
-	if err != nil {
-		h.fail(w, r, err)
-		return
-	}
-	if format == "json" {
-		httpjson.Write(w, http.StatusOK, dataJSON{mapSlice(rows, toMetric)})
-		return
-	}
-	header := append(append([]string{}, provenanceHeader...), "metricKey", "unit", "value", "missingReason")
-	records := make([][]string, 0, len(rows))
-	for _, m := range rows {
-		value := ""
-		if m.Value != nil {
-			value = strconv.FormatFloat(*m.Value, 'g', -1, 64)
-		}
-		records = append(records, append(provenanceCells(m.Provenance), cell(m.MetricKey), cell(m.Unit), value, cell(m.MissingReason)))
-	}
-	h.csv(w, r, "misko-metrics.csv", header, records)
-}
-
-func (h handler) exportEvents(w http.ResponseWriter, r *http.Request, actor access.Actor) {
-	format, ok := h.format(w, r)
-	if !ok {
-		return
-	}
-	rows, err := h.service.ExportEvents(r.Context(), actor, query(r))
-	if err != nil {
-		h.fail(w, r, err)
-		return
-	}
-	if format == "json" {
-		httpjson.Write(w, http.StatusOK, dataJSON{mapSlice(rows, toEvent)})
-		return
-	}
-	header := append(append([]string{}, provenanceHeader...), "eventId", "eventType", "kind", "startUs", "endUs", "confidence",
-		"trialId", "trialNumber", "trialRepetition", "trialAttempt")
-	records := make([][]string, 0, len(rows))
-	for _, e := range rows {
-		trial := []string{"", "", "", ""}
-		if e.TrialID != "" {
-			trial = []string{e.TrialID, strconv.Itoa(e.TrialNumber), strconv.Itoa(e.TrialRepetition), strconv.Itoa(e.TrialAttempt)}
-		}
-		records = append(records, append(append(provenanceCells(e.Provenance), e.EventID, cell(e.EventType), e.Kind,
-			strconv.FormatInt(e.StartUs, 10), strconv.FormatInt(e.EndUs, 10), strconv.FormatFloat(e.Confidence, 'g', -1, 64)), trial...))
-	}
-	h.csv(w, r, "misko-events.csv", header, records)
-}
-
-func (h handler) summary(w http.ResponseWriter, r *http.Request, actor access.Actor) {
-	s, err := h.service.Summary(r.Context(), actor, query(r))
-	var incompatible domain.IncompatibleError
-	if errors.As(err, &incompatible) {
-		// The versions come from stored results and tell the client which filters to add.
-		httpjson.Error(w, http.StatusConflict, "report.incompatibleVersions", incompatible.Error())
-		return
-	}
-	if err != nil {
-		h.fail(w, r, err)
-		return
-	}
-	body := summaryJSON{MetricKey: s.MetricKey, Groups: []groupJSON{}}
-	if s.Version != nil {
-		body.Version = &versionJSON{s.Version.ParadigmKey, s.Version.ParadigmVersion, s.Version.MetricEngineVersion, s.Version.Unit}
-	}
-	for _, g := range s.Groups {
-		body.Groups = append(body.Groups, groupJSON{
-			GroupID: nullable(g.GroupID), GroupName: nullable(g.GroupName), GroupRole: nullable(g.GroupRole), Tests: g.Tests, Subjects: g.Subjects,
-			MissingSubjects: g.MissingSubjects, MissingReasons: g.MissingReasons, Mean: g.Mean, SD: g.SD, SEM: g.SEM, Min: g.Min, Max: g.Max,
-		})
-	}
-	httpjson.Write(w, http.StatusOK, body)
-}
-
-func (h handler) format(w http.ResponseWriter, r *http.Request) (string, bool) {
-	switch f := r.URL.Query().Get("format"); f {
-	case "", "csv":
-		return "csv", true
-	case "json":
-		return f, true
-	}
-	h.fail(w, r, application.ErrInvalidQuery)
-	return "", false
+	header, records := animalRecords(data)
+	h.csv(w, r, "misko-report-animals.csv", header, records)
 }
 
 func (h handler) csv(w http.ResponseWriter, r *http.Request, name string, header []string, records [][]string) {
@@ -214,6 +122,99 @@ func (h handler) fail(w http.ResponseWriter, r *http.Request, err error) {
 	httpjson.Fail(w, r, h.logger, err, failures)
 }
 
+var animalHeader = []string{
+	"experimentCode", "endpointId", "endpointKind", "paradigmKey", "metricKey", "timepoint", "studyDay", "baseline",
+	"groupCode", "groupName", "groupRole", "diseaseModel", "substance", "dose", "doseUnit",
+	"subjectCode", "allocationId", "testSubjectId", "testId", "arena", "scheduledAt", "excluded", "resultStatus", "resultRunId",
+	"value", "unit", "missingReason", "paradigmVersion", "metricEngineVersion",
+}
+
+func animalRecords(d application.Data) ([]string, [][]string) {
+	groups, timepoints := groupIndex(d.Report), timepointIndex(d.Report)
+	var records [][]string
+	for i, s := range d.Report.Sections {
+		e := s.Endpoint
+		for _, m := range d.Measurements[i] {
+			if m.TimepointID != e.TimepointID && m.TimepointID != e.BaselineTimepointID {
+				continue
+			}
+			g, tp := groups[m.GroupID], timepoints[m.TimepointID]
+			value, engine := "", ""
+			if m.Value != nil {
+				value = number(*m.Value)
+			}
+			if m.HasMetric {
+				engine = strconv.Itoa(m.MetricEngineVersion)
+			}
+			records = append(records, []string{
+				cell(d.Report.Experiment.Code), e.ID, e.Kind, e.ParadigmKey, e.MetricKey, cell(tp.Name), strconv.Itoa(tp.StudyDay),
+				strconv.FormatBool(m.TimepointID == e.BaselineTimepointID), cell(g.Code), cell(g.Name), g.Role, cell(g.DiseaseModelName),
+				cell(g.SubstanceName), dose(g.DoseMicro), g.Unit, cell(m.SubjectCode), m.AllocationID, m.TestSubjectID, m.TestID, cell(m.Arena),
+				m.ScheduledAt.UTC().Format(time.RFC3339Nano), strconv.FormatBool(m.Excluded), m.ResultStatus, m.ResultRunID,
+				value, cell(m.Unit), cell(m.MissingReason), strconv.Itoa(m.ParadigmVersion), engine,
+			})
+		}
+	}
+	return animalHeader, records
+}
+
+var groupHeader = []string{
+	"experimentCode", "endpointId", "endpointKind", "paradigmKey", "metricKey", "direction", "timepoint", "studyDay", "endpointTimepoint",
+	"groupCode", "groupName", "groupRole", "diseaseModel", "substance", "dose", "doseUnit",
+	"n", "mean", "sd", "sem", "min", "max", "tested", "pending", "awaitingAnalysis", "rejected", "missing", "excluded",
+	"changeN", "changeMean", "changeSd", "changeSem", "comparable",
+}
+
+func groupRecords(r domain.Report) ([]string, [][]string) {
+	groups, timepoints := groupIndex(r), timepointIndex(r)
+	var records [][]string
+	for _, s := range r.Sections {
+		e := s.Endpoint
+		for _, tc := range s.TimeCourse {
+			stats := tc.Groups
+			// The endpoint's own timepoint carries the change from baseline.
+			if tc.TimepointID == e.TimepointID {
+				stats = s.Groups
+			}
+			tp := timepoints[tc.TimepointID]
+			for _, st := range stats {
+				g := groups[st.GroupID]
+				row := []string{
+					cell(r.Experiment.Code), e.ID, e.Kind, e.ParadigmKey, e.MetricKey, e.Direction, cell(tp.Name), strconv.Itoa(tp.StudyDay),
+					strconv.FormatBool(tc.TimepointID == e.TimepointID), cell(g.Code), cell(g.Name), g.Role, cell(g.DiseaseModelName),
+					cell(g.SubstanceName), dose(g.DoseMicro), g.Unit,
+					strconv.Itoa(st.N), optional(st.Mean), optional(st.SD), optional(st.SEM), optional(st.Min), optional(st.Max),
+					strconv.Itoa(st.Tested), strconv.Itoa(st.Pending), strconv.Itoa(st.AwaitingAnalysis), strconv.Itoa(st.Rejected),
+					strconv.Itoa(st.Missing), strconv.Itoa(st.Excluded),
+				}
+				if c := st.Change; c != nil {
+					row = append(row, strconv.Itoa(c.N), optional(c.Mean), optional(c.SD), optional(c.SEM))
+				} else {
+					row = append(row, "", "", "", "")
+				}
+				records = append(records, append(row, strconv.FormatBool(s.Comparable)))
+			}
+		}
+	}
+	return groupHeader, records
+}
+
+func groupIndex(r domain.Report) map[string]domain.Group {
+	out := make(map[string]domain.Group, len(r.Groups))
+	for _, g := range r.Groups {
+		out[g.ID] = g
+	}
+	return out
+}
+
+func timepointIndex(r domain.Report) map[string]domain.Timepoint {
+	out := make(map[string]domain.Timepoint, len(r.Timepoints))
+	for _, t := range r.Timepoints {
+		out[t.ID] = t
+	}
+	return out
+}
+
 // cell keeps spreadsheet applications from evaluating stored text as a formula.
 func cell(s string) string {
 	if s != "" && strings.ContainsRune("=+-@\t\r", rune(s[0])) && !isNumber(s) {
@@ -227,141 +228,185 @@ func isNumber(s string) bool {
 	return err == nil
 }
 
-var provenanceHeader = []string{
-	"runId", "latest", "trigger", "modelVersion", "metricEngineVersion", "resultSchemaVersion", "calibrationId", "recordingId",
-	"sourceVideoId", "runFinishedAt", "testId", "testStatus", "scheduledAt", "trialCount", "experimentId", "experimentCode",
-	"subjectId", "subjectCode", "species", "sex", "phaseId", "phaseName", "groupId", "groupName", "groupRole",
-	"paradigmKey", "paradigmVersion", "environmentId", "environmentName", "environmentRevision",
-}
+func number(v float64) string { return strconv.FormatFloat(v, 'g', -1, 64) }
 
-func provenanceCells(p domain.Provenance) []string {
-	return []string{
-		p.RunID, strconv.FormatBool(p.Latest), p.Trigger, cell(p.ModelVersion), strconv.Itoa(p.MetricEngineVersion), strconv.Itoa(p.ResultSchemaVersion),
-		p.CalibrationID, p.RecordingID, p.SourceVideoID, timestamp(p.RunFinishedAt), p.TestID, p.TestStatus, timestamp(p.ScheduledAt),
-		strconv.Itoa(p.TrialCount), p.ExperimentID, cell(p.ExperimentCode), p.SubjectID, cell(p.SubjectCode), p.Species, p.Sex,
-		p.PhaseID, cell(p.PhaseName), p.GroupID, cell(p.GroupName), p.GroupRole, p.ParadigmKey, strconv.Itoa(p.ParadigmVersion),
-		p.EnvironmentID, cell(p.EnvironmentName), strconv.Itoa(p.EnvironmentRevision),
+func optional(v *float64) string {
+	if v == nil {
+		return ""
 	}
+	return number(*v)
 }
 
-func timestamp(t time.Time) string { return t.UTC().Format(time.RFC3339Nano) }
-
-type pageJSON struct {
-	Data     any `json:"data"`
-	Total    int `json:"total"`
-	Page     int `json:"page"`
-	PageSize int `json:"pageSize"`
-}
-
-type dataJSON struct {
-	Data any `json:"data"`
-}
-
-type provenanceJSON struct {
-	RunID               string    `json:"runId"`
-	Latest              bool      `json:"latest"`
-	Trigger             string    `json:"trigger"`
-	ModelVersion        *string   `json:"modelVersion"`
-	MetricEngineVersion int       `json:"metricEngineVersion"`
-	ResultSchemaVersion int       `json:"resultSchemaVersion"`
-	CalibrationID       *string   `json:"calibrationId"`
-	RecordingID         string    `json:"recordingId"`
-	SourceVideoID       string    `json:"sourceVideoId"`
-	RunFinishedAt       time.Time `json:"runFinishedAt"`
-	TestID              string    `json:"testId"`
-	TestStatus          string    `json:"testStatus"`
-	ScheduledAt         time.Time `json:"scheduledAt"`
-	TrialCount          int       `json:"trialCount"`
-	ExperimentID        string    `json:"experimentId"`
-	ExperimentCode      string    `json:"experimentCode"`
-	SubjectID           string    `json:"subjectId"`
-	SubjectCode         string    `json:"subjectCode"`
-	Species             string    `json:"species"`
-	Sex                 string    `json:"sex"`
-	PhaseID             *string   `json:"phaseId"`
-	PhaseName           *string   `json:"phaseName"`
-	GroupID             *string   `json:"groupId"`
-	GroupName           *string   `json:"groupName"`
-	GroupRole           *string   `json:"groupRole"`
-	ParadigmKey         string    `json:"paradigmKey"`
-	ParadigmVersion     int       `json:"paradigmVersion"`
-	EnvironmentID       string    `json:"environmentId"`
-	EnvironmentName     string    `json:"environmentName"`
-	EnvironmentRevision int       `json:"environmentRevision"`
-}
-
-func toProvenance(p domain.Provenance) provenanceJSON {
-	return provenanceJSON{
-		RunID: p.RunID, Latest: p.Latest, Trigger: p.Trigger, ModelVersion: nullable(p.ModelVersion), MetricEngineVersion: p.MetricEngineVersion,
-		ResultSchemaVersion: p.ResultSchemaVersion, CalibrationID: nullable(p.CalibrationID), RecordingID: p.RecordingID, SourceVideoID: p.SourceVideoID,
-		RunFinishedAt: p.RunFinishedAt, TestID: p.TestID, TestStatus: p.TestStatus, ScheduledAt: p.ScheduledAt, TrialCount: p.TrialCount,
-		ExperimentID: p.ExperimentID, ExperimentCode: p.ExperimentCode, SubjectID: p.SubjectID, SubjectCode: p.SubjectCode, Species: p.Species, Sex: p.Sex,
-		PhaseID: nullable(p.PhaseID), PhaseName: nullable(p.PhaseName), GroupID: nullable(p.GroupID), GroupName: nullable(p.GroupName),
-		GroupRole: nullable(p.GroupRole), ParadigmKey: p.ParadigmKey, ParadigmVersion: p.ParadigmVersion, EnvironmentID: p.EnvironmentID,
-		EnvironmentName: p.EnvironmentName, EnvironmentRevision: p.EnvironmentRevision,
+// dose formats a dose stored in millionths of its unit.
+func dose(micro *int64) string {
+	if micro == nil {
+		return ""
 	}
+	return strconv.FormatFloat(float64(*micro)/1e6, 'f', -1, 64)
 }
 
-type metricJSON struct {
-	provenanceJSON
-	MetricKey     string   `json:"metricKey"`
-	Unit          string   `json:"unit"`
-	Value         *float64 `json:"value"`
-	MissingReason *string  `json:"missingReason"`
+type experimentJSON struct {
+	ID      string `json:"id"`
+	Code    string `json:"code"`
+	Title   string `json:"title"`
+	Status  string `json:"status"`
+	Blinded bool   `json:"blinded"`
 }
 
-func toMetric(m domain.MetricRow) metricJSON {
-	return metricJSON{toProvenance(m.Provenance), m.MetricKey, m.Unit, m.Value, nullable(m.MissingReason)}
+type treatmentJSON struct {
+	SubstanceID   string `json:"substanceId"`
+	SubstanceName string `json:"substanceName"`
+	DoseMicro     int64  `json:"doseMicro"`
+	Unit          string `json:"unit"`
 }
 
-type eventJSON struct {
-	provenanceJSON
-	EventID         string  `json:"eventId"`
-	EventType       string  `json:"eventType"`
-	Kind            string  `json:"kind"`
-	StartUs         int64   `json:"startUs"`
-	EndUs           int64   `json:"endUs"`
-	Confidence      float64 `json:"confidence"`
-	TrialID         *string `json:"trialId"`
-	TrialNumber     *int    `json:"trialNumber"`
-	TrialRepetition *int    `json:"trialRepetition"`
-	TrialAttempt    *int    `json:"trialAttempt"`
+type groupJSON struct {
+	ID               string         `json:"id"`
+	Code             string         `json:"code"`
+	Name             string         `json:"name"`
+	Role             string         `json:"role"`
+	DiseaseModelID   *string        `json:"diseaseModelId"`
+	DiseaseModelName *string        `json:"diseaseModelName"`
+	Treatment        *treatmentJSON `json:"treatment"`
+	Allocated        int            `json:"allocated"`
+	Excluded         int            `json:"excluded"`
 }
 
-func toEvent(e domain.EventRow) eventJSON {
-	out := eventJSON{provenanceJSON: toProvenance(e.Provenance), EventID: e.EventID, EventType: e.EventType, Kind: e.Kind, StartUs: e.StartUs, EndUs: e.EndUs, Confidence: e.Confidence}
-	if e.TrialID != "" {
-		out.TrialID, out.TrialNumber, out.TrialRepetition, out.TrialAttempt = &e.TrialID, &e.TrialNumber, &e.TrialRepetition, &e.TrialAttempt
-	}
-	return out
+type timepointJSON struct {
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	StudyDay int    `json:"studyDay"`
+	Position int    `json:"position"`
+}
+
+type endpointJSON struct {
+	ID                  string  `json:"id"`
+	Kind                string  `json:"kind"`
+	ParadigmKey         string  `json:"paradigmKey"`
+	MetricKey           string  `json:"metricKey"`
+	Direction           string  `json:"direction"`
+	TimepointID         string  `json:"timepointId"`
+	BaselineTimepointID *string `json:"baselineTimepointId"`
 }
 
 type versionJSON struct {
-	ParadigmKey         string `json:"paradigmKey"`
 	ParadigmVersion     int    `json:"paradigmVersion"`
 	MetricEngineVersion int    `json:"metricEngineVersion"`
 	Unit                string `json:"unit"`
 }
 
-type groupJSON struct {
-	GroupID         *string        `json:"groupId"`
-	GroupName       *string        `json:"groupName"`
-	GroupRole       *string        `json:"groupRole"`
-	Tests           int            `json:"tests"`
-	Subjects        int            `json:"subjects"`
-	MissingSubjects int            `json:"missingSubjects"`
-	MissingReasons  map[string]int `json:"missingReasons"`
-	Mean            *float64       `json:"mean"`
-	SD              *float64       `json:"sd"`
-	SEM             *float64       `json:"sem"`
-	Min             *float64       `json:"min"`
-	Max             *float64       `json:"max"`
+type descriptivesJSON struct {
+	N    int      `json:"n"`
+	Mean *float64 `json:"mean"`
+	SD   *float64 `json:"sd"`
+	SEM  *float64 `json:"sem"`
+	Min  *float64 `json:"min"`
+	Max  *float64 `json:"max"`
 }
 
-type summaryJSON struct {
-	MetricKey string       `json:"metricKey"`
-	Version   *versionJSON `json:"version"`
-	Groups    []groupJSON  `json:"groups"`
+type groupStatsJSON struct {
+	GroupID string `json:"groupId"`
+	descriptivesJSON
+	Tested           int               `json:"tested"`
+	Pending          int               `json:"pending"`
+	AwaitingAnalysis int               `json:"awaitingAnalysis"`
+	Rejected         int               `json:"rejected"`
+	Missing          int               `json:"missing"`
+	Excluded         int               `json:"excluded"`
+	Change           *descriptivesJSON `json:"change"`
+}
+
+type comparisonJSON struct {
+	Kind                    string   `json:"kind"`
+	GroupID                 string   `json:"groupId"`
+	ReferenceGroupID        string   `json:"referenceGroupId"`
+	HealthyReferenceGroupID *string  `json:"healthyReferenceGroupId"`
+	Difference              *float64 `json:"difference"`
+	PercentDifference       *float64 `json:"percentDifference"`
+	Effect                  *float64 `json:"effect"`
+	RescuePercent           *float64 `json:"rescuePercent"`
+}
+
+type dosePointJSON struct {
+	GroupID       string   `json:"groupId"`
+	DoseMicro     int64    `json:"doseMicro"`
+	N             int      `json:"n"`
+	Mean          *float64 `json:"mean"`
+	RescuePercent *float64 `json:"rescuePercent"`
+}
+
+type doseResponseJSON struct {
+	SubstanceID   string          `json:"substanceId"`
+	SubstanceName string          `json:"substanceName"`
+	Unit          string          `json:"unit"`
+	Points        []dosePointJSON `json:"points"`
+}
+
+type timepointStatsJSON struct {
+	TimepointID string           `json:"timepointId"`
+	Groups      []groupStatsJSON `json:"groups"`
+}
+
+type sectionJSON struct {
+	Endpoint     endpointJSON         `json:"endpoint"`
+	Versions     []versionJSON        `json:"versions"`
+	Comparable   bool                 `json:"comparable"`
+	Groups       []groupStatsJSON     `json:"groups"`
+	Comparisons  []comparisonJSON     `json:"comparisons"`
+	DoseResponse []doseResponseJSON   `json:"doseResponse"`
+	TimeCourse   []timepointStatsJSON `json:"timeCourse"`
+}
+
+type reportJSON struct {
+	Experiment experimentJSON  `json:"experiment"`
+	Groups     []groupJSON     `json:"groups"`
+	Timepoints []timepointJSON `json:"timepoints"`
+	Sections   []sectionJSON   `json:"sections"`
+}
+
+func toReport(r domain.Report) reportJSON {
+	e := r.Experiment
+	out := reportJSON{Experiment: experimentJSON{e.ID, e.Code, e.Title, e.Status, e.Blinded}}
+	out.Groups = mapSlice(r.Groups, func(g domain.Group) groupJSON {
+		j := groupJSON{ID: g.ID, Code: g.Code, Name: g.Name, Role: g.Role, DiseaseModelID: nullable(g.DiseaseModelID),
+			DiseaseModelName: nullable(g.DiseaseModelName), Allocated: g.Allocated, Excluded: g.Excluded}
+		if g.DoseMicro != nil {
+			j.Treatment = &treatmentJSON{g.SubstanceID, g.SubstanceName, *g.DoseMicro, g.Unit}
+		}
+		return j
+	})
+	out.Timepoints = mapSlice(r.Timepoints, func(t domain.Timepoint) timepointJSON { return timepointJSON(t) })
+	out.Sections = mapSlice(r.Sections, toSection)
+	return out
+}
+
+func toSection(s domain.Section) sectionJSON {
+	e := s.Endpoint
+	return sectionJSON{
+		Endpoint:   endpointJSON{e.ID, e.Kind, e.ParadigmKey, e.MetricKey, e.Direction, e.TimepointID, nullable(e.BaselineTimepointID)},
+		Versions:   mapSlice(s.Versions, func(v domain.Version) versionJSON { return versionJSON(v) }),
+		Comparable: s.Comparable,
+		Groups:     mapSlice(s.Groups, toStats),
+		Comparisons: mapSlice(s.Comparisons, func(c domain.Comparison) comparisonJSON {
+			return comparisonJSON{c.Kind, c.GroupID, c.ReferenceGroupID, nullable(c.HealthyReferenceGroupID), c.Difference, c.PercentDifference, c.Effect, c.RescuePercent}
+		}),
+		DoseResponse: mapSlice(s.DoseResponse, func(d domain.DoseResponse) doseResponseJSON {
+			return doseResponseJSON{d.SubstanceID, d.SubstanceName, d.Unit, mapSlice(d.Points, func(p domain.DosePoint) dosePointJSON { return dosePointJSON(p) })}
+		}),
+		TimeCourse: mapSlice(s.TimeCourse, func(t domain.TimepointStats) timepointStatsJSON {
+			return timepointStatsJSON{t.TimepointID, mapSlice(t.Groups, toStats)}
+		}),
+	}
+}
+
+func toStats(s domain.GroupStats) groupStatsJSON {
+	out := groupStatsJSON{GroupID: s.GroupID, descriptivesJSON: descriptivesJSON(s.Descriptives), Tested: s.Tested, Pending: s.Pending,
+		AwaitingAnalysis: s.AwaitingAnalysis, Rejected: s.Rejected, Missing: s.Missing, Excluded: s.Excluded}
+	if s.Change != nil {
+		c := descriptivesJSON(*s.Change)
+		out.Change = &c
+	}
+	return out
 }
 
 func mapSlice[T, U any](items []T, convert func(T) U) []U {

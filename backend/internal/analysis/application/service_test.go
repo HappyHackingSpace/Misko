@@ -21,6 +21,8 @@ var (
 
 var errStoreCalled = errors.New("store called")
 
+const subjectID = "01a00000-0000-7000-8000-0000000000c1"
+
 func guard(fn func() error) (err error) {
 	defer func() {
 		if recover() != nil {
@@ -46,8 +48,14 @@ func TestUserOperationsRequireTheirPermission(t *testing.T) {
 		{"list workers", access.LabConfigure, func(s *Service, a access.Actor) error { return second(s.Workers(ctx, a)) }},
 		{"disable worker", access.LabConfigure, func(s *Service, a access.Actor) error { return second(s.DisableWorker(ctx, a, "worker-a")) }},
 		{"capabilities", access.Read, func(s *Service, a access.Actor) error { return second(s.Capabilities(ctx, a)) }},
-		{"reanalyze", access.TestRun, func(s *Service, a access.Actor) error { return second(s.Reanalyze(ctx, a, "test", "rec")) }},
-		{"list runs", access.Read, func(s *Service, a access.Actor) error { return second(s.Runs(ctx, a, "test")) }},
+		{"reanalyze", access.TestRun, func(s *Service, a access.Actor) error { return second(s.Reanalyze(ctx, a, "subject")) }},
+		{"list runs", access.Read, func(s *Service, a access.Actor) error { return second(s.Runs(ctx, a, "test", "")) }},
+		{"list results", access.Read, func(s *Service, a access.Actor) error { return second(s.Results(ctx, a, ReviewQuery{})) }},
+		{"result", access.Read, func(s *Service, a access.Actor) error { return second(s.Result(ctx, a, subjectID)) }},
+		{"accept", access.TestRun, func(s *Service, a access.Actor) error { return second(s.Accept(ctx, a, subjectID, "")) }},
+		{"reject", access.TestRun, func(s *Service, a access.Actor) error { return second(s.Reject(ctx, a, subjectID, "OTHER", "")) }},
+		{"choose run", access.TestRun, func(s *Service, a access.Actor) error { return second(s.ChooseRun(ctx, a, subjectID, "run-2")) }},
+		{"bulk accept", access.TestRun, func(s *Service, a access.Actor) error { return second(s.AcceptMany(ctx, a, []string{subjectID}, "")) }},
 		{"run detail", access.Read, func(s *Service, a access.Actor) error { return second(s.RunDetail(ctx, a, "run-1")) }},
 		{"video pair", access.Read, func(s *Service, a access.Actor) error { return second(s.VideoPair(ctx, a, "run-1")) }},
 	}
@@ -94,40 +102,100 @@ func TestRegisteredWorkersGetATokenOnce(t *testing.T) {
 	}
 }
 
-// Tick enqueues ready recordings once and returns expired leases to the queue.
-func TestTickEnqueuesOnlyReadyRecordings(t *testing.T) {
+// ready is an eligible animal with a verified current video.
+func ready(id, key string, calibration string) Candidate {
+	return Candidate{TestSubjectID: id, TestID: "t-" + id, RecordingID: "rec", SourceAssetID: "a1", SourceGeneration: 7, ParadigmKey: key, ParadigmVersion: 1,
+		CalibrationID: calibration, VideoVerified: true, ExperimentStatus: "RUNNING"}
+}
+
+// Tick enqueues ready animals once, returns expired leases to the queue and
+// skips a failing candidate without losing the others.
+func TestTickEnqueuesReadyAnimalsAndSkipsFailures(t *testing.T) {
 	expired := running()
 	past := now.Add(-time.Second)
 	expired.LeaseExpiresAt = &past
 	store := &fakeStore{
 		candidates: []Candidate{
-			{RecordingID: "ready", TestID: "t1", SourceAssetID: "a1", SourceGeneration: 7, ParadigmKey: "OPEN_FIELD", ParadigmVersion: 1, CalibrationID: "cal-1", VideoVerified: true},
-			{RecordingID: "uncalibrated", TestID: "t2", SourceGeneration: 7, ParadigmKey: "OPEN_FIELD", ParadigmVersion: 1, VideoVerified: true},
-			{RecordingID: "observed", TestID: "t3", SourceGeneration: 7, ParadigmKey: "ROTAROD", ParadigmVersion: 1, VideoVerified: true},
-			{RecordingID: "no worker", TestID: "t4", SourceGeneration: 7, ParadigmKey: "EPM", ParadigmVersion: 1, CalibrationID: "cal-2", VideoVerified: true},
+			ready("ready", "OPEN_FIELD", "cal-1"),
+			ready("uncalibrated", "OPEN_FIELD", ""),
+			ready("broken", "OPEN_FIELD", "cal-2"),
+			ready("observed", "ROTAROD", "cal-9"),
+			ready("no worker", "EPM", "cal-3"),
+			ready("after", "OPEN_FIELD", "cal-4"),
 		},
-		capabilities: []domain.Capability{{ParadigmKey: "OPEN_FIELD", ParadigmVersion: 1}, {ParadigmKey: "ROTAROD", ParadigmVersion: 1}},
+		failCreate:   map[string]error{"broken": errors.New("insert failed")},
+		capabilities: []domain.Capability{{ParadigmKey: "OPEN_FIELD", ParadigmVersion: 1}, {ParadigmKey: "ROTAROD", ParadigmVersion: 1}, {ParadigmKey: "MAZE", ParadigmVersion: 1}},
 		expired:      []domain.Run{expired},
 	}
 	report, err := newService(store, &fakeObjects{}).Tick(ctx)
-	if err != nil || report.Enqueued != 2 || report.Requeued != 1 {
+	if err != nil || report.Enqueued != 3 || report.Requeued != 1 || len(report.Skipped) != 4 {
 		t.Fatalf("tick: %+v %v", report, err)
 	}
-	var recordings []string
+	// The store is asked only for capabilities the catalog knows, and told which need a calibration.
+	if !slices.Equal(store.askedCapabilities, []domain.Capability{{ParadigmKey: "OPEN_FIELD", ParadigmVersion: 1}, {ParadigmKey: "ROTAROD", ParadigmVersion: 1}}) ||
+		!slices.Equal(store.askedCalibrated, []domain.Capability{{ParadigmKey: "OPEN_FIELD", ParadigmVersion: 1}}) {
+		t.Fatalf("asked: %v %v", store.askedCapabilities, store.askedCalibrated)
+	}
+	var subjects []string
 	for _, r := range store.created {
-		recordings = append(recordings, r.RecordingID)
-		if r.Trigger != domain.Automatic || r.Status != domain.Queued || r.MaxAttempts != 3 || r.MetricEngineVersion != 1 {
+		subjects = append(subjects, r.TestSubjectID)
+		if r.Trigger != domain.Automatic || r.Status != domain.Queued || r.MaxAttempts != 3 || r.MetricEngineVersion != 1 || r.TestID != "t-"+r.TestSubjectID {
 			t.Errorf("created run: %+v", r)
 		}
 	}
-	if !slices.Equal(recordings, []string{"ready", "observed"}) {
-		t.Fatalf("enqueued: %v", recordings)
+	if !slices.Equal(subjects, []string{"ready", "broken", "observed", "after"}) {
+		t.Fatalf("enqueue attempts: %v", subjects)
 	}
-	if store.created[0].CalibrationID != "cal-1" || store.created[1].CalibrationID != "" {
+	if store.created[0].CalibrationID != "cal-1" || store.created[2].CalibrationID != "" {
 		t.Fatalf("pinned calibrations: %+v", store.created)
+	}
+	var skipped []string
+	for _, e := range report.Skipped {
+		skipped = append(skipped, e.Error())
+	}
+	joined := strings.Join(skipped, "|")
+	for _, want := range []string{"capability MAZE v1", "test subject uncalibrated", "test subject broken: insert failed", "test subject no worker"} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("skipped %q missing from %v", want, skipped)
+		}
 	}
 	if len(store.updated) != 1 || store.updated[0].Status != domain.Queued {
 		t.Fatalf("expired lease: %+v", store.updated)
+	}
+}
+
+func TestReanalysisNeedsAnEligibleAnimal(t *testing.T) {
+	technician := access.Actor{UserID: "tech", Role: access.Technician}
+	capabilities := []domain.Capability{{ParadigmKey: "OPEN_FIELD", ParadigmVersion: 1}}
+	for name, mutate := range map[string]func(*Candidate){
+		"no video":             func(c *Candidate) { c.RecordingID = "" },
+		"video not verified":   func(c *Candidate) { c.VideoVerified = false },
+		"test cancelled":       func(c *Candidate) { c.TestCancelled = true },
+		"excluded animal":      func(c *Candidate) { c.Excluded = true },
+		"experiment draft":     func(c *Candidate) { c.ExperimentStatus = "DRAFT" },
+		"no calibration":       func(c *Candidate) { c.CalibrationID = "" },
+		"no capable worker":    func(c *Candidate) { c.ParadigmKey = "EPM" },
+		"paradigm not in code": func(c *Candidate) { c.ParadigmKey = "MAZE" },
+	} {
+		c := ready("s1", "OPEN_FIELD", "cal-1")
+		mutate(&c)
+		store := &fakeStore{candidate: c, capabilities: capabilities}
+		if _, err := newService(store, &fakeObjects{}).Reanalyze(ctx, technician, "s1"); !errors.Is(err, ErrNotReady) || len(store.manual) != 0 {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+	for _, status := range []string{"RUNNING", "COMPLETED"} {
+		c := ready("s1", "OPEN_FIELD", "cal-1")
+		c.ExperimentStatus = status
+		store := &fakeStore{candidate: c, capabilities: capabilities}
+		run, err := newService(store, &fakeObjects{}).Reanalyze(ctx, technician, "s1")
+		if err != nil || run.Trigger != domain.Manual || run.TestSubjectID != "s1" || run.CreatedBy != "tech" || store.locked != "s1" {
+			t.Errorf("%s: %+v %v", status, run, err)
+		}
+	}
+	store := &fakeStore{candidate: ready("s1", "OPEN_FIELD", "cal-1"), capabilities: capabilities, pending: true}
+	if _, err := newService(store, &fakeObjects{}).Reanalyze(ctx, technician, "s1"); !errors.Is(err, ErrRunPending) {
+		t.Fatalf("pending: %v", err)
 	}
 }
 
@@ -135,7 +203,7 @@ func TestClaimCarriesThePinnedCalibration(t *testing.T) {
 	queued := domain.Run{ID: "run-1", TestID: "test", ParadigmKey: "OPEN_FIELD", ParadigmVersion: 1, CalibrationID: "cal-1", Status: domain.Queued, MaxAttempts: 3, AvailableAt: now}
 	store := &fakeStore{next: &queued}
 	job, err := newService(store, &fakeObjects{}).Claim(ctx, worker)
-	if err != nil || job.Run.Attempt != 1 || job.Calibration == nil || job.Calibration.ID != "cal-1" || job.Calibration.Transform[8] != 1 || len(job.Contract.QC) == 0 {
+	if err != nil || job.Run.Attempt != 1 || job.Arena != "arena-1" || job.Calibration == nil || job.Calibration.ID != "cal-1" || job.Calibration.Transform[8] != 1 || len(job.Contract.QC) == 0 {
 		t.Fatalf("job: %+v %v", job, err)
 	}
 	queued.CalibrationID = ""
@@ -150,7 +218,7 @@ func TestClaimCarriesThePinnedCalibration(t *testing.T) {
 
 func running() domain.Run {
 	end := int64(8_000_000)
-	run := domain.Run{ID: "run-1", TestID: "test", RecordingID: "rec", ClipEndUs: &end, ParadigmKey: "OPEN_FIELD", ParadigmVersion: 1,
+	run := domain.Run{ID: "run-1", TestID: "test", TestSubjectID: subjectID, RecordingID: "rec", ClipEndUs: &end, ParadigmKey: "OPEN_FIELD", ParadigmVersion: 1,
 		Parameters: map[string]float64{"arena_width_cm": 50}, Status: domain.Queued, MaxAttempts: 3, AvailableAt: now.Add(-time.Minute)}
 	run, _ = run.Claim("worker-a", now, time.Minute)
 	return run
@@ -252,6 +320,10 @@ func TestSubmitComputesMetricsFromTheVerifiedTrajectory(t *testing.T) {
 	if err != nil || done.Status != domain.Succeeded || done.ModelVersion != "tracker 1.0" || !store.published || store.publishedOutputs[0].Generation != 11 {
 		t.Fatalf("publish: %+v %v %+v", done, err, store.publishedOutputs)
 	}
+	// The first success opens the animal's result for review.
+	if len(store.opened) != 1 || store.opened[0] != (domain.SubjectResult{TestSubjectID: run.TestSubjectID, RunID: run.ID, Status: domain.ResultPending}) {
+		t.Fatalf("opened results: %+v", store.opened)
+	}
 	// The engine received the pinned parameters, the recording duration and the stored samples.
 	if catalog.duration != 8_000_000 || catalog.parameters["arena_width_cm"] != 50 || len(catalog.samples) != 4 || objects.lastGeneration != 12 {
 		t.Fatalf("engine input: %+v generation %d", catalog, objects.lastGeneration)
@@ -265,7 +337,7 @@ func TestSubmitComputesMetricsFromTheVerifiedTrajectory(t *testing.T) {
 	// The same attempt delivered again returns the stored run without publishing twice.
 	again := &fakeStore{run: done, uploads: uploads}
 	repeated, err := newService(again, stored(good, 9)).Submit(ctx, worker, run.ID, submission(run))
-	if err != nil || repeated.Status != domain.Succeeded || again.published {
+	if err != nil || repeated.Status != domain.Succeeded || again.published || len(again.opened) != 0 {
 		t.Fatalf("duplicate delivery: %+v %v published=%v", repeated, err, again.published)
 	}
 }
@@ -372,18 +444,26 @@ func (f *fakeObjects) Read(_ context.Context, object string, generation, limit i
 
 type fakeStore struct {
 	Store
-	tokenHash        []byte
-	candidates       []Candidate
-	capabilities     []domain.Capability
-	expired          []domain.Run
-	created          []domain.Run
-	updated          []domain.Run
-	run              domain.Run
-	next             *domain.Run
-	uploads          []OutputUpload
-	published        bool
-	publishedOutputs []VerifiedOutput
-	publishedResult  domain.Result
+	tokenHash         []byte
+	candidates        []Candidate
+	candidate         Candidate
+	failCreate        map[string]error
+	askedCapabilities []domain.Capability
+	askedCalibrated   []domain.Capability
+	manual            []domain.Run
+	locked            string
+	pending           bool
+	opened            []domain.SubjectResult
+	capabilities      []domain.Capability
+	expired           []domain.Run
+	created           []domain.Run
+	updated           []domain.Run
+	run               domain.Run
+	next              *domain.Run
+	uploads           []OutputUpload
+	published         bool
+	publishedOutputs  []VerifiedOutput
+	publishedResult   domain.Result
 }
 
 func (f *fakeStore) Transaction(_ context.Context, fn func(Store) error) error { return fn(f) }
@@ -405,11 +485,38 @@ func (f *fakeStore) ActiveCapabilities(context.Context) ([]domain.Capability, er
 	return f.capabilities, nil
 }
 
-func (f *fakeStore) ReadyRecordings(context.Context) ([]Candidate, error) { return f.candidates, nil }
+func (f *fakeStore) ReadyTestSubjects(_ context.Context, capabilities, calibrated []domain.Capability) ([]Candidate, error) {
+	f.askedCapabilities, f.askedCalibrated = capabilities, calibrated
+	return f.candidates, nil
+}
 
 func (f *fakeStore) CreateAutomaticRun(_ context.Context, r domain.Run) (bool, error) {
 	f.created = append(f.created, r)
+	if err := f.failCreate[r.TestSubjectID]; err != nil {
+		return false, err
+	}
 	return true, nil
+}
+
+func (f *fakeStore) Candidate(context.Context, string) (Candidate, error) { return f.candidate, nil }
+
+func (f *fakeStore) LockTestSubject(_ context.Context, id string) error {
+	f.locked = id
+	return nil
+}
+
+func (f *fakeStore) PendingRun(context.Context, string) (bool, error) { return f.pending, nil }
+
+func (f *fakeStore) CreateRun(_ context.Context, r domain.Run) (domain.Run, error) {
+	f.manual = append(f.manual, r)
+	return r, nil
+}
+
+func (f *fakeStore) Arena(context.Context, string) (string, error) { return "arena-1", nil }
+
+func (f *fakeStore) OpenResult(_ context.Context, r domain.SubjectResult) error {
+	f.opened = append(f.opened, r)
+	return nil
 }
 
 func (f *fakeStore) LockExpiredRuns(context.Context, time.Time) ([]domain.Run, error) {

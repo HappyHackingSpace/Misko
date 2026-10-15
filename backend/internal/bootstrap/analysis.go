@@ -67,25 +67,40 @@ func newAnalysis(pool *pgxpool.Pool, objects mediaapp.ObjectStore, settings medi
 }
 
 // RunScheduler ticks the analysis scheduler until ctx ends: it returns expired
-// leases to the queue and enqueues ready recordings. Several schedulers may run
-// because enqueueing is idempotent and expired leases are taken with SKIP LOCKED.
-// The scheduler signs no URLs, so it needs no storage configuration.
+// leases to the queue and enqueues one run per ready animal of a test. Several
+// schedulers may run because enqueueing is idempotent and expired leases are
+// taken with SKIP LOCKED. The scheduler signs no URLs, so it needs no storage
+// configuration.
 func RunScheduler(ctx context.Context, pool *pgxpool.Pool, interval time.Duration, logger *slog.Logger) {
 	service := newAnalysis(pool, nil, mediaapp.Settings{})
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for {
 		report, err := service.Tick(ctx)
-		if err != nil && ctx.Err() == nil {
-			logger.ErrorContext(ctx, "analysis scheduler tick failed", "error", err)
-		} else if report != (analysisapp.TickReport{}) {
-			logger.InfoContext(ctx, "analysis scheduler tick", "enqueued", report.Enqueued, "requeued", report.Requeued, "failed", report.Failed)
-		}
+		logTick(ctx, logger, report, err)
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
 		}
+	}
+}
+
+// logTick logs a tick's outcome. Candidates the tick skipped are logged one by
+// one; they never stop the others from being enqueued.
+func logTick(ctx context.Context, logger *slog.Logger, report analysisapp.TickReport, err error) {
+	if err != nil {
+		if ctx.Err() == nil {
+			logger.ErrorContext(ctx, "analysis scheduler tick failed", "error", err)
+		}
+		return
+	}
+	for _, skipped := range report.Skipped {
+		logger.WarnContext(ctx, "analysis scheduler skipped a candidate", "error", skipped)
+	}
+	if report.Enqueued+report.Requeued+report.Failed > 0 {
+		logger.InfoContext(ctx, "analysis scheduler tick", "enqueued", report.Enqueued, "requeued", report.Requeued, "failed", report.Failed,
+			"skipped", len(report.Skipped))
 	}
 }
 
