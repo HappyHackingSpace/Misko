@@ -39,6 +39,8 @@ type User struct {
 	Name      string
 	Role      access.Role
 	CreatedAt time.Time
+	// LastLoginAt is nil until the user signs in for the first time.
+	LastLoginAt *time.Time
 }
 
 // NormalizeEmail trims and lowercases an address so uniqueness is case-insensitive.

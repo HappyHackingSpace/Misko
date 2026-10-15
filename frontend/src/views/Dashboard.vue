@@ -119,9 +119,10 @@ const ICONS = {
   <NSkeleton v-if="!summary && !error" text :repeat="6" />
 
   <template v-if="summary">
+    <div class="groups">
     <section v-for="group in groups" :key="group.key" class="group">
       <h2 class="group-title">{{ group.title }}</h2>
-      <div class="stats" :data-test="`tiles-${group.key}`">
+      <div class="stats" :style="{ '--n': group.tiles.length }" :data-test="`tiles-${group.key}`">
         <component
           :is="tile.to ? RouterLink : 'div'"
           v-for="tile in group.tiles"
@@ -141,6 +142,7 @@ const ICONS = {
         </component>
       </div>
     </section>
+    </div>
 
     <div class="grid-2">
       <NCard size="small" class="list-card">
@@ -181,14 +183,17 @@ const ICONS = {
 <style scoped>
 .head-link { font-size: 13.5px; font-weight: 600; color: var(--accent); text-decoration: none; white-space: nowrap; }
 .head-link:hover { text-decoration: underline; }
-.group { margin-bottom: 22px; }
-.group-title { margin: 0 0 10px; font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
-.stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; }
+/* Each group is one card; groups sit two per row, and the tiles of a group
+   share its width equally, so rows never leave an empty gap. */
+.groups { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-bottom: 16px; }
+.group { padding: 14px; border-radius: 14px; background: var(--panel); border: 1px solid var(--line); box-shadow: var(--shadow-sm); min-width: 0; }
+.group-title { margin: 0 0 12px; font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.stats { display: grid; grid-template-columns: repeat(var(--n, 3), minmax(0, 1fr)); gap: 10px; }
 .tile {
   --tone: var(--muted);
-  display: grid; grid-template-columns: auto 1fr; align-items: center; column-gap: 12px; row-gap: 2px;
-  padding: 14px 16px; border-radius: 14px; background: var(--panel); border: 1px solid var(--line);
-  box-shadow: var(--shadow-sm); color: var(--txt); text-decoration: none;
+  display: flex; flex-direction: column; align-items: flex-start; gap: 6px; min-width: 0;
+  padding: 12px; border-radius: 10px; background: var(--panel2); border: 1px solid var(--line);
+  color: var(--txt); text-decoration: none;
   transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
 }
 .tile.tone-info { --tone: var(--accent); }
@@ -196,17 +201,19 @@ const ICONS = {
 .tile.tone-success { --tone: var(--good); }
 .tile.tone-error { --tone: var(--bad); }
 .tile-icon {
-  grid-row: span 2; display: inline-flex; align-items: center; justify-content: center; width: 38px; height: 38px;
+  display: inline-flex; align-items: center; justify-content: center; width: 38px; height: 38px;
   border-radius: 10px; color: var(--tone); background: color-mix(in srgb, var(--tone) 14%, transparent);
 }
 .tile-value { font-size: 28px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.1; font-variant-numeric: tabular-nums; }
-.tile-label { font-size: 12.5px; color: var(--muted); }
+.tile-label { font-size: 12.5px; color: var(--muted); line-height: 1.3; }
 .tile.clickable:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); border-color: color-mix(in srgb, var(--tone) 45%, var(--line)); }
 .tile.attention { border-color: color-mix(in srgb, var(--tone) 55%, var(--line)); background: color-mix(in srgb, var(--tone) 6%, var(--panel)); }
 .tile.quiet { opacity: 0.6; }
 .grid-2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: stretch; }
 .list-card { height: 100%; }
+@media (max-width: 1100px) { .groups { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 860px) { .grid-2 { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 560px) { .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .timeline { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
 .timeline li { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 10px; border-radius: 8px; }
 .timeline li:hover { background: var(--panel2); }

@@ -65,6 +65,8 @@ type Store interface {
 	// previously issued tokens stop authenticating. It returns the new version.
 	SetPasswordHash(ctx context.Context, id, hash string) (int, error)
 	DeleteUser(ctx context.Context, id string) error
+	// RecordLogin stores the time of a successful sign-in.
+	RecordLogin(ctx context.Context, id string) error
 	CountPrivileged(ctx context.Context) (int, error)
 }
 
@@ -124,6 +126,9 @@ func (s *Service) Login(ctx context.Context, email, password string) (Session, e
 	// Compare even for unknown accounts (empty hash) so timing does not reveal them.
 	if !s.passwords.Matches(account.PasswordHash, password) || err != nil {
 		return Session{}, ErrInvalidCredentials
+	}
+	if err := s.store.RecordLogin(ctx, account.User.ID); err != nil {
+		return Session{}, err
 	}
 	return s.session(account.User, account.SessionVersion)
 }

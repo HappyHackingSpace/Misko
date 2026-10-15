@@ -233,10 +233,12 @@ type userJSON struct {
 	Name      string    `json:"name"`
 	Role      string    `json:"role"`
 	CreatedAt time.Time `json:"createdAt"`
+	// LastLoginAt is null until the first sign-in.
+	LastLoginAt *time.Time `json:"lastLoginAt"`
 }
 
 func toUser(u domain.User) userJSON {
-	return userJSON{ID: u.ID, Email: u.Email, Name: u.Name, Role: string(u.Role), CreatedAt: u.CreatedAt}
+	return userJSON{ID: u.ID, Email: u.Email, Name: u.Name, Role: string(u.Role), CreatedAt: u.CreatedAt, LastLoginAt: u.LastLoginAt}
 }
 
 type sessionJSON struct {

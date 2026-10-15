@@ -8,6 +8,8 @@ package sqlcgen
 import (
 	"context"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const countUsers = `-- name: CountUsers :one
@@ -157,17 +159,18 @@ func (q *Queries) GetAccountByID(ctx context.Context, id string) (GetAccountByID
 }
 
 const getUser = `-- name: GetUser :one
-SELECT id, email, name, role, created_at
+SELECT id, email, name, role, created_at, last_login_at
 FROM misko.users
 WHERE id = $1
 `
 
 type GetUserRow struct {
-	ID        string
-	Email     string
-	Name      string
-	Role      string
-	CreatedAt time.Time
+	ID          string
+	Email       string
+	Name        string
+	Role        string
+	CreatedAt   time.Time
+	LastLoginAt pgtype.Timestamptz
 }
 
 func (q *Queries) GetUser(ctx context.Context, id string) (GetUserRow, error) {
@@ -179,12 +182,13 @@ func (q *Queries) GetUser(ctx context.Context, id string) (GetUserRow, error) {
 		&i.Name,
 		&i.Role,
 		&i.CreatedAt,
+		&i.LastLoginAt,
 	)
 	return i, err
 }
 
 const listUsers = `-- name: ListUsers :many
-SELECT id, email, name, role, created_at
+SELECT id, email, name, role, created_at, last_login_at
 FROM misko.users
 WHERE ($1::text = '' OR name ILIKE '%' || $1::text || '%' ESCAPE '\' OR email ILIKE '%' || $1::text || '%' ESCAPE '\')
   AND ($2::text = '' OR role = $2::text)
@@ -211,11 +215,12 @@ type ListUsersParams struct {
 }
 
 type ListUsersRow struct {
-	ID        string
-	Email     string
-	Name      string
-	Role      string
-	CreatedAt time.Time
+	ID          string
+	Email       string
+	Name        string
+	Role        string
+	CreatedAt   time.Time
+	LastLoginAt pgtype.Timestamptz
 }
 
 // The sort key is allowlisted by the application; id breaks ties for stable paging.
@@ -241,6 +246,7 @@ func (q *Queries) ListUsers(ctx context.Context, arg ListUsersParams) ([]ListUse
 			&i.Name,
 			&i.Role,
 			&i.CreatedAt,
+			&i.LastLoginAt,
 		); err != nil {
 			return nil, err
 		}
@@ -250,6 +256,17 @@ func (q *Queries) ListUsers(ctx context.Context, arg ListUsersParams) ([]ListUse
 		return nil, err
 	}
 	return items, nil
+}
+
+const recordLogin = `-- name: RecordLogin :exec
+UPDATE misko.users SET last_login_at = now() WHERE id = $1
+`
+
+// RecordLogin marks a successful sign-in; it leaves updated_at alone because
+// signing in does not change the account.
+func (q *Queries) RecordLogin(ctx context.Context, id string) error {
+	_, err := q.db.Exec(ctx, recordLogin, id)
+	return err
 }
 
 const setPasswordHash = `-- name: SetPasswordHash :one

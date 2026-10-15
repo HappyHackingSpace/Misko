@@ -1,9 +1,11 @@
 /* Dark is the default theme. Light overrides live in [data-theme="light"].
-   All colors are variables so adding/adjusting a theme is a one-stop change. */
+   All colors are variables so adding/adjusting a theme is a one-stop change.
+   Both themes are neutral: plain grays with no blue cast, and the accent is
+   white on dark just as it is black on light. Hue is kept for status only. */
 :root, :root[data-theme="dark"]{
-  --bg:#0b0f14; --panel:#121a24; --panel2:#0e151d; --line:#233244;
-  --txt:#e6edf3; --muted:#8a9bb0; --accent:#4cc2ff; --accent-fg:#04141d; --good:#46d369; --bad:#ff5c7a; --warn:#ffb454;
-  --input-bg:#0e151d; --btn-bg:#1b2734; --active-bg:#1b2734; --dot:rgba(255,255,255,.05);
+  --bg:#0a0a0a; --panel:#141414; --panel2:#101010; --line:#2a2a2a;
+  --txt:#ededed; --muted:#a1a1a1; --accent:#f5f5f5; --accent-fg:#0a0a0a; --good:#46d369; --bad:#ff5c7a; --warn:#ffb454;
+  --input-bg:#101010; --btn-bg:#1f1f1f; --active-bg:#232323; --dot:rgba(255,255,255,.04);
   --shadow-sm:0 1px 2px rgba(0,0,0,.35); --shadow-md:0 6px 20px rgba(0,0,0,.35);
 }
 :root[data-theme="light"]{

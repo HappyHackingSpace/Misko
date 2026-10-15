@@ -528,6 +528,7 @@ type MiskoUser struct {
 	SessionVersion int32
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
+	LastLoginAt    *time.Time
 }
 
 type MiskoVideoAsset struct {
