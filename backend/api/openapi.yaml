@@ -449,23 +449,6 @@ paths:
         '401': {$ref: '#/components/responses/Problem'}
         '403': {$ref: '#/components/responses/Problem'}
         '404': {$ref: '#/components/responses/Problem'}
-  /api/subjects/{id}/enrollments:
-    parameters:
-      - $ref: '#/components/parameters/ID'
-    get:
-      operationId: listSubjectEnrollments
-      summary: Every enrollment of a subject across experiments, newest first (*:read)
-      responses:
-        '200':
-          description: Enrollments; empty for an unknown subject
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [data]
-                properties:
-                  data: {type: array, items: {$ref: '#/components/schemas/Enrollment'}}
-        '401': {$ref: '#/components/responses/Problem'}
   /api/catalog/substances:
     get:
       operationId: listSubstances
@@ -582,6 +565,7 @@ paths:
       summary: List experiments (*:read)
       parameters:
         - {name: search, in: query, schema: {type: string, maxLength: 100}, description: Case-insensitive match on code or title}
+        - {name: status, in: query, schema: {$ref: '#/components/schemas/ExperimentStatus'}}
         - {name: sort, in: query, schema: {type: string, enum: [code, title, createdAt], default: createdAt}}
         - {name: order, in: query, schema: {type: string, enum: [asc, desc]}, description: Defaults to desc for createdAt and asc otherwise}
         - $ref: '#/components/parameters/Page'
@@ -603,7 +587,7 @@ paths:
         '401': {$ref: '#/components/responses/Problem'}
     post:
       operationId: createExperiment
-      summary: Create an experiment (study:write)
+      summary: Create a draft experiment (study:write)
       requestBody:
         required: true
         content:
@@ -624,18 +608,23 @@ paths:
       - $ref: '#/components/parameters/ID'
     get:
       operationId: getExperiment
-      summary: Experiment with its control requirement status (*:read)
+      summary: One experiment (*:read)
       responses:
         '200':
           description: Experiment
           content:
             application/json:
-              schema: {$ref: '#/components/schemas/ExperimentDetail'}
+              schema: {$ref: '#/components/schemas/Experiment'}
         '401': {$ref: '#/components/responses/Problem'}
         '404': {$ref: '#/components/responses/Problem'}
     patch:
       operationId: updateExperiment
       summary: Update provided experiment fields (study:write)
+      description: >-
+        Code, title and description change until the experiment completes;
+        hypothesis, randomisation and blinded only in a draft
+        (409 experiment.designFrozen). A completed experiment answers 409
+        experiment.completed.
       requestBody:
         required: true
         content:
@@ -652,95 +641,129 @@ paths:
         '403': {$ref: '#/components/responses/Problem'}
         '404': {$ref: '#/components/responses/Problem'}
         '409': {$ref: '#/components/responses/Problem'}
-  /api/experiments/{id}/phases:
+  /api/experiments/{id}/readiness:
     parameters:
       - $ref: '#/components/parameters/ID'
     get:
-      operationId: listPhases
-      summary: Measurement phases ordered by position (*:read)
+      operationId: getExperimentReadiness
+      summary: The start rules the design does not meet yet (*:read)
       responses:
         '200':
-          description: Phases
+          description: Readiness; ready is true when unmet is empty
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Readiness'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+  /api/experiments/{id}/start:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    post:
+      operationId: startExperiment
+      summary: Start a draft with its day 0 (study:write)
+      description: >-
+        Runs the start rules (see Readiness) and moves the experiment to
+        RUNNING. Groups, regimen items, timepoints and endpoints are frozen
+        afterwards. 422 experiment.notReady lists the unmet rules; 409
+        experiment.notDraft when it already started.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [dayZero]
+              properties:
+                dayZero: {type: string, format: date, description: The date study day 0 falls on}
+      responses:
+        '200':
+          description: Running experiment
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Experiment'}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+        '422':
+          description: experiment.notReady with the unmet start rules
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error, code, unmet]
+                properties:
+                  error: {type: string}
+                  code: {type: string, const: experiment.notReady}
+                  unmet: {type: array, items: {$ref: '#/components/schemas/ReadinessProblem'}}
+  /api/experiments/{id}/complete:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    post:
+      operationId: completeExperiment
+      summary: Complete a running experiment; it becomes read-only (study:write)
+      description: >-
+        409 experiment.testsOpen while a test is planned or in progress;
+        409 experiment.notRunning unless the experiment is running.
+      responses:
+        '200':
+          description: Completed experiment
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Experiment'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/experiments/{id}/metric-options:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      operationId: listEndpointMetricOptions
+      summary: Paradigm versions run by the experiment's protocol steps with the metrics an endpoint can name (*:read)
+      responses:
+        '200':
+          description: Options ordered by paradigm key and version
           content:
             application/json:
               schema:
                 type: object
                 required: [data]
                 properties:
-                  data: {type: array, items: {$ref: '#/components/schemas/Phase'}}
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      required: [paradigmKey, paradigmVersion, metrics]
+                      properties:
+                        paradigmKey: {type: string}
+                        paradigmVersion: {type: integer}
+                        metrics: {type: array, items: {type: string}}
         '401': {$ref: '#/components/responses/Problem'}
-        '404': {$ref: '#/components/responses/Problem'}
-    post:
-      operationId: createPhase
-      summary: Add a measurement phase (study:write)
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: {$ref: '#/components/schemas/PhaseInput'}
-      responses:
-        '201':
-          description: Created
-          content:
-            application/json:
-              schema: {$ref: '#/components/schemas/Phase'}
-        '400': {$ref: '#/components/responses/Problem'}
-        '401': {$ref: '#/components/responses/Problem'}
-        '403': {$ref: '#/components/responses/Problem'}
-        '404': {$ref: '#/components/responses/Problem'}
-        '409': {$ref: '#/components/responses/Problem'}
-  /api/experiments/{id}/phases/{phaseId}:
-    parameters:
-      - $ref: '#/components/parameters/ID'
-      - {name: phaseId, in: path, required: true, schema: {type: string, format: uuid}}
-    patch:
-      operationId: updatePhase
-      summary: Update a phase of this experiment (study:write); other experiments' phases are 404
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: {$ref: '#/components/schemas/PhasePatch'}
-      responses:
-        '200':
-          description: Updated phase
-          content:
-            application/json:
-              schema: {$ref: '#/components/schemas/Phase'}
-        '400': {$ref: '#/components/responses/Problem'}
-        '401': {$ref: '#/components/responses/Problem'}
-        '403': {$ref: '#/components/responses/Problem'}
-        '404': {$ref: '#/components/responses/Problem'}
-        '409': {$ref: '#/components/responses/Problem'}
-    delete:
-      operationId: deletePhase
-      summary: Delete a phase of this experiment (study:write)
-      responses:
-        '204': {description: Deleted}
-        '401': {$ref: '#/components/responses/Problem'}
-        '403': {$ref: '#/components/responses/Problem'}
         '404': {$ref: '#/components/responses/Problem'}
   /api/experiments/{id}/groups:
     parameters:
       - $ref: '#/components/parameters/ID'
     get:
       operationId: listGroups
-      summary: Groups with target size and subjects assigned now (*:read)
+      summary: Groups with their fill against the target size (*:read)
       responses:
         '200':
-          description: Groups ordered by name
+          description: Groups ordered by code
           content:
             application/json:
               schema:
                 type: object
                 required: [data]
                 properties:
-                  data: {type: array, items: {$ref: '#/components/schemas/GroupSize'}}
+                  data: {type: array, items: {$ref: '#/components/schemas/GroupFill'}}
         '401': {$ref: '#/components/responses/Problem'}
         '404': {$ref: '#/components/responses/Problem'}
     post:
       operationId: createGroup
-      summary: Add a group (study:write)
+      summary: Add a group to a draft (study:write)
       requestBody:
         required: true
         content:
@@ -763,7 +786,7 @@ paths:
       - {name: groupId, in: path, required: true, schema: {type: string, format: uuid}}
     patch:
       operationId: updateGroup
-      summary: Update a group of this experiment (study:write); other experiments' groups are 404
+      summary: Update a group of a draft (study:write); other experiments' groups are 404
       requestBody:
         required: true
         content:
@@ -782,101 +805,370 @@ paths:
         '409': {$ref: '#/components/responses/Problem'}
     delete:
       operationId: deleteGroup
-      summary: Delete a group without assignments (study:write)
+      summary: Delete a group of a draft with its regimen items (study:write); 409 group.inUse while animals are allocated to it
       responses:
         '204': {description: Deleted}
         '401': {$ref: '#/components/responses/Problem'}
         '403': {$ref: '#/components/responses/Problem'}
         '404': {$ref: '#/components/responses/Problem'}
         '409': {$ref: '#/components/responses/Problem'}
-  /api/experiments/{id}/enrollments:
+  /api/experiments/{id}/regimen-items:
     parameters:
       - $ref: '#/components/parameters/ID'
     get:
-      operationId: listEnrollments
-      summary: List enrollments of this experiment (*:read)
-      parameters:
-        - {name: subjectId, in: query, schema: {type: string, format: uuid}}
-        - {name: groupId, in: query, schema: {type: string, format: uuid}, description: Group assigned now}
-        - {name: order, in: query, schema: {type: string, enum: [asc, desc], default: desc}, description: By enrolledAt}
-        - $ref: '#/components/parameters/Page'
-        - $ref: '#/components/parameters/PageSize'
+      operationId: listRegimenItems
+      summary: What every group receives, ordered by group code and start day (*:read)
       responses:
         '200':
-          description: One page of enrollments
+          description: Regimen items
           content:
             application/json:
               schema:
                 type: object
-                required: [data, total, page, pageSize]
+                required: [data]
                 properties:
-                  data: {type: array, items: {$ref: '#/components/schemas/Enrollment'}}
-                  total: {type: integer}
-                  page: {type: integer}
-                  pageSize: {type: integer}
-        '400': {$ref: '#/components/responses/Problem'}
+                  data: {type: array, items: {$ref: '#/components/schemas/RegimenItem'}}
         '401': {$ref: '#/components/responses/Problem'}
         '404': {$ref: '#/components/responses/Problem'}
     post:
-      operationId: enrollSubject
-      summary: Enroll a subject, optionally into an initial group (study:write)
+      operationId: createRegimenItem
+      summary: Add a regimen item to a group of a draft (study:write); a group has at most one TREATMENT item
       requestBody:
         required: true
         content:
           application/json:
-            schema: {$ref: '#/components/schemas/EnrollmentInput'}
+            schema: {$ref: '#/components/schemas/RegimenItemInput'}
       responses:
         '201':
-          description: Enrolled
+          description: Created
           content:
             application/json:
-              schema: {$ref: '#/components/schemas/Enrollment'}
-        '400':
-          description: enrollment.subjectNotFound, assignment.groupNotInExperiment, common.invalidTime or validation errors
-          content:
-            application/json:
-              schema: {$ref: '#/components/schemas/Problem'}
+              schema: {$ref: '#/components/schemas/RegimenItem'}
+        '400': {$ref: '#/components/responses/Problem'}
         '401': {$ref: '#/components/responses/Problem'}
         '403': {$ref: '#/components/responses/Problem'}
         '404': {$ref: '#/components/responses/Problem'}
         '409': {$ref: '#/components/responses/Problem'}
-  /api/experiments/{id}/enrollments/{enrollmentId}:
+  /api/experiments/{id}/regimen-items/{itemId}:
     parameters:
       - $ref: '#/components/parameters/ID'
-      - {name: enrollmentId, in: path, required: true, schema: {type: string, format: uuid}}
-    get:
-      operationId: getEnrollment
-      summary: Enrollment with its full assignment history (*:read)
-      responses:
-        '200':
-          description: Enrollment
-          content:
-            application/json:
-              schema: {$ref: '#/components/schemas/EnrollmentDetail'}
-        '401': {$ref: '#/components/responses/Problem'}
-        '404': {$ref: '#/components/responses/Problem'}
-  /api/experiments/{id}/enrollments/{enrollmentId}/assignments:
-    parameters:
-      - $ref: '#/components/parameters/ID'
-      - {name: enrollmentId, in: path, required: true, schema: {type: string, format: uuid}}
-    post:
-      operationId: assignGroup
-      summary: Move an enrolled subject to a group from effectiveFrom (study:write)
-      description: >-
-        The open assignment is closed at effectiveFrom and kept as history.
-        409 assignment.alreadyInGroup, assignment.outOfOrder or assignment.overlap;
-        400 assignment.groupNotInExperiment or assignment.beforeEnrollment.
+      - {name: itemId, in: path, required: true, schema: {type: string, format: uuid}}
+    patch:
+      operationId: updateRegimenItem
+      summary: Update a regimen item of a draft (study:write)
       requestBody:
         required: true
         content:
           application/json:
-            schema: {$ref: '#/components/schemas/AssignmentInput'}
+            schema: {$ref: '#/components/schemas/RegimenItemPatch'}
       responses:
-        '201':
-          description: New assignment
+        '200':
+          description: Updated regimen item
           content:
             application/json:
-              schema: {$ref: '#/components/schemas/Assignment'}
+              schema: {$ref: '#/components/schemas/RegimenItem'}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+    delete:
+      operationId: deleteRegimenItem
+      summary: Delete a regimen item of a draft (study:write)
+      responses:
+        '204': {description: Deleted}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/experiments/{id}/timepoints:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      operationId: listTimepoints
+      summary: Timepoints ordered by position (*:read)
+      responses:
+        '200':
+          description: Timepoints
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: {type: array, items: {$ref: '#/components/schemas/Timepoint'}}
+        '401': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+    post:
+      operationId: createTimepoint
+      summary: Add a timepoint to a draft (study:write)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/TimepointInput'}
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Timepoint'}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/experiments/{id}/timepoints/{timepointId}:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+      - {name: timepointId, in: path, required: true, schema: {type: string, format: uuid}}
+    patch:
+      operationId: updateTimepoint
+      summary: Update a timepoint of a draft (study:write)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/TimepointPatch'}
+      responses:
+        '200':
+          description: Updated timepoint
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Timepoint'}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+    delete:
+      operationId: deleteTimepoint
+      summary: Delete a timepoint of a draft (study:write); 409 timepoint.inUse while an endpoint uses it
+      responses:
+        '204': {description: Deleted}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/experiments/{id}/endpoints:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      operationId: listEndpoints
+      summary: Endpoints, primary first (*:read)
+      responses:
+        '200':
+          description: Endpoints
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: {type: array, items: {$ref: '#/components/schemas/Endpoint'}}
+        '401': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+    post:
+      operationId: createEndpoint
+      summary: Add an endpoint to a draft (study:write)
+      description: >-
+        The metric must be computed by a paradigm version that a protocol step
+        of this experiment runs (400 endpoint.metricUnavailable); see
+        metric-options. At most one PRIMARY endpoint (409 endpoint.primaryTaken).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/EndpointInput'}
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Endpoint'}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/experiments/{id}/endpoints/{endpointId}:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+      - {name: endpointId, in: path, required: true, schema: {type: string, format: uuid}}
+    patch:
+      operationId: updateEndpoint
+      summary: Update an endpoint of a draft (study:write)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/EndpointPatch'}
+      responses:
+        '200':
+          description: Updated endpoint
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Endpoint'}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+    delete:
+      operationId: deleteEndpoint
+      summary: Delete an endpoint of a draft (study:write)
+      responses:
+        '204': {description: Deleted}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/experiments/{id}/allocations:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      operationId: listAllocations
+      summary: Allocated animals with every group's fill against its target (*:read)
+      parameters:
+        - {name: groupId, in: query, schema: {type: string, format: uuid}}
+        - {name: excluded, in: query, schema: {type: boolean}}
+      responses:
+        '200':
+          description: Allocations ordered by group code and animal code
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, groups]
+                properties:
+                  data: {type: array, items: {$ref: '#/components/schemas/Allocation'}}
+                  groups: {type: array, items: {$ref: '#/components/schemas/GroupFill'}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+    post:
+      operationId: allocateSubject
+      summary: Allocate an animal to a group of a draft or running experiment (study:write)
+      description: An animal belongs to one group, ever (409 allocation.subjectAllocated).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/AllocationInput'}
+      responses:
+        '201':
+          description: Allocated
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Allocation'}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/experiments/{id}/allocations/randomise:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    post:
+      operationId: randomiseAllocations
+      summary: Distribute animals at random over groups up to their target size (study:write)
+      description: >-
+        Animals are taken in a random order and each goes to a group with the
+        most free places below its target, ties broken at random, so groups
+        fill evenly. Groups without a target take no animals. Either every
+        animal is allocated or none (409 allocation.notEnoughPlaces).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [subjectIds]
+              properties:
+                subjectIds: {type: array, minItems: 1, maxItems: 1000, uniqueItems: true, items: {type: string, format: uuid}}
+                groupIds: {type: array, uniqueItems: true, items: {type: string, format: uuid}, description: Limits randomisation to these groups; default every group}
+                cage: {type: string, minLength: 1, maxLength: 32}
+      responses:
+        '201':
+          description: The new allocations
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: {type: array, items: {$ref: '#/components/schemas/Allocation'}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/experiments/{id}/allocations/{allocationId}:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+      - {name: allocationId, in: path, required: true, schema: {type: string, format: uuid}}
+    patch:
+      operationId: updateAllocation
+      summary: Move an animal to another group (draft only) or set its cage (study:write)
+      description: Once the experiment runs the group is fixed (409 allocation.frozen); the cage changes until it completes.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              minProperties: 1
+              properties:
+                groupId: {type: string, format: uuid}
+                cage: {type: string, maxLength: 32, description: An empty cage clears it}
+      responses:
+        '200':
+          description: Updated allocation
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Allocation'}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+    delete:
+      operationId: removeAllocation
+      summary: Take an animal out of a draft (study:write); a running study excludes instead (409 allocation.frozen)
+      responses:
+        '204': {description: Removed}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/experiments/{id}/allocations/{allocationId}/exclusion:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+      - {name: allocationId, in: path, required: true, schema: {type: string, format: uuid}}
+    post:
+      operationId: excludeAllocation
+      summary: Exclude an animal with a reason, once (study:write)
+      description: The animal stays allocated and is reported as excluded; 409 allocation.alreadyExcluded on a second exclusion.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [reason]
+              properties:
+                reason: {$ref: '#/components/schemas/ExclusionReason'}
+                note: {type: string, maxLength: 2000}
+                excludedAt: {type: string, format: date-time, description: Defaults to now; not before the allocation and not in the future}
+      responses:
+        '200':
+          description: Excluded allocation
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Allocation'}
         '400': {$ref: '#/components/responses/Problem'}
         '401': {$ref: '#/components/responses/Problem'}
         '403': {$ref: '#/components/responses/Problem'}
@@ -2110,7 +2402,6 @@ components:
   schemas:
     Species: {type: string, enum: [MOUSE, RAT]}
     Sex: {type: string, enum: [FEMALE, MALE, UNKNOWN]}
-    GroupRole: {type: string, enum: [CONTROL, TREATMENT]}
     Code:
       type: string
       pattern: '^[A-Za-z0-9._/-]{1,64}$'
@@ -2155,24 +2446,24 @@ components:
         code: {$ref: '#/components/schemas/Code'}
         species: {$ref: '#/components/schemas/Species'}
         sex: {$ref: '#/components/schemas/Sex'}
+    ExperimentStatus: {type: string, enum: [DRAFT, RUNNING, COMPLETED]}
     Experiment:
       type: object
-      required: [id, code, title, description, requiresControl, createdAt, updatedAt]
+      required: [id, code, title, description, hypothesis, randomisation, blinded, status, dayZero, startedAt, completedAt, createdAt, updatedAt]
       properties:
         id: {type: string, format: uuid}
         code: {$ref: '#/components/schemas/Code'}
         title: {type: string, minLength: 1, maxLength: 200}
         description: {type: [string, 'null'], maxLength: 5000}
-        requiresControl: {type: boolean}
+        hypothesis: {type: [string, 'null'], maxLength: 2000}
+        randomisation: {type: [string, 'null'], maxLength: 500, description: How animals are randomised to groups}
+        blinded: {type: boolean}
+        status: {$ref: '#/components/schemas/ExperimentStatus'}
+        dayZero: {type: [string, 'null'], format: date, description: Set when the experiment starts; study days count from it}
+        startedAt: {type: [string, 'null'], format: date-time}
+        completedAt: {type: [string, 'null'], format: date-time}
         createdAt: {type: string, format: date-time}
         updatedAt: {type: string, format: date-time}
-    ExperimentDetail:
-      allOf:
-        - $ref: '#/components/schemas/Experiment'
-        - type: object
-          required: [controlRequirementMet]
-          properties:
-            controlRequirementMet: {type: boolean, description: True unless a control group is required and none exists}
     ExperimentInput:
       type: object
       additionalProperties: false
@@ -2181,123 +2472,246 @@ components:
         code: {$ref: '#/components/schemas/Code'}
         title: {type: string, minLength: 1, maxLength: 200}
         description: {type: string, maxLength: 5000}
-        requiresControl: {type: boolean, default: false}
+        hypothesis: {type: string, maxLength: 2000}
+        randomisation: {type: string, maxLength: 500}
+        blinded: {type: boolean, default: false}
     ExperimentPatch:
       type: object
       additionalProperties: false
       minProperties: 1
-      description: Omitted fields are unchanged; an empty description clears it
+      description: Omitted fields are unchanged; an empty description, hypothesis or randomisation clears it
       properties:
         code: {$ref: '#/components/schemas/Code'}
         title: {type: string, minLength: 1, maxLength: 200}
         description: {type: string, maxLength: 5000}
-        requiresControl: {type: boolean}
-    Phase:
+        hypothesis: {type: string, maxLength: 2000}
+        randomisation: {type: string, maxLength: 500}
+        blinded: {type: boolean}
+    ReadinessProblem:
       type: object
-      required: [id, experimentId, name, position, description, createdAt, updatedAt]
+      required: [rule, groupId, endpointId]
       properties:
-        id: {type: string, format: uuid}
-        experimentId: {type: string, format: uuid}
-        name: {type: string, description: Unique within the experiment ignoring case}
-        position: {type: integer, minimum: 1, maximum: 1000, description: Unique within the experiment}
-        description: {type: [string, 'null']}
-        createdAt: {type: string, format: date-time}
-        updatedAt: {type: string, format: date-time}
-    PhaseInput:
+        rule:
+          type: string
+          enum: [readiness.noTimepoints, readiness.noGroups, readiness.targetSizeMissing, readiness.primaryEndpointMissing,
+                 readiness.endpointMetricUnavailable, readiness.treatmentItemMissing, readiness.treatmentItemNotAllowed,
+                 readiness.inductionItemMissing, readiness.inductionItemNotAllowed, readiness.vehicleItemMissing,
+                 readiness.diseaseControlMissing]
+        groupId: {type: [string, 'null'], format: uuid, description: The group the rule is about}
+        endpointId: {type: [string, 'null'], format: uuid, description: The endpoint the rule is about}
+    Readiness:
       type: object
-      additionalProperties: false
-      required: [name, position]
+      description: >-
+        Start rules: at least one timepoint and one group; every group has a
+        target size; exactly one primary endpoint; every endpoint's metric is
+        computed by a paradigm version of the protocol steps; TREATMENT and
+        POSITIVE_CONTROL groups have one TREATMENT and an INDUCTION item;
+        DISEASE_CONTROL has INDUCTION and VEHICLE items and no TREATMENT;
+        SHAM has a VEHICLE item and no INDUCTION or TREATMENT; HEALTHY_CONTROL
+        has no INDUCTION or TREATMENT; every SHAM, TREATMENT and
+        POSITIVE_CONTROL group has a DISEASE_CONTROL group with the same
+        disease model.
+      required: [status, ready, unmet]
       properties:
-        name: {type: string, minLength: 1, maxLength: 120}
-        position: {type: integer, minimum: 1, maximum: 1000}
-        description: {type: string, maxLength: 5000}
-    PhasePatch:
-      type: object
-      additionalProperties: false
-      minProperties: 1
-      properties:
-        name: {type: string, minLength: 1, maxLength: 120}
-        position: {type: integer, minimum: 1, maximum: 1000}
-        description: {type: string, maxLength: 5000}
+        status: {$ref: '#/components/schemas/ExperimentStatus'}
+        ready: {type: boolean}
+        unmet: {type: array, items: {$ref: '#/components/schemas/ReadinessProblem'}}
+    GroupRole: {type: string, enum: [HEALTHY_CONTROL, SHAM, DISEASE_CONTROL, POSITIVE_CONTROL, TREATMENT]}
+    GroupCode: {type: string, pattern: '^[A-Za-z0-9._-]{1,16}$', description: Unique within the experiment ignoring case}
     Group:
       type: object
-      required: [id, experimentId, name, role, targetSize, description, createdAt, updatedAt]
+      required: [id, experimentId, code, name, role, diseaseModelId, targetSize, description, createdAt, updatedAt]
       properties:
         id: {type: string, format: uuid}
         experimentId: {type: string, format: uuid}
+        code: {$ref: '#/components/schemas/GroupCode'}
         name: {type: string, description: Unique within the experiment ignoring case}
         role: {$ref: '#/components/schemas/GroupRole'}
-        targetSize: {type: [integer, 'null'], minimum: 1}
+        diseaseModelId: {type: [string, 'null'], format: uuid, description: Null only for HEALTHY_CONTROL}
+        targetSize: {type: [integer, 'null'], minimum: 1, maximum: 100000}
         description: {type: [string, 'null']}
         createdAt: {type: string, format: date-time}
         updatedAt: {type: string, format: date-time}
-    GroupSize:
+    GroupFill:
       allOf:
         - $ref: '#/components/schemas/Group'
         - type: object
-          required: [activeSubjects]
+          required: [allocated, excluded]
           properties:
-            activeSubjects: {type: integer, description: Assignments active at the database clock}
+            allocated: {type: integer, description: Allocated animals that are not excluded}
+            excluded: {type: integer}
     GroupInput:
       type: object
       additionalProperties: false
-      required: [name, role]
+      required: [code, name, role]
       properties:
+        code: {$ref: '#/components/schemas/GroupCode'}
         name: {type: string, minLength: 1, maxLength: 120}
         role: {$ref: '#/components/schemas/GroupRole'}
+        diseaseModelId: {type: string, format: uuid, description: Required unless the role is HEALTHY_CONTROL, forbidden then}
         targetSize: {type: integer, minimum: 0, maximum: 100000, description: 0 means no target}
         description: {type: string, maxLength: 5000}
     GroupPatch:
       type: object
       additionalProperties: false
       minProperties: 1
-      description: Omitted fields are unchanged; targetSize 0 removes the target
+      description: Omitted fields are unchanged; an empty diseaseModelId or description clears it; targetSize 0 removes the target
       properties:
+        code: {$ref: '#/components/schemas/GroupCode'}
         name: {type: string, minLength: 1, maxLength: 120}
         role: {$ref: '#/components/schemas/GroupRole'}
+        diseaseModelId: {type: string}
         targetSize: {type: integer, minimum: 0, maximum: 100000}
         description: {type: string, maxLength: 5000}
-    Enrollment:
+    RegimenPurpose: {type: string, enum: [INDUCTION, VEHICLE, TREATMENT]}
+    RegimenUnit: {type: string, enum: [mg/kg, ug/kg, mL/kg, IU/kg, mg, ug, g, mL, uL, IU]}
+    RegimenRoute: {type: string, enum: [ORAL, INTRAPERITONEAL, SUBCUTANEOUS, INTRAVENOUS, INTRAMUSCULAR, INTRANASAL, INTRACEREBROVENTRICULAR, TOPICAL, INHALATION]}
+    RegimenFrequency: {type: string, enum: [ONCE, DAILY, TWICE_DAILY, WEEKLY, EVERY_N_DAYS]}
+    RegimenAmount: {type: string, pattern: '^[0-9]{1,9}(\.[0-9]{1,6})?$', description: Positive dose per administration, stored exactly}
+    StudyDay: {type: integer, minimum: -365, maximum: 3650, description: Days relative to day 0}
+    RegimenItem:
       type: object
-      required: [id, experimentId, subjectId, enrolledAt, currentGroupId, createdAt]
+      required: [id, experimentId, groupId, purpose, substanceId, amount, unit, route, frequency, intervalDays, startDay, endDay, createdAt, updatedAt]
       properties:
         id: {type: string, format: uuid}
         experimentId: {type: string, format: uuid}
-        subjectId: {type: string, format: uuid}
-        enrolledAt: {type: string, format: date-time}
-        currentGroupId: {type: [string, 'null'], format: uuid, description: Group assigned now}
+        groupId: {type: string, format: uuid}
+        purpose: {$ref: '#/components/schemas/RegimenPurpose'}
+        substanceId: {type: string, format: uuid}
+        amount: {$ref: '#/components/schemas/RegimenAmount'}
+        unit: {$ref: '#/components/schemas/RegimenUnit'}
+        route: {$ref: '#/components/schemas/RegimenRoute'}
+        frequency: {$ref: '#/components/schemas/RegimenFrequency'}
+        intervalDays: {type: [integer, 'null'], minimum: 2, maximum: 365, description: Set only for EVERY_N_DAYS}
+        startDay: {$ref: '#/components/schemas/StudyDay'}
+        endDay: {$ref: '#/components/schemas/StudyDay'}
         createdAt: {type: string, format: date-time}
-    EnrollmentDetail:
-      allOf:
-        - $ref: '#/components/schemas/Enrollment'
-        - type: object
-          required: [assignments]
-          properties:
-            assignments: {type: array, items: {$ref: '#/components/schemas/Assignment'}, description: Oldest first}
-    EnrollmentInput:
+        updatedAt: {type: string, format: date-time}
+    RegimenItemInput:
       type: object
       additionalProperties: false
-      required: [subjectId, enrolledAt]
+      required: [groupId, purpose, substanceId, amount, unit, route, frequency, startDay, endDay]
+      description: endDay is on or after startDay and equals it for ONCE
       properties:
-        subjectId: {type: string, format: uuid}
-        enrolledAt: {type: string, format: date-time}
-        groupId: {type: string, format: uuid, description: Initial group starting at enrolledAt}
-    Assignment:
+        groupId: {type: string, format: uuid}
+        purpose: {$ref: '#/components/schemas/RegimenPurpose'}
+        substanceId: {type: string, format: uuid}
+        amount: {$ref: '#/components/schemas/RegimenAmount'}
+        unit: {$ref: '#/components/schemas/RegimenUnit'}
+        route: {$ref: '#/components/schemas/RegimenRoute'}
+        frequency: {$ref: '#/components/schemas/RegimenFrequency'}
+        intervalDays: {type: integer, minimum: 2, maximum: 365, description: Required for EVERY_N_DAYS, absent otherwise}
+        startDay: {$ref: '#/components/schemas/StudyDay'}
+        endDay: {$ref: '#/components/schemas/StudyDay'}
+    RegimenItemPatch:
       type: object
-      required: [id, groupId, validFrom, validTo, createdAt]
+      additionalProperties: false
+      minProperties: 1
+      description: Omitted fields are unchanged; intervalDays 0 removes the interval
+      properties:
+        groupId: {type: string, format: uuid}
+        purpose: {$ref: '#/components/schemas/RegimenPurpose'}
+        substanceId: {type: string, format: uuid}
+        amount: {$ref: '#/components/schemas/RegimenAmount'}
+        unit: {$ref: '#/components/schemas/RegimenUnit'}
+        route: {$ref: '#/components/schemas/RegimenRoute'}
+        frequency: {$ref: '#/components/schemas/RegimenFrequency'}
+        intervalDays: {type: integer, minimum: 0, maximum: 365}
+        startDay: {$ref: '#/components/schemas/StudyDay'}
+        endDay: {$ref: '#/components/schemas/StudyDay'}
+    Timepoint:
+      type: object
+      required: [id, experimentId, name, studyDay, position, createdAt, updatedAt]
       properties:
         id: {type: string, format: uuid}
-        groupId: {type: string, format: uuid}
-        validFrom: {type: string, format: date-time}
-        validTo: {type: [string, 'null'], format: date-time, description: Exclusive end; null while open}
+        experimentId: {type: string, format: uuid}
+        name: {type: string, description: Unique within the experiment ignoring case}
+        studyDay: {$ref: '#/components/schemas/StudyDay'}
+        position: {type: integer, minimum: 1, maximum: 1000, description: Unique within the experiment}
         createdAt: {type: string, format: date-time}
-    AssignmentInput:
+        updatedAt: {type: string, format: date-time}
+    TimepointInput:
       type: object
       additionalProperties: false
-      required: [groupId, effectiveFrom]
+      required: [name, studyDay, position]
       properties:
+        name: {type: string, minLength: 1, maxLength: 120}
+        studyDay: {$ref: '#/components/schemas/StudyDay'}
+        position: {type: integer, minimum: 1, maximum: 1000}
+    TimepointPatch:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        name: {type: string, minLength: 1, maxLength: 120}
+        studyDay: {$ref: '#/components/schemas/StudyDay'}
+        position: {type: integer, minimum: 1, maximum: 1000}
+    EndpointKind: {type: string, enum: [PRIMARY, SECONDARY]}
+    EndpointDirection: {type: string, enum: [HIGHER_IS_BETTER, LOWER_IS_BETTER]}
+    Endpoint:
+      type: object
+      required: [id, experimentId, timepointId, baselineTimepointId, paradigmKey, metricKey, kind, direction, createdAt, updatedAt]
+      properties:
+        id: {type: string, format: uuid}
+        experimentId: {type: string, format: uuid}
+        timepointId: {type: string, format: uuid}
+        baselineTimepointId: {type: [string, 'null'], format: uuid, description: Report change from this timepoint per animal}
+        paradigmKey: {type: string, pattern: '^[A-Z][A-Z_]{0,39}$'}
+        metricKey: {type: string, pattern: '^[a-z][a-z0-9_]{0,79}$'}
+        kind: {$ref: '#/components/schemas/EndpointKind'}
+        direction: {$ref: '#/components/schemas/EndpointDirection'}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+    EndpointInput:
+      type: object
+      additionalProperties: false
+      required: [timepointId, paradigmKey, metricKey, kind, direction]
+      properties:
+        timepointId: {type: string, format: uuid}
+        baselineTimepointId: {type: string, format: uuid, description: Another timepoint of this experiment}
+        paradigmKey: {type: string, pattern: '^[A-Z][A-Z_]{0,39}$'}
+        metricKey: {type: string, pattern: '^[a-z][a-z0-9_]{0,79}$'}
+        kind: {$ref: '#/components/schemas/EndpointKind'}
+        direction: {$ref: '#/components/schemas/EndpointDirection'}
+    EndpointPatch:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      description: Omitted fields are unchanged; an empty baselineTimepointId clears it
+      properties:
+        timepointId: {type: string, format: uuid}
+        baselineTimepointId: {type: string}
+        paradigmKey: {type: string, pattern: '^[A-Z][A-Z_]{0,39}$'}
+        metricKey: {type: string, pattern: '^[a-z][a-z0-9_]{0,79}$'}
+        kind: {$ref: '#/components/schemas/EndpointKind'}
+        direction: {$ref: '#/components/schemas/EndpointDirection'}
+    ExclusionReason: {type: string, enum: [DIED, HUMANE_ENDPOINT, INDUCTION_FAILED, TECHNICAL, OTHER]}
+    Allocation:
+      type: object
+      required: [id, experimentId, groupId, subjectId, allocatedAt, cage, excluded, excludedAt, exclusionReason, exclusionNote, createdBy, createdAt]
+      properties:
+        id: {type: string, format: uuid}
+        experimentId: {type: string, format: uuid}
         groupId: {type: string, format: uuid}
-        effectiveFrom: {type: string, format: date-time}
+        subjectId: {type: string, format: uuid}
+        subjectCode: {type: string, description: Present in lists}
+        allocatedAt: {type: string, format: date-time}
+        cage: {type: [string, 'null'], maxLength: 32}
+        excluded: {type: boolean}
+        excludedAt: {type: [string, 'null'], format: date-time}
+        exclusionReason: {oneOf: [{$ref: '#/components/schemas/ExclusionReason'}, {type: 'null'}]}
+        exclusionNote: {type: [string, 'null'], maxLength: 2000}
+        createdBy: {type: string, format: uuid}
+        createdAt: {type: string, format: date-time}
+    AllocationInput:
+      type: object
+      additionalProperties: false
+      required: [subjectId, groupId]
+      properties:
+        subjectId: {type: string, format: uuid}
+        groupId: {type: string, format: uuid}
+        cage: {type: string, minLength: 1, maxLength: 32}
+        allocatedAt: {type: string, format: date-time, description: Defaults to now; not in the future}
     SubstanceKind:
       type: string
       enum: [COMPOUND, REFERENCE_DRUG, VEHICLE, INDUCER]

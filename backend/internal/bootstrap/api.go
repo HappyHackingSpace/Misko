@@ -22,6 +22,7 @@ import (
 	environmentshttp "github.com/HappyHackingSpace/Misko/backend/internal/environments/adapters/http"
 	environmentspostgres "github.com/HappyHackingSpace/Misko/backend/internal/environments/adapters/postgres"
 	environmentsapp "github.com/HappyHackingSpace/Misko/backend/internal/environments/application"
+	experimentscatalog "github.com/HappyHackingSpace/Misko/backend/internal/experiments/adapters/catalog"
 	experimentshttp "github.com/HappyHackingSpace/Misko/backend/internal/experiments/adapters/http"
 	experimentspostgres "github.com/HappyHackingSpace/Misko/backend/internal/experiments/adapters/postgres"
 	experimentsapp "github.com/HappyHackingSpace/Misko/backend/internal/experiments/application"
@@ -61,6 +62,7 @@ import (
 	"github.com/HappyHackingSpace/Misko/backend/schema"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"log/slog"
+	"math/rand/v2"
 	"net"
 	"net/http"
 	"time"
@@ -143,7 +145,7 @@ func NewAPI(pool *pgxpool.Pool, cfg config.Config, auth config.Auth, logger *slo
 	laboratory := laboratoryapp.New(laboratorypostgres.NewStore(pool))
 	subjects := subjectsapp.New(subjectspostgres.NewStore(pool), time.Now)
 	catalog := catalogapp.New(catalogpostgres.NewStore(pool))
-	experiments := experimentsapp.New(experimentspostgres.NewStore(pool))
+	experiments := experimentsapp.New(experimentspostgres.NewStore(pool), experimentscatalog.New(), time.Now, rand.IntN)
 	dosing := dosingapp.New(dosingpostgres.NewStore(pool), time.Now)
 	environments := environmentsapp.New(environmentspostgres.NewStore(pool), environmentscatalog.New())
 	protocols := protocolsapp.New(protocolspostgres.NewStore(pool), protocolscatalog.New())
