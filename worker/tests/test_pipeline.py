@@ -44,7 +44,7 @@ def test_positions_follow_the_subject_in_arena_centimeters(tmp_path: Path) -> No
     samples = document["samples"]
     assert document["schema"] == "misko.trajectory.v1" and document["runId"] == synthetic.job()["run"]["id"] and document["attempt"] == 1
     assert document["durationUs"] == 6_000_000 and len(samples["tUs"]) == len(truth) == len(samples["xCm"]) == len(samples["confidence"])
-    assert all(samples["tracked"]) and document["worker"]["algorithm"].startswith("misko-open-field-bgsub")
+    assert all(samples["tracked"]) and document["worker"]["algorithm"].startswith("misko-tracker-bgsub")
 
 
 def test_occluded_frames_are_lost_not_guessed(tmp_path: Path) -> None:
@@ -211,6 +211,6 @@ def test_unsupported_paradigms_are_refused_before_decoding(tmp_path: Path) -> No
     garbage = tmp_path / "garbage.mp4"
     garbage.write_bytes(b"not a video" * 200)
     job = synthetic.job()
-    job["run"]["paradigmKey"] = "MWM"
-    with pytest.raises(NonRetryable, match="UNSUPPORTED_PARADIGM: MWM v1"):
+    job["run"]["paradigmKey"] = "ROTAROD"
+    with pytest.raises(NonRetryable, match="UNSUPPORTED_PARADIGM: ROTAROD v1"):
         analyze(garbage, job, tmp_path / "o.mp4")
