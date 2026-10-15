@@ -18,7 +18,7 @@ const lab = useLab();
 const prefs = usePrefs();
 const route = useRoute();
 const router = useRouter();
-const { t } = useI18n();
+const { t, locale } = useI18n();
 
 onMounted(() => lab.load());
 
@@ -186,7 +186,9 @@ const activeKey = computed(() => topLevelKeys.find((k) => route.path.startsWith(
           </n-layout-header>
           <n-layout-content content-style="padding: 26px 30px;" class="app-content">
             <Breadcrumb />
-            <RouterView />
+            <!-- Keyed by language: catalog wording and breadcrumbs come from the API
+                 and from each page's setup, so a language switch rebuilds the page. -->
+            <RouterView :key="locale" />
           </n-layout-content>
         </n-layout>
       </n-layout>
