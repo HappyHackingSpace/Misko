@@ -24,7 +24,7 @@ func us(v int64) *int64 { return &v }
 func scorable() Subject {
 	return Subject{
 		ExperimentID: "e", TestID: "t", TestSubjectID: "ts", ExperimentStatus: "RUNNING", TestStatus: "COMPLETED",
-		ParadigmKey: "ROTAROD", ParadigmVersion: 1, Parameters: map[string]float64{"max_trial_duration_s": 60},
+		ParadigmKey: "POLE", ParadigmVersion: 1, Parameters: map[string]float64{"max_trial_duration_s": 60},
 		Video: &domain.Video{Clip: domain.Clip{RecordingID: "rec", StartUs: 1_000_000, EndUs: us(61_000_000)}, AssetID: "asset", Generation: 7, CRC32C: 9},
 	}
 }
@@ -65,7 +65,7 @@ func TestOnlyScorableAnimalsCanBeScored(t *testing.T) {
 		mutate func(*Subject)
 		want   error
 	}{
-		"tracked paradigm":     {func(s *Subject) { s.ParadigmKey = "OPEN_FIELD" }, domain.ErrNotObserverScored},
+		"tracked paradigm":     {func(s *Subject) { s.ParadigmKey = "MWM" }, domain.ErrNotObserverScored},
 		"planned test":         {func(s *Subject) { s.TestStatus = "PLANNED" }, ErrNotScorable},
 		"cancelled test":       {func(s *Subject) { s.TestStatus = "CANCELLED" }, ErrNotScorable},
 		"completed experiment": {func(s *Subject) { s.ExperimentStatus = "COMPLETED" }, ErrNotScorable},
@@ -119,7 +119,7 @@ func TestScoringCompletesIntoAScoredRunAndReopensAsANewVersion(t *testing.T) {
 		t.Fatalf("engine input: %+v", catalog.scoring)
 	}
 	run := store.runs[0]
-	if run.ScoredBy != "tech" || run.Video.AssetID != "asset" || run.ParadigmKey != "ROTAROD" || run.Parameters["max_trial_duration_s"] != 60 || len(run.Computed.Metrics) != 1 {
+	if run.ScoredBy != "tech" || run.Video.AssetID != "asset" || run.ParadigmKey != "POLE" || run.Parameters["max_trial_duration_s"] != 60 || len(run.Computed.Metrics) != 1 {
 		t.Fatalf("run: %+v", run)
 	}
 	if !slices.Equal(store.opened, []string{"ts/run-1"}) {
@@ -166,7 +166,7 @@ func TestCompletingWithoutEventsStartsAndCompletesTheFirstSheet(t *testing.T) {
 type fakeCatalog struct{}
 
 func (fakeCatalog) Paradigm(key string, version int) (domain.Paradigm, error) {
-	if key == "OPEN_FIELD" {
+	if key == "MWM" {
 		return domain.Paradigm{Key: key, Version: version}, nil
 	}
 	return domain.Paradigm{Key: key, Version: version, ObserverScored: true, Events: []domain.EventDefinition{{Type: "fall", Kind: domain.Point, Single: true}}}, nil

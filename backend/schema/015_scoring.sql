@@ -1,5 +1,5 @@
--- Observer scoring. For paradigms a person scores on the video (rotarod,
--- pole, treadmill, novel object), the observations of one animal of a test
+-- Observer scoring. For paradigms a person scores on the video (pole,
+-- treadmill, novel object), the observations of one animal of a test
 -- are kept on a scoring sheet. Completing the sheet computes its metrics with
 -- the engine and stores them as a SCORED analysis run, which feeds
 -- subject_results and the reports exactly like a run a worker analysed.

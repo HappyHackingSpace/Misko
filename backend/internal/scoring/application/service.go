@@ -188,7 +188,7 @@ func (s *Service) RemoveEvent(ctx context.Context, actor access.Actor, testID, t
 // computes the metrics with the engine on the current video, publishes them as
 // a SUCCEEDED SCORED run and opens the animal's result for review when it has
 // none. Completing without a sheet scores an animal without events (for
-// example a rotarod trial without a fall).
+// example a treadmill trial without exhaustion).
 func (s *Service) Complete(ctx context.Context, actor access.Actor, testID, testSubjectID string, in domain.CompleteInput) (Completion, error) {
 	if err := actor.Require(access.TestRun); err != nil {
 		return Completion{}, err

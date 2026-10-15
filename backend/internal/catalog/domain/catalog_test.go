@@ -41,11 +41,11 @@ func TestNewSubstanceRejectsInvalidFields(t *testing.T) {
 }
 
 func TestNewDiseaseModelValidatesEveryField(t *testing.T) {
-	m, err := NewDiseaseModel(" MPTP parkinsonism ", "CHEMICAL", " rotarod latency < 50% of baseline ", "")
+	m, err := NewDiseaseModel(" MPTP parkinsonism ", "CHEMICAL", " pole descent time > 150% of baseline ", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if m.Name != "MPTP parkinsonism" || m.InductionType != Chemical || m.ConfirmationCriterion != "rotarod latency < 50% of baseline" || m.Description != "" {
+	if m.Name != "MPTP parkinsonism" || m.InductionType != Chemical || m.ConfirmationCriterion != "pole descent time > 150% of baseline" || m.Description != "" {
 		t.Fatalf("got %+v", m)
 	}
 	for _, typ := range []string{"CHEMICAL", "SURGICAL", "DIET", "STRESS", "OTHER"} {

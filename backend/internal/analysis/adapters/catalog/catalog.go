@@ -35,7 +35,7 @@ func (Catalog) Contract(key string, version int) (domain.Contract, error) {
 		// A trajectory supplies samples and the pinned calibration supplies
 		// calibrated zone shapes. Observer-scored paradigms compute nothing
 		// from samples and stay worker-free; optional scored events of a
-		// tracked paradigm (EPM risk assessment) are left missing as unscored.
+		// tracked paradigm are left missing as unscored.
 		TrajectoryAnalyzable: tracked(p),
 		ObserverScored:       p.ObserverScored(),
 	}

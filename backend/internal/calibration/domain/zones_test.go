@@ -9,7 +9,7 @@ import (
 func maze() Requirement {
 	req := arena()
 	req.Bounds = nil
-	req.Zones = []ZoneRequirement{{Key: "center", Required: true}, {Key: "open_arms", Required: true}, {Key: "interaction", Required: false}}
+	req.Zones = []ZoneRequirement{{Key: "center", Required: true}, {Key: "lanes", Required: true}, {Key: "interaction", Required: false}}
 	return req
 }
 
@@ -25,16 +25,16 @@ func zoned(zones ...ZoneInput) Input {
 
 func TestZonesAreConvertedWithTheFittedTransform(t *testing.T) {
 	in := zoned(
-		ZoneInput{Key: "open_arms", Shape: square(200, 400, 600, 500)},
+		ZoneInput{Key: "lanes", Shape: square(200, 400, 600, 500)},
 		ZoneInput{Key: "center", Shape: Shape{Circle: &Circle{X: 960, Y: 540, Radius: 40}}},
-		ZoneInput{Key: "open_arms", Shape: square(1200, 400, 1700, 500)},
+		ZoneInput{Key: "lanes", Shape: square(1200, 400, 1700, 500)},
 	)
 	c, err := New(in, maze(), "tech", now)
 	if err != nil {
 		t.Fatal(err)
 	}
 	// Keys are sorted; shapes of one key keep their drawing order.
-	if len(c.Zones) != 3 || c.Zones[0].Key != "center" || c.Zones[1].Key != "open_arms" || c.Zones[1].Pixels.Polygon[0] != (Vertex{200, 400}) ||
+	if len(c.Zones) != 3 || c.Zones[0].Key != "center" || c.Zones[1].Key != "lanes" || c.Zones[1].Pixels.Polygon[0] != (Vertex{200, 400}) ||
 		c.Zones[2].Pixels.Polygon[0] != (Vertex{1200, 400}) {
 		t.Fatalf("zones: %+v", c.Zones)
 	}
@@ -54,14 +54,14 @@ func TestZonesAreConvertedWithTheFittedTransform(t *testing.T) {
 	if missing := MissingZones(c, maze().Zones); len(missing) != 0 {
 		t.Fatalf("missing: %v", missing)
 	}
-	if missing := MissingZones(Calibration{}, maze().Zones); len(missing) != 2 || missing[0] != "center" || missing[1] != "open_arms" {
+	if missing := MissingZones(Calibration{}, maze().Zones); len(missing) != 2 || missing[0] != "center" || missing[1] != "lanes" {
 		t.Fatalf("missing without zones: %v", missing)
 	}
 }
 
 func TestZonesAreValidated(t *testing.T) {
 	center := ZoneInput{Key: "center", Shape: Shape{Circle: &Circle{X: 960, Y: 540, Radius: 40}}}
-	arm := ZoneInput{Key: "open_arms", Shape: square(200, 400, 600, 500)}
+	arm := ZoneInput{Key: "lanes", Shape: square(200, 400, 600, 500)}
 	many := []ZoneInput{center}
 	for range MaxShapesPerZone + 1 {
 		many = append(many, arm)
@@ -71,17 +71,17 @@ func TestZonesAreValidated(t *testing.T) {
 		req  Requirement
 		want error
 	}{
-		"unknown key":          {zoned(center, arm, ZoneInput{Key: "closed_arms", Shape: arm.Shape}), maze(), ErrUnknownZone},
+		"unknown key":          {zoned(center, arm, ZoneInput{Key: "edges", Shape: arm.Shape}), maze(), ErrUnknownZone},
 		"zones for a box":      {zoned(center), arena(), ErrUnknownZone},
 		"required zone absent": {zoned(arm), maze(), ErrMissingZone},
 		"no zones at all":      {input(), maze(), ErrMissingZone},
 		"zero radius":          {zoned(arm, ZoneInput{Key: "center", Shape: Shape{Circle: &Circle{X: 960, Y: 540}}}), maze(), ErrInvalidZone},
-		"two vertices":         {zoned(center, ZoneInput{Key: "open_arms", Shape: Shape{Polygon: []Vertex{{1, 1}, {2, 2}}}}), maze(), ErrInvalidZone},
-		"circle and polygon":   {zoned(center, ZoneInput{Key: "open_arms", Shape: Shape{Circle: &Circle{X: 9, Y: 9, Radius: 1}, Polygon: arm.Polygon}}), maze(), ErrInvalidZone},
-		"empty shape":          {zoned(center, ZoneInput{Key: "open_arms"}), maze(), ErrInvalidZone},
-		"not finite":           {zoned(center, ZoneInput{Key: "open_arms", Shape: square(math.NaN(), 0, 10, 10)}), maze(), ErrInvalidZone},
+		"two vertices":         {zoned(center, ZoneInput{Key: "lanes", Shape: Shape{Polygon: []Vertex{{1, 1}, {2, 2}}}}), maze(), ErrInvalidZone},
+		"circle and polygon":   {zoned(center, ZoneInput{Key: "lanes", Shape: Shape{Circle: &Circle{X: 9, Y: 9, Radius: 1}, Polygon: arm.Polygon}}), maze(), ErrInvalidZone},
+		"empty shape":          {zoned(center, ZoneInput{Key: "lanes"}), maze(), ErrInvalidZone},
+		"not finite":           {zoned(center, ZoneInput{Key: "lanes", Shape: square(math.NaN(), 0, 10, 10)}), maze(), ErrInvalidZone},
 		"too many shapes":      {zoned(many...), maze(), ErrInvalidZone},
-		"polygon off frame":    {zoned(center, ZoneInput{Key: "open_arms", Shape: square(1800, 400, 1921, 500)}), maze(), ErrZoneOutsideFrame},
+		"polygon off frame":    {zoned(center, ZoneInput{Key: "lanes", Shape: square(1800, 400, 1921, 500)}), maze(), ErrZoneOutsideFrame},
 		"circle off frame":     {zoned(arm, ZoneInput{Key: "center", Shape: Shape{Circle: &Circle{X: 20, Y: 540, Radius: 40}}}), maze(), ErrZoneOutsideFrame},
 	} {
 		if _, err := New(tc.in, tc.req, "tech", now); !errors.Is(err, tc.want) {
@@ -89,7 +89,7 @@ func TestZonesAreValidated(t *testing.T) {
 		}
 	}
 	// An optional zone may be left out; a zone may touch the frame edge.
-	if _, err := New(zoned(center, ZoneInput{Key: "open_arms", Shape: square(0, 0, 1920, 1080)}), maze(), "tech", now); err != nil {
+	if _, err := New(zoned(center, ZoneInput{Key: "lanes", Shape: square(0, 0, 1920, 1080)}), maze(), "tech", now); err != nil {
 		t.Fatalf("zones on the frame edge: %v", err)
 	}
 }

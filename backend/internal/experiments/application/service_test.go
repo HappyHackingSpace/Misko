@@ -114,7 +114,7 @@ type metrics map[string][]string
 func (c metrics) Metrics(key string, version int) ([]string, error) { return c[key], nil }
 
 func service(m *memory) *Service {
-	return New(m, metrics{"OPEN_FIELD": {"distance_cm", "center_time_s"}}, func() time.Time { return now }, func(n int) int { return n - 1 })
+	return New(m, metrics{"MWM": {"path_length_cm", "escape_latency_s"}}, func() time.Time { return now }, func(n int) int { return n - 1 })
 }
 
 // Writes by roles without study:write fail before the store is touched.
@@ -240,8 +240,8 @@ func readyDesign() *memory {
 			{GroupID: "disease", Purpose: domain.Vehicle},
 		},
 		timepoints: []domain.Timepoint{{ID: "t"}},
-		endpoints:  []domain.Endpoint{{ID: "p", Kind: domain.Primary, ParadigmKey: "OPEN_FIELD", MetricKey: "distance_cm"}},
-		paradigms:  []ParadigmVersion{{"OPEN_FIELD", 1}},
+		endpoints:  []domain.Endpoint{{ID: "p", Kind: domain.Primary, ParadigmKey: "MWM", MetricKey: "path_length_cm"}},
+		paradigms:  []ParadigmVersion{{"MWM", 1}},
 	}
 }
 
@@ -256,7 +256,7 @@ func TestStartChecksTheRulesAndSetsDayZero(t *testing.T) {
 	if m.experiment.Status != domain.Draft {
 		t.Fatal("started despite unmet rules")
 	}
-	m.paradigms = []ParadigmVersion{{"OPEN_FIELD", 1}}
+	m.paradigms = []ParadigmVersion{{"MWM", 1}}
 	if _, err := service(m).Start(ctx, researcher, "e", "20-10-2026"); !errors.Is(err, ErrInvalidDayZero) {
 		t.Fatalf("bad date: %v", err)
 	}
@@ -309,15 +309,15 @@ func TestDesignChangesOnlyInADraft(t *testing.T) {
 func TestEndpointMetricMustComeFromTheProtocols(t *testing.T) {
 	m := readyDesign()
 	m.endpoints = nil
-	f := domain.EndpointFields{TimepointID: "t", ParadigmKey: "OPEN_FIELD", MetricKey: "freezing_s", Kind: "SECONDARY", Direction: "LOWER_IS_BETTER"}
+	f := domain.EndpointFields{TimepointID: "t", ParadigmKey: "MWM", MetricKey: "freezing_s", Kind: "SECONDARY", Direction: "LOWER_IS_BETTER"}
 	if _, err := service(m).CreateEndpoint(ctx, researcher, "e", f); !errors.Is(err, ErrMetricUnavailable) {
 		t.Fatalf("unknown metric: %v", err)
 	}
-	f.ParadigmKey, f.MetricKey = "EPM", "distance_cm"
+	f.ParadigmKey, f.MetricKey = "POLE", "path_length_cm"
 	if _, err := service(m).CreateEndpoint(ctx, researcher, "e", f); !errors.Is(err, ErrMetricUnavailable) {
 		t.Fatalf("paradigm without protocol step: %v", err)
 	}
-	f.ParadigmKey, f.MetricKey = "OPEN_FIELD", "center_time_s"
+	f.ParadigmKey, f.MetricKey = "MWM", "escape_latency_s"
 	if _, err := service(m).CreateEndpoint(ctx, researcher, "e", f); err != nil {
 		t.Fatalf("available metric: %v", err)
 	}
@@ -401,7 +401,7 @@ func TestListQueriesAreValidated(t *testing.T) {
 		t.Errorf("excluded filter: %v", err)
 	}
 	options, err := service(m).MetricOptions(ctx, researcher, "e")
-	if err != nil || len(options) != 1 || !slices.Contains(options[0].Metrics, "distance_cm") {
+	if err != nil || len(options) != 1 || !slices.Contains(options[0].Metrics, "path_length_cm") {
 		t.Fatalf("metric options: %v %v", options, err)
 	}
 }

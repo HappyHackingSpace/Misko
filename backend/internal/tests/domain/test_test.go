@@ -10,7 +10,7 @@ import (
 
 var now = time.Date(2026, 9, 11, 12, 0, 0, 0, time.UTC)
 
-var session = Context{ExperimentID: "exp", TimepointID: "day7", ProtocolVersionID: "v1", StepPosition: 1, ParadigmKey: "OPEN_FIELD", ParadigmVersion: 1, PlannedTrials: 2}
+var session = Context{ExperimentID: "exp", TimepointID: "day7", ProtocolVersionID: "v1", StepPosition: 1, ParadigmKey: "MWM", ParadigmVersion: 1, PlannedTrials: 2}
 
 // planned returns a planned test with two animals whose subjects have ids s1 and s2.
 func planned() Test {

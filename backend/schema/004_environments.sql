@@ -1,5 +1,5 @@
--- A physical apparatus created from a paradigm template, such as one tank or
--- one open field box. (id, paradigm_key) lets revisions repeat the paradigm,
+-- A physical apparatus created from a paradigm template, such as one water
+-- maze tank or one novel object box. (id, paradigm_key) lets revisions repeat the paradigm,
 -- so it cannot change while revisions exist.
 CREATE TABLE misko.environments (
     id           uuid PRIMARY KEY DEFAULT uuidv7(),

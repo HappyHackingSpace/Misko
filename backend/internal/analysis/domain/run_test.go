@@ -12,7 +12,7 @@ var now = time.Date(2026, 9, 11, 12, 0, 0, 0, time.UTC)
 func queued() Run {
 	end := int64(10_000_000)
 	return Run{ID: "run-1", TestID: "test", RecordingID: "rec", ClipStartUs: 2_000_000, ClipEndUs: &end,
-		ParadigmKey: "OPEN_FIELD", ParadigmVersion: 1, Status: Queued, MaxAttempts: 3, AvailableAt: now.Add(-time.Second)}
+		ParadigmKey: "MWM", ParadigmVersion: 1, Status: Queued, MaxAttempts: 3, AvailableAt: now.Add(-time.Second)}
 }
 
 func TestLeasesFenceLateAttempts(t *testing.T) {
@@ -93,8 +93,8 @@ func TestWorkerFailuresRetryWithinTheLimit(t *testing.T) {
 }
 
 func TestWorkersDeclareCapabilities(t *testing.T) {
-	w, err := NewWorker(" tracker-1 ", "open-field-tracker 1.4.0", []Capability{{ParadigmKey: "OPEN_FIELD", ParadigmVersion: 1}})
-	if err != nil || w.Name != "tracker-1" || !w.Can("OPEN_FIELD", 1) || w.Can("OPEN_FIELD", 2) || w.Can("EPM", 1) {
+	w, err := NewWorker(" tracker-1 ", "mwm-tracker 1.4.0", []Capability{{ParadigmKey: "MWM", ParadigmVersion: 1}})
+	if err != nil || w.Name != "tracker-1" || !w.Can("MWM", 1) || w.Can("MWM", 2) || w.Can("POLE", 1) {
 		t.Fatalf("worker: %+v %v", w, err)
 	}
 	for name, tc := range map[string]struct {
@@ -102,11 +102,11 @@ func TestWorkersDeclareCapabilities(t *testing.T) {
 		caps        []Capability
 		want        error
 	}{
-		"no name":         {"", "m", []Capability{{ParadigmKey: "EPM", ParadigmVersion: 1}}, ErrInvalidWorkerName},
-		"no model":        {"w", " ", []Capability{{ParadigmKey: "EPM", ParadigmVersion: 1}}, ErrInvalidModelVersion},
+		"no name":         {"", "m", []Capability{{ParadigmKey: "POLE", ParadigmVersion: 1}}, ErrInvalidWorkerName},
+		"no model":        {"w", " ", []Capability{{ParadigmKey: "POLE", ParadigmVersion: 1}}, ErrInvalidModelVersion},
 		"no capabilities": {"w", "m", nil, ErrInvalidCapability},
-		"duplicate":       {"w", "m", []Capability{{ParadigmKey: "EPM", ParadigmVersion: 1}, {ParadigmKey: "EPM", ParadigmVersion: 1}}, ErrInvalidCapability},
-		"version zero":    {"w", "m", []Capability{{ParadigmKey: "EPM", ParadigmVersion: 0}}, ErrInvalidCapability},
+		"duplicate":       {"w", "m", []Capability{{ParadigmKey: "POLE", ParadigmVersion: 1}, {ParadigmKey: "POLE", ParadigmVersion: 1}}, ErrInvalidCapability},
+		"version zero":    {"w", "m", []Capability{{ParadigmKey: "POLE", ParadigmVersion: 0}}, ErrInvalidCapability},
 	} {
 		if _, err := NewWorker(tc.name, tc.model, tc.caps); !errors.Is(err, tc.want) {
 			t.Errorf("%s: err=%v want %v", name, err, tc.want)

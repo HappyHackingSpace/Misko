@@ -129,7 +129,7 @@ func TestTimepointAndEndpointValidation(t *testing.T) {
 			t.Errorf("%+v: err=%v want %v", f, err, want)
 		}
 	}
-	valid := EndpointFields{TimepointID: "t2", BaselineTimepointID: "t1", ParadigmKey: "OPEN_FIELD", MetricKey: "distance_cm", Kind: "PRIMARY", Direction: "HIGHER_IS_BETTER"}
+	valid := EndpointFields{TimepointID: "t2", BaselineTimepointID: "t1", ParadigmKey: "MWM", MetricKey: "path_length_cm", Kind: "PRIMARY", Direction: "HIGHER_IS_BETTER"}
 	if _, err := NewEndpoint("e", valid); err != nil {
 		t.Fatal(err)
 	}
@@ -138,7 +138,7 @@ func TestTimepointAndEndpointValidation(t *testing.T) {
 		want error
 	}{
 		{func(f *EndpointFields) { f.BaselineTimepointID = "t2" }, ErrBaselineSameTimepoint},
-		{func(f *EndpointFields) { f.ParadigmKey = "open_field" }, ErrInvalidParadigm},
+		{func(f *EndpointFields) { f.ParadigmKey = "water_maze" }, ErrInvalidParadigm},
 		{func(f *EndpointFields) { f.MetricKey = "Distance" }, ErrInvalidMetric},
 		{func(f *EndpointFields) { f.Kind = "MAIN" }, ErrInvalidKind},
 		{func(f *EndpointFields) { f.Direction = "UP" }, ErrInvalidDirection},
@@ -244,8 +244,8 @@ func TestReadinessListsEveryUnmetStartRule(t *testing.T) {
 			item("treated", Induction), item("treated", TreatmentPurpose), item("treated", Vehicle),
 		},
 		Timepoints: []Timepoint{{ID: "day14"}},
-		Endpoints:  []Endpoint{{ID: "primary", Kind: Primary, ParadigmKey: "OPEN_FIELD", MetricKey: "distance_cm"}},
-		Metrics:    map[string]map[string]bool{"OPEN_FIELD": {"distance_cm": true}},
+		Endpoints:  []Endpoint{{ID: "primary", Kind: Primary, ParadigmKey: "MWM", MetricKey: "path_length_cm"}},
+		Metrics:    map[string]map[string]bool{"MWM": {"path_length_cm": true}},
 	}
 	if got := Readiness(ready); len(got) != 0 {
 		t.Fatalf("ready design: %v", got)
@@ -262,7 +262,7 @@ func TestReadinessListsEveryUnmetStartRule(t *testing.T) {
 		item("disease", TreatmentPurpose),
 		item("treated", Vehicle),
 	}
-	broken.Endpoints = []Endpoint{{ID: "secondary", Kind: Secondary, ParadigmKey: "EPM", MetricKey: "open_arm_time_s"}}
+	broken.Endpoints = []Endpoint{{ID: "secondary", Kind: Secondary, ParadigmKey: "POLE", MetricKey: "t_turn_s"}}
 	want := []Problem{
 		{Rule: RulePrimaryEndpointMissing},
 		{Rule: RuleEndpointMetricMissing, EndpointID: "secondary"},

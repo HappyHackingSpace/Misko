@@ -24,12 +24,12 @@ func guard(fn func() error) (err error) {
 	return fn()
 }
 
-func openFieldStep(position int) StepInput {
-	return StepInput{Position: position, ParadigmKey: "OPEN_FIELD", ParadigmVersion: 1, TrialType: "STANDARD", Trials: 1}
+func tankStep(position int) StepInput {
+	return StepInput{Position: position, ParadigmKey: "MWM", ParadigmVersion: 1, TrialType: "STANDARD", Trials: 1}
 }
 
 func validProtocol() ProtocolInput {
-	return ProtocolInput{Name: "Battery", Version: VersionInput{Steps: []StepInput{openFieldStep(1)}}}
+	return ProtocolInput{Name: "Battery", Version: VersionInput{Steps: []StepInput{tankStep(1)}}}
 }
 
 func TestEveryOperationRequiresItsPermission(t *testing.T) {
@@ -98,11 +98,11 @@ func TestStepsMustMatchTheirParadigm(t *testing.T) {
 
 func TestVersionCombinesParadigmsWithResolvedSessions(t *testing.T) {
 	store := &fakeStore{}
-	epm := StepInput{Position: 1, ParadigmKey: "EPM", ParadigmVersion: 1, TrialType: "STANDARD", Trials: 1}
-	openField := openFieldStep(2)
-	openField.Trials, openField.InterTrialIntervalS = 3, 600
-	openField.Session = map[string]float64{"max_sample_gap_s": 0.25}
-	in := ProtocolInput{Name: "Battery", Version: VersionInput{Notes: "baseline", Steps: []StepInput{openField, epm}}}
+	pole := StepInput{Position: 1, ParadigmKey: "POLE", ParadigmVersion: 1, TrialType: "STANDARD", Trials: 1}
+	tank := tankStep(2)
+	tank.Trials, tank.InterTrialIntervalS = 3, 600
+	tank.Session = map[string]float64{"max_sample_gap_s": 0.25}
+	in := ProtocolInput{Name: "Battery", Version: VersionInput{Notes: "baseline", Steps: []StepInput{tank, pole}}}
 	created, err := New(store, fakeCatalog{}).Create(ctx, access.Actor{UserID: "user-1", Role: access.LabManager}, "exp", in)
 	if err != nil {
 		t.Fatal(err)
@@ -114,13 +114,13 @@ func TestVersionCombinesParadigmsWithResolvedSessions(t *testing.T) {
 	if v.ProtocolID != "protocol" || v.ExperimentID != "exp" || v.CreatedBy != "user-1" || len(v.Steps) != 2 {
 		t.Fatalf("version: %+v", v)
 	}
-	maze, arena := v.Steps[0], v.Steps[1]
-	if maze.ParadigmKey != "EPM" || arena.ParadigmKey != "OPEN_FIELD" || arena.Trials != 3 || arena.InterTrialIntervalS != 600 {
+	savedPole, savedTank := v.Steps[0], v.Steps[1]
+	if savedPole.ParadigmKey != "POLE" || savedTank.ParadigmKey != "MWM" || savedTank.Trials != 3 || savedTank.InterTrialIntervalS != 600 {
 		t.Fatalf("steps: %+v", v.Steps)
 	}
 	// The catalog fills in session defaults.
-	if !maps.Equal(arena.Session, map[string]float64{"max_sample_gap_s": 0.25, "default_seen": 1}) || !maps.Equal(maze.Session, map[string]float64{"default_seen": 1}) {
-		t.Fatalf("resolved session: %v", arena.Session)
+	if !maps.Equal(savedTank.Session, map[string]float64{"max_sample_gap_s": 0.25, "default_seen": 1}) || !maps.Equal(savedPole.Session, map[string]float64{"default_seen": 1}) {
+		t.Fatalf("resolved session: %v", savedTank.Session)
 	}
 }
 
@@ -145,12 +145,12 @@ func TestAddVersionLocksTheProtocol(t *testing.T) {
 	}
 }
 
-// fakeCatalog knows OPEN_FIELD and EPM version 1 with trial type STANDARD. It
+// fakeCatalog knows MWM and POLE version 1 with trial type STANDARD. It
 // rejects session values above 10 and adds a default.
 type fakeCatalog struct{}
 
 func (fakeCatalog) TrialTypes(key string, version int) ([]string, error) {
-	if key != "OPEN_FIELD" && key != "EPM" {
+	if key != "MWM" && key != "POLE" {
 		return nil, ErrUnknownParadigm
 	}
 	if version != 1 {

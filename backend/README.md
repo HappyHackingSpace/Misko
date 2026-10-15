@@ -14,8 +14,8 @@ conditions and per-recording calibration no longer exist.
 | [#124](https://github.com/HappyHackingSpace/Misko/issues/124) | Liveness/readiness, graceful shutdown, schema installation, architecture checks |
 | [#125](https://github.com/HappyHackingSpace/Misko/issues/125) | Login, current user, own password change, user management, laboratory singleton, RBAC, idempotent setup |
 | [#126](https://github.com/HappyHackingSpace/Misko/issues/126), [#127](https://github.com/HappyHackingSpace/Misko/issues/127) | Rebuilt as: catalog (substances, disease models), subjects and weights, experiments with groups, regimens, timepoints, endpoints and allocations, dosing and induction outcomes |
-| [#128](https://github.com/HappyHackingSpace/Misko/issues/128) | Read-only versioned paradigm catalog and the OPEN_FIELD metric engine |
-| [#129](https://github.com/HappyHackingSpace/Misko/issues/129) | The other ten paradigm contracts and metric engines, calibrated zones, scored events and pinned manifests |
+| [#128](https://github.com/HappyHackingSpace/Misko/issues/128) | Read-only versioned paradigm catalog and its first metric engine (since trimmed to the four paradigms below) |
+| [#129](https://github.com/HappyHackingSpace/Misko/issues/129) | The remaining paradigm contracts and metric engines, calibrated zones, scored events and pinned manifests |
 | [#130](https://github.com/HappyHackingSpace/Misko/issues/130) | Environments with immutable measurement revisions and experiment test protocols with immutable versions |
 | [#131](https://github.com/HappyHackingSpace/Misko/issues/131) | Tests as sessions with one or more animals in arenas, their lifecycle, trials per animal and test comments |
 | [#132](https://github.com/HappyHackingSpace/Misko/issues/132) | Video assets in private Google Cloud Storage with one current verified video per test: signed resumable uploads, server-side verification, pinned read URLs (live GCS smoke test pending) |
@@ -23,7 +23,7 @@ conditions and per-recording calibration no longer exist.
 | [#134](https://github.com/HappyHackingSpace/Misko/issues/134) | Analysis workers, analysis runs per animal with leases and fencing attempts, the scheduler process, verified output publication, the original/analyzed video pair and human review of every result |
 | [#137](https://github.com/HappyHackingSpace/Misko/issues/137) | The study report per endpoint with role-based comparisons, CSV export and the dashboard summary |
 
-The Open Field worker in [`worker/`](../worker/README.md) is tested only on
+The water maze worker in [`worker/`](../worker/README.md) is tested only on
 synthetic video. The Vue panel is being moved to this API; its screens for the
 study model are scaffolded but not complete. There is no legacy API adapter and
 no data migration from earlier installations.
@@ -48,7 +48,7 @@ no data migration from earlier installations.
 - `internal/media`: video assets and the videos of tests; `adapters/gcs` is the only package that imports the Cloud Storage client.
 - `internal/calibration`: pixel-to-centimeter calibrations, the default of an environment revision and manual overrides per animal of a test on its current video, and the status that gates analysis.
 - `internal/analysis`: analysis workers, runs per animal, leases, result validation, publication of metrics, events, artifacts and video pairs, and the review of results.
-- `internal/scoring`: observer scoring of rotarod, pole, treadmill and novel object tests: scoring sheets per animal, scored events, and completion into a SCORED analysis run.
+- `internal/scoring`: observer scoring of pole, treadmill and novel object tests: scoring sheets per animal, scored events, and completion into a SCORED analysis run.
 - `internal/reports`: the read-only study report and its CSV export over the reporting views.
 - `internal/dashboard`: read-only counts and short lists for the start screen.
 - `internal/health`: readiness use case and probes.
@@ -338,66 +338,55 @@ change means a new published version, and callers only receive copies.
 - `automatedAnalysis` stays false until a real worker capability is registered;
   catalog presence does not mean a video can be analyzed.
 
-OPEN_FIELD version 1 evaluates a trajectory of samples (time in microseconds,
-x and y in arena-local centimeters, tracked or lost). A counted interval is a
-pair of consecutive samples that are both tracked and inside the arena with
-0 < dt <= `max_sample_gap_s`.
-
-| Metric | Calculation |
-|---|---|
-| `duration_s` | Sum of dt over counted intervals |
-| `distance_cm` | Sum of straight-line steps over counted intervals; lost frames are not interpolated |
-| `mean_speed_cm_s` | `distance_cm / duration_s` |
-| `center_time_s`, `periphery_time_s` | Counted time attributed to the zone of the earlier sample; the center rectangle includes its boundary |
-| `center_time_ratio`, `periphery_time_ratio` | Zone time divided by `duration_s` |
-| `center_entries_count` | Counted intervals moving from periphery to center; starting in the center is not an entry |
-| `immobility_s` | Contiguous intervals with speed strictly below `immobility_threshold_cm_s`, in bouts of at least `min_immobility_bout_s` |
-
-Samples outside the arena count as lost. With no counted interval, every metric
-is reported missing with reason `NO_VALID_INTERVALS`, never as zero. Tracked
-samples need finite coordinates, timestamps must be non-negative and strictly
-increasing, and unknown or out-of-range parameters are rejected. The engine also
-emits `in_center` and `immobile` intervals and `center_entry` points for the
-event timeline. Tolerances are 1e-6 in the metric unit for times, distances and
-speeds, and 1e-9 for ratios and counts; booleans use 1e-9 too.
-
-### The other ten paradigms (version 1)
+The catalog has four paradigms, all at version 1, in two categories:
+`MWM` (Morris water maze, LEARNING_MEMORY) is tracked from video by a worker;
+`NOVEL_OBJECT` (LEARNING_MEMORY), `POLE` and `TREADMILL` (MOTOR) are scored by
+a person on the video. Units are `cm`, `cm_s`, `s`, `count`, `ratio` and
+`boolean`.
 
 Every paradigm takes the same input: parameters, samples, calibrated zone
 shapes, scored observed events, the event types that were scored, and the
 recorded duration. Calibrated zones are circles or polygons with at least three
-vertices, in the same centimeter coordinates as the samples, and include their
-boundary; each shape of a multi-shape zone counts as the same zone. Unknown,
-missing required or malformed zones are rejected. An observed event needs a
-declared and scored type, the declared point or interval shape, an allowed
-label, and must end within the recorded duration; single events occur at most
-once. Trajectory paradigms use the OPEN_FIELD counted-interval rule: time and
-zone membership come from the earlier sample, an entry is a counted interval
-whose earlier sample is outside the zone and whose later sample is inside, and
-latency is the time of the first tracked sample inside the zone.
+vertices, in the same centimeter coordinates as the samples; unknown, missing
+required or malformed zones are rejected. No paradigm of the current catalog
+declares calibrated zones, so every zone shape sent today is rejected as
+unknown, but the generic support (validation, storage with a calibration, the
+claim and the calibrator's drawing) stays for a future version that needs it.
+An observed event needs a declared and scored type, the declared point or
+interval shape, an allowed label, and must end within the recorded duration;
+single events occur at most once.
+
+MWM evaluates a trajectory of samples (time in microseconds, x and y in
+tank-centered centimeters with x east and y north, tracked or lost). Samples
+outside the tank count as lost. A counted interval is a pair of consecutive
+tracked samples with 0 < dt <= `max_sample_gap_s`; time and zone membership
+come from the earlier sample, and an entry is a counted interval whose earlier
+sample is outside the zone and whose later sample is inside. The platform, the
+target quadrant and the wall annulus are derived from parameters and include
+their boundary.
 
 | Paradigm | Input | Metrics |
 |---|---|---|
-| `MWM` | Trajectory in tank-centered centimeters, x east and y north; platform, target quadrant and wall annulus derived from parameters; samples outside the tank are lost | escape latency (start of the first platform dwell of at least `min_platform_dwell_s`), path length and mean swim speed up to the escape, target quadrant and thigmotaxis time ratios, platform crossings, time-weighted mean distance to the platform |
-| `EPM` | Trajectory; calibrated `center`, `open_arms`, `closed_arms`; scored `risk_assessment` points | distance, zone times and ratios, open and closed arm entries, latency to open arm, risk assessment count |
-| `Y_MAZE` | Trajectory; calibrated `arm_a`, `arm_b`, `arm_c`; optional `novel_arm` (1 to 3) | total arm entries (the start arm is the first entry), spontaneous alternation ratio, novel arm time ratio |
-| `BARNES_MAZE` | Trajectory; calibrated `target_hole` and `holes` with one shape per hole | primary latency, primary errors (hole entries before the target), total errors |
-| `THREE_CHAMBER` | Trajectory; calibrated chambers, optional `social_interaction` and `object_interaction` | chamber times, sociability index `(social - object) / (social + object)`, interaction times, chamber entries |
-| `LIGHT_DARK` | Box-local trajectory split at `box_width_cm x light_fraction`; the dividing line belongs to the dark side | light and dark time, light time ratio, light entries, transitions, latency to dark |
-| `ROTAROD` | Scored single `fall` point; fixed or accelerating rod | latency to fall (censored at `max_trial_duration_s`), fall detected, rpm at fall |
+| `MWM` | Trajectory in tank-centered centimeters; platform, target quadrant and wall annulus derived from parameters | escape latency (start of the first platform dwell of at least `min_platform_dwell_s`), path length and mean swim speed up to the escape, target quadrant and thigmotaxis time ratios, platform crossings, time-weighted mean distance to the platform |
 | `POLE` | Scored single `turn_complete`, `base_reached` and `fall` points | time to turn, total time, descent time and speed, fall detected |
 | `TREADMILL` | Scored single `exhaustion` and repeated `shock` points; fixed or accelerating belt | latency to exhaustion, run time, run distance (integral of the belt speed), shocks strictly before the run ends |
 | `NOVEL_OBJECT` | Scored `exploration` intervals labeled `novel` or `familiar` | novel, familiar and total exploration (overlaps count once), discrimination index |
 
+With no counted interval, every MWM metric is reported missing with reason
+`NO_VALID_INTERVALS`, never as zero. Tracked samples need finite coordinates,
+timestamps must be non-negative and strictly increasing, and unknown or
+out-of-range parameters are rejected. MWM also emits `in_platform` intervals and
+`platform_entry` points for the event timeline. Tolerances are 1e-6 in the
+metric unit for times, distances and speeds, and 1e-9 for ratios, counts and
+booleans.
+
 Missing metrics carry a reason instead of zero: `NO_VALID_INTERVALS`,
 `EVENT_NOT_OBSERVED` (for example no escape in a probe trial),
 `NOT_SCORED` (the event type was not scored), `ZERO_DENOMINATOR`,
-`INSUFFICIENT_ENTRIES` (fewer than three Y maze entries), `INCOMPLETE_RECORDING`
-(no event and a recording shorter than the cut-off), `NOT_APPLICABLE` (no novel
-arm), `ZONE_NOT_PROVIDED` (an optional zone was not calibrated) and
+`INCOMPLETE_RECORDING` (no event and a recording shorter than the cut-off) and
 `BELOW_EXPLORATION_CRITERION`. Rules across parameters reject a platform outside
-the tank, a wall annulus as wide as the tank radius, and end speeds below start
-speeds.
+the tank, a wall annulus as wide as the tank radius, and belt end speeds below
+start speeds.
 
 Every published manifest is pinned to a golden file in
 `internal/paradigms/adapters/http/testdata/manifests`, and the test fails when a
@@ -408,7 +397,7 @@ goldens for versions that do not have one yet.
 ## Environments and protocols
 
 An environment is a physical apparatus set up for one paradigm, such as a
-particular water tank or one of three open field boxes filmed by one camera. In
+particular water tank or one of three pools filmed by one camera. In
 a test, each animal is placed in an arena, which is one environment revision.
 Its measurements are stored as numbered revisions.
 
@@ -573,7 +562,7 @@ GCS_LIVE_BUCKET=BUCKET GCS_LIVE_ORIGIN=https://UI_ORIGIN go test -tags=gcslive -
 Physical metrics need a validated calibration. Paradigms whose QC contract has
 `max_calibration_error_cm` (the trajectory paradigms) require one, and every
 new paradigm that declares it gets the workflow below without further code;
-observation-only paradigms such as ROTAROD report `NOT_REQUIRED`.
+observation-only paradigms such as POLE report `NOT_REQUIRED`.
 
 - `POST /api/tests/{id}/subjects/{testSubjectId}/calibrations` (`test:run`)
   takes the camera id, frame size, crop, the video time of the reference frame,
@@ -588,7 +577,7 @@ observation-only paradigms such as ROTAROD report `NOT_REQUIRED`.
   version `homography-dlt-normalized-v1` is stored with the result.
 - Points must lie inside the crop, the crop inside the frame, CHECK points at
   least 1 pixel away from every FIT point, and, for paradigms whose zones come
-  from parameters (OPEN_FIELD, LIGHT_DARK, MWM), plane coordinates inside the
+  from parameters (MWM), plane coordinates inside the
   environment revision's geometry plus the tolerance.
 - The stored calibration is `VALID` when the largest CHECK error is within the
   paradigm's `max_calibration_error_cm`, otherwise `REJECTED` with
@@ -636,8 +625,7 @@ session) has one video and one or more animals (test subjects), each in its own
 arena; a run analyses one animal in that video with its arena's calibration,
 whose crop is the arena's region of the frame. The worker in
 [`worker/`](../worker/README.md), tested only on synthetic video so far,
-tracks every paradigm measured from a trajectory (OPEN_FIELD, EPM, Y_MAZE,
-BARNES_MAZE, THREE_CHAMBER, MWM, LIGHT_DARK version 1); it refuses every other
+tracks the one paradigm measured from a trajectory (MWM version 1); it refuses every other
 paradigm with `UNSUPPORTED_PARADIGM`.
 
 Workers are service identities, not users:
@@ -711,7 +699,7 @@ never change; reanalysis is a new run.
   recording, confidences from 0 to 1 and coordinates for tracked samples
   (`analysis.invalidTrajectory`). An optional `inferred` array of the same
   length marks tracked samples whose position the worker placed without seeing
-  it (a light/dark animal hidden in the dark compartment); an inferred sample
+  it (the current worker never sets it); an inferred sample
   must be tracked, and a trajectory without the array has none. QC rules the
   trajectory can measure are applied: `max_lost_frame_ratio` against untracked
   samples (inferred ones are tracked), `min_tracking_confidence` against the
@@ -764,7 +752,7 @@ real GCS behavior or any tracking accuracy.
 
 ## Observer scoring
 
-ROTAROD, POLE, TREADMILL and NOVEL_OBJECT are scored by a person on the
+POLE, TREADMILL and NOVEL_OBJECT are scored by a person on the
 test's current video instead of being tracked by a worker (a paradigm is
 observer scored when its engine consumes input events and it has no zones).
 The scheduler never queues worker runs for them and workers cannot register

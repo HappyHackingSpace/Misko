@@ -44,7 +44,7 @@ func TestStoreTranslatesSchemaRules(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := tx.Exec(ctx, `INSERT INTO misko.protocol_steps (protocol_version_id, position, paradigm_key, paradigm_version, trial_type, trials, session)
-		VALUES ($1, 1, 'OPEN_FIELD', 1, 'STANDARD', 1, '{}')`, version); err != nil {
+		VALUES ($1, 1, 'MWM', 1, 'ACQUISITION', 1, '{}')`, version); err != nil {
 		t.Fatal(err)
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -61,11 +61,11 @@ func TestStoreTranslatesSchemaRules(t *testing.T) {
 		return id(`INSERT INTO misko.environment_revisions (environment_id, paradigm_key, paradigm_version, number, parameters, created_by)
 			VALUES ($1, $2, 1, 1, '{}', $3) RETURNING id`, env, paradigm, user)
 	}
-	box, maze := revision("Box", "OPEN_FIELD"), revision("Maze", "EPM")
+	box, maze := revision("Box", "MWM"), revision("Maze", "POLE")
 
 	store := postgres.NewStore(pool)
 	planned, err := domain.NewTest(domain.Context{ExperimentID: exp, TimepointID: day7, ProtocolVersionID: version, StepPosition: 1,
-		ParadigmKey: "OPEN_FIELD", ParadigmVersion: 1, PlannedTrials: 1}, time.Now(), "", user, []domain.Participant{{AllocationID: first, EnvironmentRevisionID: box}})
+		ParadigmKey: "MWM", ParadigmVersion: 1, PlannedTrials: 1}, time.Now(), "", user, []domain.Participant{{AllocationID: first, EnvironmentRevisionID: box}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,7 +85,7 @@ func TestStoreTranslatesSchemaRules(t *testing.T) {
 		t.Fatalf("created: %+v %v", created, err)
 	}
 	add := func(allocation, arena string) error {
-		return store.AddTestSubject(ctx, exp, domain.TestSubject{TestID: created.ID, AllocationID: allocation, EnvironmentRevisionID: arena, CreatedBy: user}, "OPEN_FIELD", 1)
+		return store.AddTestSubject(ctx, exp, domain.TestSubject{TestID: created.ID, AllocationID: allocation, EnvironmentRevisionID: arena, CreatedBy: user}, "MWM", 1)
 	}
 	for name, tc := range map[string]struct {
 		allocation, arena string
@@ -93,8 +93,8 @@ func TestStoreTranslatesSchemaRules(t *testing.T) {
 	}{
 		"arena of another paradigm": {second, maze, application.ErrArenaParadigmMismatch},
 		"arena taken":               {second, box, domain.ErrDuplicateArena},
-		"animal twice":              {first, revision("Box 2", "OPEN_FIELD"), domain.ErrDuplicateAnimal},
-		"unknown allocation":        {created.ID, revision("Box 3", "OPEN_FIELD"), application.ErrAllocationNotFound},
+		"animal twice":              {first, revision("Box 2", "MWM"), domain.ErrDuplicateAnimal},
+		"unknown allocation":        {created.ID, revision("Box 3", "MWM"), application.ErrAllocationNotFound},
 	} {
 		if err := add(tc.allocation, tc.arena); !errors.Is(err, tc.want) {
 			t.Errorf("%s: err=%v want %v", name, err, tc.want)
@@ -104,7 +104,7 @@ func TestStoreTranslatesSchemaRules(t *testing.T) {
 	if _, err := store.UpdateTestStatus(ctx, started, domain.Planned); err != nil {
 		t.Fatal(err)
 	}
-	if err := add(second, revision("Box 4", "OPEN_FIELD")); !errors.Is(err, domain.ErrNotPlanned) {
+	if err := add(second, revision("Box 4", "MWM")); !errors.Is(err, domain.ErrNotPlanned) {
 		t.Errorf("animal joins a running test: %v", err)
 	}
 	if err := store.RemoveTestSubject(ctx, created.ID, created.Subjects[0].ID); !errors.Is(err, domain.ErrNotPlanned) {

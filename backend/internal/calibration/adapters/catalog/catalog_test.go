@@ -1,26 +1,25 @@
 package catalog
 
 import (
-	"github.com/HappyHackingSpace/Misko/backend/internal/calibration/domain"
-	"slices"
 	"testing"
+
+	"github.com/HappyHackingSpace/Misko/backend/internal/calibration/domain"
 )
 
+// The water maze needs a calibration bounded by its pool; its zones derive
+// from parameters, so none is drawn. Observer-scored paradigms are never
+// tracked and need no calibration.
 func TestRequirementsListThePublishedCalibratedZones(t *testing.T) {
-	epm, err := New().Requirement("EPM", 1, map[string]float64{"arm_length_cm": 35, "arm_width_cm": 6})
-	if err != nil || !epm.Required || epm.Bounds != nil || !slices.Equal(epm.Zones, []domain.ZoneRequirement{
-		{Key: "center", Required: true}, {Key: "open_arms", Required: true}, {Key: "closed_arms", Required: true}}) {
-		t.Fatalf("EPM: %+v %v", epm, err)
+	tank, err := New().Requirement("MWM", 1, map[string]float64{"tank_diameter_cm": 150, "platform_diameter_cm": 10, "platform_x_cm": 30, "platform_y_cm": 30})
+	if err != nil || !tank.Required || tank.ToleranceCm != 2 || tank.Bounds == nil || *tank.Bounds != (domain.Bounds{MinX: -75, MinY: -75, MaxX: 75, MaxY: 75}) || len(tank.Zones) != 0 {
+		t.Fatalf("MWM: %+v %v", tank, err)
 	}
-	chamber, err := New().Requirement("THREE_CHAMBER", 1, nil)
-	if err != nil || !slices.Contains(chamber.Zones, domain.ZoneRequirement{Key: "social_interaction", Required: false}) {
-		t.Fatalf("THREE_CHAMBER: %+v %v", chamber, err)
+	for _, key := range []string{"NOVEL_OBJECT", "POLE", "TREADMILL"} {
+		if scored, err := New().Requirement(key, 1, nil); err != nil || scored.Required || len(scored.Zones) != 0 || scored.Bounds != nil {
+			t.Fatalf("%s: %+v %v", key, scored, err)
+		}
 	}
-	box, err := New().Requirement("OPEN_FIELD", 1, map[string]float64{"arena_width_cm": 50, "arena_height_cm": 40})
-	if err != nil || !box.Required || box.Bounds == nil || len(box.Zones) != 0 {
-		t.Fatalf("OPEN_FIELD: %+v %v", box, err)
-	}
-	if rod, err := New().Requirement("ROTAROD", 1, nil); err != nil || rod.Required || len(rod.Zones) != 0 {
-		t.Fatalf("ROTAROD: %+v %v", rod, err)
+	if _, err := New().Requirement("MWM", 2, nil); err == nil {
+		t.Fatal("unknown version")
 	}
 }

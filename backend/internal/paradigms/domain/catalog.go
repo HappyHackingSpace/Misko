@@ -26,10 +26,7 @@ const (
 	ReasonNotObserved         = "EVENT_NOT_OBSERVED"
 	ReasonNotScored           = "NOT_SCORED"
 	ReasonZeroDenominator     = "ZERO_DENOMINATOR"
-	ReasonInsufficientEntries = "INSUFFICIENT_ENTRIES"
 	ReasonIncompleteRecording = "INCOMPLETE_RECORDING"
-	ReasonNotApplicable       = "NOT_APPLICABLE"
-	ReasonZoneNotProvided     = "ZONE_NOT_PROVIDED"
 	ReasonBelowCriterion      = "BELOW_EXPLORATION_CRITERION"
 )
 
@@ -53,7 +50,6 @@ const (
 	Second              Unit = "s"
 	Count               Unit = "count"
 	Ratio               Unit = "ratio"
-	Rpm                 Unit = "rpm"
 	Boolean             Unit = "boolean"
 )
 
@@ -61,9 +57,7 @@ type Category string
 
 const (
 	LearningMemory Category = "LEARNING_MEMORY"
-	Anxiety        Category = "ANXIETY"
 	Motor          Category = "MOTOR"
-	Social         Category = "SOCIAL"
 )
 
 // Languages lists the languages every user-facing Text is written in.
@@ -339,17 +333,10 @@ type definition struct {
 
 // registry lists every published version of each paradigm, oldest first.
 var registry = map[string][]definition{
-	"BARNES_MAZE":   {barnesMazeV1()},
-	"EPM":           {elevatedPlusMazeV1()},
-	"LIGHT_DARK":    {lightDarkV1()},
-	"MWM":           {morrisWaterMazeV1()},
-	"NOVEL_OBJECT":  {novelObjectV1()},
-	"OPEN_FIELD":    {openFieldV1()},
-	"POLE":          {poleTestV1()},
-	"ROTAROD":       {rotarodV1()},
-	"THREE_CHAMBER": {threeChamberV1()},
-	"TREADMILL":     {treadmillV1()},
-	"Y_MAZE":        {yMazeV1()},
+	"MWM":          {morrisWaterMazeV1()},
+	"NOVEL_OBJECT": {novelObjectV1()},
+	"POLE":         {poleTestV1()},
+	"TREADMILL":    {treadmillV1()},
 }
 
 func Keys() []string {

@@ -12,6 +12,7 @@ import (
 	"github.com/HappyHackingSpace/Misko/backend/internal/platform/pgtest"
 	"github.com/HappyHackingSpace/Misko/backend/internal/platform/pgtx"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"maps"
 	"slices"
 	"sync"
 	"testing"
@@ -28,22 +29,22 @@ func newService(t *testing.T) (*application.Service, *pgxpool.Pool) {
 	return application.New(postgres.NewStore(pool), catalog.New()), pool
 }
 
-func arena(width float64) application.RevisionInput {
-	return application.RevisionInput{ParadigmVersion: 1, Parameters: map[string]float64{"arena_width_cm": width, "arena_height_cm": 40, "center_fraction": 0.5}}
+func tankRevision(diameter float64) application.RevisionInput {
+	return application.RevisionInput{ParadigmVersion: 1, Parameters: map[string]float64{"tank_diameter_cm": diameter, "platform_diameter_cm": 10, "platform_x_cm": 30, "platform_y_cm": 30}}
 }
 
 func TestRevisionsAreNumberedAndNeverChange(t *testing.T) {
 	s, pool := newService(t)
-	created, err := s.Create(ctx, manager, application.EnvironmentInput{Name: "Arena A", ParadigmKey: "OPEN_FIELD", Notes: "north room", Revision: arena(50)})
+	created, err := s.Create(ctx, manager, application.EnvironmentInput{Name: "Arena A", ParadigmKey: "MWM", Notes: "north room", Revision: tankRevision(120)})
 	if err != nil {
 		t.Fatal(err)
 	}
 	env, first := created.Environment, created.Revision
-	if env.LatestRevision != 1 || first.Number != 1 || first.Parameters["arena_width_cm"] != 50 || first.CreatedBy != manager.UserID || first.EnvironmentID != env.ID {
+	if env.LatestRevision != 1 || first.Number != 1 || first.Parameters["tank_diameter_cm"] != 120 || first.CreatedBy != manager.UserID || first.EnvironmentID != env.ID {
 		t.Fatalf("created: %+v", created)
 	}
-	second, err := s.AddRevision(ctx, manager, env.ID, arena(60))
-	if err != nil || second.Number != 2 || second.Parameters["arena_width_cm"] != 60 {
+	second, err := s.AddRevision(ctx, manager, env.ID, tankRevision(130))
+	if err != nil || second.Number != 2 || second.Parameters["tank_diameter_cm"] != 130 {
 		t.Fatalf("second revision: %+v %v", second, err)
 	}
 	if got, err := s.Get(ctx, manager, env.ID); err != nil || got.LatestRevision != 2 || got.Notes != "north room" {
@@ -58,7 +59,7 @@ func TestRevisionsAreNumberedAndNeverChange(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			r, err := s.AddRevision(ctx, manager, env.ID, arena(float64(70+i)))
+			r, err := s.AddRevision(ctx, manager, env.ID, tankRevision(float64(140+i)))
 			mu.Lock()
 			defer mu.Unlock()
 			if err != nil {
@@ -83,7 +84,7 @@ func TestRevisionsAreNumberedAndNeverChange(t *testing.T) {
 		"UPDATE misko.environment_revisions SET notes = 'edited' WHERE environment_id = $1",
 		"UPDATE misko.environment_revisions SET parameters = '{}' WHERE environment_id = $1",
 		"DELETE FROM misko.environment_revisions WHERE environment_id = $1",
-		"UPDATE misko.environments SET paradigm_key = 'EPM' WHERE id = $1",
+		"UPDATE misko.environments SET paradigm_key = 'POLE' WHERE id = $1",
 		"DELETE FROM misko.environments WHERE id = $1",
 	} {
 		if _, err := pool.Exec(ctx, sql, env.ID); err == nil {
@@ -91,23 +92,23 @@ func TestRevisionsAreNumberedAndNeverChange(t *testing.T) {
 		}
 	}
 	_, err = pool.Exec(ctx, `INSERT INTO misko.environment_revisions (environment_id, paradigm_key, number, paradigm_version, parameters, created_by)
-		VALUES ($1, 'OPEN_FIELD', 2, 1, '{}', $2)`, env.ID, manager.UserID)
+		VALUES ($1, 'MWM', 2, 1, '{}', $2)`, env.ID, manager.UserID)
 	if _, constraint := pgtx.Violation(err); constraint != "environment_revisions_number_key" {
 		t.Errorf("duplicate revision number: %v", err)
 	}
 	_, err = pool.Exec(ctx, `INSERT INTO misko.environment_revisions (environment_id, paradigm_key, number, paradigm_version, parameters, created_by)
-		VALUES ($1, 'EPM', 11, 1, '{}', $2)`, env.ID, manager.UserID)
+		VALUES ($1, 'POLE', 11, 1, '{}', $2)`, env.ID, manager.UserID)
 	if _, constraint := pgtx.Violation(err); constraint != "environment_revisions_environment_fkey" {
 		t.Errorf("revision of another paradigm: %v", err)
 	}
-	if again, err := s.Revision(ctx, manager, env.ID, 1); err != nil || again.ID != first.ID || again.Parameters["arena_width_cm"] != 50 || again.Notes != "" {
+	if again, err := s.Revision(ctx, manager, env.ID, 1); err != nil || again.ID != first.ID || again.Parameters["tank_diameter_cm"] != 120 || again.Notes != "" {
 		t.Fatalf("revision 1 changed: %+v %v", again, err)
 	}
 }
 
 func TestEnvironmentsAreValidatedAgainstTheCatalog(t *testing.T) {
 	s, _ := newService(t)
-	a, err := s.Create(ctx, manager, application.EnvironmentInput{Name: "Arena A", ParadigmKey: "OPEN_FIELD", Revision: arena(50)})
+	a, err := s.Create(ctx, manager, application.EnvironmentInput{Name: "Arena A", ParadigmKey: "MWM", Revision: tankRevision(120)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -116,54 +117,54 @@ func TestEnvironmentsAreValidatedAgainstTheCatalog(t *testing.T) {
 		in   application.EnvironmentInput
 		want error
 	}{
-		"name taken ignoring case": {application.EnvironmentInput{Name: "arena a", ParadigmKey: "OPEN_FIELD", Revision: arena(50)}, application.ErrNameTaken},
-		"geometry out of range":    {application.EnvironmentInput{Name: "Small", ParadigmKey: "OPEN_FIELD", Revision: arena(10)}, application.ErrInvalidParameters},
-		"missing measurement": {application.EnvironmentInput{Name: "Partial", ParadigmKey: "OPEN_FIELD",
-			Revision: application.RevisionInput{ParadigmVersion: 1, Parameters: map[string]float64{"arena_width_cm": 50}}}, application.ErrInvalidParameters},
-		"parameter of another paradigm": {application.EnvironmentInput{Name: "Session", ParadigmKey: "OPEN_FIELD",
-			Revision: application.RevisionInput{ParadigmVersion: 1, Parameters: map[string]float64{"arena_width_cm": 50, "arena_height_cm": 40, "center_fraction": 0.5, "max_trial_duration_s": 60}}}, application.ErrInvalidParameters},
-		"session value in parameters": {application.EnvironmentInput{Name: "Rod", ParadigmKey: "ROTAROD",
-			Revision: application.RevisionInput{ParadigmVersion: 1, Parameters: map[string]float64{"max_trial_duration_s": 60}}}, application.ErrInvalidParameters},
+		"name taken ignoring case": {application.EnvironmentInput{Name: "arena a", ParadigmKey: "MWM", Revision: tankRevision(120)}, application.ErrNameTaken},
+		"geometry out of range":    {application.EnvironmentInput{Name: "Small", ParadigmKey: "MWM", Revision: tankRevision(50)}, application.ErrInvalidParameters},
+		"missing measurement": {application.EnvironmentInput{Name: "Partial", ParadigmKey: "MWM",
+			Revision: application.RevisionInput{ParadigmVersion: 1, Parameters: map[string]float64{"tank_diameter_cm": 120}}}, application.ErrInvalidParameters},
+		"parameter of another paradigm": {application.EnvironmentInput{Name: "Session", ParadigmKey: "MWM",
+			Revision: application.RevisionInput{ParadigmVersion: 1, Parameters: set(tankRevision(120).Parameters, "pole_length_cm", 50)}}, application.ErrInvalidParameters},
+		"session value in parameters": {application.EnvironmentInput{Name: "Belt", ParadigmKey: "TREADMILL",
+			Revision: application.RevisionInput{ParadigmVersion: 1, Parameters: map[string]float64{"lane_length_cm": 40, "max_trial_duration_s": 60}}}, application.ErrInvalidParameters},
 		"platform outside the tank": {application.EnvironmentInput{Name: "Tank", ParadigmKey: "MWM",
 			Revision: application.RevisionInput{ParadigmVersion: 1, Parameters: tank}}, application.ErrInvalidParameters},
-		"unknown paradigm": {application.EnvironmentInput{Name: "Maze", ParadigmKey: "RADIAL_MAZE", Revision: arena(50)}, application.ErrUnknownParadigm},
-		"unknown version": {application.EnvironmentInput{Name: "Future", ParadigmKey: "OPEN_FIELD",
-			Revision: application.RevisionInput{ParadigmVersion: 9, Parameters: arena(50).Parameters}}, application.ErrUnknownParadigmVersion},
+		"unknown paradigm": {application.EnvironmentInput{Name: "Maze", ParadigmKey: "RADIAL_MAZE", Revision: tankRevision(120)}, application.ErrUnknownParadigm},
+		"unknown version": {application.EnvironmentInput{Name: "Future", ParadigmKey: "MWM",
+			Revision: application.RevisionInput{ParadigmVersion: 9, Parameters: tankRevision(120).Parameters}}, application.ErrUnknownParadigmVersion},
 	} {
 		if _, err := s.Create(ctx, manager, tc.in); !errors.Is(err, tc.want) {
 			t.Errorf("%s: err=%v want %v", name, err, tc.want)
 		}
 	}
-	if _, err := s.AddRevision(ctx, manager, a.Environment.ID, arena(151)); !errors.Is(err, application.ErrInvalidParameters) {
+	if _, err := s.AddRevision(ctx, manager, a.Environment.ID, tankRevision(251)); !errors.Is(err, application.ErrInvalidParameters) {
 		t.Errorf("invalid revision: %v", err)
 	}
-	maze, err := s.Create(ctx, manager, application.EnvironmentInput{Name: "Maze", ParadigmKey: "EPM",
-		Revision: application.RevisionInput{ParadigmVersion: 1, Parameters: map[string]float64{"arm_length_cm": 35, "arm_width_cm": 6}}})
+	maze, err := s.Create(ctx, manager, application.EnvironmentInput{Name: "Pole", ParadigmKey: "POLE",
+		Revision: application.RevisionInput{ParadigmVersion: 1, Parameters: map[string]float64{"pole_length_cm": 50}}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	all, err := s.List(ctx, manager, "")
-	if err != nil || len(all) != 2 || all[0].Name != "Arena A" || all[1].Name != "Maze" {
+	if err != nil || len(all) != 2 || all[0].Name != "Arena A" || all[1].Name != "Pole" {
 		t.Fatalf("list keeps no failed environment: %+v %v", all, err)
 	}
 	if revisions, _ := s.Revisions(ctx, manager, a.Environment.ID); len(revisions) != 1 {
 		t.Fatalf("a rejected revision was stored: %+v", revisions)
 	}
-	if mazes, err := s.List(ctx, manager, "EPM"); err != nil || len(mazes) != 1 || mazes[0].ID != maze.Environment.ID {
+	if mazes, err := s.List(ctx, manager, "POLE"); err != nil || len(mazes) != 1 || mazes[0].ID != maze.Environment.ID {
 		t.Fatalf("filtered list: %+v %v", mazes, err)
 	}
 	tuned, err := s.AddRevision(ctx, manager, a.Environment.ID, application.RevisionInput{ParadigmVersion: 1,
-		Parameters: map[string]float64{"arena_width_cm": 50, "arena_height_cm": 40, "max_sample_gap_s": 1}})
-	if err != nil || tuned.Number != 2 || tuned.Parameters["max_sample_gap_s"] != 1 || len(tuned.Parameters) != 3 {
+		Parameters: set(tankRevision(120).Parameters, "max_sample_gap_s", 1)})
+	if err != nil || tuned.Number != 2 || tuned.Parameters["max_sample_gap_s"] != 1 || len(tuned.Parameters) != 5 {
 		t.Fatalf("apparatus and analysis values in one revision: %+v %v", tuned, err)
 	}
 
 	renamed, empty := "Arena B", ""
 	updated, err := s.Update(ctx, manager, a.Environment.ID, application.Patch{Name: &renamed, Notes: &empty})
-	if err != nil || updated.Name != "Arena B" || updated.Notes != "" || updated.ParadigmKey != "OPEN_FIELD" || updated.LatestRevision != 2 {
+	if err != nil || updated.Name != "Arena B" || updated.Notes != "" || updated.ParadigmKey != "MWM" || updated.LatestRevision != 2 {
 		t.Fatalf("update: %+v %v", updated, err)
 	}
-	taken := "MAZE"
+	taken := "POLE"
 	if _, err := s.Update(ctx, manager, a.Environment.ID, application.Patch{Name: &taken}); !errors.Is(err, application.ErrNameTaken) {
 		t.Errorf("rename to a taken name: %v", err)
 	}
@@ -171,7 +172,7 @@ func TestEnvironmentsAreValidatedAgainstTheCatalog(t *testing.T) {
 		"get unknown":            second(s.Get(ctx, manager, unknown)),
 		"get malformed":          second(s.Get(ctx, manager, "arena")),
 		"update unknown":         second(s.Update(ctx, manager, unknown, application.Patch{Name: &renamed})),
-		"revise unknown":         second(s.AddRevision(ctx, manager, unknown, arena(50))),
+		"revise unknown":         second(s.AddRevision(ctx, manager, unknown, tankRevision(120))),
 		"revisions of unknown":   second(s.Revisions(ctx, manager, unknown)),
 		"revision of malformed":  second(s.Revision(ctx, manager, "arena", 1)),
 		"revision out of bounds": second(s.Revision(ctx, manager, a.Environment.ID, 3)),
@@ -188,17 +189,23 @@ func TestEnvironmentsAreValidatedAgainstTheCatalog(t *testing.T) {
 
 func second[T any](_ T, err error) error { return err }
 
+func set(m map[string]float64, key string, v float64) map[string]float64 {
+	out := maps.Clone(m)
+	out[key] = v
+	return out
+}
+
 func TestAllRevisionsNameTheirEnvironment(t *testing.T) {
 	s, _ := newService(t)
-	b, err := s.Create(ctx, manager, application.EnvironmentInput{Name: "Arena B", ParadigmKey: "OPEN_FIELD", Revision: arena(50)})
+	b, err := s.Create(ctx, manager, application.EnvironmentInput{Name: "Arena B", ParadigmKey: "MWM", Revision: tankRevision(120)})
 	if err != nil {
 		t.Fatal(err)
 	}
-	a, err := s.Create(ctx, manager, application.EnvironmentInput{Name: "Arena A", ParadigmKey: "OPEN_FIELD", Revision: arena(60)})
+	a, err := s.Create(ctx, manager, application.EnvironmentInput{Name: "Arena A", ParadigmKey: "MWM", Revision: tankRevision(130)})
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := s.AddRevision(ctx, manager, a.Environment.ID, arena(70))
+	second, err := s.AddRevision(ctx, manager, a.Environment.ID, tankRevision(140))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -208,7 +215,7 @@ func TestAllRevisionsNameTheirEnvironment(t *testing.T) {
 	}
 	// By environment name, then revision number.
 	if all[0].EnvironmentName != "Arena A" || all[0].Number != 1 || all[1].ID != second.ID || all[1].Number != 2 ||
-		all[2].EnvironmentName != "Arena B" || all[2].EnvironmentID != b.Environment.ID || all[2].ParadigmKey != "OPEN_FIELD" {
+		all[2].EnvironmentName != "Arena B" || all[2].EnvironmentID != b.Environment.ID || all[2].ParadigmKey != "MWM" {
 		t.Fatalf("summaries: %+v", all)
 	}
 }

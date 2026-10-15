@@ -179,7 +179,7 @@ func (s *studyObjects) put(object string, data []byte, size int64, crc uint32, c
 
 // studyWorld is one experiment built with SQL: a disease model study with a
 // healthy control, a disease control, a positive control and two doses of
-// compound X, an OPEN_FIELD protocol, Baseline and Day 14 timepoints, a
+// compound X, an MWM protocol, Baseline and Day 14 timepoints, a
 // primary endpoint (distance at day 14 against baseline) and three
 // calibrated arenas.
 type studyWorld struct {
@@ -250,17 +250,17 @@ func newStudyWorld(t *testing.T, pool *pgxpool.Pool, code string) *studyWorld {
 			return err
 		}
 		_, err := tx.Exec(context.Background(), `INSERT INTO misko.protocol_steps (protocol_version_id, position, paradigm_key, paradigm_version, trial_type, trials, session)
-			VALUES ($1, 1, 'OPEN_FIELD', 1, 'STANDARD', 1, '{}')`, w.version)
+			VALUES ($1, 1, 'MWM', 1, 'ACQUISITION', 1, '{}')`, w.version)
 		return err
 	}); err != nil {
 		t.Fatal(err)
 	}
 	w.endpoint = w.id(`INSERT INTO misko.endpoints (experiment_id, timepoint_id, baseline_timepoint_id, paradigm_key, metric_key, kind, direction)
-		VALUES ($1, $2, $3, 'OPEN_FIELD', 'distance_cm', 'PRIMARY', 'HIGHER_IS_BETTER') RETURNING id`, w.exp, w.timepoints["Day 14"], w.timepoints["Baseline"])
+		VALUES ($1, $2, $3, 'MWM', 'path_length_cm', 'PRIMARY', 'HIGHER_IS_BETTER') RETURNING id`, w.exp, w.timepoints["Day 14"], w.timepoints["Baseline"])
 	for i := range 3 {
-		env := w.id("INSERT INTO misko.environments (name, paradigm_key) VALUES ($1, 'OPEN_FIELD') RETURNING id", fmt.Sprintf("%s box %d", code, i+1))
+		env := w.id("INSERT INTO misko.environments (name, paradigm_key) VALUES ($1, 'MWM') RETURNING id", fmt.Sprintf("%s box %d", code, i+1))
 		arena := w.id(`INSERT INTO misko.environment_revisions (environment_id, paradigm_key, paradigm_version, number, parameters, created_by)
-			VALUES ($1, 'OPEN_FIELD', 1, 1, '{"arena_width_cm": 50, "arena_height_cm": 40, "center_fraction": 0.5}', $2) RETURNING id`, env, studyAuthor)
+			VALUES ($1, 'MWM', 1, 1, '{"tank_diameter_cm": 120, "platform_diameter_cm": 10, "platform_x_cm": 30, "platform_y_cm": 30}', $2) RETURNING id`, env, studyAuthor)
 		w.exec(`INSERT INTO misko.calibrations (environment_revision_id, camera_id, frame_width, frame_height, crop_x, crop_y, crop_width, crop_height,
 			measurement_plane, fit_points, check_points, transform, fit_rms_error_cm, check_rms_error_cm, check_max_error_cm, tolerance_cm, algorithm_version, status, created_by)
 			VALUES ($1, 'cam', 1920, 1080, $2, 0, 640, 1080, 'ARENA_FLOOR', '[{},{},{},{}]', '[{},{},{}]', '{1,0,0,0,1,0,0,0,1}', 0.1, 0.1, 0.2, 2, 'v1', 'VALID', $3)`,
@@ -286,11 +286,11 @@ func (w *studyWorld) start() {
 func (w *studyWorld) session(timepoint string, allocations ...string) (string, []string) {
 	w.t.Helper()
 	test := w.id(`INSERT INTO misko.tests (experiment_id, timepoint_id, protocol_version_id, step_position, paradigm_key, paradigm_version, planned_trials, scheduled_at, created_by)
-		VALUES ($1, $2, $3, 1, 'OPEN_FIELD', 1, 1, now() - interval '1 hour', $4) RETURNING id`, w.exp, w.timepoints[timepoint], w.version, studyAuthor)
+		VALUES ($1, $2, $3, 1, 'MWM', 1, 1, now() - interval '1 hour', $4) RETURNING id`, w.exp, w.timepoints[timepoint], w.version, studyAuthor)
 	var subjects []string
 	for i, allocation := range allocations {
 		subjects = append(subjects, w.id(`INSERT INTO misko.test_subjects (experiment_id, test_id, allocation_id, environment_revision_id, paradigm_key, paradigm_version, created_by)
-			VALUES ($1, $2, $3, $4, 'OPEN_FIELD', 1, $5) RETURNING id`, w.exp, test, allocation, w.arenas[i], studyAuthor))
+			VALUES ($1, $2, $3, $4, 'MWM', 1, $5) RETURNING id`, w.exp, test, allocation, w.arenas[i], studyAuthor))
 	}
 	w.exec("UPDATE misko.tests SET status = 'IN_PROGRESS', started_at = now() - interval '30 minutes' WHERE id = $1", test)
 	w.objects++
@@ -318,7 +318,7 @@ func (w *studyWorld) publish(testSubject string, value *float64, status string) 
 		if err := tx.QueryRow(ctx, `INSERT INTO misko.analysis_runs (experiment_id, test_id, test_subject_id, recording_id, source_asset_id, source_generation, source_crc32c,
 				clip_start_us, clip_end_us, paradigm_key, paradigm_version, metric_engine_version, result_schema_version, parameters, trigger, status, attempt,
 				max_attempts, worker_id, lease_expires_at, available_at)
-			SELECT ts.experiment_id, ts.test_id, ts.id, r.id, a.id, a.generation, a.crc32c, r.clip_start_us, r.clip_end_us, 'OPEN_FIELD', 1, 1, 1, '{}', 'MANUAL',
+			SELECT ts.experiment_id, ts.test_id, ts.id, r.id, a.id, a.generation, a.crc32c, r.clip_start_us, r.clip_end_us, 'MWM', 1, 1, 1, '{}', 'MANUAL',
 				'RUNNING', 1, 3, $2, now() + interval '1 hour', now()
 			FROM misko.test_subjects ts JOIN misko.current_recordings r ON r.test_id = ts.test_id JOIN misko.video_assets a ON a.id = r.video_asset_id
 			WHERE ts.id = $1 RETURNING id`, testSubject, w.worker).Scan(&run); err != nil {
@@ -351,7 +351,7 @@ func (w *studyWorld) publish(testSubject string, value *float64, status string) 
 				if value == nil {
 					missing = "NO_TRACKING"
 				}
-				_, err := tx.Exec(ctx, `INSERT INTO misko.metric_results (run_id, attempt, metric_key, unit, value, missing_reason) VALUES ($1, 1, 'distance_cm', 'cm', $2, $3)`,
+				_, err := tx.Exec(ctx, `INSERT INTO misko.metric_results (run_id, attempt, metric_key, unit, value, missing_reason) VALUES ($1, 1, 'path_length_cm', 'cm', $2, $3)`,
 					run, value, missing)
 				return err
 			},
@@ -406,7 +406,7 @@ func TestAnalysisOverHTTP(t *testing.T) {
 		FROM misko.test_subjects ts JOIN misko.current_recordings r ON r.test_id = ts.test_id WHERE ts.id = $1`, subjects[2], studyAuthor)
 
 	// Workers are registered by lab managers and get their token once.
-	register := map[string]any{"name": "tracker", "modelVersion": "tracker 1.0", "capabilities": []any{map[string]any{"paradigmKey": "OPEN_FIELD", "paradigmVersion": 1}}}
+	register := map[string]any{"name": "tracker", "modelVersion": "tracker 1.0", "capabilities": []any{map[string]any{"paradigmKey": "MWM", "paradigmVersion": 1}}}
 	a.expect("viewer registers a worker", "POST", "/api/analysis/workers", "VIEWER", register, 403, "auth.forbidden")
 	token := a.expect("register", "POST", "/api/analysis/workers", "SUPERADMIN", register, 201, "")["token"].(string)
 	worker := "Worker " + token
@@ -449,7 +449,7 @@ func TestAnalysisOverHTTP(t *testing.T) {
 	subject := claim["testSubject"].(map[string]any)
 	if run["attempt"] != float64(1) || subject["id"] != subjects[0] || subject["environmentRevisionId"] != w.arenas[0] ||
 		calibration["id"] != run["calibrationId"] || calibration["crop"].(map[string]any)["width"] != float64(640) ||
-		len(claim["contract"].(map[string]any)["metrics"].([]any)) != 9 || claim["trajectorySchema"] != "misko.trajectory.v1" {
+		len(claim["contract"].(map[string]any)["metrics"].([]any)) != 8 || claim["trajectorySchema"] != "misko.trajectory.v1" {
 		t.Fatalf("job: %v", claim)
 	}
 	runPath := "/api/worker/runs/" + runID
@@ -465,7 +465,7 @@ func TestAnalysisOverHTTP(t *testing.T) {
 	}
 	objects.put(prefix+"overlay.mp4", nil, 2048, 5, "video/mp4")
 
-	// The worker walks 10 cm into the 50 x 40 cm arena's center, then stays still.
+	// The worker swims 10 cm across the 120 cm pool, then stays still.
 	var ts []int64
 	var xs, ys, confidence []float64
 	var tracked []bool
@@ -487,7 +487,7 @@ func TestAnalysisOverHTTP(t *testing.T) {
 		t.Fatalf("result: %d %v", status, body)
 	}
 	detail := a.expect("run detail", "GET", "/api/analysis-runs/"+runID, "VIEWER", nil, 200, "")
-	if published := detail["result"].(map[string]any); len(published["metrics"].([]any)) != 9 || published["pair"] == nil {
+	if published := detail["result"].(map[string]any); len(published["metrics"].([]any)) != 8 || published["pair"] == nil {
 		t.Fatalf("detail: %v", detail)
 	}
 
@@ -501,7 +501,7 @@ func TestAnalysisOverHTTP(t *testing.T) {
 	item := items[0].(map[string]any)
 	if item["testSubjectId"] != subjects[0] || item["status"] != "PENDING" || item["subjectCode"] != "M-1" || item["blinded"] != false ||
 		item["group"].(map[string]any)["code"] != "G1" || item["arena"].(map[string]any)["environmentRevisionId"] != w.arenas[0] ||
-		len(item["run"].(map[string]any)["metrics"].([]any)) != 9 || item["newerRunAvailable"] != false {
+		len(item["run"].(map[string]any)["metrics"].([]any)) != 8 || item["newerRunAvailable"] != false {
 		t.Fatalf("review item: %v", item)
 	}
 	a.expect("bad status", "GET", results+"?status=DONE", "VIEWER", nil, 400, "analysis.invalidQuery")

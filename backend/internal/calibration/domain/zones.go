@@ -7,8 +7,8 @@ import (
 	"sort"
 )
 
-// MaxShapesPerZone bounds the shapes of one zone key (Barnes maze holes are
-// the largest set).
+// MaxShapesPerZone bounds the shapes of one zone key (a hole board with many
+// holes is the largest set a paradigm could need).
 const MaxShapesPerZone = 100
 
 const maxPolygonVertices = 100

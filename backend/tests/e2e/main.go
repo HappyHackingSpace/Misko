@@ -348,10 +348,12 @@ func nested(m map[string]any, key string) map[string]any {
 // point is one calibration correspondence of the fixture's camera.
 type point struct{ worldX, worldY, pixelX, pixelY float64 }
 
-// The synthetic fixture's camera: a 320 x 240 view of a 50 x 50 cm arena
-// (worker/tests/synthetic.py). Corners fit the transform, the other three check it.
-var fitPoints = []point{{0, 0, 52, 28}, {50, 0, 268, 36}, {50, 50, 292, 222}, {0, 50, 30, 214}}
-var checkPoints = []point{{25, 25, 160.9466, 116.0652}, {10, 40, 85.7359, 172.3152}, {40, 10, 227.6114, 66.2066}}
+// The synthetic fixture's camera: a 320 x 240 view of a 120 cm water maze tank
+// in tank-centred centimetres, x east and y north (worker/tests/contract_fixture.py).
+// The tank's east, north, west and south rims fit the transform; the centre,
+// the platform centre and a south-west point check it.
+var fitPoints = []point{{60, 0, 262, 120}, {0, 60, 160, 20}, {-60, 0, 58, 124}, {0, -60, 162, 224}}
+var checkPoints = []point{{0, 0, 160.9998, 121.9804}, {30, 30, 211.2438, 70.2391}, {-20, -40, 127.5562, 190.8809}}
 
 func correspondences(points []point) []map[string]float64 {
 	out := make([]map[string]float64, 0, len(points))
@@ -443,12 +445,12 @@ func seedStudy(api bootstrap.API, store *diskStore, fixtures, adminPassword stri
 	mptp, saline, compound := substance("MPTP", "INDUCER"), substance("Saline", "VEHICLE"), substance("Compound X", "COMPOUND")
 	substance("L-DOPA", "REFERENCE_DRUG")
 	model := text(s.post("/api/catalog/disease-models", map[string]any{"name": "MPTP Parkinson", "inductionType": "CHEMICAL",
-		"confirmationCriterion": "Rotarod latency below 50% of baseline"}), "id")
+		"confirmationCriterion": "Pole descent time above 150% of baseline"}), "id")
 
-	// Three calibrated open field arenas filmed by one camera.
+	// Three calibrated water maze pools filmed by one camera.
 	arena := func(name string) (string, string) {
-		created := s.post("/api/environments", map[string]any{"name": name, "paradigmKey": "OPEN_FIELD",
-			"revision": map[string]any{"paradigmVersion": 1, "parameters": map[string]any{"arena_width_cm": 50, "arena_height_cm": 50}}})
+		created := s.post("/api/environments", map[string]any{"name": name, "paradigmKey": "MWM",
+			"revision": map[string]any{"paradigmVersion": 1, "parameters": map[string]any{"tank_diameter_cm": 120, "platform_diameter_cm": 10, "platform_x_cm": 30, "platform_y_cm": 30}}})
 		id := text(nested(created, "environment"), "id")
 		s.post("/api/environments/"+id+"/revisions/1/calibrations", map[string]any{
 			"cameraId": "e2e-camera", "frameWidth": 320, "frameHeight": 240,
@@ -457,9 +459,9 @@ func seedStudy(api bootstrap.API, store *diskStore, fixtures, adminPassword stri
 		})
 		return id, text(nested(created, "revision"), "id")
 	}
-	boxA, boxARevision := arena("Box A")
-	boxB, boxBRevision := arena("Box B")
-	boxC, boxCRevision := arena("Box C")
+	poolA, poolARevision := arena("Pool A")
+	poolB, poolBRevision := arena("Pool B")
+	poolC, poolCRevision := arena("Pool C")
 
 	// The study design.
 	experiment := s.post("/api/experiments", map[string]any{"code": "E2E", "title": "Compound X in MPTP mice",
@@ -491,12 +493,12 @@ func seedStudy(api bootstrap.API, store *diskStore, fixtures, adminPassword stri
 	baseline := timepoint(base, "Baseline", -1, 1)
 	day7 := timepoint(base, "Day 7", 7, 2)
 	day14 := timepoint(base, "Day 14", 14, 3)
-	openField := map[string]any{"name": "Open field", "version": map[string]any{"steps": []any{
-		map[string]any{"position": 1, "paradigmKey": "OPEN_FIELD", "paradigmVersion": 1, "trialType": "STANDARD", "trials": 2},
+	waterMaze := map[string]any{"name": "Water maze", "version": map[string]any{"steps": []any{
+		map[string]any{"position": 1, "paradigmKey": "MWM", "paradigmVersion": 1, "trialType": "ACQUISITION", "trials": 2},
 	}}}
-	versionID := text(nested(s.post(base+"/protocols", openField), "version"), "id")
-	s.post(base+"/endpoints", map[string]any{"timepointId": day14, "baselineTimepointId": baseline, "paradigmKey": "OPEN_FIELD",
-		"metricKey": "distance_cm", "kind": "PRIMARY", "direction": "HIGHER_IS_BETTER"})
+	versionID := text(nested(s.post(base+"/protocols", waterMaze), "version"), "id")
+	s.post(base+"/endpoints", map[string]any{"timepointId": day14, "baselineTimepointId": baseline, "paradigmKey": "MWM",
+		"metricKey": "path_length_cm", "kind": "PRIMARY", "direction": "LOWER_IS_BETTER"})
 
 	// Animals: allocated ten days ago, two to three per group.
 	allocations := map[string]string{}
@@ -566,9 +568,9 @@ func seedStudy(api bootstrap.API, store *diskStore, fixtures, adminPassword stri
 	// progress today with two animals in two arenas and a verified video, and
 	// a Day 14 session with three animals.
 	overdue := s.post(base+"/tests", map[string]any{"timepointId": baseline, "protocolVersionId": versionID, "stepPosition": 1,
-		"subjects": []any{map[string]any{"allocationId": allocations["M01"], "environmentRevisionId": boxARevision}}})
+		"subjects": []any{map[string]any{"allocationId": allocations["M01"], "environmentRevisionId": poolARevision}}})
 	runningID, baselineAnimals := running(base, baseline, versionID, "Morning session",
-		allocations["M02"], boxARevision, allocations["M03"], boxBRevision)
+		allocations["M02"], poolARevision, allocations["M03"], poolBRevision)
 	if s.err != nil {
 		return nil, s.err
 	}
@@ -578,23 +580,23 @@ func seedStudy(api bootstrap.API, store *diskStore, fixtures, adminPassword stri
 	m02, m03 := baselineAnimals[allocations["M02"]], baselineAnimals[allocations["M03"]]
 	s.post("/api/tests/"+runningID+"/subjects/"+m02+"/trials", map[string]any{"repetition": 1,
 		"startedAt": at(trialStart), "endedAt": at(trialEnd)})
-	s.post("/api/tests/"+runningID+"/comments", map[string]any{"body": "Box B lamp flickered at the start."})
+	s.post("/api/tests/"+runningID+"/comments", map[string]any{"body": "Pool B lamp flickered at the start."})
 	film(runningID)
 	day14ID, day14Animals := running(base, day14, versionID, "Day 14 session",
-		allocations["M04"], boxARevision, allocations["M06"], boxBRevision, allocations["M07"], boxCRevision)
+		allocations["M04"], poolARevision, allocations["M06"], poolBRevision, allocations["M07"], poolCRevision)
 	film(day14ID)
 	m04, m06, m07 := day14Animals[allocations["M04"]], day14Animals[allocations["M06"]], day14Animals[allocations["M07"]]
 
 	// The blinded study: one healthy group, one timepoint, one session.
-	blind := s.post("/api/experiments", map[string]any{"code": "E2E-BLIND", "title": "Blinded open field",
-		"hypothesis": "Handling does not change exploration", "randomisation": "Simple randomisation", "blinded": true})
+	blind := s.post("/api/experiments", map[string]any{"code": "E2E-BLIND", "title": "Blinded water maze",
+		"hypothesis": "Handling does not change spatial learning", "randomisation": "Simple randomisation", "blinded": true})
 	blindID := text(blind, "id")
 	blindBase := "/api/experiments/" + blindID
 	blindGroup := text(s.post(blindBase+"/groups", map[string]any{"code": "G1", "name": "Handled", "role": "HEALTHY_CONTROL", "targetSize": 2}), "id")
 	blindDay := timepoint(blindBase, "Baseline", 0, 1)
-	blindVersion := text(nested(s.post(blindBase+"/protocols", openField), "version"), "id")
-	s.post(blindBase+"/endpoints", map[string]any{"timepointId": blindDay, "paradigmKey": "OPEN_FIELD",
-		"metricKey": "distance_cm", "kind": "PRIMARY", "direction": "HIGHER_IS_BETTER"})
+	blindVersion := text(nested(s.post(blindBase+"/protocols", waterMaze), "version"), "id")
+	s.post(blindBase+"/endpoints", map[string]any{"timepointId": blindDay, "paradigmKey": "MWM",
+		"metricKey": "path_length_cm", "kind": "PRIMARY", "direction": "LOWER_IS_BETTER"})
 	blindAllocations := map[string]string{}
 	for _, code := range []string{"B01", "B02"} {
 		subject := text(s.post("/api/subjects", map[string]any{"code": code, "species": "MOUSE", "sex": "MALE"}), "id")
@@ -602,7 +604,7 @@ func seedStudy(api bootstrap.API, store *diskStore, fixtures, adminPassword stri
 	}
 	s.post(blindBase+"/start", map[string]any{"dayZero": today.Format("2006-01-02")})
 	blindTestID, blindAnimals := running(blindBase, blindDay, blindVersion, "Blinded session",
-		blindAllocations["B01"], boxARevision, blindAllocations["B02"], boxBRevision)
+		blindAllocations["B01"], poolARevision, blindAllocations["B02"], poolBRevision)
 	film(blindTestID)
 	if s.err != nil {
 		return nil, s.err
@@ -611,7 +613,7 @@ func seedStudy(api bootstrap.API, store *diskStore, fixtures, adminPassword stri
 	// Analysis: a worker analyses every queued animal; M02 is analysed again
 	// so its review offers a newer run; two Day 14 results are accepted.
 	registered := s.post("/api/analysis/workers", map[string]any{"name": "e2e-tracker", "modelVersion": "tracker 1.0",
-		"capabilities": []any{map[string]any{"paradigmKey": "OPEN_FIELD", "paradigmVersion": 1}}})
+		"capabilities": []any{map[string]any{"paradigmKey": "MWM", "paradigmVersion": 1}}})
 	if s.err != nil {
 		return nil, s.err
 	}
@@ -659,8 +661,8 @@ func seedStudy(api bootstrap.API, store *diskStore, fixtures, adminPassword stri
 		"groups":            map[string]any{"healthy": healthy, "diseaseControl": disease, "treatment": treated},
 		"timepoints":        map[string]any{"baseline": baseline, "day7": day7, "day14": day14},
 		"protocolVersionId": versionID, "allocations": allocations, "subjects": subjects,
-		"environments":  map[string]any{"boxA": boxA, "boxB": boxB, "boxC": boxC},
-		"arenas":        map[string]any{"boxA": boxARevision, "boxB": boxBRevision, "boxC": boxCRevision},
+		"environments":  map[string]any{"poolA": poolA, "poolB": poolB, "poolC": poolC},
+		"arenas":        map[string]any{"poolA": poolARevision, "poolB": poolBRevision, "poolC": poolCRevision},
 		"plannedTestId": text(overdue, "id"), "runningTestId": runningID, "day14TestId": day14ID, "accounts": accounts,
 		// Test subjects (an animal in a session) with analysis results.
 		"results": map[string]any{"M02": m02, "M03": m03, "M04": m04, "M06": m06, "M07": m07},

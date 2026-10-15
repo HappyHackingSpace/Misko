@@ -1917,7 +1917,7 @@ paths:
       operationId: getScoring
       summary: The observer scoring of one animal of a test (*:read)
       description: >-
-        For observer-scored paradigms (ROTAROD, POLE, TREADMILL, NOVEL_OBJECT). Returns the paradigm's input event
+        For observer-scored paradigms (POLE, TREADMILL, NOVEL_OBJECT). Returns the paradigm's input event
         definitions (label and definition in the request language), the test's current video clip (null without a
         verified video) and the newest scoring sheet with its events (null before the first event). Event times are
         microseconds from the clip start of the current video. A tracked paradigm answers scoring.notObserverScored.
@@ -2495,7 +2495,7 @@ components:
     SubstanceFilter: {name: substanceId, in: query, schema: {type: string, format: uuid}}
     From: {name: from, in: query, schema: {type: string, format: date-time}, description: Inclusive lower bound on administeredAt}
     To: {name: to, in: query, schema: {type: string, format: date-time}, description: Exclusive upper bound on administeredAt}
-    ParadigmKey: {name: key, in: path, required: true, schema: {type: string, pattern: '^[A-Z_]+$'}, example: OPEN_FIELD}
+    ParadigmKey: {name: key, in: path, required: true, schema: {type: string, pattern: '^[A-Z_]+$'}, example: MWM}
   securitySchemes:
     bearer:
       type: http
@@ -2902,7 +2902,7 @@ components:
         id: {type: string, format: uuid}
         name: {type: string, description: Unique ignoring case}
         inductionType: {$ref: '#/components/schemas/InductionType'}
-        confirmationCriterion: {type: [string, 'null'], description: 'How the model is confirmed, e.g. "rotarod latency < 50% of baseline"'}
+        confirmationCriterion: {type: [string, 'null'], description: 'How the model is confirmed, e.g. "pole descent time > 150% of baseline"'}
         description: {type: [string, 'null']}
         createdAt: {type: string, format: date-time}
         updatedAt: {type: string, format: date-time}
@@ -3130,7 +3130,7 @@ components:
         key: {type: string}
         name: {type: string, description: In the response language}
         description: {type: string, description: What the test is and what it measures, in the response language}
-        category: {type: string, enum: [LEARNING_MEMORY, ANXIETY, MOTOR, SOCIAL]}
+        category: {type: string, enum: [LEARNING_MEMORY, MOTOR]}
         species: {type: array, items: {type: string}}
         versions: {type: array, items: {type: integer}}
         latestVersion: {type: integer}
@@ -3146,7 +3146,7 @@ components:
           description: APPARATUS values are measured and required on an environment; ANALYSIS values are optional on an environment; SESSION values are optional on a protocol step. Missing optional values use the default
         label: {type: string, description: In the response language}
         help: {type: string, description: What to measure or what the value changes, in the response language}
-        unit: {type: string, enum: [cm, cm_s, s, count, ratio, rpm, boolean]}
+        unit: {type: string, enum: [cm, cm_s, s, count, ratio, boolean]}
         valueType: {type: string, enum: [number, integer], description: Integer parameters accept whole numbers only; booleans are 0 or 1}
         min: {type: number}
         max: {type: number}
@@ -3158,7 +3158,7 @@ components:
         key: {type: string}
         label: {type: string, description: In the response language}
         description: {type: string, description: Plain explanation in the response language}
-        unit: {type: string, enum: [cm, cm_s, s, count, ratio, rpm, boolean]}
+        unit: {type: string, enum: [cm, cm_s, s, count, ratio, boolean]}
         valueType: {type: string, enum: [number, integer]}
         definition: {type: string, description: Precise technical definition in the response language}
         formula: {type: string, description: Expression; the same in every language}
@@ -3560,7 +3560,7 @@ components:
           type: array
           maxItems: 1000
           items: {$ref: '#/components/schemas/CalibrationZoneInput'}
-          description: 'Shapes of the paradigm''s calibrated zones in full-frame pixels, required for paradigms with calibrated zones (EPM, Y_MAZE, BARNES_MAZE, THREE_CHAMBER): keys must be calibrated zones of the paradigm version (400 calibration.unknownZone), every required one needs a shape (calibration.missingZone), shapes are a circle with a positive radius or a polygon of 3 to 100 vertices, at most 100 per key (calibration.invalidZone), inside the frame (calibration.zoneOutsideFrame). They are converted to centimetres with the fitted transform and stored with the calibration.'
+          description: 'Shapes of the paradigm''s calibrated zones in full-frame pixels, required for paradigms with calibrated zones (none of the current catalog declares any): keys must be calibrated zones of the paradigm version (400 calibration.unknownZone), every required one needs a shape (calibration.missingZone), shapes are a circle with a positive radius or a polygon of 3 to 100 vertices, at most 100 per key (calibration.invalidZone), inside the frame (calibration.zoneOutsideFrame). They are converted to centimetres with the fitted transform and stored with the calibration.'
     CalibrationStatus:
       type: object
       required: [status, source, drift, calibration]
@@ -3597,7 +3597,7 @@ components:
           type: array
           maxItems: 1000
           items: {$ref: '#/components/schemas/CalibrationZoneInput'}
-          description: 'Shapes of the paradigm''s calibrated zones in full-frame pixels, required for paradigms with calibrated zones (EPM, Y_MAZE, BARNES_MAZE, THREE_CHAMBER): keys must be calibrated zones of the paradigm version (400 calibration.unknownZone), every required one needs a shape (calibration.missingZone), shapes are a circle with a positive radius or a polygon of 3 to 100 vertices, at most 100 per key (calibration.invalidZone), inside the frame (calibration.zoneOutsideFrame). They are converted to centimetres with the fitted transform and stored with the calibration.'
+          description: 'Shapes of the paradigm''s calibrated zones in full-frame pixels, required for paradigms with calibrated zones (none of the current catalog declares any): keys must be calibrated zones of the paradigm version (400 calibration.unknownZone), every required one needs a shape (calibration.missingZone), shapes are a circle with a positive radius or a polygon of 3 to 100 vertices, at most 100 per key (calibration.invalidZone), inside the frame (calibration.zoneOutsideFrame). They are converted to centimetres with the fitted transform and stored with the calibration.'
     ZoneVertex:
       type: object
       additionalProperties: false
@@ -3626,12 +3626,12 @@ components:
           properties:
             polygon: {type: array, minItems: 3, maxItems: 100, items: {$ref: '#/components/schemas/ZoneVertex'}}
     CalibrationZoneInput:
-      description: One shape of a calibrated zone as drawn, in full-frame pixels; a key may have several shapes (EPM open arms are two polygons)
+      description: One shape of a calibrated zone as drawn, in full-frame pixels; a key may have several shapes (for example one polygon per arm)
       allOf:
         - type: object
           required: [key]
           properties:
-            key: {type: string, description: A calibrated zone key of the paradigm version, such as open_arms}
+            key: {type: string, description: A calibrated zone key of the paradigm version, such as arms}
         - $ref: '#/components/schemas/ZoneShape'
     CalibrationZone:
       type: object

@@ -107,8 +107,8 @@ func TestDiseaseModelsAreUniqueFilteredAndProtectedWhileUsed(t *testing.T) {
 	ctx := context.Background()
 	pool := pgtest.Database(t)
 	store := postgres.NewStore(pool)
-	mptp, err := store.CreateDiseaseModel(ctx, domain.DiseaseModel{Name: "MPTP parkinsonism", InductionType: domain.Chemical, ConfirmationCriterion: "rotarod latency < 50% of baseline"})
-	if err != nil || mptp.ConfirmationCriterion != "rotarod latency < 50% of baseline" || mptp.Description != "" {
+	mptp, err := store.CreateDiseaseModel(ctx, domain.DiseaseModel{Name: "MPTP parkinsonism", InductionType: domain.Chemical, ConfirmationCriterion: "pole descent time > 150% of baseline"})
+	if err != nil || mptp.ConfirmationCriterion != "pole descent time > 150% of baseline" || mptp.Description != "" {
 		t.Fatalf("create: %+v %v", mptp, err)
 	}
 	mcao, err := store.CreateDiseaseModel(ctx, domain.DiseaseModel{Name: "MCAO stroke", InductionType: domain.Surgical})

@@ -26,7 +26,7 @@ func TestAnimalRowsCoverTheEndpointAndItsBaseline(t *testing.T) {
 			Experiment: domain.Experiment{Code: "=E1"},
 			Groups:     []domain.Group{{ID: "g", Code: "G1", Role: domain.HealthyControl}},
 			Timepoints: []domain.Timepoint{{ID: "b", Name: "Baseline"}, {ID: "t", Name: "Day 7", StudyDay: 7}, {ID: "x", Name: "Day 28"}},
-			Sections:   []domain.Section{{Endpoint: domain.Endpoint{ID: "e", TimepointID: "t", BaselineTimepointID: "b", MetricKey: "distance_cm"}}},
+			Sections:   []domain.Section{{Endpoint: domain.Endpoint{ID: "e", TimepointID: "t", BaselineTimepointID: "b", MetricKey: "path_length_cm"}}},
 		},
 		Measurements: [][]domain.Measurement{{
 			{GroupID: "g", TimepointID: "b", SubjectCode: "M1", ResultStatus: "ACCEPTED", HasMetric: true, Value: &v, Unit: "cm", MetricEngineVersion: 1},

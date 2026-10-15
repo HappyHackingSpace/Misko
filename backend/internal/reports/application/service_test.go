@@ -33,8 +33,8 @@ func (f *fakeStore) Timepoints(context.Context, string) ([]domain.Timepoint, err
 
 func (f *fakeStore) Endpoints(context.Context, string) ([]domain.Endpoint, error) {
 	return []domain.Endpoint{
-		{ID: "01a00000-0000-7000-8000-0000000000a1", TimepointID: "tp", ParadigmKey: "OPEN_FIELD", MetricKey: "distance_cm"},
-		{ID: "01a00000-0000-7000-8000-0000000000a2", TimepointID: "tp", ParadigmKey: "OPEN_FIELD", MetricKey: "distance_cm", Kind: "SECONDARY"},
+		{ID: "01a00000-0000-7000-8000-0000000000a1", TimepointID: "tp", ParadigmKey: "MWM", MetricKey: "path_length_cm"},
+		{ID: "01a00000-0000-7000-8000-0000000000a2", TimepointID: "tp", ParadigmKey: "MWM", MetricKey: "path_length_cm", Kind: "SECONDARY"},
 	}, nil
 }
 

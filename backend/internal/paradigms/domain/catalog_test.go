@@ -8,34 +8,21 @@ import (
 	"testing"
 )
 
-var elevenKeys = []string{"BARNES_MAZE", "EPM", "LIGHT_DARK", "MWM", "NOVEL_OBJECT", "OPEN_FIELD", "POLE", "ROTAROD", "THREE_CHAMBER", "TREADMILL", "Y_MAZE"}
+var fourKeys = []string{"MWM", "NOVEL_OBJECT", "POLE", "TREADMILL"}
 
 // minimalInputs are valid inputs that produce every metric of each paradigm.
 func minimalInputs() map[string]Input {
 	return map[string]Input{
-		"BARNES_MAZE": {Zones: barnesZones(), Samples: []Sample{sample(0, 0, 0), sample(0.5, 38, 0), sample(1, 0, 38)}},
-		"EPM": {Zones: epmZones(), ScoredEvents: []string{"risk_assessment"}, Events: []ObservedEvent{mark("risk_assessment", 0.2)},
-			Samples: []Sample{sample(0, 0, 0), sample(0.5, 10, 0), sample(1, 0, 10)}},
-		"LIGHT_DARK":   {Samples: []Sample{sample(0, 5, 10), sample(0.5, 30, 10), sample(1, 10, 10)}},
 		"MWM":          {Samples: []Sample{sample(0, 0, 0), sample(0.5, 30, 30), sample(1, 30, 31), sample(1.5, 30, 30)}},
 		"NOVEL_OBJECT": {ScoredEvents: []string{"exploration"}, Events: []ObservedEvent{span("exploration", "novel", 1, 3), span("exploration", "familiar", 4, 5)}},
-		"OPEN_FIELD":   {Parameters: arena40, Samples: []Sample{sample(0, 5, 5), sample(0.5, 15, 15), sample(1, 15, 15), sample(1.5, 15, 15)}},
 		"POLE": {ScoredEvents: []string{"turn_complete", "base_reached", "fall"},
 			Events: []ObservedEvent{mark("turn_complete", 1), mark("base_reached", 4)}},
-		"ROTAROD": {ScoredEvents: []string{"fall"}, Events: []ObservedEvent{mark("fall", 100)}, DurationUs: at(300)},
-		"THREE_CHAMBER": {Zones: func() map[string][]Shape {
-			z := threeChamberZones()
-			z["object_interaction"] = []Shape{circle(50, 20, 5)}
-			return z
-		}(), Samples: []Sample{sample(0, 30, 20), sample(0.5, 10, 20), sample(1, 50, 20), sample(1.5, 51, 20)}},
 		"TREADMILL": {ScoredEvents: []string{"exhaustion", "shock"}, Events: []ObservedEvent{mark("shock", 10), mark("exhaustion", 60)}},
-		"Y_MAZE": {Zones: yMazeZones(), Parameters: map[string]float64{"novel_arm": 1},
-			Samples: []Sample{sample(0, 5, 5), sample(0.5, 25, 5), sample(1, 45, 5), sample(1.5, 5, 5)}},
 	}
 }
 
 func TestCatalogReturnsCopies(t *testing.T) {
-	p, err := Latest("EPM")
+	p, err := Latest("MWM")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,34 +32,42 @@ func TestCatalogReturnsCopies(t *testing.T) {
 	p.Parameters[0].Max = -1
 	p.TrialTypes[0].Key = "hacked"
 	p.Zones[0].Key = "hacked"
-	p.InputEvents[0].Type = "hacked"
+	scored, err := Latest("NOVEL_OBJECT")
+	if err != nil {
+		t.Fatal(err)
+	}
+	scored.InputEvents[0].Type = "hacked"
+	scored.InputEvents[0].Labels[0] = "hacked"
 	all := All()
 	all[0].Name.EN = "hacked"
 	all[0].Zones = nil
-	result, _ := Evaluate("OPEN_FIELD", 1, Input{})
-	result.Parameters["arena_width_cm"] = -1
+	result, _ := Evaluate("MWM", 1, Input{})
+	result.Parameters["tank_diameter_cm"] = -1
 
-	fresh, err := Version("EPM", 1)
+	fresh, err := Version("MWM", 1)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if fresh.Species[0] == "zebrafish" || fresh.Metrics[0].Key == "hacked" || fresh.Metrics[0].Inputs[0] == "hacked" ||
-		fresh.Parameters[0].Max == -1 || fresh.TrialTypes[0].Key == "hacked" || fresh.Zones[0].Key == "hacked" || fresh.InputEvents[0].Type == "hacked" {
+		fresh.Parameters[0].Max == -1 || fresh.TrialTypes[0].Key == "hacked" || fresh.Zones[0].Key == "hacked" {
 		t.Fatal("caller mutated the registry")
+	}
+	if fresh, _ := Version("NOVEL_OBJECT", 1); fresh.InputEvents[0].Type == "hacked" || fresh.InputEvents[0].Labels[0] == "hacked" {
+		t.Fatal("caller mutated the observed events")
 	}
 	if again := All(); again[0].Name.EN == "hacked" || len(again[0].Zones) == 0 {
 		t.Fatal("caller mutated All()")
 	}
-	if again, _ := Evaluate("OPEN_FIELD", 1, Input{}); again.Parameters["arena_width_cm"] != 50 {
+	if again, _ := Evaluate("MWM", 1, Input{}); again.Parameters["tank_diameter_cm"] != 120 {
 		t.Fatal("caller mutated default parameters")
 	}
 }
 
-func TestAllElevenParadigmsArePublished(t *testing.T) {
-	if !slices.Equal(Keys(), elevenKeys) {
+func TestAllFourParadigmsArePublished(t *testing.T) {
+	if !slices.Equal(Keys(), fourKeys) {
 		t.Fatalf("keys %v", Keys())
 	}
-	for _, key := range elevenKeys {
+	for _, key := range fourKeys {
 		versions, err := Versions(key)
 		latest, latestErr := Latest(key)
 		if err != nil || latestErr != nil || !slices.Equal(versions, []int{1}) || latest.Version != 1 || latest.Key != key {
@@ -90,7 +85,7 @@ func TestAllElevenParadigmsArePublished(t *testing.T) {
 // Every advertised metric is fully specified and produced by the engine, the
 // engine produces nothing undeclared, and derived events match declared kinds.
 func TestEveryContractMatchesItsEngine(t *testing.T) {
-	units := []Unit{Centimeter, CentimeterPerSecond, Second, Count, Ratio, Rpm, Boolean}
+	units := []Unit{Centimeter, CentimeterPerSecond, Second, Count, Ratio, Boolean}
 	inputs := minimalInputs()
 	for _, p := range All() {
 		t.Run(p.Key, func(t *testing.T) {

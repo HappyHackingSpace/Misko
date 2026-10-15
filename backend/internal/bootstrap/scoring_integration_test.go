@@ -11,12 +11,12 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// scoringStudy adds an observer-scored protocol (rotarod, then novel object
+// scoringStudy adds an observer-scored protocol (treadmill, then novel object
 // recognition) with day 14 endpoints and their arenas to a study world.
 type scoringStudy struct {
 	*studyWorld
 	version              string
-	rotarod, novel       []string
+	treadmill, novel     []string
 	latency, recognition string
 }
 
@@ -30,14 +30,14 @@ func newScoringStudy(t *testing.T, w *studyWorld) *scoringStudy {
 			return err
 		}
 		_, err := tx.Exec(context.Background(), `INSERT INTO misko.protocol_steps (protocol_version_id, position, paradigm_key, paradigm_version, trial_type, trials, session)
-			VALUES ($1, 1, 'ROTAROD', 1, 'FIXED_SPEED', 1, '{"accelerating": 0, "start_rpm": 10, "max_trial_duration_s": 60}'),
+			VALUES ($1, 1, 'TREADMILL', 1, 'FIXED_SPEED', 1, '{"accelerating": 0, "start_speed_cm_s": 10, "max_trial_duration_s": 60}'),
 			       ($1, 2, 'NOVEL_OBJECT', 1, 'TEST', 1, '{}')`, s.version)
 		return err
 	}); err != nil {
 		t.Fatal(err)
 	}
 	s.latency = w.id(`INSERT INTO misko.endpoints (experiment_id, timepoint_id, paradigm_key, metric_key, kind, direction)
-		VALUES ($1, $2, 'ROTAROD', 'latency_to_fall_s', 'SECONDARY', 'HIGHER_IS_BETTER') RETURNING id`, w.exp, w.timepoints["Day 14"])
+		VALUES ($1, $2, 'TREADMILL', 'run_time_s', 'SECONDARY', 'HIGHER_IS_BETTER') RETURNING id`, w.exp, w.timepoints["Day 14"])
 	s.recognition = w.id(`INSERT INTO misko.endpoints (experiment_id, timepoint_id, paradigm_key, metric_key, kind, direction)
 		VALUES ($1, $2, 'NOVEL_OBJECT', 'discrimination_index', 'SECONDARY', 'HIGHER_IS_BETTER') RETURNING id`, w.exp, w.timepoints["Day 14"])
 	arena := func(paradigm, name, parameters string) string {
@@ -45,7 +45,8 @@ func newScoringStudy(t *testing.T, w *studyWorld) *scoringStudy {
 		return w.id(`INSERT INTO misko.environment_revisions (environment_id, paradigm_key, paradigm_version, number, parameters, created_by)
 			VALUES ($1, $2, 1, 1, $3, $4) RETURNING id`, env, paradigm, parameters, studyAuthor)
 	}
-	s.rotarod = []string{arena("ROTAROD", "lane 1", "{}"), arena("ROTAROD", "lane 2", "{}")}
+	lane := `{"lane_length_cm": 40}`
+	s.treadmill = []string{arena("TREADMILL", "lane 1", lane), arena("TREADMILL", "lane 2", lane)}
 	s.novel = []string{arena("NOVEL_OBJECT", "box", `{"arena_width_cm": 50, "arena_height_cm": 50}`)}
 	return s
 }
@@ -85,7 +86,7 @@ func metricValue(t *testing.T, metrics []any, key string) any {
 	return nil
 }
 
-// Rotarod and novel object recognition are scored on their videos, enter the
+// Treadmill and novel object recognition are scored on their videos, enter the
 // review queue as SCORED runs and, once accepted, the experiment report.
 func TestScoringOverHTTP(t *testing.T) {
 	ctx := context.Background()
@@ -94,38 +95,38 @@ func TestScoringOverHTTP(t *testing.T) {
 	m1, m2, m3, m4 := s.allocate("G1", "S-1"), s.allocate("G2", "S-2"), s.allocate("G1", "S-3"), s.allocate("G1", "S-4")
 	s.start()
 
-	// The rotarod clip starts 2 s into the video; event times are from the clip start.
-	rotarodTest, lanes := s.test(1, "ROTAROD", s.rotarod, 2_000_000, m1, m2)
-	scoring := "/api/tests/" + rotarodTest + "/subjects/" + lanes[0] + "/scoring"
+	// The treadmill clip starts 2 s into the video; event times are from the clip start.
+	treadmillTest, lanes := s.test(1, "TREADMILL", s.treadmill, 2_000_000, m1, m2)
+	scoring := "/api/tests/" + treadmillTest + "/subjects/" + lanes[0] + "/scoring"
 	a.expect("anonymous", "GET", scoring, "", nil, 401, "auth.unauthenticated")
 	view := a.expect("read", "GET", scoring, "VIEWER", nil, 200, "")
 	events := view["inputEvents"].([]any)
-	if view["sheet"] != nil || len(view["events"].([]any)) != 0 || len(events) != 1 || events[0].(map[string]any)["type"] != "fall" ||
+	if view["sheet"] != nil || len(view["events"].([]any)) != 0 || len(events) != 2 || events[0].(map[string]any)["type"] != "exhaustion" || events[1].(map[string]any)["single"] != false ||
 		events[0].(map[string]any)["single"] != true || view["video"].(map[string]any)["clipStartUs"] != float64(2_000_000) {
 		t.Fatalf("empty scoring: %v", view)
 	}
-	if tr := a.expect("read in Turkish", "GET", scoring+"?lang=tr", "VIEWER", nil, 200, "")["inputEvents"].([]any)[0].(map[string]any); tr["label"] != "Düşme" {
+	if tr := a.expect("read in Turkish", "GET", scoring+"?lang=tr", "VIEWER", nil, 200, "")["inputEvents"].([]any)[0].(map[string]any); tr["label"] != "Tükenme" {
 		t.Fatalf("turkish label: %v", tr)
 	}
 	a.expect("other test", "GET", "/api/tests/"+s.exp+"/subjects/"+lanes[0]+"/scoring", "VIEWER", nil, 404, "scoring.testSubjectNotFound")
-	a.expect("malformed id", "GET", "/api/tests/"+rotarodTest+"/subjects/x/scoring", "VIEWER", nil, 404, "scoring.testSubjectNotFound")
+	a.expect("malformed id", "GET", "/api/tests/"+treadmillTest+"/subjects/x/scoring", "VIEWER", nil, 404, "scoring.testSubjectNotFound")
 
 	add := scoring + "/events"
-	fall := map[string]any{"type": "fall", "startUs": 30_000_000}
-	a.expect("viewer scores", "POST", add, "VIEWER", fall, 403, "auth.forbidden")
+	exhaustion := map[string]any{"type": "exhaustion", "startUs": 30_000_000}
+	a.expect("viewer scores", "POST", add, "VIEWER", exhaustion, 403, "auth.forbidden")
 	a.expect("unknown type", "POST", add, "TECHNICIAN", map[string]any{"type": "jump", "startUs": 1}, 400, "scoring.unknownEventType")
-	a.expect("label on a fall", "POST", add, "TECHNICIAN", map[string]any{"type": "fall", "label": "novel", "startUs": 1}, 400, "scoring.invalidLabel")
-	a.expect("point with a length", "POST", add, "TECHNICIAN", map[string]any{"type": "fall", "startUs": 1, "endUs": 2}, 400, "scoring.invalidEventTime")
-	a.expect("after the clip", "POST", add, "TECHNICIAN", map[string]any{"type": "fall", "startUs": 60_000_001}, 400, "scoring.eventOutsideClip")
-	a.expect("unknown field", "POST", add, "TECHNICIAN", map[string]any{"type": "fall", "startUs": 1, "at": 1}, 400, "common.invalidJSON")
-	event := a.expect("score the fall", "POST", add, "TECHNICIAN", fall, 201, "")
+	a.expect("label on an exhaustion", "POST", add, "TECHNICIAN", map[string]any{"type": "exhaustion", "label": "novel", "startUs": 1}, 400, "scoring.invalidLabel")
+	a.expect("point with a length", "POST", add, "TECHNICIAN", map[string]any{"type": "exhaustion", "startUs": 1, "endUs": 2}, 400, "scoring.invalidEventTime")
+	a.expect("after the clip", "POST", add, "TECHNICIAN", map[string]any{"type": "exhaustion", "startUs": 60_000_001}, 400, "scoring.eventOutsideClip")
+	a.expect("unknown field", "POST", add, "TECHNICIAN", map[string]any{"type": "exhaustion", "startUs": 1, "at": 1}, 400, "common.invalidJSON")
+	event := a.expect("score the exhaustion", "POST", add, "TECHNICIAN", exhaustion, 201, "")
 	if event["kind"] != "POINT" || event["endUs"] != float64(30_000_000) || event["label"] != nil || event["scoredBy"] == nil {
 		t.Fatalf("event: %v", event)
 	}
-	a.expect("second fall", "POST", add, "TECHNICIAN", fall, 409, "scoring.singleEvent")
+	a.expect("second exhaustion", "POST", add, "TECHNICIAN", exhaustion, 409, "scoring.singleEvent")
 	eventPath := add + "/" + event["id"].(string)
-	a.expect("change an unknown event", "PATCH", add+"/"+s.exp, "TECHNICIAN", fall, 404, "scoring.eventNotFound")
-	moved := a.expect("move the fall", "PATCH", eventPath, "TECHNICIAN", map[string]any{"type": "fall", "startUs": 25_000_000}, 200, "")
+	a.expect("change an unknown event", "PATCH", add+"/"+s.exp, "TECHNICIAN", exhaustion, 404, "scoring.eventNotFound")
+	moved := a.expect("move the exhaustion", "PATCH", eventPath, "TECHNICIAN", map[string]any{"type": "exhaustion", "startUs": 25_000_000}, 200, "")
 	if moved["startUs"] != float64(25_000_000) || moved["id"] != event["id"] {
 		t.Fatalf("moved: %v", moved)
 	}
@@ -137,48 +138,48 @@ func TestScoringOverHTTP(t *testing.T) {
 	complete := scoring + "/complete"
 	a.expect("viewer completes", "POST", complete, "VIEWER", map[string]any{}, 403, "auth.forbidden")
 	a.expect("unknown scored type", "POST", complete, "TECHNICIAN", map[string]any{"scoredEventTypes": []string{"jump"}}, 400, "scoring.unknownScoredType")
-	a.expect("fall not scored", "POST", complete, "TECHNICIAN", map[string]any{"scoredEventTypes": []string{}}, 400, "scoring.unscoredEvent")
+	a.expect("exhaustion not scored", "POST", complete, "TECHNICIAN", map[string]any{"scoredEventTypes": []string{}}, 400, "scoring.unscoredEvent")
 	a.expect("length beyond the clip", "POST", complete, "TECHNICIAN", map[string]any{"durationUs": 61_000_000}, 400, "scoring.invalidDuration")
-	a.expect("fall after the length", "POST", complete, "TECHNICIAN", map[string]any{"durationUs": 20_000_000}, 400, "scoring.eventAfterDuration")
+	a.expect("exhaustion after the length", "POST", complete, "TECHNICIAN", map[string]any{"durationUs": 20_000_000}, 400, "scoring.eventAfterDuration")
 	done := a.expect("complete", "POST", complete, "TECHNICIAN", map[string]any{}, 200, "")
 	sheet := done["sheet"].(map[string]any)
 	run := done["run"].(map[string]any)
 	if sheet["status"] != "COMPLETED" || sheet["durationUs"] != float64(60_000_000) || sheet["runId"] != run["id"] || sheet["recordingId"] == nil ||
-		metricValue(t, run["metrics"].([]any), "latency_to_fall_s") != float64(25) || metricValue(t, run["metrics"].([]any), "fall_detected") != float64(1) {
+		metricValue(t, run["metrics"].([]any), "latency_to_exhaustion_s") != float64(25) || metricValue(t, run["metrics"].([]any), "run_time_s") != float64(25) {
 		t.Fatalf("completion: %v", done)
 	}
 	firstRun := run["id"].(string)
-	a.expect("score after completion", "POST", add, "TECHNICIAN", fall, 409, "scoring.notDraft")
+	a.expect("score after completion", "POST", add, "TECHNICIAN", exhaustion, 409, "scoring.notDraft")
 	a.expect("remove after completion", "DELETE", eventPath, "TECHNICIAN", nil, 409, "scoring.notDraft")
 	a.expect("complete twice", "POST", complete, "TECHNICIAN", map[string]any{}, 409, "scoring.notDraft")
 
 	// The run is a SCORED analysis run: no worker, the scorer recorded.
-	runs := a.expect("runs", "GET", "/api/tests/"+rotarodTest+"/analysis-runs", "VIEWER", nil, 200, "")["data"].([]any)
+	runs := a.expect("runs", "GET", "/api/tests/"+treadmillTest+"/analysis-runs", "VIEWER", nil, 200, "")["data"].([]any)
 	if r := runs[0].(map[string]any); len(runs) != 1 || r["method"] != "SCORED" || r["status"] != "SUCCEEDED" || r["workerId"] != nil || r["scoredBy"] == nil ||
 		r["clipStartUs"] != float64(2_000_000) || r["parameters"].(map[string]any)["max_trial_duration_s"] != float64(60) {
 		t.Fatalf("scored run: %v", runs)
 	}
 	detail := a.expect("run detail", "GET", "/api/analysis-runs/"+firstRun, "VIEWER", nil, 200, "")["result"].(map[string]any)
-	if len(detail["metrics"].([]any)) != 3 || detail["pair"] != nil || len(detail["events"].([]any)) != 1 {
+	if len(detail["metrics"].([]any)) != 4 || detail["pair"] != nil || len(detail["events"].([]any)) != 1 {
 		t.Fatalf("run detail: %v", detail)
 	}
 
-	// The second animal stayed on the rod: completed without events, censored at the cut-off.
-	other := a.expect("complete without a fall", "POST", "/api/tests/"+rotarodTest+"/subjects/"+lanes[1]+"/scoring/complete", "TECHNICIAN", map[string]any{}, 200, "")
-	if metrics := other["run"].(map[string]any)["metrics"].([]any); metricValue(t, metrics, "latency_to_fall_s") != float64(60) || metricValue(t, metrics, "fall_detected") != float64(0) {
+	// The second animal kept running: completed without events, censored at the cut-off.
+	other := a.expect("complete without exhaustion", "POST", "/api/tests/"+treadmillTest+"/subjects/"+lanes[1]+"/scoring/complete", "TECHNICIAN", map[string]any{}, 200, "")
+	if metrics := other["run"].(map[string]any)["metrics"].([]any); metricValue(t, metrics, "run_time_s") != float64(60) || metricValue(t, metrics, "latency_to_exhaustion_s") != nil {
 		t.Fatalf("censored: %v", other)
 	}
 
 	// No worker ever takes an observer-scored paradigm.
-	register := map[string]any{"name": "tracker", "modelVersion": "1", "capabilities": []any{map[string]any{"paradigmKey": "ROTAROD", "paradigmVersion": 1}}}
-	a.expect("rotarod worker", "POST", "/api/analysis/workers", "SUPERADMIN", register, 400, "worker.unknownCapability")
+	register := map[string]any{"name": "tracker", "modelVersion": "1", "capabilities": []any{map[string]any{"paradigmKey": "TREADMILL", "paradigmVersion": 1}}}
+	a.expect("treadmill worker", "POST", "/api/analysis/workers", "SUPERADMIN", register, 400, "worker.unknownCapability")
 	s.exec(`INSERT INTO misko.analysis_workers (name, model_version, token_sha256, created_by) VALUES ('rogue', '1', decode(repeat('ab', 32), 'hex'), $1)`, studyAuthor)
-	s.exec(`INSERT INTO misko.worker_capabilities (worker_id, paradigm_key, paradigm_version) SELECT id, 'ROTAROD', 1 FROM misko.analysis_workers WHERE name = 'rogue'`)
+	s.exec(`INSERT INTO misko.worker_capabilities (worker_id, paradigm_key, paradigm_version) SELECT id, 'TREADMILL', 1 FROM misko.analysis_workers WHERE name = 'rogue'`)
 	if err := a.api.AnalysisTick(ctx); err != nil {
 		t.Fatal(err)
 	}
 	a.expect("reanalyse a scored animal", "POST", "/api/analysis/test-subjects/"+lanes[0]+"/runs", "TECHNICIAN", map[string]any{}, 409, "analysis.notReady")
-	if runs := a.expect("runs after a tick", "GET", "/api/tests/"+rotarodTest+"/analysis-runs", "VIEWER", nil, 200, "")["data"].([]any); len(runs) != 2 {
+	if runs := a.expect("runs after a tick", "GET", "/api/tests/"+treadmillTest+"/analysis-runs", "VIEWER", nil, 200, "")["data"].([]any); len(runs) != 2 {
 		t.Fatalf("a worker run was queued: %v", runs)
 	}
 
@@ -191,9 +192,9 @@ func TestScoringOverHTTP(t *testing.T) {
 	}
 	a.expect("reopen a draft", "POST", scoring+"/reopen", "TECHNICIAN", map[string]any{}, 409, "scoring.notCompleted")
 	copied := reopened["events"].([]any)[0].(map[string]any)["id"].(string)
-	a.expect("remove the fall", "DELETE", add+"/"+copied, "TECHNICIAN", nil, 204, "")
+	a.expect("remove the exhaustion", "DELETE", add+"/"+copied, "TECHNICIAN", nil, 204, "")
 	a.expect("remove it again", "DELETE", add+"/"+copied, "TECHNICIAN", nil, 404, "scoring.eventNotFound")
-	a.expect("score it again", "POST", add, "TECHNICIAN", map[string]any{"type": "fall", "startUs": 20_000_000}, 201, "")
+	a.expect("score it again", "POST", add, "TECHNICIAN", map[string]any{"type": "exhaustion", "startUs": 20_000_000}, 201, "")
 	second := a.expect("complete version 2", "POST", complete, "TECHNICIAN", map[string]any{}, 200, "")["run"].(map[string]any)["id"].(string)
 
 	// Both animals wait in the review queue as SCORED results.
@@ -250,10 +251,10 @@ func TestScoringOverHTTP(t *testing.T) {
 	}
 
 	// Animals that cannot be scored.
-	openField, tracked := s.session("Day 14", m4)
-	a.expect("tracked paradigm", "GET", "/api/tests/"+openField+"/subjects/"+tracked[0]+"/scoring", "VIEWER", nil, 409, "scoring.notObserverScored")
-	noVideo, waiting := s.test(1, "ROTAROD", s.rotarod, -1, m4)
-	a.expect("no video", "POST", "/api/tests/"+noVideo+"/subjects/"+waiting[0]+"/scoring/events", "TECHNICIAN", fall, 409, "scoring.noVideo")
+	tank, tracked := s.session("Day 14", m4)
+	a.expect("tracked paradigm", "GET", "/api/tests/"+tank+"/subjects/"+tracked[0]+"/scoring", "VIEWER", nil, 409, "scoring.notObserverScored")
+	noVideo, waiting := s.test(1, "TREADMILL", s.treadmill, -1, m4)
+	a.expect("no video", "POST", "/api/tests/"+noVideo+"/subjects/"+waiting[0]+"/scoring/events", "TECHNICIAN", exhaustion, 409, "scoring.noVideo")
 	if v := a.expect("read without a video", "GET", "/api/tests/"+noVideo+"/subjects/"+waiting[0]+"/scoring", "VIEWER", nil, 200, ""); v["video"] != nil {
 		t.Fatalf("video: %v", v)
 	}
@@ -268,7 +269,7 @@ func TestScoringOverHTTP(t *testing.T) {
 		}
 	}
 	violation("event on a completed sheet", `INSERT INTO misko.scored_observations (sheet_id, test_subject_id, event_type, kind, start_us, end_us, scored_by)
-		SELECT id, test_subject_id, 'fall', 'POINT', 1, 1, created_by FROM misko.scoring_sheets WHERE test_subject_id = $1 AND version = 1`, lanes[0])
+		SELECT id, test_subject_id, 'exhaustion', 'POINT', 1, 1, created_by FROM misko.scoring_sheets WHERE test_subject_id = $1 AND version = 1`, lanes[0])
 	violation("reopen a completed sheet", "UPDATE misko.scoring_sheets SET status = 'DRAFT' WHERE test_subject_id = $1 AND version = 1", lanes[0])
 	violation("change a run's method", "UPDATE misko.analysis_runs SET method = 'AUTOMATED' WHERE id = $1", firstRun)
 	violation("scored run without its sheet", `INSERT INTO misko.analysis_runs (experiment_id, test_id, test_subject_id, recording_id, source_asset_id, source_generation,

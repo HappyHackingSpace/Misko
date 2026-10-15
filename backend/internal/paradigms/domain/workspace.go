@@ -33,10 +33,6 @@ func CalibrationRequirement(key string, version int, apparatus map[string]float6
 		return CalibrationNeeds{}, nil
 	}
 	switch key {
-	case "OPEN_FIELD":
-		needs.Bounds = &Bounds{0, 0, apparatus["arena_width_cm"], apparatus["arena_height_cm"]}
-	case "LIGHT_DARK":
-		needs.Bounds = &Bounds{0, 0, apparatus["box_width_cm"], apparatus["box_height_cm"]}
 	case "MWM":
 		r := apparatus["tank_diameter_cm"] / 2
 		needs.Bounds = &Bounds{-r, -r, r, r}

@@ -167,31 +167,31 @@ func TestCalibrationOverHTTP(t *testing.T) {
 	}
 
 	// An observation-only paradigm needs no calibration.
-	rotarod := seedRotarodSubject(t, pool, study)
-	upload(rotarod.test, true)
-	if s := c.expect("rotarod status", c.call("GET", "/api/tests/"+rotarod.test+"/subjects/"+rotarod.subject+"/calibration-status", tokens["VIEWER"], nil), 200, "").body; s["status"] != "NOT_REQUIRED" {
+	treadmill := seedTreadmillSubject(t, pool, study)
+	upload(treadmill.test, true)
+	if s := c.expect("treadmill status", c.call("GET", "/api/tests/"+treadmill.test+"/subjects/"+treadmill.subject+"/calibration-status", tokens["VIEWER"], nil), 200, "").body; s["status"] != "NOT_REQUIRED" {
 		t.Fatalf("observation-only paradigm: %v", s)
 	}
-	c.expect("calibrate a rotarod animal", c.call("POST", "/api/tests/"+rotarod.test+"/subjects/"+rotarod.subject+"/calibrations", tokens["TECHNICIAN"], body("", 0)), 409, "calibration.notRequired")
-	c.expect("rotarod rig", c.call("POST", "/api/environments/"+rotarod.environment+"/revisions/1/calibrations", admin, body("", 0)), 409, "calibration.notRequired")
+	c.expect("calibrate a treadmill animal", c.call("POST", "/api/tests/"+treadmill.test+"/subjects/"+treadmill.subject+"/calibrations", tokens["TECHNICIAN"], body("", 0)), 409, "calibration.notRequired")
+	c.expect("treadmill rig", c.call("POST", "/api/environments/"+treadmill.environment+"/revisions/1/calibrations", admin, body("", 0)), 409, "calibration.notRequired")
 }
 
-type rotarodSubject struct{ test, subject, environment string }
+type treadmillSubject struct{ test, subject, environment string }
 
-// seedRotarodSubject films one more animal of the study on the rotarod step.
-func seedRotarodSubject(t *testing.T, pool *pgxpool.Pool, study mediaStudy) rotarodSubject {
+// seedTreadmillSubject films one more animal of the study on the treadmill step.
+func seedTreadmillSubject(t *testing.T, pool *pgxpool.Pool, study mediaStudy) treadmillSubject {
 	t.Helper()
 	ctx := context.Background()
-	var out rotarodSubject
+	var out treadmillSubject
 	err := pgx.BeginFunc(ctx, pool, func(tx pgx.Tx) error {
 		steps := []struct {
 			sql  string
 			args []any
 			dest *string
 		}{
-			{`INSERT INTO misko.environments (name, paradigm_key) VALUES ('Rod', 'ROTAROD') RETURNING id`, nil, &out.environment},
+			{`INSERT INTO misko.environments (name, paradigm_key) VALUES ('Belt', 'TREADMILL') RETURNING id`, nil, &out.environment},
 			{`INSERT INTO misko.tests (experiment_id, timepoint_id, protocol_version_id, step_position, paradigm_key, paradigm_version, planned_trials, scheduled_at, created_by)
-				SELECT experiment_id, timepoint_id, protocol_version_id, 2, 'ROTAROD', 1, 1, now(), created_by FROM misko.tests WHERE id = $1 RETURNING id`, []any{study.test}, &out.test},
+				SELECT experiment_id, timepoint_id, protocol_version_id, 2, 'TREADMILL', 1, 1, now(), created_by FROM misko.tests WHERE id = $1 RETURNING id`, []any{study.test}, &out.test},
 		}
 		for _, step := range steps {
 			if err := tx.QueryRow(ctx, step.sql, step.args...).Scan(step.dest); err != nil {
@@ -200,11 +200,11 @@ func seedRotarodSubject(t *testing.T, pool *pgxpool.Pool, study mediaStudy) rota
 		}
 		var revision string
 		if err := tx.QueryRow(ctx, `INSERT INTO misko.environment_revisions (environment_id, paradigm_key, paradigm_version, number, parameters, created_by)
-			VALUES ($1, 'ROTAROD', 1, 1, '{}', $2) RETURNING id`, out.environment, seedUser).Scan(&revision); err != nil {
+			VALUES ($1, 'TREADMILL', 1, 1, '{}', $2) RETURNING id`, out.environment, seedUser).Scan(&revision); err != nil {
 			return err
 		}
 		if err := tx.QueryRow(ctx, `INSERT INTO misko.test_subjects (experiment_id, test_id, allocation_id, environment_revision_id, paradigm_key, paradigm_version, created_by)
-			SELECT experiment_id, $1, allocation_id, $2, 'ROTAROD', 1, created_by FROM misko.test_subjects WHERE id = $3 RETURNING id`,
+			SELECT experiment_id, $1, allocation_id, $2, 'TREADMILL', 1, created_by FROM misko.test_subjects WHERE id = $3 RETURNING id`,
 			out.test, revision, study.subjects[0]).Scan(&out.subject); err != nil {
 			return err
 		}

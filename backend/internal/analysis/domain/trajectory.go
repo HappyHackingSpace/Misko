@@ -26,7 +26,8 @@ var (
 // Sample is one tracked position in the calibration's centimeter frame. TUs is
 // microseconds from the recording (clip) start. Untracked samples carry no
 // coordinates. An Inferred sample is tracked, but its position was not seen:
-// the worker placed it (a light/dark animal hidden in the dark compartment).
+// the worker placed it (for example an animal hidden by part of the apparatus;
+// the current worker never infers a position).
 // Metrics count it as tracked; QC reports it separately.
 type Sample struct {
 	TUs        int64

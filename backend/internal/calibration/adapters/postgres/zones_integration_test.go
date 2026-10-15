@@ -19,26 +19,38 @@ func square(x0, y0, x1, y1 float64) domain.Shape {
 	return domain.Shape{Polygon: []domain.Vertex{{X: x0, Y: y0}, {X: x1, Y: y0}, {X: x1, Y: y1}, {X: x0, Y: y1}}}
 }
 
+// zonedCatalog is the published catalog, except that the water maze declares
+// two required calibrated zones and an optional one. No published paradigm
+// declares calibrated zones, but their storage stays generic.
+type zonedCatalog struct{ catalog.Catalog }
+
+func (c zonedCatalog) Requirement(key string, version int, parameters map[string]float64) (domain.Requirement, error) {
+	req, err := c.Catalog.Requirement(key, version, parameters)
+	req.Bounds = nil
+	req.Zones = []domain.ZoneRequirement{{Key: "center", Required: true}, {Key: "edges", Required: true}, {Key: "lanes", Required: false}}
+	return req, err
+}
+
 // Zones are stored with their calibration in pixels and centimetres, read
 // back with it, and never change or grow afterwards.
 func TestZonesBelongToTheirCalibration(t *testing.T) {
 	pool := pgtest.Database(t)
 	store := postgres.NewStore(pool)
-	s := application.New(store, catalog.New(), time.Now)
+	s := application.New(store, zonedCatalog{catalog.New()}, time.Now)
 	lab := access.Actor{UserID: "01a00000-0000-7000-8000-000000000001", Role: access.LabManager}
-	env := id(t, pool, "INSERT INTO misko.environments (name, paradigm_key) VALUES ('Maze', 'EPM') RETURNING id")
+	env := id(t, pool, "INSERT INTO misko.environments (name, paradigm_key) VALUES ('Pool', 'MWM') RETURNING id")
 	revision := id(t, pool, `INSERT INTO misko.environment_revisions (environment_id, paradigm_key, paradigm_version, number, parameters, created_by)
-		VALUES ($1, 'EPM', 1, 1, '{"arm_length_cm": 35, "arm_width_cm": 6}', $2) RETURNING id`, env, lab.UserID)
+		VALUES ($1, 'MWM', 1, 1, '{"tank_diameter_cm": 120, "platform_diameter_cm": 10, "platform_x_cm": 30, "platform_y_cm": 30}', $2) RETURNING id`, env, lab.UserID)
 
 	in := input("")
 	if _, err := s.CalibrateEnvironment(ctx, lab, env, 1, in); !errors.Is(err, domain.ErrMissingZone) {
-		t.Fatalf("EPM without zones: %v", err)
+		t.Fatalf("without the required zones: %v", err)
 	}
 	in.Zones = []domain.ZoneInput{
-		{Key: "open_arms", Shape: square(200, 480, 860, 600)},
-		{Key: "open_arms", Shape: square(1060, 480, 1720, 600)},
-		{Key: "closed_arms", Shape: square(900, 100, 1020, 440)},
-		{Key: "closed_arms", Shape: square(900, 640, 1020, 980)},
+		{Key: "lanes", Shape: square(200, 480, 860, 600)},
+		{Key: "lanes", Shape: square(1060, 480, 1720, 600)},
+		{Key: "edges", Shape: square(900, 100, 1020, 440)},
+		{Key: "edges", Shape: square(900, 640, 1020, 980)},
 		{Key: "center", Shape: domain.Shape{Circle: &domain.Circle{X: 960, Y: 540, Radius: 60}}},
 	}
 	created, err := s.CalibrateEnvironment(ctx, lab, env, 1, in)
@@ -51,8 +63,8 @@ func TestZonesBelongToTheirCalibration(t *testing.T) {
 	}
 	read := view.Current.Zones
 	if read[0].Key != "center" || read[0].Pixels.Circle == nil || read[0].Centimeters.Circle.Radius <= 0 ||
-		read[1].Key != "closed_arms" || read[1].Pixels.Polygon[0] != (domain.Vertex{X: 900, Y: 100}) ||
-		read[3].Key != "open_arms" || read[4].Pixels.Polygon[0] != (domain.Vertex{X: 1060, Y: 480}) {
+		read[1].Key != "edges" || read[1].Pixels.Polygon[0] != (domain.Vertex{X: 900, Y: 100}) ||
+		read[3].Key != "lanes" || read[4].Pixels.Polygon[0] != (domain.Vertex{X: 1060, Y: 480}) {
 		t.Fatalf("zones read back: %+v", read)
 	}
 	x, y, _ := truth.Apply(900, 100)

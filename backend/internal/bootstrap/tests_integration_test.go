@@ -22,7 +22,7 @@ import (
 
 // sessionStudy is a study prepared with SQL, since the experiment, subject and
 // environment contexts are ported separately: one experiment with two groups,
-// two timepoints, five allocated animals, three open field arenas and a maze.
+// two timepoints, five allocated animals, three water maze pools and a pole.
 type sessionStudy struct {
 	experiment, foreignExperiment string
 	baseline, day7                string
@@ -82,9 +82,9 @@ func newSessionStudy(t *testing.T, pool *pgxpool.Pool) sessionStudy {
 		return sqlID(t, pool, `INSERT INTO misko.environment_revisions (environment_id, paradigm_key, paradigm_version, number, parameters, created_by)
 			VALUES ($1, $2, 1, 1, $3, $4) RETURNING id`, env, paradigm, parameters, user)
 	}
-	box := `{"arena_width_cm": 50, "arena_height_cm": 50}`
-	s.boxA, s.boxB, s.boxC = arena("Box A", "OPEN_FIELD", box), arena("Box B", "OPEN_FIELD", box), arena("Box C", "OPEN_FIELD", box)
-	s.maze = arena("Maze", "EPM", `{}`)
+	box := `{"tank_diameter_cm": 120, "platform_diameter_cm": 10, "platform_x_cm": 30, "platform_y_cm": 30}`
+	s.boxA, s.boxB, s.boxC = arena("Box A", "MWM", box), arena("Box B", "MWM", box), arena("Box C", "MWM", box)
+	s.maze = arena("Pole", "POLE", `{"pole_length_cm": 50}`)
 	return s
 }
 
@@ -121,30 +121,30 @@ func TestTestSessionsOverHTTP(t *testing.T) {
 
 	// Protocols: steps name a paradigm and session values, never an arena.
 	steps := []any{
-		map[string]any{"position": 1, "paradigmKey": "OPEN_FIELD", "paradigmVersion": 1, "trialType": "STANDARD", "trials": 2},
-		map[string]any{"position": 2, "paradigmKey": "ROTAROD", "paradigmVersion": 1, "trialType": "ACCELERATING", "trials": 3,
-			"interTrialIntervalS": 900, "session": map[string]any{"start_rpm": 4, "end_rpm": 40}},
+		map[string]any{"position": 1, "paradigmKey": "MWM", "paradigmVersion": 1, "trialType": "ACQUISITION", "trials": 2},
+		map[string]any{"position": 2, "paradigmKey": "TREADMILL", "paradigmVersion": 1, "trialType": "ENDURANCE", "trials": 3,
+			"interTrialIntervalS": 900, "session": map[string]any{"start_speed_cm_s": 4, "end_speed_cm_s": 40}},
 	}
 	battery := map[string]any{"name": "Battery", "version": map[string]any{"steps": steps}}
 	c.expect("technician creates protocol", c.call("POST", base+"/protocols", technician, battery), 403, "auth.forbidden")
 	created := c.create(base+"/protocols", researcher, battery)
 	version := created["version"].(map[string]any)
-	rotarod := version["steps"].([]any)[1].(map[string]any)
-	session := rotarod["session"].(map[string]any)
-	if _, ok := rotarod["environmentRevisionId"]; ok || session["start_rpm"] != float64(4) || session["max_trial_duration_s"] == nil {
-		t.Fatalf("resolved step: %v", rotarod)
+	treadmill := version["steps"].([]any)[1].(map[string]any)
+	session := treadmill["session"].(map[string]any)
+	if _, ok := treadmill["environmentRevisionId"]; ok || session["start_speed_cm_s"] != float64(4) || session["max_trial_duration_s"] == nil {
+		t.Fatalf("resolved step: %v", treadmill)
 	}
 	invalid := func(step map[string]any) map[string]any {
 		return map[string]any{"name": "Bad", "version": map[string]any{"steps": []any{step}}}
 	}
-	c.expect("session out of order", c.call("POST", base+"/protocols", researcher, invalid(map[string]any{"position": 1, "paradigmKey": "ROTAROD", "paradigmVersion": 1,
-		"trialType": "ACCELERATING", "trials": 1, "session": map[string]any{"start_rpm": 40, "end_rpm": 4}})), 400, "protocol.invalidSession")
-	c.expect("apparatus value in a session", c.call("POST", base+"/protocols", researcher, invalid(map[string]any{"position": 1, "paradigmKey": "OPEN_FIELD",
-		"paradigmVersion": 1, "trialType": "STANDARD", "trials": 1, "session": map[string]any{"arena_width_cm": 40}})), 400, "protocol.invalidSession")
-	c.expect("arena on a step", c.call("POST", base+"/protocols", researcher, invalid(map[string]any{"position": 1, "paradigmKey": "OPEN_FIELD",
-		"paradigmVersion": 1, "trialType": "STANDARD", "trials": 1, "environmentRevisionId": s.boxA})), 400, "common.invalidJSON")
-	c.expect("unknown trial type", c.call("POST", base+"/protocols", researcher, invalid(map[string]any{"position": 1, "paradigmKey": "OPEN_FIELD",
-		"paradigmVersion": 1, "trialType": "PROBE", "trials": 1})), 400, "protocol.trialTypeNotSupported")
+	c.expect("session out of order", c.call("POST", base+"/protocols", researcher, invalid(map[string]any{"position": 1, "paradigmKey": "TREADMILL", "paradigmVersion": 1,
+		"trialType": "ENDURANCE", "trials": 1, "session": map[string]any{"start_speed_cm_s": 40, "end_speed_cm_s": 4}})), 400, "protocol.invalidSession")
+	c.expect("apparatus value in a session", c.call("POST", base+"/protocols", researcher, invalid(map[string]any{"position": 1, "paradigmKey": "MWM",
+		"paradigmVersion": 1, "trialType": "ACQUISITION", "trials": 1, "session": map[string]any{"tank_diameter_cm": 120}})), 400, "protocol.invalidSession")
+	c.expect("arena on a step", c.call("POST", base+"/protocols", researcher, invalid(map[string]any{"position": 1, "paradigmKey": "MWM",
+		"paradigmVersion": 1, "trialType": "ACQUISITION", "trials": 1, "environmentRevisionId": s.boxA})), 400, "common.invalidJSON")
+	c.expect("unknown trial type", c.call("POST", base+"/protocols", researcher, invalid(map[string]any{"position": 1, "paradigmKey": "MWM",
+		"paradigmVersion": 1, "trialType": "STANDARD", "trials": 1})), 400, "protocol.trialTypeNotSupported")
 	c.expect("unknown experiment", c.call("POST", "/api/experiments/"+s.allocations["M1"]+"/protocols", researcher, battery), 404, "experiment.notFound")
 	foreignProtocol := c.create("/api/experiments/"+s.foreignExperiment+"/protocols", researcher, battery)
 	foreignVersion := id(foreignProtocol["version"].(map[string]any))
@@ -172,7 +172,7 @@ func TestTestSessionsOverHTTP(t *testing.T) {
 	test := c.create(base+"/tests", researcher, pair)
 	subjects := test["subjects"].([]any)
 	if test["status"] != "PLANNED" || test["scheduledAt"] != "2026-09-07T21:00:00Z" || test["timepointName"] != "Day 7" || test["studyDay"] != float64(7) ||
-		test["paradigmKey"] != "OPEN_FIELD" || test["plannedTrials"] != float64(2) || test["protocolName"] != "Battery" || len(subjects) != 2 {
+		test["paradigmKey"] != "MWM" || test["plannedTrials"] != float64(2) || test["protocolName"] != "Battery" || len(subjects) != 2 {
 		t.Fatalf("planned test: %v", test)
 	}
 	first := subjects[0].(map[string]any)
@@ -343,7 +343,7 @@ func TestTestSessionsOverHTTP(t *testing.T) {
 		"/api/tests?from=2026-09-08&to=2026-09-08": 4,
 		"/api/tests?subjectId=" + sqlID(t, pool, `SELECT subject_id FROM misko.allocations WHERE id = $1`, m["M1"]): 2,
 		base + "/tests?timepointId=" + s.day7 + "&status=PLANNED":                                                   1,
-		"/api/tests?paradigmKey=ROTAROD":                                                                            0,
+		"/api/tests?paradigmKey=TREADMILL":                                                                          0,
 		"/api/tests?experimentId=" + s.foreignExperiment:                                                            0,
 	} {
 		if got := count(query); got != want {

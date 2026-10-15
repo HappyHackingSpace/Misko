@@ -79,7 +79,7 @@ func runningStudy(t *testing.T, pool *pgxpool.Pool) *study {
 			s.experiment, protocol, technician.UserID).Scan(&version); err != nil {
 			return err
 		}
-		_, err := tx.Exec(ctx, "INSERT INTO misko.protocol_steps (protocol_version_id, position, paradigm_key, paradigm_version, trial_type, trials, session) VALUES ($1, 1, 'OPEN_FIELD', 1, 'STANDARD', 1, '{}')", version)
+		_, err := tx.Exec(ctx, "INSERT INTO misko.protocol_steps (protocol_version_id, position, paradigm_key, paradigm_version, trial_type, trials, session) VALUES ($1, 1, 'MWM', 1, 'ACQUISITION', 1, '{}')", version)
 		return err
 	})
 	if err != nil {
@@ -89,22 +89,22 @@ func runningStudy(t *testing.T, pool *pgxpool.Pool) *study {
 		t.Fatal(err)
 	}
 	arena := func(name string) (string, string) {
-		env := id(t, pool, "INSERT INTO misko.environments (name, paradigm_key) VALUES ($1, 'OPEN_FIELD') RETURNING id", name)
+		env := id(t, pool, "INSERT INTO misko.environments (name, paradigm_key) VALUES ($1, 'MWM') RETURNING id", name)
 		return env, id(t, pool, `INSERT INTO misko.environment_revisions (environment_id, paradigm_key, paradigm_version, number, parameters, created_by)
-			VALUES ($1, 'OPEN_FIELD', 1, 1, '{"arena_width_cm": 50, "arena_height_cm": 40, "center_fraction": 0.5}', $2) RETURNING id`, env, technician.UserID)
+			VALUES ($1, 'MWM', 1, 1, '{"tank_diameter_cm": 120, "platform_diameter_cm": 10, "platform_x_cm": 30, "platform_y_cm": 30}', $2) RETURNING id`, env, technician.UserID)
 	}
 	s.environmentA, s.arenaA = arena("Arena A")
 	_, s.arenaB = arena("Arena B")
 	plan := func() string {
 		return id(t, pool, `INSERT INTO misko.tests (experiment_id, timepoint_id, protocol_version_id, step_position, paradigm_key, paradigm_version, planned_trials, scheduled_at, created_by)
-			VALUES ($1, $2, $3, 1, 'OPEN_FIELD', 1, 1, now(), $4) RETURNING id`, s.experiment, timepoint, version, technician.UserID)
+			VALUES ($1, $2, $3, 1, 'MWM', 1, 1, now(), $4) RETURNING id`, s.experiment, timepoint, version, technician.UserID)
 	}
 	join := func(test, code, arena string) string {
 		subject := id(t, pool, "INSERT INTO misko.subjects (code, species, sex) VALUES ($1, 'MOUSE', 'MALE') RETURNING id", code)
 		allocation := id(t, pool, `INSERT INTO misko.allocations (experiment_id, group_id, subject_id, allocated_at, created_by)
 			VALUES ($1, $2, $3, now() - interval '1 day', $4) RETURNING id`, s.experiment, group, subject, technician.UserID)
 		return id(t, pool, `INSERT INTO misko.test_subjects (experiment_id, test_id, allocation_id, environment_revision_id, paradigm_key, paradigm_version, created_by)
-			VALUES ($1, $2, $3, $4, 'OPEN_FIELD', 1, $5) RETURNING id`, s.experiment, test, allocation, arena, technician.UserID)
+			VALUES ($1, $2, $3, $4, 'MWM', 1, $5) RETURNING id`, s.experiment, test, allocation, arena, technician.UserID)
 	}
 	s.test, s.otherTest = plan(), plan()
 	s.first, s.second, s.other = join(s.test, "M1", s.arenaA), join(s.test, "M2", s.arenaB), join(s.otherTest, "M3", s.arenaA)

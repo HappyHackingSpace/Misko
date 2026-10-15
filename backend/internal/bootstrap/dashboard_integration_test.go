@@ -24,10 +24,10 @@ func TestDashboardSummaryOverHTTP(t *testing.T) {
 	w.start()
 	// A planned session in the near future with two animals.
 	planned := w.id(`INSERT INTO misko.tests (experiment_id, timepoint_id, protocol_version_id, step_position, paradigm_key, paradigm_version, planned_trials, scheduled_at, created_by)
-		VALUES ($1, $2, $3, 1, 'OPEN_FIELD', 1, 1, now() + interval '2 hours', $4) RETURNING id`, w.exp, w.timepoints["Day 14"], w.version, studyAuthor)
+		VALUES ($1, $2, $3, 1, 'MWM', 1, 1, now() + interval '2 hours', $4) RETURNING id`, w.exp, w.timepoints["Day 14"], w.version, studyAuthor)
 	for i, allocation := range []string{m2, m1} {
 		w.exec(`INSERT INTO misko.test_subjects (experiment_id, test_id, allocation_id, environment_revision_id, paradigm_key, paradigm_version, created_by)
-			VALUES ($1, $2, $3, $4, 'OPEN_FIELD', 1, $5)`, w.exp, planned, allocation, w.arenas[i], studyAuthor)
+			VALUES ($1, $2, $3, $4, 'MWM', 1, $5)`, w.exp, planned, allocation, w.arenas[i], studyAuthor)
 	}
 	// A session in progress: the third animal's override was rejected, so it waits for a calibration.
 	_, subjects := w.session("Baseline", m1, m2, m3)
@@ -40,7 +40,7 @@ func TestDashboardSummaryOverHTTP(t *testing.T) {
 	w.publish(subjects[0], distance(10), "PENDING")
 
 	a.expect("register", "POST", "/api/analysis/workers", "SUPERADMIN", map[string]any{"name": "tracker", "modelVersion": "tracker 1.0",
-		"capabilities": []any{map[string]any{"paradigmKey": "OPEN_FIELD", "paradigmVersion": 1}}}, 201, "")
+		"capabilities": []any{map[string]any{"paradigmKey": "MWM", "paradigmVersion": 1}}}, 201, "")
 	if err := a.api.AnalysisTick(context.Background()); err != nil {
 		t.Fatal(err)
 	}

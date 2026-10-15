@@ -98,7 +98,7 @@ func TestCreateTakesItsContextFromTheExperiment(t *testing.T) {
 	if !slices.Equal(store.calls, want) {
 		t.Fatalf("store calls: %v", store.calls)
 	}
-	if created.ParadigmKey != "OPEN_FIELD" || created.PlannedTrials != 2 || created.CreatedBy != "user-1" || created.Status != domain.Planned ||
+	if created.ParadigmKey != "MWM" || created.PlannedTrials != 2 || created.CreatedBy != "user-1" || created.Status != domain.Planned ||
 		created.TimepointID != "day7" || len(created.Subjects) != 2 || created.Subjects[1].EnvironmentRevisionID != "box2" {
 		t.Fatalf("test: %+v", created)
 	}
@@ -344,7 +344,7 @@ func (l *countingLimiter) Allow(key string) bool {
 
 func plannedTest() domain.Test {
 	t, err := domain.NewTest(domain.Context{
-		ExperimentID: "exp", TimepointID: "day7", ProtocolVersionID: "v1", StepPosition: 1, ParadigmKey: "OPEN_FIELD", ParadigmVersion: 1, PlannedTrials: 2,
+		ExperimentID: "exp", TimepointID: "day7", ProtocolVersionID: "v1", StepPosition: 1, ParadigmKey: "MWM", ParadigmVersion: 1, PlannedTrials: 2,
 	}, now.Add(-time.Hour), "", "user", []domain.Participant{{AllocationID: "a1", EnvironmentRevisionID: "box1"}, {AllocationID: "a2", EnvironmentRevisionID: "box2"}})
 	if err != nil {
 		panic(err)
@@ -401,7 +401,7 @@ func (f *fakeStore) ProtocolStep(_ context.Context, _, versionID string, positio
 	case position != 1:
 		return StepRef{}, ErrStepNotFound
 	}
-	return StepRef{ProtocolVersionID: versionID, Position: 1, ParadigmKey: "OPEN_FIELD", ParadigmVersion: 1, Trials: 2}, nil
+	return StepRef{ProtocolVersionID: versionID, Position: 1, ParadigmKey: "MWM", ParadigmVersion: 1, Trials: 2}, nil
 }
 
 func (f *fakeStore) Arenas(_ context.Context, ids []string) ([]ArenaRef, error) {
@@ -411,11 +411,11 @@ func (f *fakeStore) Arenas(_ context.Context, ids []string) ([]ArenaRef, error) 
 		switch id {
 		case "missing":
 		case "maze":
-			out = append(out, ArenaRef{ID: id, ParadigmKey: "EPM", ParadigmVersion: 1})
+			out = append(out, ArenaRef{ID: id, ParadigmKey: "POLE", ParadigmVersion: 1})
 		case "box-v2":
-			out = append(out, ArenaRef{ID: id, ParadigmKey: "OPEN_FIELD", ParadigmVersion: 2})
+			out = append(out, ArenaRef{ID: id, ParadigmKey: "MWM", ParadigmVersion: 2})
 		default:
-			out = append(out, ArenaRef{ID: id, ParadigmKey: "OPEN_FIELD", ParadigmVersion: 1})
+			out = append(out, ArenaRef{ID: id, ParadigmKey: "MWM", ParadigmVersion: 1})
 		}
 	}
 	return out, nil

@@ -25,7 +25,7 @@ func guard(fn func() error) (err error) {
 }
 
 func validEnvironment() EnvironmentInput {
-	return EnvironmentInput{Name: "Arena A", ParadigmKey: "OPEN_FIELD", Revision: RevisionInput{ParadigmVersion: 1, Parameters: map[string]float64{"arena_width_cm": 50}}}
+	return EnvironmentInput{Name: "Arena A", ParadigmKey: "MWM", Revision: RevisionInput{ParadigmVersion: 1, Parameters: map[string]float64{"tank_diameter_cm": 50}}}
 }
 
 func TestEveryOperationRequiresItsPermission(t *testing.T) {
@@ -82,16 +82,16 @@ func TestInvalidEnvironmentsNeverReachTheStore(t *testing.T) {
 			return second(s.Create(ctx, manager, input(func(in *EnvironmentInput) { in.Name = " " })))
 		}, domain.ErrInvalidName},
 		"malformed paradigm key": {func(s *Service) error {
-			return second(s.Create(ctx, manager, input(func(in *EnvironmentInput) { in.ParadigmKey = "open field" })))
+			return second(s.Create(ctx, manager, input(func(in *EnvironmentInput) { in.ParadigmKey = "water maze" })))
 		}, domain.ErrInvalidParadigmKey},
 		"geometry rejected by the catalog": {func(s *Service) error {
-			return second(s.Create(ctx, manager, input(func(in *EnvironmentInput) { in.Revision.Parameters = map[string]float64{"arena_width_cm": 999} })))
+			return second(s.Create(ctx, manager, input(func(in *EnvironmentInput) { in.Revision.Parameters = map[string]float64{"tank_diameter_cm": 999} })))
 		}, ErrInvalidParameters},
 		"unknown paradigm version": {func(s *Service) error {
 			return second(s.Create(ctx, manager, input(func(in *EnvironmentInput) { in.Revision.ParadigmVersion = 7 })))
 		}, ErrUnknownParadigmVersion},
 		"empty patch":          {func(s *Service) error { return second(s.Update(ctx, manager, "env", Patch{})) }, ErrNoChanges},
-		"malformed list query": {func(s *Service) error { return second(s.List(ctx, manager, "open field")) }, ErrInvalidQuery},
+		"malformed list query": {func(s *Service) error { return second(s.List(ctx, manager, "water maze")) }, ErrInvalidQuery},
 		"revision number zero": {func(s *Service) error { return second(s.Revision(ctx, manager, "env", 0)) }, ErrRevisionNotFound},
 	} {
 		store := &fakeStore{}
@@ -113,10 +113,10 @@ func TestCreateStoresTheFirstRevisionInOneTransaction(t *testing.T) {
 		t.Fatalf("store calls: %v", store.calls)
 	}
 	r := created.Revision
-	if r.EnvironmentID != "env" || r.ParadigmKey != "OPEN_FIELD" || r.CreatedBy != "user-1" || r.Parameters["arena_width_cm"] != 50 {
+	if r.EnvironmentID != "env" || r.ParadigmKey != "MWM" || r.CreatedBy != "user-1" || r.Parameters["tank_diameter_cm"] != 50 {
 		t.Fatalf("revision: %+v", r)
 	}
-	if !slices.Equal(catalog.checked, []string{"OPEN_FIELD"}) {
+	if !slices.Equal(catalog.checked, []string{"MWM"}) {
 		t.Fatalf("catalog: %v", catalog.checked)
 	}
 }
@@ -124,16 +124,16 @@ func TestCreateStoresTheFirstRevisionInOneTransaction(t *testing.T) {
 // A revision always uses the environment's own paradigm and is numbered while
 // the environment is locked.
 func TestAddRevisionUsesTheEnvironmentParadigmUnderLock(t *testing.T) {
-	store, catalog := &fakeStore{paradigm: "EPM"}, &fakeCatalog{}
-	r, err := New(store, catalog).AddRevision(ctx, access.Actor{UserID: "user-1", Role: access.SuperAdmin}, "env", RevisionInput{ParadigmVersion: 1, Parameters: map[string]float64{"arm_length_cm": 35}})
+	store, catalog := &fakeStore{paradigm: "POLE"}, &fakeCatalog{}
+	r, err := New(store, catalog).AddRevision(ctx, access.Actor{UserID: "user-1", Role: access.SuperAdmin}, "env", RevisionInput{ParadigmVersion: 1, Parameters: map[string]float64{"pole_length_cm": 35}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Equal(store.calls, []string{"Transaction", "LockEnvironment", "CreateRevision"}) || r.ParadigmKey != "EPM" || !slices.Equal(catalog.checked, []string{"EPM"}) {
+	if !slices.Equal(store.calls, []string{"Transaction", "LockEnvironment", "CreateRevision"}) || r.ParadigmKey != "POLE" || !slices.Equal(catalog.checked, []string{"POLE"}) {
 		t.Fatalf("calls=%v revision=%+v catalog=%v", store.calls, r, catalog.checked)
 	}
-	store = &fakeStore{paradigm: "EPM"}
-	_, err = New(store, &fakeCatalog{}).AddRevision(ctx, access.Actor{UserID: "user-1", Role: access.SuperAdmin}, "env", RevisionInput{ParadigmVersion: 1, Parameters: map[string]float64{"arm_length_cm": 999}})
+	store = &fakeStore{paradigm: "POLE"}
+	_, err = New(store, &fakeCatalog{}).AddRevision(ctx, access.Actor{UserID: "user-1", Role: access.SuperAdmin}, "env", RevisionInput{ParadigmVersion: 1, Parameters: map[string]float64{"pole_length_cm": 999}})
 	if !errors.Is(err, ErrInvalidParameters) || slices.Contains(store.calls, "CreateRevision") {
 		t.Fatalf("invalid revision: err=%v calls=%v", err, store.calls)
 	}

@@ -94,12 +94,12 @@ func (f *fixture) study(code string) study {
 	s.treatment = item(s.treated, "TREATMENT", compound)
 	s.timepoint = must(f.s.CreateTimepoint(ctx, researcher, e, domain.TimepointFields{Name: "Day 7", StudyDay: 7, Position: 1}))
 	f.protocol(e)
-	must(f.s.CreateEndpoint(ctx, researcher, e, domain.EndpointFields{TimepointID: s.timepoint.ID, ParadigmKey: "OPEN_FIELD",
-		MetricKey: "distance_cm", Kind: "PRIMARY", Direction: "HIGHER_IS_BETTER"}))
+	must(f.s.CreateEndpoint(ctx, researcher, e, domain.EndpointFields{TimepointID: s.timepoint.ID, ParadigmKey: "MWM",
+		MetricKey: "path_length_cm", Kind: "PRIMARY", Direction: "HIGHER_IS_BETTER"}))
 	return s
 }
 
-// protocol stores a one-step OPEN_FIELD protocol and returns its version id.
+// protocol stores a one-step MWM protocol and returns its version id.
 func (f *fixture) protocol(experimentID string) string {
 	f.t.Helper()
 	tx, err := f.pool.Begin(ctx)
@@ -116,7 +116,7 @@ func (f *fixture) protocol(experimentID string) string {
 		f.t.Fatal(err)
 	}
 	if _, err := tx.Exec(ctx, `INSERT INTO misko.protocol_steps (protocol_version_id, position, paradigm_key, paradigm_version, trial_type, trials, session)
-		VALUES ($1, 1, 'OPEN_FIELD', 1, 'STANDARD', 1, '{}')`, version); err != nil {
+		VALUES ($1, 1, 'MWM', 1, 'ACQUISITION', 1, '{}')`, version); err != nil {
 		f.t.Fatal(err)
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -160,10 +160,10 @@ func TestDatabaseRulesBecomeApplicationErrors(t *testing.T) {
 	_, err = f.store.CreateRegimenItem(ctx, domain.RegimenItem{ExperimentID: e, GroupID: s.treated.ID, Purpose: domain.TreatmentPurpose, SubstanceID: s.treatment.SubstanceID,
 		DoseMicro: 1, Unit: "mg", Route: "ORAL", Frequency: domain.Daily, StartDay: 1, EndDay: 2})
 	expect("second treatment", err, application.ErrTreatmentItemTaken)
-	_, err = f.store.CreateEndpoint(ctx, domain.Endpoint{ExperimentID: e, TimepointID: s.timepoint.ID, ParadigmKey: "OPEN_FIELD", MetricKey: "center_time_s",
+	_, err = f.store.CreateEndpoint(ctx, domain.Endpoint{ExperimentID: e, TimepointID: s.timepoint.ID, ParadigmKey: "MWM", MetricKey: "escape_latency_s",
 		Kind: domain.Primary, Direction: domain.HigherIsBetter})
 	expect("second primary", err, application.ErrPrimaryEndpointTaken)
-	_, err = f.store.CreateEndpoint(ctx, domain.Endpoint{ExperimentID: e, TimepointID: other.timepoint.ID, ParadigmKey: "OPEN_FIELD", MetricKey: "center_time_s",
+	_, err = f.store.CreateEndpoint(ctx, domain.Endpoint{ExperimentID: e, TimepointID: other.timepoint.ID, ParadigmKey: "MWM", MetricKey: "escape_latency_s",
 		Kind: domain.Secondary, Direction: domain.HigherIsBetter})
 	expect("foreign timepoint", err, application.ErrTimepointNotInExperiment)
 
@@ -236,7 +236,7 @@ func TestCompletionWaitsForOpenTests(t *testing.T) {
 	version := f.id(`SELECT v.id FROM misko.protocol_versions v WHERE v.experiment_id = $1`, e)
 	must(f.s.Start(ctx, researcher, e, "2026-10-15"))
 	test := f.id(`INSERT INTO misko.tests (experiment_id, timepoint_id, protocol_version_id, step_position, paradigm_key, paradigm_version,
-		planned_trials, scheduled_at, created_by) VALUES ($1, $2, $3, 1, 'OPEN_FIELD', 1, 1, now(), $4) RETURNING id`, e, s.timepoint.ID, version, researcher.UserID)
+		planned_trials, scheduled_at, created_by) VALUES ($1, $2, $3, 1, 'MWM', 1, 1, now(), $4) RETURNING id`, e, s.timepoint.ID, version, researcher.UserID)
 	if _, err := f.s.Complete(ctx, researcher, e); !errors.Is(err, application.ErrOpenTests) {
 		t.Fatalf("complete with a planned test: %v", err)
 	}

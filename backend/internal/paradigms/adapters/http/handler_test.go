@@ -57,14 +57,14 @@ func TestCatalogIsReadOnlyAndVersioned(t *testing.T) {
 		{"GET", "/api/paradigms", "", 401, "auth.unauthenticated"},
 		{"GET", "/api/paradigms", "unknown-role", 403, "auth.forbidden"},
 		{"GET", "/api/paradigms/MAZE", "viewer", 404, "paradigm.notFound"},
-		{"GET", "/api/paradigms/open_field", "viewer", 404, "paradigm.notFound"},
-		{"GET", "/api/paradigms/OPEN_FIELD/versions/2", "viewer", 404, "paradigm.versionNotFound"},
-		{"GET", "/api/paradigms/OPEN_FIELD/versions/one", "viewer", 404, "paradigm.versionNotFound"},
+		{"GET", "/api/paradigms/mwm", "viewer", 404, "paradigm.notFound"},
+		{"GET", "/api/paradigms/MWM/versions/2", "viewer", 404, "paradigm.versionNotFound"},
+		{"GET", "/api/paradigms/MWM/versions/one", "viewer", 404, "paradigm.versionNotFound"},
 		{"GET", "/api/paradigms/MWM", "", 401, "auth.unauthenticated"},
 		{"POST", "/api/paradigms", "viewer", 405, ""},
-		{"PATCH", "/api/paradigms/OPEN_FIELD", "viewer", 405, ""},
-		{"PUT", "/api/paradigms/EPM", "viewer", 405, ""},
-		{"DELETE", "/api/paradigms/OPEN_FIELD/versions/1", "viewer", 405, ""},
+		{"PATCH", "/api/paradigms/MWM", "viewer", 405, ""},
+		{"PUT", "/api/paradigms/POLE", "viewer", 405, ""},
+		{"DELETE", "/api/paradigms/MWM/versions/1", "viewer", 405, ""},
 	} {
 		if status, body := call(tc.method, tc.path, tc.who); status != tc.status || (tc.code != "" && body["code"] != tc.code) {
 			t.Errorf("%s %s as %q: %d %v", tc.method, tc.path, tc.who, status, body)
@@ -73,7 +73,7 @@ func TestCatalogIsReadOnlyAndVersioned(t *testing.T) {
 
 	status, list := call("GET", "/api/paradigms", "viewer")
 	data, _ := list["data"].([]any)
-	want := []string{"BARNES_MAZE", "EPM", "LIGHT_DARK", "MWM", "NOVEL_OBJECT", "OPEN_FIELD", "POLE", "ROTAROD", "THREE_CHAMBER", "TREADMILL", "Y_MAZE"}
+	want := []string{"MWM", "NOVEL_OBJECT", "POLE", "TREADMILL"}
 	if status != 200 || len(data) != len(want) {
 		t.Fatalf("list: %d %v", status, list)
 	}
@@ -84,11 +84,11 @@ func TestCatalogIsReadOnlyAndVersioned(t *testing.T) {
 			t.Fatalf("summary %d: %v", i, summary)
 		}
 	}
-	for _, path := range []string{"/api/paradigms/OPEN_FIELD", "/api/paradigms/OPEN_FIELD/versions/1"} {
+	for _, path := range []string{"/api/paradigms/MWM", "/api/paradigms/MWM/versions/1"} {
 		status, manifest := call("GET", path, "viewer")
 		metrics, _ := manifest["metrics"].([]any)
 		if status != 200 || manifest["version"] != float64(1) || manifest["metricEngineVersion"] != float64(1) ||
-			manifest["resultSchemaVersion"] != float64(1) || len(metrics) != 9 || manifest["automatedAnalysis"] != false {
+			manifest["resultSchemaVersion"] != float64(1) || len(metrics) != 8 || manifest["automatedAnalysis"] != false {
 			t.Fatalf("%s: %d %v", path, status, manifest)
 		}
 		first := metrics[0].(map[string]any)
@@ -97,18 +97,22 @@ func TestCatalogIsReadOnlyAndVersioned(t *testing.T) {
 		}
 	}
 
-	_, epm := call("GET", "/api/paradigms/EPM/versions/1", "viewer")
-	zone := epm["zones"].([]any)[0].(map[string]any)
-	input := epm["inputEvents"].([]any)[0].(map[string]any)
-	if zone["key"] != "center" || zone["calibrated"] != true || zone["required"] != true ||
-		input["type"] != "risk_assessment" || input["kind"] != "POINT" || input["labels"] == nil {
-		t.Fatalf("EPM contract: %v %v", zone, input)
+	_, mwm := call("GET", "/api/paradigms/MWM/versions/1", "viewer")
+	zone := mwm["zones"].([]any)[0].(map[string]any)
+	inputs, _ := mwm["inputEvents"].([]any)
+	if zone["key"] != "platform" || zone["calibrated"] != false || zone["required"] != true || inputs == nil || len(inputs) != 0 {
+		t.Fatalf("MWM contract: %v %v", zone, mwm["inputEvents"])
 	}
-	_, rotarod := call("GET", "/api/paradigms/ROTAROD", "viewer")
-	session := rotarod["parameters"].([]any)[0].(map[string]any)
-	zones, _ := rotarod["zones"].([]any)
+	_, pole := call("GET", "/api/paradigms/POLE/versions/1", "viewer")
+	input := pole["inputEvents"].([]any)[0].(map[string]any)
+	if input["type"] != "turn_complete" || input["kind"] != "POINT" || input["labels"] == nil {
+		t.Fatalf("POLE contract: %v", input)
+	}
+	_, treadmill := call("GET", "/api/paradigms/TREADMILL", "viewer")
+	session := treadmill["parameters"].([]any)[1].(map[string]any)
+	zones, _ := treadmill["zones"].([]any)
 	if session["key"] != "accelerating" || session["scope"] != "SESSION" || session["valueType"] != "integer" || zones == nil || len(zones) != 0 {
-		t.Fatalf("ROTAROD contract: %v %v", session, rotarod["zones"])
+		t.Fatalf("TREADMILL contract: %v %v", session, treadmill["zones"])
 	}
 	_, novel := call("GET", "/api/paradigms/NOVEL_OBJECT", "viewer")
 	exploration := novel["inputEvents"].([]any)[0].(map[string]any)
@@ -123,12 +127,12 @@ func TestCatalogIsReadOnlyAndVersioned(t *testing.T) {
 func TestCatalogTextFollowsTheRequestedLanguage(t *testing.T) {
 	mux := newMux()
 	for _, tc := range []struct{ header, query, name, label string }{
-		{"", "", "Open field", "Arena width"},
-		{"tr-TR,tr;q=0.9", "", "Açık alan testi", "Arena genişliği"},
-		{"en", "?lang=tr", "Açık alan testi", "Arena genişliği"},
-		{"de", "", "Open field", "Arena width"},
+		{"", "", "Morris water maze", "Pool diameter"},
+		{"tr-TR,tr;q=0.9", "", "Morris su labirenti", "Havuz çapı"},
+		{"en", "?lang=tr", "Morris su labirenti", "Havuz çapı"},
+		{"de", "", "Morris water maze", "Pool diameter"},
 	} {
-		req := httptest.NewRequest("GET", "/api/paradigms/OPEN_FIELD"+tc.query, nil)
+		req := httptest.NewRequest("GET", "/api/paradigms/MWM"+tc.query, nil)
 		req.Header.Set("Authorization", "viewer")
 		if tc.header != "" {
 			req.Header.Set("Accept-Language", tc.header)
@@ -207,11 +211,9 @@ func TestPublishedManifestsNeverChange(t *testing.T) {
 
 func TestListLinksEachParadigmToAnArticleInTheRequestedLanguage(t *testing.T) {
 	mux := newMux()
-	for _, tc := range []struct{ query, yMaze, epm string }{
-		{"", "https://en.wikipedia.org/wiki/Spontaneous_alternation", "https://en.wikipedia.org/wiki/Elevated_plus_maze"},
-		{"?lang=tr", "https://tr.wikipedia.org/wiki/Kendili%C4%9Finden_de%C4%9Fi%C5%9Fim", "https://en.wikipedia.org/wiki/Elevated_plus_maze"},
-	} {
-		_, raw := get(mux, "GET", "/api/paradigms"+tc.query, "viewer")
+	// Without a Turkish article the English one is linked in Turkish too.
+	for _, query := range []string{"", "?lang=tr"} {
+		_, raw := get(mux, "GET", "/api/paradigms"+query, "viewer")
 		var list struct {
 			Data []struct {
 				Key       string `json:"key"`
@@ -225,8 +227,8 @@ func TestListLinksEachParadigmToAnArticleInTheRequestedLanguage(t *testing.T) {
 		for _, p := range list.Data {
 			links[p.Key] = p.Reference
 		}
-		if links["Y_MAZE"] != tc.yMaze || links["EPM"] != tc.epm || links["POLE"] != "" {
-			t.Errorf("%q: %v", tc.query, links)
+		if links["MWM"] != "https://en.wikipedia.org/wiki/Morris_water_navigation_task" || links["POLE"] != "" {
+			t.Errorf("%q: %v", query, links)
 		}
 	}
 }

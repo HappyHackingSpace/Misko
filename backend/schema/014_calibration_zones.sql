@@ -1,6 +1,7 @@
 -- Zone shapes drawn on the camera frame with a calibration, for paradigms
--- whose zones are not derived from parameters (EPM arms, Y maze arms, Barnes
--- holes, three-chamber compartments). A shape belongs to its calibration (the
+-- whose zones are not derived from parameters (arms, holes or compartments
+-- that only a drawing can place; no paradigm of the current catalog has
+-- any). A shape belongs to its calibration (the
 -- default of an environment revision or a per animal override) and is keyed by
 -- the paradigm's zone key; a key may have several shapes, numbered by
 -- position. Each shape is stored as drawn, in full-frame pixels, and in

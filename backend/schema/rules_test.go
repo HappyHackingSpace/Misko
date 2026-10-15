@@ -61,17 +61,17 @@ func TestStudyLifecycleRules(t *testing.T) {
 	mptp := d.id(`INSERT INTO misko.substances (name, kind) VALUES ('MPTP', 'INDUCER') RETURNING id`)
 	d.reject("substances_name_key", `INSERT INTO misko.substances (name, kind) VALUES ('saline', 'VEHICLE')`)
 	parkinson := d.id(`INSERT INTO misko.disease_models (name, induction_type) VALUES ('MPTP Parkinson', 'CHEMICAL') RETURNING id`)
-	boxA := d.id(`INSERT INTO misko.environments (name, paradigm_key) VALUES ('Box A', 'OPEN_FIELD') RETURNING id`)
-	boxB := d.id(`INSERT INTO misko.environments (name, paradigm_key) VALUES ('Box B', 'OPEN_FIELD') RETURNING id`)
-	maze := d.id(`INSERT INTO misko.environments (name, paradigm_key) VALUES ('Maze', 'EPM') RETURNING id`)
+	boxA := d.id(`INSERT INTO misko.environments (name, paradigm_key) VALUES ('Box A', 'MWM') RETURNING id`)
+	boxB := d.id(`INSERT INTO misko.environments (name, paradigm_key) VALUES ('Box B', 'MWM') RETURNING id`)
+	maze := d.id(`INSERT INTO misko.environments (name, paradigm_key) VALUES ('Maze', 'POLE') RETURNING id`)
 	arenaA := d.id(`INSERT INTO misko.environment_revisions (environment_id, paradigm_key, paradigm_version, number, parameters, created_by)
-		VALUES ($1, 'OPEN_FIELD', 1, 1, '{"arena_width_cm": 50, "arena_height_cm": 50}', $2) RETURNING id`, boxA, user)
+		VALUES ($1, 'MWM', 1, 1, '{"tank_diameter_cm": 120, "platform_diameter_cm": 10, "platform_x_cm": 30, "platform_y_cm": 30}', $2) RETURNING id`, boxA, user)
 	arenaB := d.id(`INSERT INTO misko.environment_revisions (environment_id, paradigm_key, paradigm_version, number, parameters, created_by)
-		VALUES ($1, 'OPEN_FIELD', 1, 1, '{"arena_width_cm": 50, "arena_height_cm": 50}', $2) RETURNING id`, boxB, user)
+		VALUES ($1, 'MWM', 1, 1, '{"tank_diameter_cm": 120, "platform_diameter_cm": 10, "platform_x_cm": 30, "platform_y_cm": 30}', $2) RETURNING id`, boxB, user)
 	mazeRev := d.id(`INSERT INTO misko.environment_revisions (environment_id, paradigm_key, paradigm_version, number, parameters, created_by)
-		VALUES ($1, 'EPM', 1, 1, '{}', $2) RETURNING id`, maze, user)
+		VALUES ($1, 'POLE', 1, 1, '{}', $2) RETURNING id`, maze, user)
 	d.reject("environment_revisions_environment_fkey", `INSERT INTO misko.environment_revisions (environment_id, paradigm_key, paradigm_version, number, parameters, created_by)
-		VALUES ($1, 'EPM', 1, 2, '{}', $2)`, boxA, user)
+		VALUES ($1, 'POLE', 1, 2, '{}', $2)`, boxA, user)
 	d.reject("environment_revisions_immutable", `UPDATE misko.environment_revisions SET notes = 'x' WHERE id = $1`, arenaA)
 
 	animal := func(code string) string {
@@ -124,7 +124,7 @@ func TestStudyLifecycleRules(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := tx.Exec(ctx, `INSERT INTO misko.protocol_steps (protocol_version_id, position, paradigm_key, paradigm_version, trial_type, trials, session)
-		VALUES ($1, 1, 'OPEN_FIELD', 1, 'STANDARD', 1, '{}')`, version); err != nil {
+		VALUES ($1, 1, 'MWM', 1, 'ACQUISITION', 1, '{}')`, version); err != nil {
 		t.Fatal(err)
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -132,11 +132,11 @@ func TestStudyLifecycleRules(t *testing.T) {
 	}
 
 	d.exec(`INSERT INTO misko.endpoints (experiment_id, timepoint_id, baseline_timepoint_id, paradigm_key, metric_key, kind, direction)
-		VALUES ($1, $2, $3, 'OPEN_FIELD', 'distance_cm', 'PRIMARY', 'HIGHER_IS_BETTER')`, exp, day14, baseline)
+		VALUES ($1, $2, $3, 'MWM', 'path_length_cm', 'PRIMARY', 'HIGHER_IS_BETTER')`, exp, day14, baseline)
 	d.reject("endpoints_primary_key", `INSERT INTO misko.endpoints (experiment_id, timepoint_id, paradigm_key, metric_key, kind, direction)
-		VALUES ($1, $2, 'OPEN_FIELD', 'center_time_s', 'PRIMARY', 'HIGHER_IS_BETTER')`, exp, day14)
+		VALUES ($1, $2, 'MWM', 'escape_latency_s', 'PRIMARY', 'HIGHER_IS_BETTER')`, exp, day14)
 	d.reject("endpoints_baseline_check", `INSERT INTO misko.endpoints (experiment_id, timepoint_id, baseline_timepoint_id, paradigm_key, metric_key, kind, direction)
-		VALUES ($1, $2, $2, 'OPEN_FIELD', 'center_time_s', 'SECONDARY', 'HIGHER_IS_BETTER')`, exp, day14)
+		VALUES ($1, $2, $2, 'MWM', 'escape_latency_s', 'SECONDARY', 'HIGHER_IS_BETTER')`, exp, day14)
 
 	// Allocation: one group per animal, ever; free to move while a draft.
 	allocate := func(group, subject string) string {
@@ -150,7 +150,7 @@ func TestStudyLifecycleRules(t *testing.T) {
 	d.exec(`UPDATE misko.allocations SET group_id = $1 WHERE id = $2`, gTreated, aTreated)
 
 	d.reject("tests_not_running", `INSERT INTO misko.tests (experiment_id, timepoint_id, protocol_version_id, step_position, paradigm_key, paradigm_version,
-		planned_trials, scheduled_at, created_by) VALUES ($1, $2, $3, 1, 'OPEN_FIELD', 1, 1, now(), $4)`, exp, day14, version, user)
+		planned_trials, scheduled_at, created_by) VALUES ($1, $2, $3, 1, 'MWM', 1, 1, now(), $4)`, exp, day14, version, user)
 	d.reject("administrations_not_running", `INSERT INTO misko.administrations (experiment_id, allocation_id, group_id, subject_id, purpose, substance_id,
 		dose_micro, unit, route, administered_at, recorded_by) VALUES ($1, $2, $3, $4, 'VEHICLE', $5, 1, 'mL', 'ORAL', now(), $6)`,
 		exp, aSick, gDisease, sick, saline, user)
@@ -194,19 +194,19 @@ func TestStudyLifecycleRules(t *testing.T) {
 
 	// A session with two animals in two arenas sharing one video.
 	test := d.id(`INSERT INTO misko.tests (experiment_id, timepoint_id, protocol_version_id, step_position, paradigm_key, paradigm_version,
-		planned_trials, scheduled_at, created_by) VALUES ($1, $2, $3, 1, 'OPEN_FIELD', 1, 1, now(), $4) RETURNING id`, exp, day14, version, user)
+		planned_trials, scheduled_at, created_by) VALUES ($1, $2, $3, 1, 'MWM', 1, 1, now(), $4) RETURNING id`, exp, day14, version, user)
 	d.reject("tests_step_fkey", `INSERT INTO misko.tests (experiment_id, timepoint_id, protocol_version_id, step_position, paradigm_key, paradigm_version,
-		planned_trials, scheduled_at, created_by) VALUES ($1, $2, $3, 1, 'OPEN_FIELD', 1, 3, now(), $4)`, exp, day14, version, user)
+		planned_trials, scheduled_at, created_by) VALUES ($1, $2, $3, 1, 'MWM', 1, 3, now(), $4)`, exp, day14, version, user)
 	join := func(allocation, arena string) string {
 		return d.id(`INSERT INTO misko.test_subjects (experiment_id, test_id, allocation_id, environment_revision_id, paradigm_key, paradigm_version, created_by)
-			VALUES ($1, $2, $3, $4, 'OPEN_FIELD', 1, $5) RETURNING id`, exp, test, allocation, arena, user)
+			VALUES ($1, $2, $3, $4, 'MWM', 1, $5) RETURNING id`, exp, test, allocation, arena, user)
 	}
 	first, second := join(aHealthy, arenaA), join(aSick, arenaB)
 	insertSubject := `INSERT INTO misko.test_subjects (experiment_id, test_id, allocation_id, environment_revision_id, paradigm_key, paradigm_version, created_by)
 		VALUES ($1, $2, $3, $4, $5, 1, $6)`
-	d.reject("test_subjects_arena_key", insertSubject, exp, test, aTreated, arenaA, "OPEN_FIELD", user)
-	d.reject("test_subjects_frozen", insertSubject, exp, test, aLate, arenaA, "OPEN_FIELD", user)
-	d.reject("test_subjects_paradigm_fkey", insertSubject, exp, test, aTreated, mazeRev, "EPM", user)
+	d.reject("test_subjects_arena_key", insertSubject, exp, test, aTreated, arenaA, "MWM", user)
+	d.reject("test_subjects_frozen", insertSubject, exp, test, aLate, arenaA, "MWM", user)
+	d.reject("test_subjects_paradigm_fkey", insertSubject, exp, test, aTreated, mazeRev, "POLE", user)
 
 	asset := d.id(`INSERT INTO misko.video_assets (kind, bucket, object_name, content_type, size_bytes, crc32c, created_by)
 		VALUES ('ORIGINAL', 'misko-test', 'videos/1.mp4', 'video/mp4', 1000, 1, $1) RETURNING id`, user)
@@ -248,7 +248,7 @@ func TestStudyLifecycleRules(t *testing.T) {
 	// Analysis runs one animal at a time with that animal's calibration.
 	run := `INSERT INTO misko.analysis_runs (experiment_id, test_id, test_subject_id, recording_id, source_asset_id, source_generation, source_crc32c,
 		clip_start_us, calibration_id, paradigm_key, paradigm_version, metric_engine_version, result_schema_version, parameters, trigger, status,
-		max_attempts, available_at) VALUES ($1, $2, $3, $4, $5, 1, 1, 0, $6, 'OPEN_FIELD', 1, 1, 1, '{}', 'AUTOMATIC', 'QUEUED', 3, now())`
+		max_attempts, available_at) VALUES ($1, $2, $3, $4, $5, 1, 1, 0, $6, 'MWM', 1, 1, 1, '{}', 'AUTOMATIC', 'QUEUED', 3, now())`
 	queued := d.id(run+" RETURNING id", exp, test, first, recording, asset, calA)
 	d.reject("analysis_runs_calibration_scope", run, exp, test, second, recording, asset, calA)
 	d.reject("analysis_runs_automatic_key", run, exp, test, first, recording, asset, calA)
@@ -266,7 +266,7 @@ func TestStudyLifecycleRules(t *testing.T) {
 	d.exec(`UPDATE misko.experiments SET status = 'COMPLETED', completed_at = now() WHERE id = $1`, exp)
 	d.reject("experiments_transition", `UPDATE misko.experiments SET title = 'Renamed' WHERE id = $1`, exp)
 	d.reject("tests_not_running", `INSERT INTO misko.tests (experiment_id, timepoint_id, protocol_version_id, step_position, paradigm_key, paradigm_version,
-		planned_trials, scheduled_at, created_by) VALUES ($1, $2, $3, 1, 'OPEN_FIELD', 1, 1, now(), $4)`, exp, day14, version, user)
+		planned_trials, scheduled_at, created_by) VALUES ($1, $2, $3, 1, 'MWM', 1, 1, now(), $4)`, exp, day14, version, user)
 	d.reject("allocations_frozen", `INSERT INTO misko.allocations (experiment_id, group_id, subject_id, allocated_at, created_by)
 		VALUES ($1, $2, $3, now(), $4)`, exp, gHealthy, animal("M5"), user)
 	d.reject("protocols_closed", `INSERT INTO misko.protocols (experiment_id, name) VALUES ($1, 'Late battery')`, exp)

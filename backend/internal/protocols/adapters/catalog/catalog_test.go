@@ -39,18 +39,19 @@ func TestSessionValuesAreValidated(t *testing.T) {
 		want    error
 	}{
 		"unknown paradigm":         {"MAZE", 1, nil, application.ErrUnknownParadigm},
-		"unknown version":          {"ROTAROD", 99, nil, application.ErrUnknownParadigmVersion},
-		"apparatus value":          {"OPEN_FIELD", 1, map[string]float64{"arena_width_cm": 40}, application.ErrInvalidSession},
-		"out of range":             {"ROTAROD", 1, map[string]float64{"start_rpm": -1}, application.ErrInvalidSession},
-		"cross-parameter rule":     {"ROTAROD", 1, map[string]float64{"start_rpm": 30, "end_rpm": 10}, application.ErrInvalidSession},
-		"unknown session variable": {"ROTAROD", 1, map[string]float64{"speed": 1}, application.ErrInvalidSession},
+		"unknown version":          {"TREADMILL", 99, nil, application.ErrUnknownParadigmVersion},
+		"apparatus value":          {"TREADMILL", 1, map[string]float64{"lane_length_cm": 40}, application.ErrInvalidSession},
+		"analysis value":           {"MWM", 1, map[string]float64{"max_sample_gap_s": 1}, application.ErrInvalidSession},
+		"out of range":             {"TREADMILL", 1, map[string]float64{"start_speed_cm_s": -1}, application.ErrInvalidSession},
+		"cross-parameter rule":     {"TREADMILL", 1, map[string]float64{"start_speed_cm_s": 30, "end_speed_cm_s": 10}, application.ErrInvalidSession},
+		"unknown session variable": {"TREADMILL", 1, map[string]float64{"speed": 1}, application.ErrInvalidSession},
 	} {
 		if _, err := c.ResolveSession(tc.key, tc.version, tc.session); !errors.Is(err, tc.want) {
 			t.Errorf("%s: err=%v want %v", name, err, tc.want)
 		}
 	}
-	session, err := c.ResolveSession("ROTAROD", 1, map[string]float64{"start_rpm": 5, "end_rpm": 30})
-	if err != nil || session["start_rpm"] != 5 || session["end_rpm"] != 30 || session["max_trial_duration_s"] == 0 {
+	session, err := c.ResolveSession("TREADMILL", 1, map[string]float64{"start_speed_cm_s": 5, "end_speed_cm_s": 30})
+	if err != nil || session["start_speed_cm_s"] != 5 || session["end_speed_cm_s"] != 30 || session["max_trial_duration_s"] == 0 {
 		t.Fatalf("resolved: %v %v", session, err)
 	}
 }

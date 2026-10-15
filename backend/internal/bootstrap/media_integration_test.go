@@ -130,7 +130,7 @@ func seedMediaStudy(t *testing.T, pool *pgxpool.Pool, code string, arenas int) m
 			return err
 		}
 		_, err := tx.Exec(ctx, `INSERT INTO misko.protocol_steps (protocol_version_id, position, paradigm_key, paradigm_version, trial_type, trials, session)
-			VALUES ($1, 1, 'OPEN_FIELD', 1, 'STANDARD', 1, '{}'), ($1, 2, 'ROTAROD', 1, 'ACCELERATING', 1, '{}')`, version)
+			VALUES ($1, 1, 'MWM', 1, 'ACQUISITION', 1, '{}'), ($1, 2, 'TREADMILL', 1, 'ENDURANCE', 1, '{}')`, version)
 		return err
 	})
 	if err != nil {
@@ -138,18 +138,18 @@ func seedMediaStudy(t *testing.T, pool *pgxpool.Pool, code string, arenas int) m
 	}
 	exec("UPDATE misko.experiments SET status = 'RUNNING', day_zero = current_date, started_at = now() WHERE id = $1", st.experiment)
 	plan := `INSERT INTO misko.tests (experiment_id, timepoint_id, protocol_version_id, step_position, paradigm_key, paradigm_version, planned_trials, scheduled_at, created_by)
-		VALUES ($1, $2, $3, 1, 'OPEN_FIELD', 1, 1, now(), $4) RETURNING id`
+		VALUES ($1, $2, $3, 1, 'MWM', 1, 1, now(), $4) RETURNING id`
 	st.test, st.planned = one(plan, st.experiment, timepoint, version, seedUser), one(plan, st.experiment, timepoint, version, seedUser)
 	for i := range arenas {
 		name := code + "-" + strconv.Itoa(i+1)
 		subject := one("INSERT INTO misko.subjects (code, species, sex) VALUES ($1, 'MOUSE', 'MALE') RETURNING id", name)
 		allocation := one(`INSERT INTO misko.allocations (experiment_id, group_id, subject_id, allocated_at, created_by)
 			VALUES ($1, $2, $3, now() - interval '1 day', $4) RETURNING id`, st.experiment, group, subject, seedUser)
-		env := one("INSERT INTO misko.environments (name, paradigm_key) VALUES ($1, 'OPEN_FIELD') RETURNING id", "Arena "+name)
+		env := one("INSERT INTO misko.environments (name, paradigm_key) VALUES ($1, 'MWM') RETURNING id", "Arena "+name)
 		arena := one(`INSERT INTO misko.environment_revisions (environment_id, paradigm_key, paradigm_version, number, parameters, created_by)
-			VALUES ($1, 'OPEN_FIELD', 1, 1, '{"arena_width_cm": 50, "arena_height_cm": 40, "center_fraction": 0.5}', $2) RETURNING id`, env, seedUser)
+			VALUES ($1, 'MWM', 1, 1, '{"tank_diameter_cm": 120, "platform_diameter_cm": 10, "platform_x_cm": 30, "platform_y_cm": 30}', $2) RETURNING id`, env, seedUser)
 		st.subjects = append(st.subjects, one(`INSERT INTO misko.test_subjects (experiment_id, test_id, allocation_id, environment_revision_id, paradigm_key, paradigm_version, created_by)
-			VALUES ($1, $2, $3, $4, 'OPEN_FIELD', 1, $5) RETURNING id`, st.experiment, st.test, allocation, arena, seedUser))
+			VALUES ($1, $2, $3, $4, 'MWM', 1, $5) RETURNING id`, st.experiment, st.test, allocation, arena, seedUser))
 		st.arenas, st.environments = append(st.arenas, arena), append(st.environments, env)
 	}
 	exec("UPDATE misko.tests SET status = 'IN_PROGRESS', started_at = now() WHERE id = $1", st.test)

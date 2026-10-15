@@ -62,7 +62,7 @@ func deref(v *float64) any {
 }
 
 func TestSectionDescribesGroupsAndComparesByRole(t *testing.T) {
-	e := Endpoint{ID: "e", TimepointID: "d14", BaselineTimepointID: "base", ParadigmKey: "OPEN_FIELD", MetricKey: "distance_cm", Direction: "HIGHER_IS_BETTER"}
+	e := Endpoint{ID: "e", TimepointID: "d14", BaselineTimepointID: "base", ParadigmKey: "MWM", MetricKey: "path_length_cm", Direction: "HIGHER_IS_BETTER"}
 	s := Analyse(e, groups, timepoints, rows())
 	if !s.Comparable || len(s.Versions) != 1 || s.Versions[0] != (Version{1, 1, "cm"}) || len(s.Groups) != len(groups) {
 		t.Fatalf("section: %+v", s)

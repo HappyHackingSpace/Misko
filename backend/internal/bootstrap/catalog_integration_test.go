@@ -74,9 +74,9 @@ func TestCatalogOverHTTP(t *testing.T) {
 		t.Fatalf("missing description is not null: %v", mptp)
 	}
 	model := c.create("/api/catalog/disease-models", admin, map[string]any{
-		"name": "MPTP parkinsonism", "inductionType": "CHEMICAL", "confirmationCriterion": "rotarod latency < 50% of baseline",
+		"name": "MPTP parkinsonism", "inductionType": "CHEMICAL", "confirmationCriterion": "pole descent time > 150% of baseline",
 	})
-	if model["inductionType"] != "CHEMICAL" || model["confirmationCriterion"] != "rotarod latency < 50% of baseline" || model["description"] != nil {
+	if model["inductionType"] != "CHEMICAL" || model["confirmationCriterion"] != "pole descent time > 150% of baseline" || model["description"] != nil {
 		t.Fatalf("disease model representation: %v", model)
 	}
 	stroke := c.create("/api/catalog/disease-models", admin, map[string]any{"name": "MCAO stroke", "inductionType": "SURGICAL"})

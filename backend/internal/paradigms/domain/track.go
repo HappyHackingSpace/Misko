@@ -11,14 +11,8 @@ import (
 var (
 	trackedPair = T("A counted interval is a pair of consecutive tracked samples with 0 < dt <= max_sample_gap_s.",
 		"Sayılan aralık, 0 < dt <= max_sample_gap_s olan iki ardışık izlenmiş örnekten oluşur.")
-	calibratedFrame = T("Samples and calibrated zone shapes use the same coordinates in centimeters; zones are evaluated independently and include their boundary.",
-		"Örnekler ve kalibre edilmiş bölge şekilleri aynı santimetre koordinatlarını kullanır; bölgeler birbirinden bağımsız değerlendirilir ve sınırları bölgeye dahildir.")
-	entryRule = T("An entry is a counted interval whose earlier sample is outside the zone and whose later sample is inside.",
-		"Giriş, önceki örneği bölgenin dışında, sonraki örneği içinde olan sayılan aralıktır.")
-	latencyRule = T("Time of the first tracked sample inside the zone, from the trial start.",
-		"Deneme başından itibaren bölge içindeki ilk izlenmiş örneğin zamanı.")
-	missingNotSeen = T("Missing (EVENT_NOT_OBSERVED) when no tracked sample is inside the zone; missing (NO_VALID_INTERVALS) without counted intervals.",
-		"Bölge içinde izlenmiş örnek yoksa eksik (EVENT_NOT_OBSERVED); sayılan aralık yoksa eksik (NO_VALID_INTERVALS).")
+	missingNoPairs = T("Missing (NO_VALID_INTERVALS) when there is no counted interval.",
+		"Sayılan aralık yoksa eksik (NO_VALID_INTERVALS).")
 )
 
 var gapParameter = Parameter{
@@ -43,42 +37,20 @@ type zone struct {
 	contains func(x, y float64) bool
 }
 
-func shapesZone(key string, shapes []Shape) zone {
-	return zone{key: key, contains: func(x, y float64) bool { return inAny(shapes, x, y) }}
-}
-
-type zoneEntry struct {
-	key  string
-	atUs int64
-}
-
 // track summarizes counted intervals: pairs of consecutive tracked samples
 // with 0 < dt <= the maximum gap. Zone time is attributed to the earlier
 // sample. Intervals are named "in_<zone>" and entry points "<zone>_entry".
 type track struct {
-	durationUs    int64
-	distance      float64
-	zoneUs        map[string]int64
-	entries       map[string]int
-	firstInsideUs map[string]int64
-	sequence      []zoneEntry
-	intervals     []Interval
-	points        []Point
+	durationUs int64
+	zoneUs     map[string]int64
+	entries    map[string]int
+	intervals  []Interval
+	points     []Point
 }
 
 // walk evaluates a trajectory; visit, when set, is called for every counted interval.
 func walk(samples []Sample, tracked func(Sample) bool, zones []zone, maxGapUs int64, visit func(a, b Sample, dt int64)) track {
-	t := track{zoneUs: map[string]int64{}, entries: map[string]int{}, firstInsideUs: map[string]int64{}}
-	for _, s := range samples {
-		if !tracked(s) {
-			continue
-		}
-		for _, z := range zones {
-			if _, seen := t.firstInsideUs[z.key]; !seen && z.contains(s.X, s.Y) {
-				t.firstInsideUs[z.key] = s.TUs
-			}
-		}
-	}
+	t := track{zoneUs: map[string]int64{}, entries: map[string]int{}}
 	open := map[string]*Interval{}
 	closeRun := func(key string) {
 		if run := open[key]; run != nil {
@@ -96,7 +68,6 @@ func walk(samples []Sample, tracked func(Sample) bool, zones []zone, maxGapUs in
 			continue
 		}
 		t.durationUs += dt
-		t.distance += math.Hypot(b.X-a.X, b.Y-a.Y)
 		for _, z := range zones {
 			if z.contains(a.X, a.Y) {
 				t.zoneUs[z.key] += dt
@@ -111,7 +82,6 @@ func walk(samples []Sample, tracked func(Sample) bool, zones []zone, maxGapUs in
 			closeRun(z.key)
 			if z.contains(b.X, b.Y) {
 				t.entries[z.key]++
-				t.sequence = append(t.sequence, zoneEntry{key: z.key, atUs: b.TUs})
 				t.points = append(t.points, Point{Type: z.key + "_entry", AtUs: b.TUs})
 			}
 		}
@@ -194,8 +164,6 @@ func zoneByKey(zones []Zone, key string) Zone {
 	}
 	return zones[i]
 }
-
-func validOnly(s Sample) bool { return s.Valid }
 
 func gapUs(params map[string]float64) int64 {
 	return int64(math.Round(params["max_sample_gap_s"] * 1e6))

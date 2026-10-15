@@ -96,18 +96,18 @@ func TestExperimentsOverHTTP(t *testing.T) {
 	baseline := c.create(base+"/timepoints", admin, map[string]any{"name": "Baseline", "studyDay": -1, "position": 1})
 	day14 := c.create(base+"/timepoints", admin, map[string]any{"name": "Day 14", "studyDay": 14, "position": 2})
 	c.expect("timepoint position", c.call("POST", base+"/timepoints", admin, map[string]any{"name": "Other", "studyDay": 3, "position": 2}), 409, "timepoint.conflict")
-	primary := map[string]any{"timepointId": id(day14), "baselineTimepointId": id(baseline), "paradigmKey": "OPEN_FIELD", "metricKey": "distance_cm",
+	primary := map[string]any{"timepointId": id(day14), "baselineTimepointId": id(baseline), "paradigmKey": "MWM", "metricKey": "path_length_cm",
 		"kind": "PRIMARY", "direction": "HIGHER_IS_BETTER"}
 	c.expect("metric before protocol", c.call("POST", base+"/endpoints", admin, primary), 400, "endpoint.metricUnavailable")
 	version := sql.protocol(id(exp))
 	options := c.expect("metric options", c.call("GET", base+"/metric-options", tokens["VIEWER"], nil), 200, "").body["data"].([]any)
-	if len(options) != 1 || options[0].(map[string]any)["paradigmKey"] != "OPEN_FIELD" {
+	if len(options) != 1 || options[0].(map[string]any)["paradigmKey"] != "MWM" {
 		t.Fatalf("metric options: %v", options)
 	}
 	endpoint := c.create(base+"/endpoints", admin, primary)
-	c.expect("second primary", c.call("POST", base+"/endpoints", admin, map[string]any{"timepointId": id(day14), "paradigmKey": "OPEN_FIELD",
-		"metricKey": "center_time_s", "kind": "PRIMARY", "direction": "HIGHER_IS_BETTER"}), 409, "endpoint.primaryTaken")
-	c.expect("unknown metric", c.call("POST", base+"/endpoints", admin, map[string]any{"timepointId": id(day14), "paradigmKey": "OPEN_FIELD",
+	c.expect("second primary", c.call("POST", base+"/endpoints", admin, map[string]any{"timepointId": id(day14), "paradigmKey": "MWM",
+		"metricKey": "escape_latency_s", "kind": "PRIMARY", "direction": "HIGHER_IS_BETTER"}), 409, "endpoint.primaryTaken")
+	c.expect("unknown metric", c.call("POST", base+"/endpoints", admin, map[string]any{"timepointId": id(day14), "paradigmKey": "MWM",
 		"metricKey": "freezing_s", "kind": "SECONDARY", "direction": "LOWER_IS_BETTER"}), 400, "endpoint.metricUnavailable")
 	c.expect("same baseline", c.call("PATCH", base+"/endpoints/"+id(endpoint), admin, map[string]any{"baselineTimepointId": id(day14)}), 400, "endpoint.baselineSameTimepoint")
 	c.expect("timepoint in use", c.call("DELETE", base+"/timepoints/"+id(baseline), admin, nil), 409, "timepoint.inUse")
@@ -187,7 +187,7 @@ func TestExperimentsOverHTTP(t *testing.T) {
 		{"PATCH", base + "/groups/" + id(healthy), map[string]any{"targetSize": 3}},
 		{"PATCH", base + "/regimen-items/" + id(treatment), map[string]any{"amount": "1"}},
 		{"DELETE", base + "/timepoints/" + id(baseline), nil},
-		{"POST", base + "/endpoints", map[string]any{"timepointId": id(day14), "paradigmKey": "OPEN_FIELD", "metricKey": "center_time_s", "kind": "SECONDARY", "direction": "HIGHER_IS_BETTER"}},
+		{"POST", base + "/endpoints", map[string]any{"timepointId": id(day14), "paradigmKey": "MWM", "metricKey": "escape_latency_s", "kind": "SECONDARY", "direction": "HIGHER_IS_BETTER"}},
 		{"PATCH", base, map[string]any{"blinded": false}},
 	}
 	for _, f := range frozen {
@@ -258,7 +258,7 @@ func TestExperimentsOverHTTP(t *testing.T) {
 
 	// Completion waits for every test, then the experiment is read-only.
 	test := sql.id(`INSERT INTO misko.tests (experiment_id, timepoint_id, protocol_version_id, step_position, paradigm_key, paradigm_version,
-		planned_trials, scheduled_at, created_by) VALUES ($1, $2, $3, 1, 'OPEN_FIELD', 1, 1, now(), $4) RETURNING id`, id(exp), id(day14), version, sql.user())
+		planned_trials, scheduled_at, created_by) VALUES ($1, $2, $3, 1, 'MWM', 1, 1, now(), $4) RETURNING id`, id(exp), id(day14), version, sql.user())
 	c.expect("complete with open test", c.call("POST", base+"/complete", admin, nil), 409, "experiment.testsOpen")
 	sql.exec(`UPDATE misko.tests SET status = 'CANCELLED', cancelled_at = now(), cancel_reason = 'Camera failure' WHERE id = $1`, test)
 	completed := c.expect("complete", c.call("POST", base+"/complete", admin, nil), 200, "").body
@@ -307,7 +307,7 @@ func (s sqlRunner) user() string {
 	return s.id(`SELECT id FROM misko.users ORDER BY created_at LIMIT 1`)
 }
 
-// protocol stores a one-step OPEN_FIELD protocol and returns its version id.
+// protocol stores a one-step MWM protocol and returns its version id.
 func (s sqlRunner) protocol(experimentID string) string {
 	s.t.Helper()
 	ctx := context.Background()
@@ -325,7 +325,7 @@ func (s sqlRunner) protocol(experimentID string) string {
 		s.t.Fatal(err)
 	}
 	if _, err := tx.Exec(ctx, `INSERT INTO misko.protocol_steps (protocol_version_id, position, paradigm_key, paradigm_version, trial_type, trials, session)
-		VALUES ($1, 1, 'OPEN_FIELD', 1, 'STANDARD', 1, '{}')`, version); err != nil {
+		VALUES ($1, 1, 'MWM', 1, 'ACQUISITION', 1, '{}')`, version); err != nil {
 		s.t.Fatal(err)
 	}
 	if err := tx.Commit(ctx); err != nil {

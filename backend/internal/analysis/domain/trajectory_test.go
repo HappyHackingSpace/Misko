@@ -166,14 +166,14 @@ func TestComputedEventsTakeTheConfidenceOfTheirSamples(t *testing.T) {
 		{TUs: 0, Tracked: true, Confidence: 1}, {TUs: 100, Tracked: true, Confidence: 0.5}, {TUs: 200, Confidence: 0.9}, {TUs: 300, Tracked: true, Confidence: 0.7},
 	}}
 	events := tr.Events(Computed{
-		Intervals: []Interval{{Type: "in_center", StartUs: 100, EndUs: 300}, {Type: "immobile", StartUs: 0, EndUs: 100}},
-		Points:    []Point{{Type: "center_entry", AtUs: 100}, {Type: "center_entry", AtUs: 200}},
+		Intervals: []Interval{{Type: "in_platform", StartUs: 100, EndUs: 300}, {Type: "in_wall_annulus", StartUs: 0, EndUs: 100}},
+		Points:    []Point{{Type: "platform_entry", AtUs: 100}, {Type: "platform_entry", AtUs: 200}},
 	})
 	want := []Event{
-		{Type: "immobile", Kind: "INTERVAL", StartUs: 0, EndUs: 100, Confidence: 0.75},
-		{Type: "center_entry", Kind: "POINT", StartUs: 100, EndUs: 100, Confidence: 0.5},
-		{Type: "in_center", Kind: "INTERVAL", StartUs: 100, EndUs: 300, Confidence: 0.6},
-		{Type: "center_entry", Kind: "POINT", StartUs: 200, EndUs: 200, Confidence: 0},
+		{Type: "in_wall_annulus", Kind: "INTERVAL", StartUs: 0, EndUs: 100, Confidence: 0.75},
+		{Type: "in_platform", Kind: "INTERVAL", StartUs: 100, EndUs: 300, Confidence: 0.6},
+		{Type: "platform_entry", Kind: "POINT", StartUs: 100, EndUs: 100, Confidence: 0.5},
+		{Type: "platform_entry", Kind: "POINT", StartUs: 200, EndUs: 200, Confidence: 0},
 	}
 	if len(events) != len(want) {
 		t.Fatalf("events: %+v", events)

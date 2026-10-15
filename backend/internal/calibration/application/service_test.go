@@ -104,7 +104,7 @@ func TestCalibrateOverridesTheArenaOnTheCurrentVideo(t *testing.T) {
 	}{
 		"no video yet":                    {&fakeStore{video: "NONE"}, func(*domain.Input) {}, ErrNoVideo},
 		"unverified video":                {&fakeStore{video: "PENDING"}, func(*domain.Input) {}, ErrVideoNotVerified},
-		"paradigm without calibration":    {&fakeStore{paradigm: "ROTAROD"}, func(*domain.Input) {}, domain.ErrNotRequired},
+		"paradigm without calibration":    {&fakeStore{paradigm: "POLE"}, func(*domain.Input) {}, domain.ErrNotRequired},
 		"animal of another test":          {&fakeStore{missing: true}, func(*domain.Input) {}, ErrTestSubjectNotFound},
 		"second first calibration":        {&fakeStore{chain: []domain.Calibration{previous}}, func(*domain.Input) {}, domain.ErrStaleCorrection},
 		"a new video continues the chain": {&fakeStore{chain: []domain.Calibration{onOldVideo}}, func(*domain.Input) {}, domain.ErrStaleCorrection},
@@ -139,7 +139,7 @@ func TestSubjectStatusFollowsTheEffectiveCalibration(t *testing.T) {
 	valid, _ := domain.New(input(), domain.Requirement{Required: true, ToleranceCm: 2}, "tech", now)
 	valid.ID = "c1"
 	withZones := valid
-	withZones.Zones = []domain.Zone{{Key: "open_arms"}}
+	withZones.Zones = []domain.Zone{{Key: "lanes"}}
 	for name, tc := range map[string]struct {
 		store   *fakeStore
 		status  CalibrationStatus
@@ -152,10 +152,10 @@ func TestSubjectStatusFollowsTheEffectiveCalibration(t *testing.T) {
 		"rejected override waits":   {&fakeStore{source: domain.SourceOverride}, Waiting, domain.SourceOverride, ""},
 		"no video yet":              {&fakeStore{video: "NONE", source: domain.SourceEnvironment, calibrationID: "c1", stored: valid}, WaitingForVideo, "", ""},
 		"unverified video":          {&fakeStore{video: "PENDING", source: domain.SourceEnvironment, calibrationID: "c1", stored: valid}, WaitingForVideo, "", ""},
-		"observation-only paradigm": {&fakeStore{paradigm: "ROTAROD"}, NotRequired, "", ""},
+		"observation-only paradigm": {&fakeStore{paradigm: "POLE"}, NotRequired, "", ""},
 		// A calibration stored before its paradigm's zones were drawn cannot be analysed.
-		"required zone missing": {&fakeStore{paradigm: "EPM", source: domain.SourceEnvironment, calibrationID: "c1", stored: valid}, Waiting, domain.SourceEnvironment, ""},
-		"zones drawn":           {&fakeStore{paradigm: "EPM", source: domain.SourceOverride, calibrationID: "c1", stored: withZones}, Calibrated, domain.SourceOverride, "c1"},
+		"required zone missing": {&fakeStore{paradigm: "ZONED", source: domain.SourceEnvironment, calibrationID: "c1", stored: valid}, Waiting, domain.SourceEnvironment, ""},
+		"zones drawn":           {&fakeStore{paradigm: "ZONED", source: domain.SourceOverride, calibrationID: "c1", stored: withZones}, Calibrated, domain.SourceOverride, "c1"},
 	} {
 		view, err := New(tc.store, fakeCatalog{}, clock).SubjectStatus(ctx, viewer, "test", "subject")
 		got := ""
@@ -181,14 +181,17 @@ func TestSubjectStatusFollowsTheEffectiveCalibration(t *testing.T) {
 	}
 }
 
+// fakeCatalog answers for MWM (bounded by its pool), POLE (no calibration)
+// and ZONED, a hypothetical paradigm with calibrated zones: no published
+// paradigm declares any, but the generic support for them is kept.
 type fakeCatalog struct{}
 
 func (fakeCatalog) Requirement(key string, _ int, _ map[string]float64) (domain.Requirement, error) {
-	if key == "ROTAROD" {
+	if key == "POLE" {
 		return domain.Requirement{}, nil
 	}
-	if key == "EPM" {
-		return domain.Requirement{Required: true, ToleranceCm: 2, Zones: []domain.ZoneRequirement{{Key: "open_arms", Required: true}, {Key: "extra", Required: false}}}, nil
+	if key == "ZONED" {
+		return domain.Requirement{Required: true, ToleranceCm: 2, Zones: []domain.ZoneRequirement{{Key: "lanes", Required: true}, {Key: "extra", Required: false}}}, nil
 	}
 	return domain.Requirement{Required: true, ToleranceCm: 2, Bounds: &domain.Bounds{MinX: -10, MinY: -10, MaxX: 100, MaxY: 100}}, nil
 }
@@ -218,7 +221,7 @@ func (f *fakeStore) subject() (TestSubjectRef, error) {
 	if f.missing {
 		return TestSubjectRef{}, ErrTestSubjectNotFound
 	}
-	return TestSubjectRef{ID: "subject", TestID: "test", EnvironmentRevisionID: "rev", ParadigmKey: withDefault(f.paradigm, "OPEN_FIELD"), ParadigmVersion: 1}, nil
+	return TestSubjectRef{ID: "subject", TestID: "test", EnvironmentRevisionID: "rev", ParadigmKey: withDefault(f.paradigm, "MWM"), ParadigmVersion: 1}, nil
 }
 
 func (f *fakeStore) TestExists(context.Context, string) (bool, error) {
@@ -281,7 +284,7 @@ func (f *fakeStore) revision() (RevisionRef, error) {
 	if f.noRevision {
 		return RevisionRef{}, ErrRevisionNotFound
 	}
-	return RevisionRef{ID: "rev", EnvironmentID: "env", ParadigmKey: withDefault(f.paradigm, "OPEN_FIELD"), ParadigmVersion: 1}, nil
+	return RevisionRef{ID: "rev", EnvironmentID: "env", ParadigmKey: withDefault(f.paradigm, "MWM"), ParadigmVersion: 1}, nil
 }
 
 func (f *fakeStore) Revision(context.Context, string, int) (RevisionRef, error) {
@@ -328,7 +331,7 @@ func TestCalibrateEnvironmentStoresTheDefaultOfARevision(t *testing.T) {
 		want   error
 	}{
 		"unknown revision":             {&fakeStore{noRevision: true}, func(*domain.Input) {}, ErrRevisionNotFound},
-		"paradigm without calibration": {&fakeStore{paradigm: "ROTAROD"}, func(*domain.Input) {}, domain.ErrNotRequired},
+		"paradigm without calibration": {&fakeStore{paradigm: "POLE"}, func(*domain.Input) {}, domain.ErrNotRequired},
 		"second first calibration":     {&fakeStore{envChain: []domain.Calibration{previous}}, func(*domain.Input) {}, domain.ErrStaleCorrection},
 		"correction from another camera": {&fakeStore{envChain: []domain.Calibration{previous}}, func(in *domain.Input) {
 			in.SupersedesID, in.CameraID = "e1", "cam-side-2"
@@ -367,11 +370,11 @@ func TestEnvironmentStatusUsesTheLatestDefault(t *testing.T) {
 	if err != nil || view.Status != Waiting || view.Source != "" || view.Drift != "" {
 		t.Fatalf("uncalibrated: %+v %v", view, err)
 	}
-	view, err = New(&fakeStore{paradigm: "EPM", envChain: []domain.Calibration{env}}, fakeCatalog{}, clock).EnvironmentStatus(ctx, viewer, "env", 1)
+	view, err = New(&fakeStore{paradigm: "ZONED", envChain: []domain.Calibration{env}}, fakeCatalog{}, clock).EnvironmentStatus(ctx, viewer, "env", 1)
 	if err != nil || view.Status != Waiting || view.Source != domain.SourceEnvironment || view.Current != nil {
 		t.Fatalf("environment without its zones: %+v %v", view, err)
 	}
-	view, err = New(&fakeStore{paradigm: "ROTAROD"}, fakeCatalog{}, clock).EnvironmentStatus(ctx, viewer, "env", 1)
+	view, err = New(&fakeStore{paradigm: "POLE"}, fakeCatalog{}, clock).EnvironmentStatus(ctx, viewer, "env", 1)
 	if err != nil || view.Status != NotRequired {
 		t.Fatalf("observation-only environment: %+v %v", view, err)
 	}

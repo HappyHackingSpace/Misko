@@ -104,7 +104,7 @@ func id(t *testing.T, q interface {
 	return out
 }
 
-// fixture is a running experiment with one OPEN_FIELD session (test) in
+// fixture is a running experiment with one MWM session (test) in
 // progress: three animals in three arenas share one verified video (clip 1 s
 // to 9 s). Arenas A and B have a valid default calibration, arena C none.
 type fixture struct {
@@ -121,7 +121,7 @@ type fixture struct {
 	calA, calB               string
 }
 
-const arenaParameters = `{"arena_width_cm": 50, "arena_height_cm": 50, "center_fraction": 0.5}`
+const arenaParameters = `{"tank_diameter_cm": 120, "platform_diameter_cm": 10, "platform_x_cm": 15, "platform_y_cm": 25}`
 
 // calibrationSQL inserts a calibration: $1 arena, $2 test subject or NULL, $3
 // recording or NULL, $4 reference frame or NULL, $5 crop x, $6 supersedes or
@@ -144,7 +144,7 @@ func newFixture(t *testing.T) *fixture {
 	if err := pgx.BeginFunc(ctx, pool, func(tx pgx.Tx) error {
 		f.version = id(t, tx, "INSERT INTO misko.protocol_versions (experiment_id, protocol_id, number, step_count, created_by) VALUES ($1, $2, 1, 1, $3) RETURNING id", f.exp, protocol, manager.UserID)
 		_, err := tx.Exec(ctx, `INSERT INTO misko.protocol_steps (protocol_version_id, position, paradigm_key, paradigm_version, trial_type, trials, session)
-			VALUES ($1, 1, 'OPEN_FIELD', 1, 'STANDARD', 1, '{"max_sample_gap_s": 0.25}')`, f.version)
+			VALUES ($1, 1, 'MWM', 1, 'ACQUISITION', 1, '{"max_sample_gap_s": 0.25}')`, f.version)
 		return err
 	}); err != nil {
 		t.Fatal(err)
@@ -165,9 +165,9 @@ func newFixture(t *testing.T) *fixture {
 }
 
 func (f *fixture) arena(name, parameters string) string {
-	env := id(f.t, f.pool, "INSERT INTO misko.environments (name, paradigm_key) VALUES ($1, 'OPEN_FIELD') RETURNING id", name)
+	env := id(f.t, f.pool, "INSERT INTO misko.environments (name, paradigm_key) VALUES ($1, 'MWM') RETURNING id", name)
 	return id(f.t, f.pool, `INSERT INTO misko.environment_revisions (environment_id, paradigm_key, paradigm_version, number, parameters, created_by)
-		VALUES ($1, 'OPEN_FIELD', 1, 1, $2, $3) RETURNING id`, env, parameters, manager.UserID)
+		VALUES ($1, 'MWM', 1, 1, $2, $3) RETURNING id`, env, parameters, manager.UserID)
 }
 
 func (f *fixture) allocate(code string) string {
@@ -178,12 +178,12 @@ func (f *fixture) allocate(code string) string {
 
 func (f *fixture) newTest() string {
 	return id(f.t, f.pool, `INSERT INTO misko.tests (experiment_id, timepoint_id, protocol_version_id, step_position, paradigm_key, paradigm_version, planned_trials, scheduled_at, created_by)
-		VALUES ($1, $2, $3, 1, 'OPEN_FIELD', 1, 1, now() - interval '2 days', $4) RETURNING id`, f.exp, f.timepoint, f.version, manager.UserID)
+		VALUES ($1, $2, $3, 1, 'MWM', 1, 1, now() - interval '2 days', $4) RETURNING id`, f.exp, f.timepoint, f.version, manager.UserID)
 }
 
 func (f *fixture) join(test, allocation, arena string) string {
 	return id(f.t, f.pool, `INSERT INTO misko.test_subjects (experiment_id, test_id, allocation_id, environment_revision_id, paradigm_key, paradigm_version, created_by)
-		VALUES ($1, $2, $3, $4, 'OPEN_FIELD', 1, $5) RETURNING id`, f.exp, test, allocation, arena, manager.UserID)
+		VALUES ($1, $2, $3, $4, 'MWM', 1, $5) RETURNING id`, f.exp, test, allocation, arena, manager.UserID)
 }
 
 // start puts a planned test in progress and attaches a verified video created
@@ -246,7 +246,7 @@ func assertRejected(t *testing.T, name string, pool *pgxpool.Pool, constraint, s
 
 func (f *fixture) worker(name string) (domain.Worker, string) {
 	f.t.Helper()
-	registered, err := f.s.RegisterWorker(ctx, manager, application.WorkerInput{Name: name, ModelVersion: "tracker 1.0", Capabilities: []domain.Capability{{ParadigmKey: "OPEN_FIELD", ParadigmVersion: 1}}})
+	registered, err := f.s.RegisterWorker(ctx, manager, application.WorkerInput{Name: name, ModelVersion: "tracker 1.0", Capabilities: []domain.Capability{{ParadigmKey: "MWM", ParadigmVersion: 1}}})
 	if err != nil {
 		f.t.Fatal(err)
 	}
@@ -262,7 +262,7 @@ func (f *fixture) submission(run domain.Run) domain.Submission {
 }
 
 // trajectory walks along y = 25 cm from x = 5 cm, one centimeter per 0.1 s, for
-// distance centimeters (entering the 12.5 to 37.5 cm center at x = 13), then
+// distance centimeters (reaching the platform of the fixture arenas at x = 10), then
 // stays still for 1.5 s. lostEvery > 0 marks every lostEvery-th sample lost.
 func (f *fixture) trajectory(run domain.Run, distance, lostEvery int) []byte {
 	f.t.Helper()
@@ -338,7 +338,7 @@ func TestSchedulingLeasesAndPublication(t *testing.T) {
 	pinned := map[string]string{}
 	for _, r := range runs {
 		pinned[r.TestSubjectID] = r.CalibrationID
-		if r.RecordingID != f.recording || r.Trigger != domain.Automatic || r.SourceGeneration != 42 || r.Parameters["arena_width_cm"] != 50 || r.Parameters["max_sample_gap_s"] != 0.25 {
+		if r.RecordingID != f.recording || r.Trigger != domain.Automatic || r.SourceGeneration != 42 || r.Parameters["tank_diameter_cm"] != 120 || r.Parameters["max_sample_gap_s"] != 0.25 {
 			t.Fatalf("run inputs: %+v", r)
 		}
 	}
@@ -375,7 +375,7 @@ func TestSchedulingLeasesAndPublication(t *testing.T) {
 		}()
 	}
 	wg.Wait()
-	if len(claimed) != 2 || claimed[0].Run.ID == claimed[1].Run.ID || claimed[0].Run.Attempt != 1 || len(claimed[0].Contract.Metrics) != 9 {
+	if len(claimed) != 2 || claimed[0].Run.ID == claimed[1].Run.ID || claimed[0].Run.Attempt != 1 || len(claimed[0].Contract.Metrics) != 8 {
 		t.Fatalf("each run is claimed exactly once: %+v", claimed)
 	}
 	for _, job := range claimed {
@@ -478,25 +478,26 @@ func TestSchedulingLeasesAndPublication(t *testing.T) {
 		t.Fatalf("duplicate delivery: %+v %v", again, err)
 	}
 	detail, err := f.s.RunDetail(ctx, viewer, run.ID)
-	if err != nil || detail.Published == nil || len(detail.Published.Metrics) != 9 || len(detail.Published.Artifacts) != 2 ||
+	if err != nil || detail.Published == nil || len(detail.Published.Metrics) != 8 || len(detail.Published.Artifacts) != 2 ||
 		detail.Published.Pair == nil || detail.Published.Pair.SourceGeneration != 42 || detail.Published.Pair.SourceOffsetUs != 1_000_000 {
 		t.Fatalf("published result: %+v %v", detail.Published, err)
 	}
 	// The Go engine computed these from the stored samples: 25 counted 0.1 s
-	// intervals, entering the center at 0.8 s and standing still from 1.0 s.
+	// intervals, reaching the platform (radius 5 cm around x = 15) at 0.5 s and
+	// staying on it, so the escape is at 0.5 s after 5 cm of swimming.
 	metrics := map[string]domain.MetricValue{}
 	for _, m := range detail.Published.Metrics {
 		metrics[m.Key] = m
 	}
-	for key, want := range map[string]float64{"distance_cm": 10, "duration_s": 2.5, "center_time_s": 1.7, "center_entries_count": 1, "immobility_s": 1.5} {
+	for key, want := range map[string]float64{"path_length_cm": 5, "duration_s": 2.5, "escape_latency_s": 0.5, "mean_swim_speed_cm_s": 10,
+		"platform_crossings_count": 1, "target_quadrant_time_ratio": 1, "thigmotaxis_time_ratio": 0} {
 		if m := metrics[key]; m.Value == nil || math.Abs(*m.Value-want) > 1e-9 {
 			t.Errorf("%s: %+v want %v", key, m, want)
 		}
 	}
 	wantEvents := []domain.Event{
-		{Type: "center_entry", Kind: "POINT", StartUs: 800_000, EndUs: 800_000},
-		{Type: "in_center", Kind: "INTERVAL", StartUs: 800_000, EndUs: 2_500_000},
-		{Type: "immobile", Kind: "INTERVAL", StartUs: 1_000_000, EndUs: 2_500_000},
+		{Type: "in_platform", Kind: "INTERVAL", StartUs: 500_000, EndUs: 2_500_000},
+		{Type: "platform_entry", Kind: "POINT", StartUs: 500_000, EndUs: 500_000},
 	}
 	if len(detail.Published.Events) != len(wantEvents) {
 		t.Fatalf("events: %+v", detail.Published.Events)
@@ -508,7 +509,7 @@ func TestSchedulingLeasesAndPublication(t *testing.T) {
 			t.Errorf("event %d: %+v confidence %v want %+v", i, e, confidence, wantEvents[i])
 		}
 	}
-	if n := id(t, f.pool, "SELECT count(*)::text FROM misko.analysis_events WHERE run_id = $1 AND test_subject_id = $2", run.ID, run.TestSubjectID); n != "3" {
+	if n := id(t, f.pool, "SELECT count(*)::text FROM misko.analysis_events WHERE run_id = $1 AND test_subject_id = $2", run.ID, run.TestSubjectID); n != "2" {
 		t.Fatalf("events belong to the analysed animal: %s", n)
 	}
 	links, err := f.s.VideoPair(ctx, viewer, run.ID)
@@ -519,7 +520,7 @@ func TestSchedulingLeasesAndPublication(t *testing.T) {
 	for _, tc := range []struct{ name, sql, constraint string }{
 		{"edit metric", "UPDATE misko.metric_results SET value = 1 WHERE run_id = $1", ""},
 		{"delete pair", "DELETE FROM misko.analysis_video_pairs WHERE run_id = $1", ""},
-		{"event after success", "INSERT INTO misko.analysis_events (run_id, attempt, test_subject_id, event_type, kind, start_us, end_us, confidence) SELECT id, attempt, test_subject_id, 'immobile', 'INTERVAL', 0, 1, 1 FROM misko.analysis_runs WHERE id = $1", "analysis_outputs_fenced"},
+		{"event after success", "INSERT INTO misko.analysis_events (run_id, attempt, test_subject_id, event_type, kind, start_us, end_us, confidence) SELECT id, attempt, test_subject_id, 'in_platform', 'INTERVAL', 0, 1, 1 FROM misko.analysis_runs WHERE id = $1", "analysis_outputs_fenced"},
 		{"reopen run", "UPDATE misko.analysis_runs SET status = 'QUEUED', worker_id = NULL, finished_at = NULL, lease_expires_at = NULL WHERE id = $1", "analysis_runs_transition"},
 		{"move run to other source", "UPDATE misko.analysis_runs SET source_generation = 43 WHERE id = $1", "analysis_runs_transition"},
 		{"delete result", "DELETE FROM misko.subject_results WHERE run_id = $1", "subject_results_immutable"},
@@ -559,9 +560,9 @@ func TestStarvedCandidatesAndBadRowsNeverBlockTheTick(t *testing.T) {
 	var script strings.Builder
 	script.WriteString("DO $$ DECLARE t uuid; a uuid; BEGIN FOR i IN 1..520 LOOP\n")
 	fmt.Fprintf(&script, `INSERT INTO misko.tests (experiment_id, timepoint_id, protocol_version_id, step_position, paradigm_key, paradigm_version, planned_trials, scheduled_at, created_by)
-		VALUES ('%[1]s', '%[2]s', '%[3]s', 1, 'OPEN_FIELD', 1, 1, now(), '%[4]s') RETURNING id INTO t;
+		VALUES ('%[1]s', '%[2]s', '%[3]s', 1, 'MWM', 1, 1, now(), '%[4]s') RETURNING id INTO t;
 	INSERT INTO misko.test_subjects (experiment_id, test_id, allocation_id, environment_revision_id, paradigm_key, paradigm_version, created_by)
-		VALUES ('%[1]s', t, '%[5]s', '%[6]s', 'OPEN_FIELD', 1, '%[4]s');
+		VALUES ('%[1]s', t, '%[5]s', '%[6]s', 'MWM', 1, '%[4]s');
 	UPDATE misko.tests SET status = 'IN_PROGRESS', started_at = now() WHERE id = t;
 	INSERT INTO misko.video_assets (kind, bucket, object_name, content_type, size_bytes, crc32c, status, generation, verified_at, created_by)
 		VALUES ('ORIGINAL', 'misko-test-videos', 'old/' || i, 'video/mp4', 4096, 1, 'VERIFIED', 7, now(), '%[4]s') RETURNING id INTO a;
@@ -572,7 +573,7 @@ func TestStarvedCandidatesAndBadRowsNeverBlockTheTick(t *testing.T) {
 		t.Fatal(err)
 	}
 	// An arena whose parameters are not numbers, calibrated, in an older session.
-	broken := f.arena("Broken box", `{"arena_width_cm": "wide", "arena_height_cm": 50}`)
+	broken := f.arena("Broken box", `{"tank_diameter_cm": "wide", "platform_diameter_cm": 10}`)
 	id(t, f.pool, calibrationSQL, broken, nil, nil, nil, 0, nil, "VALID", nil, technician.UserID)
 	brokenTest := f.newTest()
 	brokenSubject := f.join(brokenTest, f.allocate("M4"), broken)
@@ -675,7 +676,7 @@ func TestReanalysisReviewAndBlinding(t *testing.T) {
 	}
 	item := page.Items[0]
 	if item.SubjectCode != "M1" || item.EnvironmentName != "Box A" || item.TimepointName != "Day 7" || item.Run.ID != first.ID || !item.NewerRunAvailable() ||
-		item.LatestRunID != second.ID || len(item.Metrics) != 9 || item.Group == nil || item.Group.Code != "G1" || item.Blinded {
+		item.LatestRunID != second.ID || len(item.Metrics) != 8 || item.Group == nil || item.Group.Code != "G1" || item.Blinded {
 		t.Fatalf("review item: %+v", item)
 	}
 	if _, err := f.s.Accept(ctx, viewer, f.a, ""); !errors.Is(err, access.ErrForbidden) {

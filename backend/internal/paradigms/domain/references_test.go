@@ -21,8 +21,8 @@ func TestReferencesNameKnownParadigmsWithWikipediaLinks(t *testing.T) {
 			t.Errorf("%s: Turkish link %q", key, ref.TR)
 		}
 	}
-	if Reference("Y_MAZE").In("tr") == Reference("Y_MAZE").In("en") || Reference("EPM").In("tr") != Reference("EPM").In("en") {
-		t.Error("a Turkish article is used when one exists, English otherwise")
+	if Reference("MWM").In("tr") != Reference("MWM").In("en") {
+		t.Error("the English article is used when no Turkish one exists")
 	}
 	if Reference("POLE").In("en") != "" {
 		t.Error("a paradigm without an article has no link")
