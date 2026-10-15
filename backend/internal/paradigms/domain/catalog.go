@@ -159,14 +159,14 @@ type EventDefinition struct {
 // Description are for people; Definition, Formula and MissingWhen are the
 // precise contract.
 type MetricDefinition struct {
-	Key                              string
-	Label, Description               Text
-	Unit                             Unit
-	Integer                          bool
-	Definition, MissingWhen          Text
-	Formula                          string
-	Inputs                           []string
-	Min, Max, Tolerance              float64
+	Key                     string
+	Label, Description      Text
+	Unit                    Unit
+	Integer                 bool
+	Definition, MissingWhen Text
+	Formula                 string
+	Inputs                  []string
+	Min, Max, Tolerance     float64
 }
 
 type QCRule struct {
