@@ -335,8 +335,6 @@ change means a new published version, and callers only receive copies.
   (derived from parameters or calibrated per video), the scored input events the
   engine consumes, the interval and point events it derives, metrics with
   definition, formula, inputs, missing-data rule and tolerance, and QC rules.
-- `automatedAnalysis` stays false until a real worker capability is registered;
-  catalog presence does not mean a video can be analyzed.
 
 The catalog has four paradigms, all at version 1, in two categories:
 `MWM` (Morris water maze, LEARNING_MEMORY) is tracked from video by a worker;

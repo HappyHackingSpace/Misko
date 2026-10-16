@@ -48,7 +48,7 @@ func (h handler) list(w http.ResponseWriter, r *http.Request) {
 	for _, s := range summaries {
 		data = append(data, summaryJSON{
 			Key: s.Key, Name: s.Name.In(lang), Description: s.Description.In(lang), Category: string(s.Category), Species: s.Species,
-			Versions: s.Versions, LatestVersion: s.LatestVersion, AutomatedAnalysis: s.AutomatedAnalysis, Reference: s.Reference.In(lang),
+			Versions: s.Versions, LatestVersion: s.LatestVersion,
 		})
 	}
 	w.Header().Set("Content-Language", lang)
@@ -100,15 +100,13 @@ func (h handler) fail(w http.ResponseWriter, r *http.Request, err error) {
 }
 
 type summaryJSON struct {
-	Key               string   `json:"key"`
-	Name              string   `json:"name"`
-	Description       string   `json:"description"`
-	Category          string   `json:"category"`
-	Species           []string `json:"species"`
-	Versions          []int    `json:"versions"`
-	LatestVersion     int      `json:"latestVersion"`
-	AutomatedAnalysis bool     `json:"automatedAnalysis"`
-	Reference         string   `json:"reference,omitempty"`
+	Key           string   `json:"key"`
+	Name          string   `json:"name"`
+	Description   string   `json:"description"`
+	Category      string   `json:"category"`
+	Species       []string `json:"species"`
+	Versions      []int    `json:"versions"`
+	LatestVersion int      `json:"latestVersion"`
 }
 
 type parameterJSON struct {
@@ -180,7 +178,6 @@ type manifestJSON struct {
 	Version             int             `json:"version"`
 	MetricEngineVersion int             `json:"metricEngineVersion"`
 	ResultSchemaVersion int             `json:"resultSchemaVersion"`
-	AutomatedAnalysis   bool            `json:"automatedAnalysis"`
 	Parameters          []parameterJSON `json:"parameters"`
 	Zones               []zoneJSON      `json:"zones"`
 	InputEvents         []eventJSON     `json:"inputEvents"`
@@ -194,7 +191,7 @@ func toManifest(m application.Manifest, lang string) manifestJSON {
 	out := manifestJSON{
 		Key: p.Key, Name: p.Name.In(lang), Description: p.Description.In(lang), Category: string(p.Category), Species: p.Species,
 		TrialTypes: []trialTypeJSON{}, Version: p.Version,
-		MetricEngineVersion: m.MetricEngineVersion, ResultSchemaVersion: m.ResultSchemaVersion, AutomatedAnalysis: m.AutomatedAnalysis,
+		MetricEngineVersion: m.MetricEngineVersion, ResultSchemaVersion: m.ResultSchemaVersion,
 		Parameters: []parameterJSON{}, Zones: []zoneJSON{}, InputEvents: events(p.InputEvents, lang), Events: events(p.Events, lang),
 		Metrics: []metricJSON{}, QC: []qcJSON{},
 	}

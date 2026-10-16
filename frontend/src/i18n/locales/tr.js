@@ -392,7 +392,6 @@ export default {
       zone: "Bölge",
       key: "Anahtar",
       versions: "Sürümler",
-      automated: "Otomatik analiz",
       title: "Paradigmalar",
       intro:
         "Paradigmalar, ortamların oluşturulduğu hazır şablonlardır. Her paradigma girilecek düzenek ölçülerini, analiz ve seans ayarlarını ve üreteceği metrikleri tanımlar.",

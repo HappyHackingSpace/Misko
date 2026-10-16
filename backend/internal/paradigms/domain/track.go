@@ -9,17 +9,17 @@ import (
 
 // Shared wording for trajectory-based definitions.
 var (
-	trackedPair = T("A counted interval is a pair of consecutive tracked samples with 0 < dt <= max_sample_gap_s.",
+	trackedPair = T("A counted interval is a pair of consecutive tracked samples separated by 0 < dt <= max_sample_gap_s.",
 		"Sayılan aralık, 0 < dt <= max_sample_gap_s olan iki ardışık izlenmiş örnekten oluşur.")
-	missingNoPairs = T("Missing (NO_VALID_INTERVALS) when there is no counted interval.",
+	missingNoPairs = T("Missing (NO_VALID_INTERVALS) when there are no counted intervals.",
 		"Sayılan aralık yoksa eksik (NO_VALID_INTERVALS).")
 )
 
 var gapParameter = Parameter{
 	Key: "max_sample_gap_s", Scope: AnalysisScope, Unit: Second, Min: 0.01, Max: 5, Default: 0.5,
-	Label: Text{"Tracking gap tolerance", "İzleme boşluğu toleransı"},
+	Label: Text{"Maximum tracking gap", "İzleme boşluğu toleransı"},
 	Help: Text{
-		"If the animal is lost for longer than this, the movement across the gap is not counted. Raise it only for low frame rate videos.",
+		"Longest tracking dropout that is bridged; movement across a longer gap is excluded. Increase only for low-frame-rate videos.",
 		"Hayvan bundan daha uzun süre kaybolursa, aradaki hareket hesaba katılmaz. Yalnızca düşük kare hızlı videolarda artırın.",
 	},
 }
@@ -120,7 +120,7 @@ func occupancyEvents(zones []Zone, keys ...string) []EventDefinition {
 		z := zoneByKey(zones, k)
 		out = append(out, EventDefinition{
 			Type: "in_" + k, Kind: IntervalEvent,
-			Definition: T("Contiguous counted intervals whose earlier sample is in "+k+".",
+			Definition: T("Run of contiguous counted intervals whose earlier sample lies in the "+strings.ToLower(z.Label.EN)+".",
 				"Önceki örneği "+lowerTR(z.Label.TR)+" içinde olan bitişik sayılan aralıklar."),
 			Label: T(z.Label.EN+" visit", z.Label.TR+" ziyareti"),
 		})
@@ -134,7 +134,7 @@ func entryEvents(zones []Zone, keys ...string) []EventDefinition {
 		z := zoneByKey(zones, k)
 		out = append(out, EventDefinition{
 			Type: k + "_entry", Kind: PointEvent,
-			Definition: T("Later sample time of a counted interval entering "+k+".",
+			Definition: T("Time of the later sample of a counted interval that enters the "+strings.ToLower(z.Label.EN)+".",
 				capitalTR(z.Label.TR)+" bölgesine giren sayılan aralığın sonraki örneğinin zamanı."),
 			Label: T(z.Label.EN+" entry", z.Label.TR+" girişi"),
 		})

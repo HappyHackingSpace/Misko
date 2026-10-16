@@ -116,9 +116,8 @@ Codes are unique. An animal that is in a group or has weights cannot be deleted.
 
 ## Environments and calibration
 
-The **Paradigms** page lists the tests Mişko knows; most link to a Wikipedia
-article that explains the test (in Turkish when one exists, otherwise in
-English).
+The **Paradigms** page lists the tests Mişko knows, each with a short
+description of what it measures.
 
 An environment is a physical arena built from a paradigm (Morris water maze,
 novel object box, pole, treadmill). Open **Environments** and click **New

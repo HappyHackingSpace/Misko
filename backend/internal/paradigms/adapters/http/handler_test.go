@@ -21,7 +21,7 @@ var update = flag.Bool("update", false, "write golden manifests for newly publis
 
 func newMux() *http.ServeMux {
 	mux := http.NewServeMux()
-	Register(mux, application.New(nil), func(r *http.Request) (access.Actor, error) {
+	Register(mux, application.New(), func(r *http.Request) (access.Actor, error) {
 		switch r.Header.Get("Authorization") {
 		case "viewer":
 			return access.Actor{UserID: "u", Role: access.Viewer}, nil
@@ -79,8 +79,7 @@ func TestCatalogIsReadOnlyAndVersioned(t *testing.T) {
 	}
 	for i, item := range data {
 		summary := item.(map[string]any)
-		// No worker capability exists yet, so catalog presence must not claim automated analysis.
-		if summary["key"] != want[i] || summary["latestVersion"] != float64(1) || summary["automatedAnalysis"] != false {
+		if summary["key"] != want[i] || summary["latestVersion"] != float64(1) {
 			t.Fatalf("summary %d: %v", i, summary)
 		}
 	}
@@ -88,7 +87,7 @@ func TestCatalogIsReadOnlyAndVersioned(t *testing.T) {
 		status, manifest := call("GET", path, "viewer")
 		metrics, _ := manifest["metrics"].([]any)
 		if status != 200 || manifest["version"] != float64(1) || manifest["metricEngineVersion"] != float64(1) ||
-			manifest["resultSchemaVersion"] != float64(1) || len(metrics) != 8 || manifest["automatedAnalysis"] != false {
+			manifest["resultSchemaVersion"] != float64(1) || len(metrics) != 8 {
 			t.Fatalf("%s: %d %v", path, status, manifest)
 		}
 		first := metrics[0].(map[string]any)
@@ -206,29 +205,5 @@ func TestPublishedManifestsNeverChange(t *testing.T) {
 	}
 	if len(goldens) < len(published) && !*update {
 		t.Errorf("%d goldens for %d published versions", len(goldens), len(published))
-	}
-}
-
-func TestListLinksEachParadigmToAnArticleInTheRequestedLanguage(t *testing.T) {
-	mux := newMux()
-	// Without a Turkish article the English one is linked in Turkish too.
-	for _, query := range []string{"", "?lang=tr"} {
-		_, raw := get(mux, "GET", "/api/paradigms"+query, "viewer")
-		var list struct {
-			Data []struct {
-				Key       string `json:"key"`
-				Reference string `json:"reference"`
-			} `json:"data"`
-		}
-		if err := json.Unmarshal(raw, &list); err != nil {
-			t.Fatal(err)
-		}
-		links := map[string]string{}
-		for _, p := range list.Data {
-			links[p.Key] = p.Reference
-		}
-		if links["MWM"] != "https://en.wikipedia.org/wiki/Morris_water_navigation_task" || links["POLE"] != "" {
-			t.Errorf("%q: %v", query, links)
-		}
 	}
 }
