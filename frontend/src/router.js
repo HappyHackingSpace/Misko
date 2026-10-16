@@ -57,6 +57,9 @@ const routes = [
   { path: "/users", component: Users, meta: { permission: "user:manage", titleKey: "nav.users" } },
   { path: "/users/new", component: UserForm, meta: { permission: "user:manage", titleKey: "nav.users" } },
   { path: "/users/:id", component: UserForm, meta: { permission: "user:manage", titleKey: "nav.users" } },
+  // The former catalog page, and any unknown path, lands somewhere useful.
+  { path: "/catalog", redirect: "/substances" },
+  { path: "/:pathMatch(.*)*", redirect: "/dashboard" },
 ];
 
 export const router = createRouter({ history: createWebHistory(), routes });
