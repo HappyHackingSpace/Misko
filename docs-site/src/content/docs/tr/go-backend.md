@@ -288,13 +288,11 @@ andaki adları, dozları ve ağırlıkları saklar ve hiç değişmez.
 Giriş yapmış her kullanıcı paradigma kataloğunu okuyabilir. Paradigmalar kodda
 tanımlıdır; API üzerinden oluşturulamaz, düzenlenemez veya silinemez.
 
-- `GET /api/paradigms`, paradigmaları yayınlanmış sürümleriyle ve otomatik video
-  analizinin olup olmadığıyla (`automatedAnalysis`) listeler. Dört paradigma
-  yayınlanmıştır: `MWM`, `NOVEL_OBJECT`, `POLE` ve `TREADMILL`; iki kategoride
-  toplanırlar (`MWM` ve `NOVEL_OBJECT` için `LEARNING_MEMORY`, `POLE` ve
-  `TREADMILL` için `MOTOR`). `MWM` bir analiz worker'ı tarafından takip edilir
-  ve paradigma sürümü için bir worker kaydedildiğinde onda otomatik analiz
-  vardır. Diğer üçü (`NOVEL_OBJECT`, `POLE`, `TREADMILL`) videoda bir gözlemci
+- `GET /api/paradigms`, paradigmaları yayınlanmış sürümleriyle listeler. Dört
+  paradigma yayınlanmıştır: `MWM`, `NOVEL_OBJECT`, `POLE` ve `TREADMILL`; iki
+  kategoride toplanırlar (`MWM` ve `NOVEL_OBJECT` için `LEARNING_MEMORY`, `POLE`
+  ve `TREADMILL` için `MOTOR`). Paradigma sürümü için bir worker kaydedildiğinde
+  `MWM` bu analiz worker'ı tarafından takip edilir. Diğer üçü (`NOVEL_OBJECT`, `POLE`, `TREADMILL`) videoda bir gözlemci
   tarafından puanlanır (aşağıdaki Gözlemci puanlaması bölümüne bakın).
 - `GET /api/paradigms/{key}` en son sürümü, `GET /api/paradigms/{key}/versions/{version}`
   ise belirli bir sürümü döndürür. Her sürüm; parametrelerini kapsamı (ortamda

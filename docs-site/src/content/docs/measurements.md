@@ -230,7 +230,7 @@ Pixel values stay out of Mişko result metrics.
 | MWM | Escape latency, path length, swim speed, target quadrant time, platform crossings, thigmotaxis, mean distance to platform. |
 | Novel object | Novel object time, familiar object time, total exploration time, discrimination index. |
 | Pole | Time to turn, total time, descent time, descent speed, fall detected. |
-| Treadmill | Latency to exhaustion, run time, run distance, shock count. |
+| Treadmill | Time to exhaustion, running time, distance run, shock count. |
 
 ## MWM normalization
 

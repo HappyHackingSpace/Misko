@@ -10,7 +10,7 @@ import (
 
 func TestCatalogReadsFollowReadPermission(t *testing.T) {
 	ctx := context.Background()
-	s := New(nil)
+	s := New()
 	for _, role := range append(access.Roles(), "ROOT") {
 		actor := access.Actor{UserID: "u", Role: role}
 		_, listErr := s.List(ctx, actor)
@@ -37,39 +37,12 @@ func TestCatalogReadsFollowReadPermission(t *testing.T) {
 		t.Fatalf("list: %+v %v", list, err)
 	}
 	for i, summary := range list {
-		if summary.Key != domain.Keys()[i] || summary.AutomatedAnalysis {
-			t.Fatalf("catalog presence must not imply automated analysis: %+v", summary)
+		if summary.Key != domain.Keys()[i] {
+			t.Fatalf("list order: %+v", summary)
 		}
 	}
 	m, err := s.Version(ctx, viewer, "MWM", 1)
 	if err != nil || m.MetricEngineVersion != domain.MetricEngineVersion || m.ResultSchemaVersion != domain.ResultSchemaVersion || m.Paradigm.Version != 1 {
 		t.Fatalf("manifest versions: %+v %v", m, err)
-	}
-}
-
-type fakeCapabilities []Capability
-
-func (f fakeCapabilities) Active(context.Context) ([]Capability, error) { return f, nil }
-
-func TestAutomatedAnalysisFollowsActiveWorkerCapabilities(t *testing.T) {
-	ctx := context.Background()
-	viewer := access.Actor{UserID: "u", Role: access.Viewer}
-	s := New(fakeCapabilities{{Key: "MWM", Version: 1}})
-	list, err := s.List(ctx, viewer)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, summary := range list {
-		if want := summary.Key == "MWM"; summary.AutomatedAnalysis != want {
-			t.Errorf("%s automated = %v, want %v", summary.Key, summary.AutomatedAnalysis, want)
-		}
-	}
-	m, err := s.Latest(ctx, viewer, "MWM")
-	if err != nil || !m.AutomatedAnalysis {
-		t.Fatalf("MWM latest: %+v %v", m, err)
-	}
-	m, err = s.Latest(ctx, viewer, "POLE")
-	if err != nil || m.AutomatedAnalysis {
-		t.Fatalf("POLE latest: %+v %v", m, err)
 	}
 }
