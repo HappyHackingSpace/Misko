@@ -8,7 +8,6 @@ import (
 	analysistoken "github.com/HappyHackingSpace/Misko/backend/internal/analysis/adapters/token"
 	analysisapp "github.com/HappyHackingSpace/Misko/backend/internal/analysis/application"
 	mediaapp "github.com/HappyHackingSpace/Misko/backend/internal/media/application"
-	paradigmsapp "github.com/HappyHackingSpace/Misko/backend/internal/paradigms/application"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"log/slog"
 	"time"
@@ -102,24 +101,4 @@ func logTick(ctx context.Context, logger *slog.Logger, report analysisapp.TickRe
 		logger.InfoContext(ctx, "analysis scheduler tick", "enqueued", report.Enqueued, "requeued", report.Requeued, "failed", report.Failed,
 			"skipped", len(report.Skipped))
 	}
-}
-
-// workerCapabilities tells the paradigm catalog which versions an active worker
-// can analyze, so its automated-analysis flag reflects registered workers.
-type workerCapabilities struct{ store *analysispostgres.Store }
-
-func (w workerCapabilities) Active(ctx context.Context) ([]paradigmsapp.Capability, error) {
-	active, err := w.store.ActiveCapabilities(ctx)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]paradigmsapp.Capability, len(active))
-	for i, c := range active {
-		out[i] = paradigmsapp.Capability{Key: c.ParadigmKey, Version: c.ParadigmVersion}
-	}
-	return out, nil
-}
-
-func newWorkerCapabilities(pool *pgxpool.Pool) workerCapabilities {
-	return workerCapabilities{analysispostgres.NewStore(pool)}
 }

@@ -5,7 +5,8 @@ const Login = () => import("./views/Login.vue");
 const Dashboard = () => import("./views/Dashboard.vue");
 const Experiments = () => import("./views/Experiments.vue");
 const ExperimentDetail = () => import("./views/experiments/ExperimentDetail.vue");
-const Catalog = () => import("./views/catalog/Catalog.vue");
+const Substances = () => import("./views/Substances.vue");
+const DiseaseModels = () => import("./views/DiseaseModels.vue");
 const Review = () => import("./views/review/Review.vue");
 const ExperimentForm = () => import("./views/ExperimentForm.vue");
 const TestDetail = () => import("./views/TestDetail.vue");
@@ -41,7 +42,9 @@ const routes = [
   // Reading results is open to every signed-in role, like the rest of the data.
   { path: "/reports", component: Reports, meta: { titleKey: "nav.reports" } },
   { path: "/review", component: Review, meta: { titleKey: "nav.review" } },
-  { path: "/catalog", component: Catalog, meta: { titleKey: "nav.catalog" } },
+  // Substances and disease models are created and edited in a drawer.
+  { path: "/substances", component: Substances, meta: { titleKey: "nav.substances" } },
+  { path: "/disease-models", component: DiseaseModels, meta: { titleKey: "nav.diseaseModels" } },
   { path: "/paradigms", component: Paradigms, meta: { titleKey: "nav.paradigms" } },
   { path: "/paradigms/:key", component: ParadigmDetail, meta: { titleKey: "nav.paradigms" } },
   { path: "/environments", component: Environments, meta: { titleKey: "nav.environments" } },
@@ -54,6 +57,9 @@ const routes = [
   { path: "/users", component: Users, meta: { permission: "user:manage", titleKey: "nav.users" } },
   { path: "/users/new", component: UserForm, meta: { permission: "user:manage", titleKey: "nav.users" } },
   { path: "/users/:id", component: UserForm, meta: { permission: "user:manage", titleKey: "nav.users" } },
+  // The former catalog page, and any unknown path, lands somewhere useful.
+  { path: "/catalog", redirect: "/substances" },
+  { path: "/:pathMatch(.*)*", redirect: "/dashboard" },
 ];
 
 export const router = createRouter({ history: createWebHistory(), routes });

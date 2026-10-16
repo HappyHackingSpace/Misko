@@ -1,15 +1,22 @@
 export default {
-  catalog: {
-    title: "Catalog",
-    subtitle: "Substances and disease models shared by every study of the lab.",
-    tabs: { substances: "Substances", diseaseModels: "Disease models" },
+  nav: { substances: "Substances" },
+  substances: {
+    title: "Substances",
+    subtitle: "Test compounds, reference drugs, vehicles and disease inducers shared by every study of the lab.",
+    new: "New substance",
+    edit: "Edit substance",
     name: "Name",
+    kind: "Kind",
     description: "Description",
     searchName: "Search by name",
+    allKinds: "All kinds",
+    namePlaceholder: "Donepezil",
+    empty: "No substances yet.",
     noMatch: "Nothing matches these filters.",
     created: "{name} was created",
     updated: "{name} was saved",
     deleted: "{name} was deleted",
+    confirmDelete: "Delete {name}? This is only possible while no regimen or dose uses it.",
     kinds: {
       COMPOUND: "Test compound",
       REFERENCE_DRUG: "Reference drug",
@@ -21,33 +28,6 @@ export default {
       REFERENCE_DRUG: "A known active drug, used by positive control groups.",
       VEHICLE: "The carrier given without the active substance, for example saline or 0.5% CMC.",
       INDUCER: "An agent that produces the disease model, for example MPTP, LPS or scopolamine.",
-    },
-    inductionTypes: {
-      CHEMICAL: "Chemical",
-      SURGICAL: "Surgical",
-      DIET: "Diet",
-      STRESS: "Stress",
-      OTHER: "Other",
-    },
-    substances: {
-      new: "New substance",
-      edit: "Edit substance",
-      kind: "Kind",
-      allKinds: "All kinds",
-      namePlaceholder: "Donepezil",
-      empty: "No substances yet.",
-      confirmDelete: "Delete {name}? This is only possible while no regimen or dose uses it.",
-    },
-    diseaseModels: {
-      new: "New disease model",
-      edit: "Edit disease model",
-      inductionType: "Induction",
-      allTypes: "All induction types",
-      confirmationCriterion: "Confirmation criterion",
-      criterionPlaceholder: "Pole descent time above 150% of baseline",
-      namePlaceholder: "MPTP Parkinson model",
-      empty: "No disease models yet.",
-      confirmDelete: "Delete {name}? This is only possible while no experiment group uses it.",
     },
   },
   errors: {
@@ -64,6 +44,7 @@ export default {
       unauthenticated: "Please sign in again",
       forbidden: "You do not have permission for this action",
     },
+    // The API code is catalog.nameTaken for substances and disease models alike.
     catalog: {
       nameTaken: "An entry with this name already exists",
     },
@@ -71,12 +52,6 @@ export default {
       notFound: "Substance not found",
       invalidKind: "Choose the kind of the substance",
       inUse: "This substance is used by a regimen or a recorded dose and cannot be deleted",
-    },
-    diseaseModel: {
-      notFound: "Disease model not found",
-      invalidInductionType: "Choose how the disease is induced",
-      invalidConfirmationCriterion: "The confirmation criterion can contain at most 2000 characters",
-      inUse: "This disease model is used by an experiment group and cannot be deleted",
     },
   },
 };

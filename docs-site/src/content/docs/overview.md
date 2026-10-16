@@ -16,8 +16,9 @@ what the result was**, without managing raw video by hand.
 
 ## Core concepts
 
-- **Catalog**: substances (compounds, reference drugs, vehicles, inducing
-  agents) and disease models, shared by every study of the laboratory.
+- **Substances and disease models**: substances (compounds, reference drugs,
+  vehicles, inducing agents) and disease models, shared by every study of the
+  laboratory. Each has its own page in the panel.
 - **Paradigm**: a scientific test type (Morris water maze, novel object
   recognition, pole test and treadmill). Defined in code in published versions that
   never change.

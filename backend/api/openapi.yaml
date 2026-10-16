@@ -3125,7 +3125,7 @@ components:
         note: {type: string, maxLength: 2000}
     ParadigmSummary:
       type: object
-      required: [key, name, description, category, species, versions, latestVersion, automatedAnalysis]
+      required: [key, name, description, category, species, versions, latestVersion]
       properties:
         key: {type: string}
         name: {type: string, description: In the response language}
@@ -3134,7 +3134,6 @@ components:
         species: {type: array, items: {type: string}}
         versions: {type: array, items: {type: integer}}
         latestVersion: {type: integer}
-        automatedAnalysis: {type: boolean, description: Whether a real analysis worker supports this paradigm; catalog presence alone does not}
     ParadigmParameter:
       type: object
       required: [key, scope, label, help, unit, valueType, min, max, default]
@@ -3179,7 +3178,7 @@ components:
         definition: {type: string}
     ParadigmManifest:
       type: object
-      required: [key, name, description, category, species, trialTypes, version, metricEngineVersion, resultSchemaVersion, automatedAnalysis, parameters, zones, inputEvents, events, metrics, qc]
+      required: [key, name, description, category, species, trialTypes, version, metricEngineVersion, resultSchemaVersion, parameters, zones, inputEvents, events, metrics, qc]
       properties:
         key: {type: string}
         name: {type: string}
@@ -3190,7 +3189,6 @@ components:
         version: {type: integer, description: ParadigmVersion; a published version never changes}
         metricEngineVersion: {type: integer}
         resultSchemaVersion: {type: integer}
-        automatedAnalysis: {type: boolean}
         parameters: {type: array, description: Ordered apparatus, analysis, then session, items: {$ref: '#/components/schemas/ParadigmParameter'}}
         zones:
           type: array

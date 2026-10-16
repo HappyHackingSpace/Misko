@@ -12,5 +12,5 @@ export default {
       results: "Results",
     },
   },
-  nav: { catalog: "Catalog", review: "Result review" },
+  nav: { review: "Result review" },
 };

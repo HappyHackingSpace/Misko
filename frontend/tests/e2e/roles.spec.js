@@ -17,9 +17,12 @@ test("a viewer signs in and sees no write controls", async ({ page, request }) =
   const none = async (...ids) => {
     for (const id of ids) await expect(page.getByTestId(id), id).toHaveCount(0);
   };
-  await page.goto("/catalog");
+  await page.goto("/substances");
   await expect(page.getByTestId("substance-row").first()).toBeVisible();
   await none("substance-new", "substance-edit-MPTP", "substance-delete-MPTP");
+  await page.goto("/disease-models");
+  await expect(page.getByTestId("disease-model-row").first()).toBeVisible();
+  await none("disease-model-new", "disease-model-edit-MPTP Parkinson", "disease-model-delete-MPTP Parkinson");
   await page.goto("/subjects");
   await expect(page.getByTestId("subject-row").first()).toBeVisible();
   await none("subject-new", "subject-edit-M01");

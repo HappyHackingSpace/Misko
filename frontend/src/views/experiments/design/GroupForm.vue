@@ -119,7 +119,10 @@ async function save() {
           :placeholder="$t('design.groups.pickDiseaseModel')"
           data-test="group-disease"
         />
-        <small v-if="!diseaseModels.length" class="muted">{{ $t("design.groups.noDiseaseModels") }}</small>
+        <small v-if="!diseaseModels.length" class="muted">
+          {{ $t("design.groups.noDiseaseModels") }}
+          <RouterLink to="/disease-models" data-test="group-disease-models-link">{{ $t("design.groups.manageDiseaseModels") }}</RouterLink>
+        </small>
       </div>
       <label class="fld">
         <span>{{ $t("design.groups.targetSize") }}</span>

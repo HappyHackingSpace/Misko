@@ -282,13 +282,11 @@ doses and weights they were saved with, and they never change.
 Every signed-in user can read the paradigm catalog. Paradigms are defined in the
 code and cannot be created, edited or deleted through the API.
 
-- `GET /api/paradigms` lists paradigms with their published versions and whether
-  automated video analysis is available (`automatedAnalysis`). Four
+- `GET /api/paradigms` lists paradigms with their published versions. Four
   paradigms are published: `MWM`, `NOVEL_OBJECT`, `POLE` and `TREADMILL`, in
   two categories (`LEARNING_MEMORY` for `MWM` and `NOVEL_OBJECT`, `MOTOR` for
-  `POLE` and `TREADMILL`). `MWM` is tracked by an analysis worker, and automated
-  analysis is available for it once a worker is registered for the paradigm
-  version. The other three (`NOVEL_OBJECT`, `POLE`, `TREADMILL`) are scored by
+  `POLE` and `TREADMILL`). `MWM` is tracked by an analysis worker once a worker
+  is registered for the paradigm version. The other three (`NOVEL_OBJECT`, `POLE`, `TREADMILL`) are scored by
   an observer on the video (see [Observer scoring](#observer-scoring)).
 - `GET /api/paradigms/{key}` returns the latest version, and
   `GET /api/paradigms/{key}/versions/{version}` returns one exact version. Each
@@ -564,8 +562,8 @@ Everyone who is signed in can read reports. They only read records.
 
 ### The panel
 
-The Vue panel in `frontend/` is being moved to this API. Screens for the
-catalog, the experiment tabs (design, allocation, dosing, tests, report) and the
+The Vue panel in `frontend/` is being moved to this API. Screens for
+substances, disease models, the experiment tabs (design, allocation, dosing, tests, report) and the
 review queue are scaffolded but not complete. Until they are, use the API
 directly.
 
