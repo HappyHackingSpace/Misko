@@ -12,5 +12,5 @@ export default {
       results: "Sonuçlar",
     },
   },
-  nav: { catalog: "Katalog", review: "Sonuç onayı" },
+  nav: { review: "Sonuç onayı" },
 };

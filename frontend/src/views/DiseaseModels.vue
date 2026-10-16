@@ -3,10 +3,11 @@
 // an experiment point to one; a model that a group uses cannot be deleted.
 import { computed, h, ref } from "vue";
 import { useI18n } from "vue-i18n";
-import { NAlert, NButton, NDataTable, NDrawer, NDrawerContent, NForm, NFormItem, NInput, NPopconfirm, NSelect, NSpace, NTag, useMessage } from "naive-ui";
-import { diseaseModels } from "../../api/catalog.js";
-import { useAuth } from "../../stores/auth.js";
-import { useCatalogList } from "./useCatalogList.js";
+import { NAlert, NButton, NCard, NDataTable, NDrawer, NDrawerContent, NForm, NFormItem, NInput, NPopconfirm, NSelect, NSpace, NTag, useMessage } from "naive-ui";
+import { diseaseModels } from "../api/catalog.js";
+import { useAuth } from "../stores/auth.js";
+import { useFilteredList } from "../composables/useFilteredList.js";
+import PageHead from "../components/PageHead.vue";
 
 const TYPES = ["CHEMICAL", "SURGICAL", "DIET", "STRESS", "OTHER"];
 
@@ -14,9 +15,9 @@ const { t } = useI18n();
 const message = useMessage();
 const auth = useAuth();
 const canWrite = computed(() => auth.can("study:write"));
-const { state, load } = useCatalogList(diseaseModels.list, "inductionType");
+const { state, load } = useFilteredList(diseaseModels.list, "inductionType");
 
-const typeLabel = (type) => t(`catalog.inductionTypes.${type}`);
+const typeLabel = (type) => t(`diseaseModels.inductionTypes.${type}`);
 const typeOptions = computed(() => TYPES.map((value) => ({ value, label: typeLabel(value) })));
 
 const deleteError = ref("");
@@ -24,7 +25,7 @@ async function remove(row) {
   deleteError.value = "";
   try {
     await diseaseModels.remove(row.id);
-    message.success(t("catalog.deleted", { name: row.name }));
+    message.success(t("diseaseModels.deleted", { name: row.name }));
     await load();
   } catch (e) {
     deleteError.value = e.message;
@@ -33,15 +34,15 @@ async function remove(row) {
 
 const columns = computed(() => {
   const cols = [
-    { title: t("catalog.name"), key: "name", render: (row) => h("strong", { "data-test": "disease-model-name" }, row.name) },
+    { title: t("diseaseModels.name"), key: "name", render: (row) => h("strong", { "data-test": "disease-model-name" }, row.name) },
     {
-      title: t("catalog.diseaseModels.inductionType"),
+      title: t("diseaseModels.inductionType"),
       key: "inductionType",
       width: 150,
       render: (row) => h(NTag, { size: "small", round: true, bordered: false }, () => typeLabel(row.inductionType)),
     },
-    { title: t("catalog.diseaseModels.confirmationCriterion"), key: "confirmationCriterion", ellipsis: { tooltip: true }, render: (row) => row.confirmationCriterion || "" },
-    { title: t("catalog.description"), key: "description", ellipsis: { tooltip: true }, render: (row) => row.description || "" },
+    { title: t("diseaseModels.confirmationCriterion"), key: "confirmationCriterion", ellipsis: { tooltip: true }, render: (row) => row.confirmationCriterion || "" },
+    { title: t("diseaseModels.description"), key: "description", ellipsis: { tooltip: true }, render: (row) => row.description || "" },
   ];
   if (canWrite.value) {
     cols.push({
@@ -56,7 +57,7 @@ const columns = computed(() => {
             { onPositiveClick: () => remove(row), positiveText: t("common.delete"), negativeText: t("common.cancel") },
             {
               trigger: () => h(NButton, { size: "tiny", secondary: true, type: "error", "data-test": `disease-model-delete-${row.name}` }, () => t("common.delete")),
-              default: () => t("catalog.diseaseModels.confirmDelete", { name: row.name }),
+              default: () => t("diseaseModels.confirmDelete", { name: row.name }),
             },
           ),
         ]),
@@ -102,10 +103,10 @@ async function save() {
   try {
     if (editing.value) {
       await diseaseModels.update(editing.value.id, body);
-      message.success(t("catalog.updated", { name: body.name }));
+      message.success(t("diseaseModels.updated", { name: body.name }));
     } else {
       await diseaseModels.create(body);
-      message.success(t("catalog.created", { name: body.name }));
+      message.success(t("diseaseModels.created", { name: body.name }));
     }
     drawer.value = false;
     await load();
@@ -118,47 +119,50 @@ async function save() {
 </script>
 
 <template>
-  <div class="toolbar">
-    <NInput v-model:value="state.search" class="search" clearable data-test="disease-model-search" :placeholder="$t('catalog.searchName')" />
-    <NSelect v-model:value="state.filter" class="filter" clearable data-test="disease-model-type-filter" :options="typeOptions" :placeholder="$t('catalog.diseaseModels.allTypes')" />
-    <div class="spacer"></div>
-    <NButton v-if="canWrite" type="primary" data-test="disease-model-new" @click="openNew">{{ $t("catalog.diseaseModels.new") }}</NButton>
-  </div>
-  <NAlert v-if="state.error || deleteError" type="error" :title="state.error || deleteError" data-test="disease-model-list-error" class="alert" closable @close="deleteError = ''" />
-  <NDataTable
-    :columns="columns"
-    :data="state.rows"
-    :loading="state.loading"
-    :row-key="(row) => row.id"
-    :row-props="() => ({ 'data-test': 'disease-model-row' })"
-    :pagination="{ pageSize: 20 }"
-    :scroll-x="760"
-  >
-    <template #empty>
-      <span class="muted">{{ state.search || state.filter ? $t("catalog.noMatch") : $t("catalog.diseaseModels.empty") }}</span>
-    </template>
-  </NDataTable>
+  <PageHead :title="$t('diseaseModels.title')" :subtitle="$t('diseaseModels.subtitle')" />
+  <NCard :bordered="true" size="small">
+    <div class="toolbar">
+      <NInput v-model:value="state.search" class="search" clearable data-test="disease-model-search" :placeholder="$t('diseaseModels.searchName')" />
+      <NSelect v-model:value="state.filter" class="filter" clearable data-test="disease-model-type-filter" :options="typeOptions" :placeholder="$t('diseaseModels.allTypes')" />
+      <div class="spacer"></div>
+      <NButton v-if="canWrite" type="primary" data-test="disease-model-new" @click="openNew">{{ $t("diseaseModels.new") }}</NButton>
+    </div>
+    <NAlert v-if="state.error || deleteError" type="error" :title="state.error || deleteError" data-test="disease-model-list-error" class="alert" closable @close="deleteError = ''" />
+    <NDataTable
+      :columns="columns"
+      :data="state.rows"
+      :loading="state.loading"
+      :row-key="(row) => row.id"
+      :row-props="() => ({ 'data-test': 'disease-model-row' })"
+      :pagination="{ pageSize: 20 }"
+      :scroll-x="760"
+    >
+      <template #empty>
+        <span class="muted">{{ state.search || state.filter ? $t("diseaseModels.noMatch") : $t("diseaseModels.empty") }}</span>
+      </template>
+    </NDataTable>
+  </NCard>
 
   <NDrawer v-model:show="drawer" :width="'min(480px, 100vw)'" placement="right">
-    <NDrawerContent :title="editing ? $t('catalog.diseaseModels.edit') : $t('catalog.diseaseModels.new')" closable>
+    <NDrawerContent :title="editing ? $t('diseaseModels.edit') : $t('diseaseModels.new')" closable>
       <NForm data-test="disease-model-form" @submit.prevent="save">
-        <NFormItem :label="$t('catalog.name')" required>
-          <NInput v-model:value="form.name" data-test="disease-model-form-name" maxlength="120" :placeholder="$t('catalog.diseaseModels.namePlaceholder')" />
+        <NFormItem :label="$t('diseaseModels.name')" required>
+          <NInput v-model:value="form.name" data-test="disease-model-form-name" maxlength="120" :placeholder="$t('diseaseModels.namePlaceholder')" />
         </NFormItem>
-        <NFormItem :label="$t('catalog.diseaseModels.inductionType')" required>
+        <NFormItem :label="$t('diseaseModels.inductionType')" required>
           <NSelect v-model:value="form.inductionType" data-test="disease-model-form-type" :options="typeOptions" />
         </NFormItem>
-        <NFormItem :label="$t('catalog.diseaseModels.confirmationCriterion')">
+        <NFormItem :label="$t('diseaseModels.confirmationCriterion')">
           <NInput
             v-model:value="form.confirmationCriterion"
             type="textarea"
             data-test="disease-model-form-criterion"
             maxlength="2000"
             :autosize="{ minRows: 2, maxRows: 6 }"
-            :placeholder="$t('catalog.diseaseModels.criterionPlaceholder')"
+            :placeholder="$t('diseaseModels.criterionPlaceholder')"
           />
         </NFormItem>
-        <NFormItem :label="$t('catalog.description')">
+        <NFormItem :label="$t('diseaseModels.description')">
           <NInput v-model:value="form.description" type="textarea" data-test="disease-model-form-description" placeholder="" maxlength="5000" :autosize="{ minRows: 3, maxRows: 8 }" />
         </NFormItem>
         <NAlert v-if="formError" type="error" :title="formError" data-test="disease-model-form-error" class="alert" />

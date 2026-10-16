@@ -564,8 +564,8 @@ Everyone who is signed in can read reports. They only read records.
 
 ### The panel
 
-The Vue panel in `frontend/` is being moved to this API. Screens for the
-catalog, the experiment tabs (design, allocation, dosing, tests, report) and the
+The Vue panel in `frontend/` is being moved to this API. Screens for
+substances, disease models, the experiment tabs (design, allocation, dosing, tests, report) and the
 review queue are scaffolded but not complete. Until they are, use the API
 directly.
 

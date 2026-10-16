@@ -1,6 +1,6 @@
 ---
 title: Kullanım
-description: Mişko panelinin katalogdan çalışma tasarımına, dozlamadan test oturumlarına, sonuç onayından raporlara kadar günlük kullanımı.
+description: Mişko panelinin etken maddeler ve hastalık modellerinden çalışma tasarımına, dozlamadan test oturumlarına, sonuç onayından raporlara kadar günlük kullanımı.
 ---
 
 Bu sayfa, Mişko kurulduktan sonra onu kullanmaya yönelik pratik rehberdir.
@@ -13,7 +13,8 @@ Mişko, klinik öncesi bir davranış çalışmasının kayıt defteridir. Bir �
 bir soru sorar: belirli bir dozdaki madde, bir hastalık modelinin yol açtığı
 bozukluğu geri çeviriyor mu? Paneldeki her şey bu soruyu izler:
 
-1. **Katalog**, laboratuvarın kullandığı maddeleri ve hastalık modellerini listeler.
+1. **Etken maddeler** ve **Hastalık modelleri**, laboratuvarın verdiği maddeleri
+   ve oluşturduğu bozuklukları listeler; her birinin menüde kendi sayfası vardır.
 2. **Denekler** hayvanlardır; vücut ağırlıklarıyla birlikte tutulur.
 3. **Ortamlar** arenalardır; her biri sabit kamerası için bir kez kalibre edilir.
 4. Bir **deney**, gruplar (her birinin rolü, hastalık modeli ve aldığı uygulama),
@@ -46,7 +47,7 @@ reddedeceği düğmeleri gizler.
 | Rol | Neler yapabilir |
 |---|---|
 | `SUPERADMIN`, `LAB_MANAGER` | Kullanıcılar ve laboratuvar ayarları dahil her şey. |
-| `RESEARCHER` | Kullanıcılar ve laboratuvar ayarları dışında her şey: katalog, denekler, ortamlar, çalışma tasarımı, oturum planlama, dozlama, oturum yürütme, sonuç onayı. |
+| `RESEARCHER` | Kullanıcılar ve laboratuvar ayarları dışında her şey: etken maddeler, hastalık modelleri, denekler, ortamlar, çalışma tasarımı, oturum planlama, dozlama, oturum yürütme, sonuç onayı. |
 | `TECHNICIAN` | Laboratuvar günü: doz ve ağırlık kaydı, oturumu başlatma ve tamamlama, deneme kaydı, video yükleme, bir hayvanı bir videoda kalibre etme, gözlemci puanlamalı testleri puanlama, sonuç onayı. Oturum planlayamaz, iptal edemez ve çalışmayı değiştiremez. |
 | `VIEWER` | Her şeyi okur, hiçbir şeyi değiştirmez. |
 
@@ -63,25 +64,40 @@ sözle gösterilir. Silme her zaman onay ister. Birçok ekran filtrelerini adres
 çubuğunda tutar; böylece filtrelenmiş bir listeyi yer imine ekleyebilir veya
 paylaşabilirsiniz.
 
-## Katalog
+## Etken maddeler
 
-Menüden **Katalog**'u açın. İki sekmesi vardır.
-
-**Maddeler**; bileşikler, referans ilaçlar, taşıyıcılar (serum fizyolojik, CMC,
-DMSO) ve hastalık oluşturucular (MPTP, LPS) içindir. Eklemek için:
+Menüden **Etken maddeler**'i açın (adres `/substances`). Bileşikler, referans
+ilaçlar, taşıyıcılar (serum fizyolojik, CMC, DMSO) ve hastalık oluşturucular
+(MPTP, LPS) burada tutulur. Liste ada göre aranabilir ve türe göre
+filtrelenebilir. Eklemek için:
 
 1. **Yeni madde**'ye tıklayın.
 2. Adı yazın, türünü seçin ve isterseniz bir açıklama ekleyin.
 3. **Kaydet**'e tıklayın.
 
-Tür yalnızca seçicilerdeki sırayı belirler; bir maddenin çalışmadaki rolü
-nerede kullanıldığından gelir. Adlar benzersizdir: ikinci bir "Saline" (büyük
-küçük harf fark etmeksizin) reddedilir. Bir rejimde ya da kayıtlı bir dozda
-kullanılan madde silinemez; panel bunu söyler.
+Bir satırı değiştirmek için **Düzenle**'yi, kaldırmak için **Sil**'i kullanın;
+silme onay ister. Tür yalnızca seçicilerdeki sırayı belirler; bir maddenin
+çalışmadaki rolü nerede kullanıldığından gelir. Adlar benzersizdir: ikinci bir
+"Saline" (büyük küçük harf fark etmeksizin) reddedilir. Bir rejimde ya da
+kayıtlı bir dozda kullanılan madde silinemez; panel bunu söyler.
 
-**Hastalık modelleri**, bozukluğun nasıl oluşturulduğunu (kimyasal, cerrahi,
-diyet, stres veya diğer) ve nasıl doğrulandığını tanımlar. Aynı şekilde
-eklenir. Bir grubun kullandığı model silinemez.
+## Hastalık modelleri
+
+Menüden **Hastalık modelleri**'ni açın (adres `/disease-models`). Bir hastalık
+modeli, bozukluğun nasıl oluşturulduğunu (kimyasal, cerrahi, diyet, stres veya
+diğer) ve nasıl doğrulandığını tanımlar. Liste ada göre aranabilir ve oluşturma
+yöntemine göre filtrelenebilir.
+
+1. **Yeni hastalık modeli**'ne tıklayın.
+2. Adı yazın, oluşturma yöntemini seçin; isterseniz bir doğrulama ölçütü (örneğin
+   "direk iniş süresi başlangıcın %150'sinin üzerinde") ve bir açıklama ekleyin.
+3. **Kaydet**'e tıklayın.
+
+Adlar, maddelerde olduğu gibi benzersizdir. Bir deney grubunun kullandığı model
+silinemez; panel bunu söyler.
+
+Bir deneydeki grup veya rejim formu henüz hastalık modeli ya da madde
+bulamazsa ilgili sayfaya bağlantı verir.
 
 ## Denekler ve ağırlıklar
 
