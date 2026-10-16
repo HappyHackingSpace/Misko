@@ -138,7 +138,10 @@ const complete = computed(
       <div class="fld">
         <span>{{ $t("design.regimen.substance") }}</span>
         <NSelect v-model:value="form.substanceId" :options="substanceOptions" filterable :filter="filterByText" data-test="regimen-substance" />
-        <small v-if="!substances.length" class="muted">{{ $t("design.regimen.noSubstances") }}</small>
+        <small v-if="!substances.length" class="muted">
+          {{ $t("design.regimen.noSubstances") }}
+          <RouterLink to="/substances" data-test="regimen-substances-link">{{ $t("design.regimen.manageSubstances") }}</RouterLink>
+        </small>
       </div>
       <label class="fld">
         <span>{{ $t("design.regimen.amount") }}</span>

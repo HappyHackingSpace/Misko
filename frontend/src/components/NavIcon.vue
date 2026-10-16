@@ -31,6 +31,13 @@ const props = defineProps({ name: { type: String, required: true }, size: { type
       <path d="M3 16l9 5 9-5" />
       <path d="M3 12l9 5 9-5" />
     </g>
+    <g v-else-if="name === 'substances'">
+      <rect x="2.6" y="8.2" width="18.8" height="7.6" rx="3.8" transform="rotate(-45 12 12)" />
+      <path d="m8.6 8.6 6.8 6.8" />
+    </g>
+    <g v-else-if="name === 'diseaseModels'">
+      <path d="M3 12h4l2.2-5.5 4.2 11 2.4-5.5H21" />
+    </g>
     <g v-else-if="name === 'environments'">
       <path d="M21 8 12 3 3 8v8l9 5 9-5V8Z" />
       <path d="M3 8l9 5 9-5" />

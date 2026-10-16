@@ -1,15 +1,22 @@
 export default {
-  catalog: {
-    title: "Katalog",
-    subtitle: "Laboratuvarın tüm çalışmalarında kullanılan maddeler ve hastalık modelleri.",
-    tabs: { substances: "Maddeler", diseaseModels: "Hastalık modelleri" },
+  nav: { substances: "Etken maddeler" },
+  substances: {
+    title: "Etken maddeler",
+    subtitle: "Laboratuvarın tüm çalışmalarında kullanılan test bileşikleri, referans ilaçlar, taşıyıcılar ve hastalık oluşturucular.",
+    new: "Yeni madde",
+    edit: "Maddeyi düzenle",
     name: "Ad",
+    kind: "Tür",
     description: "Açıklama",
     searchName: "Ada göre ara",
+    allKinds: "Tüm türler",
+    namePlaceholder: "Donepezil",
+    empty: "Henüz madde yok.",
     noMatch: "Bu filtrelere uyan kayıt yok.",
     created: "{name} oluşturuldu",
     updated: "{name} kaydedildi",
     deleted: "{name} silindi",
+    confirmDelete: "{name} silinsin mi? Bu yalnızca hiçbir rejim veya doz kullanmıyorsa mümkündür.",
     kinds: {
       COMPOUND: "Test bileşiği",
       REFERENCE_DRUG: "Referans ilaç",
@@ -21,33 +28,6 @@ export default {
       REFERENCE_DRUG: "Etkisi bilinen bir ilaç; pozitif kontrol gruplarında kullanılır.",
       VEHICLE: "Etken madde olmadan verilen taşıyıcı, örneğin serum fizyolojik veya %0,5 CMC.",
       INDUCER: "Hastalık modelini oluşturan ajan, örneğin MPTP, LPS veya skopolamin.",
-    },
-    inductionTypes: {
-      CHEMICAL: "Kimyasal",
-      SURGICAL: "Cerrahi",
-      DIET: "Diyet",
-      STRESS: "Stres",
-      OTHER: "Diğer",
-    },
-    substances: {
-      new: "Yeni madde",
-      edit: "Maddeyi düzenle",
-      kind: "Tür",
-      allKinds: "Tüm türler",
-      namePlaceholder: "Donepezil",
-      empty: "Henüz madde yok.",
-      confirmDelete: "{name} silinsin mi? Bu yalnızca hiçbir rejim veya doz kullanmıyorsa mümkündür.",
-    },
-    diseaseModels: {
-      new: "Yeni hastalık modeli",
-      edit: "Hastalık modelini düzenle",
-      inductionType: "Oluşturma yöntemi",
-      allTypes: "Tüm yöntemler",
-      confirmationCriterion: "Doğrulama ölçütü",
-      criterionPlaceholder: "Direk iniş süresi başlangıcın %150'sinin üzerinde",
-      namePlaceholder: "MPTP Parkinson modeli",
-      empty: "Henüz hastalık modeli yok.",
-      confirmDelete: "{name} silinsin mi? Bu yalnızca hiçbir deney grubu kullanmıyorsa mümkündür.",
     },
   },
   errors: {
@@ -64,6 +44,7 @@ export default {
       unauthenticated: "Lütfen tekrar giriş yapın",
       forbidden: "Bu işlem için yetkiniz yok",
     },
+    // The API code is catalog.nameTaken for substances and disease models alike.
     catalog: {
       nameTaken: "Bu adla bir kayıt zaten var",
     },
@@ -71,12 +52,6 @@ export default {
       notFound: "Madde bulunamadı",
       invalidKind: "Maddenin türünü seçin",
       inUse: "Bu madde bir rejimde veya kayıtlı bir dozda kullanılıyor, silinemez",
-    },
-    diseaseModel: {
-      notFound: "Hastalık modeli bulunamadı",
-      invalidInductionType: "Hastalığın nasıl oluşturulduğunu seçin",
-      invalidConfirmationCriterion: "Doğrulama ölçütü en fazla 2000 karakter olabilir",
-      inUse: "Bu hastalık modeli bir deney grubunda kullanılıyor, silinemez",
     },
   },
 };

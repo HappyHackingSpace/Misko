@@ -1,6 +1,6 @@
 ---
 title: Usage
-description: How to use the Mişko panel day to day, from the catalog and study design to dosing, test sessions, result review and reports.
+description: How to use the Mişko panel day to day, from substances, disease models and study design to dosing, test sessions, result review and reports.
 ---
 
 This page is the practical guide to using Mişko once it is installed. It is
@@ -13,7 +13,8 @@ Mişko is the logbook of a preclinical behaviour study. A study asks one
 question: does a substance at a given dose reverse the deficit caused by a
 disease model? Everything in the panel follows that question:
 
-1. The **catalog** lists the substances and disease models the lab uses.
+1. **Substances** and **Disease models** list what the lab doses and the
+   deficits it induces; each has its own page in the menu.
 2. **Subjects** are the animals, with their body weights.
 3. **Environments** are the arenas, each calibrated once for its fixed camera.
 4. An **experiment** is designed as groups (each with a role, a disease model and
@@ -46,7 +47,7 @@ hides buttons the API would refuse.
 | Role | What it can do |
 |---|---|
 | `SUPERADMIN`, `LAB_MANAGER` | Everything, including users and lab settings. |
-| `RESEARCHER` | Everything except users and lab settings: catalog, subjects, environments, study design, planning sessions, dosing, running sessions, review. |
+| `RESEARCHER` | Everything except users and lab settings: substances, disease models, subjects, environments, study design, planning sessions, dosing, running sessions, review. |
 | `TECHNICIAN` | The lab day: record doses and weights, start and complete sessions, record trials, upload videos, calibrate an animal on a video, score observer-scored tests, review results. Cannot plan or cancel sessions or change a study. |
 | `VIEWER` | Reads everything, changes nothing. |
 
@@ -62,25 +63,40 @@ a green message confirms a save, and an error is shown in words next to the
 form. Deleting always asks for confirmation. Many screens keep their filters in
 the address bar, so you can bookmark or share a filtered list.
 
-## Catalog
+## Substances
 
-Open **Catalog** in the menu. It has two tabs.
-
-**Substances** are compounds, reference drugs, vehicles (saline, CMC, DMSO) and
-disease inducers (MPTP, LPS). To add one:
+Open **Substances** in the menu (address `/substances`). Substances are
+compounds, reference drugs, vehicles (saline, CMC, DMSO) and disease inducers
+(MPTP, LPS). The list can be searched by name and filtered by kind. To add one:
 
 1. Click **New substance**.
 2. Type the name, choose the kind and optionally a description.
 3. Click **Save**.
 
-The kind only sorts the pickers; the role of a substance in a study comes from
-where it is used. Names are unique: a second "Saline" (in any letter case) is
-refused. A substance used by a regimen or a recorded dose cannot be deleted;
-the panel says so.
+Use **Edit** on a row to change it and **Delete** to remove it; deleting asks
+for confirmation. The kind only sorts the pickers; the role of a substance in a
+study comes from where it is used. Names are unique: a second "Saline" (in any
+letter case) is refused. A substance used by a regimen or a recorded dose cannot
+be deleted; the panel says so.
 
-**Disease models** describe how a deficit is produced (chemical, surgical, diet,
-stress or other) and how it is confirmed. They are added the same way. A model
-used by a group cannot be deleted.
+## Disease models
+
+Open **Disease models** in the menu (address `/disease-models`). A disease
+model describes how a deficit is produced (chemical, surgical, diet, stress or
+other) and how it is confirmed. The list can be searched by name and filtered by
+induction type.
+
+1. Click **New disease model**.
+2. Type the name, choose the induction type, and optionally a confirmation
+   criterion (for example "pole descent time above 150% of baseline") and a
+   description.
+3. Click **Save**.
+
+Names are unique, as for substances. A model used by an experiment group cannot
+be deleted; the panel says so.
+
+When a group or regimen form in an experiment finds no disease model or no
+substance yet, it links to the matching page.
 
 ## Subjects and weights
 

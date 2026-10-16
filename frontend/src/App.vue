@@ -88,7 +88,8 @@ const primaryOptions = computed(() => [
 
 const managementOptions = computed(() => {
   const options = [
-    { label: t("nav.catalog"), key: "/catalog", icon: navIcon("paradigms") },
+    { label: navLabel("nav.substances", "nav-substances"), key: "/substances", icon: navIcon("substances") },
+    { label: navLabel("nav.diseaseModels", "nav-disease-models"), key: "/disease-models", icon: navIcon("diseaseModels") },
     { label: t("nav.paradigms"), key: "/paradigms", icon: navIcon("paradigms") },
     { label: t("nav.environments"), key: "/environments", icon: navIcon("environments") },
   ];
@@ -100,7 +101,7 @@ function onMenuSelect(key) {
   if (key && key !== route.path) router.push(key);
 }
 
-const topLevelKeys = ["/dashboard", "/experiments", "/tests", "/subjects", "/review", "/reports", "/catalog", "/paradigms", "/environments", "/users"];
+const topLevelKeys = ["/dashboard", "/experiments", "/tests", "/subjects", "/review", "/reports", "/substances", "/disease-models", "/paradigms", "/environments", "/users"];
 const activeKey = computed(() => topLevelKeys.find((k) => route.path.startsWith(k)) ?? null);
 </script>
 
@@ -186,7 +187,7 @@ const activeKey = computed(() => topLevelKeys.find((k) => route.path.startsWith(
           </n-layout-header>
           <n-layout-content content-style="padding: 26px 30px;" class="app-content">
             <Breadcrumb />
-            <!-- Keyed by language: catalog wording and breadcrumbs come from the API
+            <!-- Keyed by language: paradigm wording and breadcrumbs come from the API
                  and from each page's setup, so a language switch rebuilds the page. -->
             <RouterView :key="locale" />
           </n-layout-content>

@@ -579,8 +579,8 @@ Giriş yapmış herkes raporları okuyabilir. Raporlar yalnızca kayıtları oku
 
 ### Panel
 
-`frontend/` içindeki Vue paneli bu API'ye taşınmaktadır. Katalog, deney
-sekmeleri (tasarım, atama, dozlama, testler, rapor) ve onay kuyruğu ekranlarının
+`frontend/` içindeki Vue paneli bu API'ye taşınmaktadır. Etken maddeler, hastalık
+modelleri, deney sekmeleri (tasarım, atama, dozlama, testler, rapor) ve onay kuyruğu ekranlarının
 iskeleti var, ancak tamamlanmadı. Tamamlanana kadar API'yi doğrudan kullanın.
 
 ### Hatalar

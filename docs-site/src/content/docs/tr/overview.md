@@ -17,8 +17,9 @@ laboratuvarları için.
 
 ## Temel kavramlar
 
-- **Katalog**: maddeler (bileşikler, referans ilaçlar, taşıyıcılar, indükleyici
-  ajanlar) ve hastalık modelleri; laboratuvarın tüm çalışmalarında ortaktır.
+- **Etken maddeler ve hastalık modelleri**: maddeler (bileşikler, referans
+  ilaçlar, taşıyıcılar, indükleyici ajanlar) ve hastalık modelleri; laboratuvarın
+  tüm çalışmalarında ortaktır. Panelde her birinin kendi sayfası vardır.
 - **Paradigma**: bilimsel bir test türü (Morris su labirenti, yeni nesne
   tanıma, direk testi ve koşu bandı). Kodda, hiç değişmeyen
   yayınlanmış sürümler halinde tanımlıdır.

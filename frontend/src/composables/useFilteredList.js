@@ -1,9 +1,9 @@
 import { onMounted, onUnmounted, reactive, watch } from "vue";
 
-// State of one catalog list. The API returns the whole (small) list ordered by
+// State of one searchable list (substances, disease models). The API returns the whole (small) list ordered by
 // name and filters it on the server by name and by one enum; the table pages it
 // on the client. Typing is debounced, a newer answer always wins.
-export function useCatalogList(fetch, filterKey) {
+export function useFilteredList(fetch, filterKey) {
   const state = reactive({ rows: [], loading: false, error: "", search: "", filter: null });
   let seq = 0;
   let timer = null;
