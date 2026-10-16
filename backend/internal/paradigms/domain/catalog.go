@@ -26,10 +26,7 @@ const (
 	ReasonNotObserved         = "EVENT_NOT_OBSERVED"
 	ReasonNotScored           = "NOT_SCORED"
 	ReasonZeroDenominator     = "ZERO_DENOMINATOR"
-	ReasonInsufficientEntries = "INSUFFICIENT_ENTRIES"
 	ReasonIncompleteRecording = "INCOMPLETE_RECORDING"
-	ReasonNotApplicable       = "NOT_APPLICABLE"
-	ReasonZoneNotProvided     = "ZONE_NOT_PROVIDED"
 	ReasonBelowCriterion      = "BELOW_EXPLORATION_CRITERION"
 )
 
@@ -53,7 +50,6 @@ const (
 	Second              Unit = "s"
 	Count               Unit = "count"
 	Ratio               Unit = "ratio"
-	Rpm                 Unit = "rpm"
 	Boolean             Unit = "boolean"
 )
 
@@ -61,15 +57,60 @@ type Category string
 
 const (
 	LearningMemory Category = "LEARNING_MEMORY"
-	Anxiety        Category = "ANXIETY"
 	Motor          Category = "MOTOR"
-	Social         Category = "SOCIAL"
 )
 
-// Parameter is a user-chosen physical or session value with an allowed range.
-// Integer parameters accept whole numbers only; booleans are 0 or 1.
+// Languages lists the languages every user-facing Text is written in.
+var Languages = []string{"en", "tr"}
+
+// Text is wording in every supported language. Formulas stay as written:
+// they are expressions, not prose.
+type Text struct{ EN, TR string }
+
+// J joins texts with a space in every language.
+func J(parts ...Text) Text {
+	var out Text
+	for i, p := range parts {
+		if i > 0 {
+			out.EN += " "
+			out.TR += " "
+		}
+		out.EN += p.EN
+		out.TR += p.TR
+	}
+	return out
+}
+
+// In returns the wording for a language, falling back to English.
+func (t Text) In(language string) string {
+	if language == "tr" && t.TR != "" {
+		return t.TR
+	}
+	return t.EN
+}
+
+// Scope tells where a parameter is set.
+type Scope string
+
+const (
+	// ApparatusScope values are measured on the physical setup and must all be
+	// given when an environment is created from the paradigm.
+	ApparatusScope Scope = "APPARATUS"
+	// AnalysisScope values tune tracking and scoring. They belong to the
+	// environment too, but have sensible defaults and are rarely changed.
+	AnalysisScope Scope = "ANALYSIS"
+	// SessionScope values describe how a trial is run and are set per
+	// protocol step; defaults apply.
+	SessionScope Scope = "SESSION"
+)
+
+// Parameter is a user-chosen physical, analysis or session value with an
+// allowed range. Integer parameters accept whole numbers only; booleans are 0
+// or 1. Help says what to measure or what the value changes.
 type Parameter struct {
-	Key, Label        string
+	Key               string
+	Scope             Scope
+	Label, Help       Text
 	Unit              Unit
 	Integer           bool
 	Min, Max, Default float64
@@ -78,8 +119,15 @@ type Parameter struct {
 // Zone is derived from parameters, or Calibrated when its shapes come with the
 // input (for example from per-video calibration).
 type Zone struct {
-	Key, Role, Geometry  string
+	Key, Role            string
+	Label, Geometry      Text
 	Calibrated, Required bool
+}
+
+// TrialType is a kind of trial a protocol step can run.
+type TrialType struct {
+	Key   string
+	Label Text
 }
 
 type EventKind string
@@ -96,18 +144,23 @@ type EventDefinition struct {
 	Kind       EventKind
 	Labels     []string
 	Single     bool
-	Definition string
+	Definition Text
+	Label      Text
 }
 
 // MetricDefinition documents a metric's meaning, inputs, formula, missing-data
-// rule and the absolute tolerance used when validating a result.
+// rule and the absolute tolerance used when validating a result. Label and
+// Description are for people; Definition, Formula and MissingWhen are the
+// precise contract.
 type MetricDefinition struct {
-	Key, Label                       string
-	Unit                             Unit
-	Integer                          bool
-	Definition, Formula, MissingWhen string
-	Inputs                           []string
-	Min, Max, Tolerance              float64
+	Key                     string
+	Label, Description      Text
+	Unit                    Unit
+	Integer                 bool
+	Definition, MissingWhen Text
+	Formula                 string
+	Inputs                  []string
+	Min, Max, Tolerance     float64
 }
 
 type QCRule struct {
@@ -116,13 +169,17 @@ type QCRule struct {
 	Unit          Unit
 }
 
+// Paradigm is a versioned template: environments are created from it with
+// their apparatus and analysis values, and protocol steps add session values.
 type Paradigm struct {
-	Key, Name                              string
-	Category                               Category
-	Species, TrialTypes                    []string
-	Version                                int
-	ApparatusParameters, SessionParameters []Parameter
-	Zones                                  []Zone
+	Key               string
+	Name, Description Text
+	Category          Category
+	Species           []string
+	TrialTypes        []TrialType
+	Version           int
+	Parameters        []Parameter
+	Zones             []Zone
 	// InputEvents are observations the engine consumes; Events are what it derives.
 	InputEvents []EventDefinition
 	Events      []EventDefinition
@@ -132,7 +189,7 @@ type Paradigm struct {
 
 func (p Paradigm) clone() Paradigm {
 	p.Species, p.TrialTypes = slices.Clone(p.Species), slices.Clone(p.TrialTypes)
-	p.ApparatusParameters, p.SessionParameters = slices.Clone(p.ApparatusParameters), slices.Clone(p.SessionParameters)
+	p.Parameters = slices.Clone(p.Parameters)
 	p.Zones, p.QC = slices.Clone(p.Zones), slices.Clone(p.QC)
 	p.InputEvents, p.Events = cloneEvents(p.InputEvents), cloneEvents(p.Events)
 	p.Metrics = slices.Clone(p.Metrics)
@@ -140,6 +197,26 @@ func (p Paradigm) clone() Paradigm {
 		p.Metrics[i].Inputs = slices.Clone(p.Metrics[i].Inputs)
 	}
 	return p
+}
+
+// In returns the parameters set in one scope, in catalog order.
+func (p Paradigm) In(scope Scope) []Parameter {
+	var out []Parameter
+	for _, param := range p.Parameters {
+		if param.Scope == scope {
+			out = append(out, param)
+		}
+	}
+	return out
+}
+
+// TrialTypeKeys returns the keys of the paradigm's trial types.
+func (p Paradigm) TrialTypeKeys() []string {
+	keys := make([]string, 0, len(p.TrialTypes))
+	for _, t := range p.TrialTypes {
+		keys = append(keys, t.Key)
+	}
+	return keys
 }
 
 func cloneEvents(events []EventDefinition) []EventDefinition {
@@ -256,17 +333,10 @@ type definition struct {
 
 // registry lists every published version of each paradigm, oldest first.
 var registry = map[string][]definition{
-	"BARNES_MAZE":   {barnesMazeV1()},
-	"EPM":           {elevatedPlusMazeV1()},
-	"LIGHT_DARK":    {lightDarkV1()},
-	"MWM":           {morrisWaterMazeV1()},
-	"NOVEL_OBJECT":  {novelObjectV1()},
-	"OPEN_FIELD":    {openFieldV1()},
-	"POLE":          {poleTestV1()},
-	"ROTAROD":       {rotarodV1()},
-	"THREE_CHAMBER": {threeChamberV1()},
-	"TREADMILL":     {treadmillV1()},
-	"Y_MAZE":        {yMazeV1()},
+	"MWM":          {morrisWaterMazeV1()},
+	"NOVEL_OBJECT": {novelObjectV1()},
+	"POLE":         {poleTestV1()},
+	"TREADMILL":    {treadmillV1()},
 }
 
 func Keys() []string {
@@ -383,7 +453,7 @@ func Evaluate(key string, version int, in Input) (Result, error) {
 }
 
 func resolveParameters(p Paradigm, values map[string]float64) (map[string]float64, error) {
-	all := append(slices.Clone(p.ApparatusParameters), p.SessionParameters...)
+	all := p.Parameters
 	out := make(map[string]float64, len(all))
 	for _, param := range all {
 		out[param.Key] = param.Default

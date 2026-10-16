@@ -1,16 +1,21 @@
-// Command e2e runs the API for browser tests with storage on local disk.
+// Command e2e runs the API for browser tests with storage in memory.
 //
 // It installs the schema into an empty database whose name contains "e2e",
-// creates the administrator, seeds one analyzed Open Field test through the real
-// API (including the worker protocol) and serves signed upload and read URLs
-// itself. It is test support: it never talks to Cloud Storage and must not run
-// against a real installation.
+// creates the administrator, seeds two running studies through the real API
+// (users per role, catalog entries, calibrated arenas, groups with regimens,
+// timepoints, a protocol, allocated and weighed animals, doses, planned and
+// in-progress test sessions with verified videos), registers an analysis
+// worker and drives it through the worker protocol (claim, outputs, result) so
+// there are results to review, and serves signed upload and read URLs itself.
+// It is test support: it never talks to Cloud Storage and must not run against
+// a real installation.
 package main
 
 import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"hash/crc32"
@@ -40,7 +45,7 @@ func main() { os.Exit(run()) }
 
 func run() int {
 	addr := flag.String("addr", "127.0.0.1:4010", "listen address")
-	fixtures := flag.String("fixtures", "../frontend/tests/fixtures", "directory with analyzed.mp4 and trajectory.json")
+	fixtures := flag.String("fixtures", "../frontend/tests/fixtures", "directory with analyzed.mp4 (the seeded video) and trajectory.json")
 	// Signed reads last an hour by default. The browser test for an expiring
 	// URL runs its own server with a short one instead of waiting.
 	readTTL := flag.Duration("read-ttl", time.Hour, "how long a signed read URL stays valid")
@@ -83,7 +88,7 @@ func run() int {
 		return 1
 	}
 
-	seed, err := seedAnalyzedTest(ctx, api, store, *fixtures, setup.AdminPassword)
+	seed, err := seedStudy(api, store, *fixtures, setup.AdminPassword)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "seeding failed:", err)
 		return 1
@@ -121,7 +126,9 @@ type storedObject struct {
 type session struct {
 	object      string
 	contentType string
-	data        []byte
+	// limit is the signed x-goog-content-length-range maximum; 0 has none.
+	limit int
+	data  []byte
 }
 
 // diskStore serves signed upload and read URLs from memory. Browsers reach it
@@ -144,6 +151,15 @@ func (s *diskStore) UploadURL(_ context.Context, object, contentType string, exp
 		Headers:   map[string]string{"Content-Type": contentType, "x-goog-resumable": "start", "x-goog-if-generation-match": "0"},
 		ExpiresAt: expires,
 	}, nil
+}
+
+// SizedUploadURL limits the upload to size bytes, as the signed
+// x-goog-content-length-range header does on a bucket.
+func (s *diskStore) SizedUploadURL(ctx context.Context, object, contentType string, size int64, expires time.Time) (mediaapp.SignedRequest, error) {
+	signed, err := s.UploadURL(ctx, object, contentType, expires)
+	signed.URL += "&limit=" + strconv.FormatInt(size, 10)
+	signed.Headers["x-goog-content-length-range"] = "0," + strconv.FormatInt(size, 10)
+	return signed, err
 }
 
 // ReadURL signs a read that stops working after `expires`, the way a signed
@@ -193,9 +209,10 @@ func (s *diskStore) routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /e2e/storage/start", func(w http.ResponseWriter, r *http.Request) {
 		cors(w)
 		object, contentType := r.URL.Query().Get("object"), r.URL.Query().Get("contentType")
+		limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 		s.mu.Lock()
 		id := fmt.Sprintf("s%d", len(s.sessions)+1)
-		s.sessions[id] = &session{object: object, contentType: contentType}
+		s.sessions[id] = &session{object: object, contentType: contentType, limit: limit}
 		s.mu.Unlock()
 		w.Header().Set("Location", s.base+"/e2e/storage/session?id="+id)
 		w.WriteHeader(http.StatusCreated)
@@ -212,6 +229,10 @@ func (s *diskStore) routes(mux *http.ServeMux) {
 		chunk, err := io.ReadAll(r.Body)
 		if err != nil {
 			http.Error(w, "read failed", http.StatusBadRequest)
+			return
+		}
+		if current.limit > 0 && len(current.data)+len(chunk) > current.limit {
+			http.Error(w, "the upload exceeds the signed content length range", http.StatusBadRequest)
 			return
 		}
 		current.data = append(current.data, chunk...)
@@ -261,7 +282,7 @@ func (s *diskStore) routes(mux *http.ServeMux) {
 func cors(w http.ResponseWriter) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Access-Control-Allow-Methods", "GET, HEAD, POST, PUT, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Range, Range, x-goog-resumable, x-goog-if-generation-match")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Range, Range, x-goog-resumable, x-goog-if-generation-match, x-goog-content-length-range")
 	w.Header().Set("Access-Control-Expose-Headers", "Location, Range, Content-Range, ETag")
 	w.Header().Set("Access-Control-Max-Age", "3600")
 }
@@ -327,14 +348,12 @@ func nested(m map[string]any, key string) map[string]any {
 // point is one calibration correspondence of the fixture's camera.
 type point struct{ worldX, worldY, pixelX, pixelY float64 }
 
-// The synthetic fixture's camera: a 320 x 240 view of a 50 x 50 cm arena
-// (worker/tests/synthetic.py). Corners fit the transform, the other three check it.
-// clipStartUs is where the analyzed clip begins inside the fixture video. It is
-// not zero on purpose: the panel has to offset both players to play an event.
-const clipStartUs int64 = 1_000_000
-
-var fitPoints = []point{{0, 0, 52, 28}, {50, 0, 268, 36}, {50, 50, 292, 222}, {0, 50, 30, 214}}
-var checkPoints = []point{{25, 25, 160.9466, 116.0652}, {10, 40, 85.7359, 172.3152}, {40, 10, 227.6114, 66.2066}}
+// The synthetic fixture's camera: a 320 x 240 view of a 120 cm water maze tank
+// in tank-centred centimetres, x east and y north (worker/tests/contract_fixture.py).
+// The tank's east, north, west and south rims fit the transform; the centre,
+// the platform centre and a south-west point check it.
+var fitPoints = []point{{60, 0, 262, 120}, {0, 60, 160, 20}, {-60, 0, 58, 124}, {0, -60, 162, 224}}
+var checkPoints = []point{{0, 0, 160.9998, 121.9804}, {30, 30, 211.2438, 70.2391}, {-20, -40, 127.5562, 190.8809}}
 
 func correspondences(points []point) []map[string]float64 {
 	out := make([]map[string]float64, 0, len(points))
@@ -344,10 +363,46 @@ func correspondences(points []point) []map[string]float64 {
 	return out
 }
 
-// seedAnalyzedTest creates one experiment with an analyzed Open Field test and
-// returns the identifiers the browser test needs.
-func seedAnalyzedTest(ctx context.Context, api bootstrap.API, store *diskStore, fixtures, adminPassword string) (map[string]any, error) {
-	overlay, err := os.ReadFile(fixtures + "/analyzed.mp4")
+// Passwords of the seeded accounts, one per role below the administrator.
+var rolePasswords = map[string]string{
+	"LAB_MANAGER": "Manager-password-1",
+	"RESEARCHER":  "Researcher-password-1",
+	"TECHNICIAN":  "Technician-password-1",
+	"VIEWER":      "Viewer-password-1",
+}
+
+// seeder creates rows through the API and stops at the first failure.
+type seeder struct {
+	c   *caller
+	err error
+}
+
+func (s *seeder) post(path string, body any) map[string]any {
+	if s.err != nil {
+		return map[string]any{}
+	}
+	out, err := s.c.do(http.MethodPost, path, body)
+	if err != nil {
+		s.err = err
+		return map[string]any{}
+	}
+	return out
+}
+
+// seedStudy builds two running studies in the lab's time zone (UTC) and drives
+// their analysis through the worker protocol.
+//
+// The main study (E2E): day 0 was three days ago, so daily doses are due today.
+// It has an overdue planned baseline session, a baseline session in progress
+// with two animals whose results wait for review (M02 has a newer run as well),
+// and a Day 14 session with three animals: two accepted results and one still
+// pending, so the study report has numbers and a provisional banner.
+//
+// The blinded study (E2E-BLIND) has one session with two pending results.
+//
+// It returns the identifiers and credentials the browser tests need.
+func seedStudy(api bootstrap.API, store *diskStore, fixtures, adminPassword string) (map[string]any, error) {
+	video, err := os.ReadFile(fixtures + "/analyzed.mp4")
 	if err != nil {
 		return nil, err
 	}
@@ -361,384 +416,302 @@ func seedAnalyzedTest(ctx context.Context, api bootstrap.API, store *diskStore, 
 		return nil, err
 	}
 	c.token = text(session, "token")
+	s := &seeder{c: c}
 
-	subject, err := c.do(http.MethodPost, "/api/subjects", map[string]any{"code": "E2E-1", "species": "MOUSE", "sex": "FEMALE"})
-	if err != nil {
-		return nil, err
+	now := time.Now().UTC()
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+	dayZero := today.AddDate(0, 0, -3)
+	at := func(t time.Time) string { return t.Format(time.RFC3339) }
+	// Sessions running now were scheduled an hour ago, started half an hour
+	// ago and filmed a trial since, all on today's date even just after midnight.
+	scheduled := now.Add(-time.Hour)
+	if scheduled.Before(today) {
+		scheduled = today
 	}
-	experiment, err := c.do(http.MethodPost, "/api/experiments", map[string]any{"code": "E2E", "title": "End to end study"})
-	if err != nil {
-		return nil, err
+	started := scheduled.Add(now.Sub(scheduled) / 2)
+	trialStart, trialEnd := started.Add(now.Sub(started)/4), started.Add(now.Sub(started)/2)
+
+	accounts := map[string]any{}
+	for _, role := range []string{"LAB_MANAGER", "RESEARCHER", "TECHNICIAN", "VIEWER"} {
+		email := strings.ToLower(strings.ReplaceAll(role, "_", "")) + "@e2e.local"
+		s.post("/api/users", map[string]any{"email": email, "name": strings.ToLower(role), "role": role, "password": rolePasswords[role]})
+		accounts[role] = map[string]any{"email": email, "password": rolePasswords[role]}
 	}
+
+	// Catalog.
+	substance := func(name, kind string) string {
+		return text(s.post("/api/catalog/substances", map[string]any{"name": name, "kind": kind}), "id")
+	}
+	mptp, saline, compound := substance("MPTP", "INDUCER"), substance("Saline", "VEHICLE"), substance("Compound X", "COMPOUND")
+	substance("L-DOPA", "REFERENCE_DRUG")
+	model := text(s.post("/api/catalog/disease-models", map[string]any{"name": "MPTP Parkinson", "inductionType": "CHEMICAL",
+		"confirmationCriterion": "Pole descent time above 150% of baseline"}), "id")
+
+	// Three calibrated water maze pools filmed by one camera.
+	arena := func(name string) (string, string) {
+		created := s.post("/api/environments", map[string]any{"name": name, "paradigmKey": "MWM",
+			"revision": map[string]any{"paradigmVersion": 1, "parameters": map[string]any{"tank_diameter_cm": 120, "platform_diameter_cm": 10, "platform_x_cm": 30, "platform_y_cm": 30}}})
+		id := text(nested(created, "environment"), "id")
+		s.post("/api/environments/"+id+"/revisions/1/calibrations", map[string]any{
+			"cameraId": "e2e-camera", "frameWidth": 320, "frameHeight": 240,
+			"crop": map[string]any{"x": 0, "y": 0, "width": 320, "height": 240}, "measurementPlane": "ARENA_FLOOR",
+			"fitPoints": correspondences(fitPoints), "checkPoints": correspondences(checkPoints),
+		})
+		return id, text(nested(created, "revision"), "id")
+	}
+	poolA, poolARevision := arena("Pool A")
+	poolB, poolBRevision := arena("Pool B")
+	poolC, poolCRevision := arena("Pool C")
+
+	// The study design.
+	experiment := s.post("/api/experiments", map[string]any{"code": "E2E", "title": "Compound X in MPTP mice",
+		"hypothesis": "Compound X rescues the motor deficit", "randomisation": "Block randomisation"})
 	experimentID := text(experiment, "id")
-	enrollment, err := c.do(http.MethodPost, "/api/experiments/"+experimentID+"/enrollments",
-		map[string]any{"subjectId": text(subject, "id"), "enrolledAt": time.Now().UTC().Add(-48 * time.Hour).Format(time.RFC3339)})
-	if err != nil {
-		return nil, err
+	base := "/api/experiments/" + experimentID
+	group := func(code, name, role string, diseased bool) string {
+		body := map[string]any{"code": code, "name": name, "role": role, "targetSize": 3}
+		if diseased {
+			body["diseaseModelId"] = model
+		}
+		return text(s.post(base+"/groups", body), "id")
 	}
-	environment, err := c.do(http.MethodPost, "/api/environments", map[string]any{
-		"name": "E2E arena", "paradigmKey": "OPEN_FIELD",
-		"revision": map[string]any{"paradigmVersion": 1, "apparatus": map[string]any{"arena_width_cm": 50, "arena_height_cm": 50, "center_fraction": 0.5}},
-	})
-	if err != nil {
-		return nil, err
+	healthy := group("G1", "Healthy", "HEALTHY_CONTROL", false)
+	disease := group("G2", "MPTP + vehicle", "DISEASE_CONTROL", true)
+	treated := group("G3", "MPTP + Compound X", "TREATMENT", true)
+	item := func(groupID, purpose, substanceID, amount, unit, route, frequency string, start, end int) string {
+		return text(s.post(base+"/regimen-items", map[string]any{"groupId": groupID, "purpose": purpose, "substanceId": substanceID, "amount": amount,
+			"unit": unit, "route": route, "frequency": frequency, "startDay": start, "endDay": end}), "id")
 	}
-	protocol, err := c.do(http.MethodPost, "/api/experiments/"+experimentID+"/protocols", map[string]any{
-		"name": "Open field", "version": map[string]any{"steps": []any{map[string]any{
-			"position": 1, "paradigmKey": "OPEN_FIELD", "paradigmVersion": 1,
-			"environmentRevisionId": text(nested(environment, "revision"), "id"), "trialType": "STANDARD", "trials": 1,
-		}}},
-	})
-	if err != nil {
-		return nil, err
+	item(healthy, "VEHICLE", saline, "10", "mL/kg", "ORAL", "DAILY", 0, 14)
+	induction := item(disease, "INDUCTION", mptp, "20", "mg/kg", "INTRAPERITONEAL", "ONCE", 0, 0)
+	item(disease, "VEHICLE", saline, "10", "mL/kg", "ORAL", "DAILY", 0, 14)
+	item(treated, "INDUCTION", mptp, "20", "mg/kg", "INTRAPERITONEAL", "ONCE", 0, 0)
+	item(treated, "TREATMENT", compound, "5", "mg/kg", "ORAL", "DAILY", 0, 14)
+	timepoint := func(base, name string, day, position int) string {
+		return text(s.post(base+"/timepoints", map[string]any{"name": name, "studyDay": day, "position": position}), "id")
 	}
-	test, err := c.do(http.MethodPost, "/api/experiments/"+experimentID+"/tests", map[string]any{
-		"enrollmentId": text(enrollment, "id"), "protocolVersionId": text(nested(protocol, "version"), "id"),
-		"stepPosition": 1, "scheduledAt": time.Now().UTC().Add(-2 * time.Hour).Format(time.RFC3339),
-	})
-	if err != nil {
-		return nil, err
+	baseline := timepoint(base, "Baseline", -1, 1)
+	day7 := timepoint(base, "Day 7", 7, 2)
+	day14 := timepoint(base, "Day 14", 14, 3)
+	waterMaze := map[string]any{"name": "Water maze", "version": map[string]any{"steps": []any{
+		map[string]any{"position": 1, "paradigmKey": "MWM", "paradigmVersion": 1, "trialType": "ACQUISITION", "trials": 2},
+	}}}
+	versionID := text(nested(s.post(base+"/protocols", waterMaze), "version"), "id")
+	s.post(base+"/endpoints", map[string]any{"timepointId": day14, "baselineTimepointId": baseline, "paradigmKey": "MWM",
+		"metricKey": "path_length_cm", "kind": "PRIMARY", "direction": "LOWER_IS_BETTER"})
+
+	// Animals: allocated ten days ago, two to three per group.
+	allocations := map[string]string{}
+	subjects := map[string]string{}
+	for i, code := range []string{"M01", "M02", "M03", "M04", "M05", "M06", "M07", "M08"} {
+		sex := "MALE"
+		if i%2 == 1 {
+			sex = "FEMALE"
+		}
+		subjects[code] = text(s.post("/api/subjects", map[string]any{"code": code, "species": "MOUSE", "sex": sex}), "id")
+		groupID := []string{healthy, healthy, disease, disease, disease, treated, treated, treated}[i]
+		allocations[code] = text(s.post(base+"/allocations", map[string]any{"subjectId": subjects[code], "groupId": groupID,
+			"cage": fmt.Sprintf("C%d", i/3+1), "allocatedAt": at(today.AddDate(0, 0, -10))}), "id")
 	}
-	testID := text(test, "id")
-	if _, err := c.do(http.MethodPost, "/api/tests/"+testID+"/start", map[string]any{}); err != nil {
-		return nil, err
+	s.post(base+"/start", map[string]any{"dayZero": dayZero.Format("2006-01-02")})
+
+	// Weights four days ago for the first five animals; the treated group was
+	// never weighed, so its per-kilogram doses ask for a weight first.
+	for i, code := range []string{"M01", "M02", "M03", "M04", "M05"} {
+		s.post("/api/subjects/"+subjects[code]+"/weights", map[string]any{"grams": fmt.Sprintf("%d.5", 24+i), "measuredAt": at(today.AddDate(0, 0, -4).Add(9 * time.Hour))})
+	}
+	// Day 0: the disease control animals were induced; M03 is confirmed.
+	for _, code := range []string{"M03", "M04", "M05"} {
+		s.post(base+"/allocations/"+allocations[code]+"/administrations", map[string]any{"regimenItemId": induction,
+			"administeredAt": at(dayZero.Add(10 * time.Hour))})
+	}
+	s.post(base+"/allocations/"+allocations["M03"]+"/induction-outcome", map[string]any{"status": "CONFIRMED", "assessedAt": at(dayZero.AddDate(0, 0, 2).Add(10 * time.Hour))})
+
+	// film uploads the fixture as the session's video and verifies it.
+	film := func(testID string) {
+		started := s.post("/api/tests/"+testID+"/recordings", map[string]any{
+			"fileName": "session.mp4", "contentType": "video/mp4", "sizeBytes": len(video), "crc32c": mediadomain.FormatCRC32C(crc32c(video)),
+		})
+		if s.err != nil {
+			return
+		}
+		uploaded, err := url.Parse(text(nested(started, "upload"), "url"))
+		if err != nil {
+			s.err = err
+			return
+		}
+		store.put(uploaded.Query().Get("object"), video, "video/mp4")
+		s.post("/api/tests/"+testID+"/recordings/"+text(nested(started, "recording"), "id")+"/finalize", map[string]any{})
+	}
+	// running plans a session with animals in arenas (allocation, arena
+	// revision pairs), starts it and returns it with its animals by allocation.
+	running := func(base, timepointID, version, notes string, seats ...string) (string, map[string]string) {
+		var list []any
+		for i := 0; i+1 < len(seats); i += 2 {
+			list = append(list, map[string]any{"allocationId": seats[i], "environmentRevisionId": seats[i+1]})
+		}
+		created := s.post(base+"/tests", map[string]any{"timepointId": timepointID, "protocolVersionId": version, "stepPosition": 1,
+			"scheduledAt": at(scheduled), "notes": notes, "subjects": list})
+		id := text(created, "id")
+		s.post("/api/tests/"+id+"/start", map[string]any{"startedAt": at(started)})
+		animals := map[string]string{}
+		items, _ := created["subjects"].([]any)
+		for _, raw := range items {
+			if m, ok := raw.(map[string]any); ok {
+				animals[text(m, "allocationId")] = text(m, "id")
+			}
+		}
+		return id, animals
 	}
 
-	// The uploaded source is the fixture video; the browser test uploads its own.
-	// The clip starts one second in, so the analyzed window is shorter than the
-	// video and both players need a real offset to stay on the same timeline.
-	started, err := c.do(http.MethodPost, "/api/tests/"+testID+"/recordings", map[string]any{
-		"fileName": "source.mp4", "contentType": "video/mp4", "sizeBytes": len(overlay), "crc32c": mediadomain.FormatCRC32C(crc32c(overlay)),
-		"clipStartUs": clipStartUs, "clipEndUs": 4_000_000,
-	})
-	if err != nil {
-		return nil, err
+	// Sessions: a planned baseline session that is now overdue, one in
+	// progress today with two animals in two arenas and a verified video, and
+	// a Day 14 session with three animals.
+	overdue := s.post(base+"/tests", map[string]any{"timepointId": baseline, "protocolVersionId": versionID, "stepPosition": 1,
+		"subjects": []any{map[string]any{"allocationId": allocations["M01"], "environmentRevisionId": poolARevision}}})
+	runningID, baselineAnimals := running(base, baseline, versionID, "Morning session",
+		allocations["M02"], poolARevision, allocations["M03"], poolBRevision)
+	if s.err != nil {
+		return nil, s.err
 	}
-	recording := nested(started, "recording")
-	recordingID := text(recording, "id")
-	uploaded, err := url.Parse(text(nested(started, "upload"), "url"))
-	if err != nil {
-		return nil, err
+	if len(baselineAnimals) != 2 {
+		return nil, errors.New("the running session has no animals")
 	}
-	store.put(uploaded.Query().Get("object"), overlay, "video/mp4")
-	if _, err := c.do(http.MethodPost, "/api/tests/"+testID+"/recordings/"+recordingID+"/finalize", map[string]any{}); err != nil {
-		return nil, err
+	m02, m03 := baselineAnimals[allocations["M02"]], baselineAnimals[allocations["M03"]]
+	s.post("/api/tests/"+runningID+"/subjects/"+m02+"/trials", map[string]any{"repetition": 1,
+		"startedAt": at(trialStart), "endedAt": at(trialEnd)})
+	s.post("/api/tests/"+runningID+"/comments", map[string]any{"body": "Pool B lamp flickered at the start."})
+	film(runningID)
+	day14ID, day14Animals := running(base, day14, versionID, "Day 14 session",
+		allocations["M04"], poolARevision, allocations["M06"], poolBRevision, allocations["M07"], poolCRevision)
+	film(day14ID)
+	m04, m06, m07 := day14Animals[allocations["M04"]], day14Animals[allocations["M06"]], day14Animals[allocations["M07"]]
+
+	// The blinded study: one healthy group, one timepoint, one session.
+	blind := s.post("/api/experiments", map[string]any{"code": "E2E-BLIND", "title": "Blinded water maze",
+		"hypothesis": "Handling does not change spatial learning", "randomisation": "Simple randomisation", "blinded": true})
+	blindID := text(blind, "id")
+	blindBase := "/api/experiments/" + blindID
+	blindGroup := text(s.post(blindBase+"/groups", map[string]any{"code": "G1", "name": "Handled", "role": "HEALTHY_CONTROL", "targetSize": 2}), "id")
+	blindDay := timepoint(blindBase, "Baseline", 0, 1)
+	blindVersion := text(nested(s.post(blindBase+"/protocols", waterMaze), "version"), "id")
+	s.post(blindBase+"/endpoints", map[string]any{"timepointId": blindDay, "paradigmKey": "MWM",
+		"metricKey": "path_length_cm", "kind": "PRIMARY", "direction": "LOWER_IS_BETTER"})
+	blindAllocations := map[string]string{}
+	for _, code := range []string{"B01", "B02"} {
+		subject := text(s.post("/api/subjects", map[string]any{"code": code, "species": "MOUSE", "sex": "MALE"}), "id")
+		blindAllocations[code] = text(s.post(blindBase+"/allocations", map[string]any{"subjectId": subject, "groupId": blindGroup}), "id")
 	}
-	if _, err := c.do(http.MethodPost, "/api/tests/"+testID+"/recordings/"+recordingID+"/calibrations", map[string]any{
-		"cameraId": "e2e-camera", "frameWidth": 320, "frameHeight": 240,
-		"crop": map[string]any{"x": 0, "y": 0, "width": 320, "height": 240}, "referenceFrameUs": 0, "measurementPlane": "ARENA_FLOOR",
-		"fitPoints": correspondences(fitPoints), "checkPoints": correspondences(checkPoints),
-	}); err != nil {
-		return nil, err
+	s.post(blindBase+"/start", map[string]any{"dayZero": today.Format("2006-01-02")})
+	blindTestID, blindAnimals := running(blindBase, blindDay, blindVersion, "Blinded session",
+		blindAllocations["B01"], poolARevision, blindAllocations["B02"], poolBRevision)
+	film(blindTestID)
+	if s.err != nil {
+		return nil, s.err
 	}
 
-	registered, err := c.do(http.MethodPost, "/api/analysis/workers", map[string]any{
-		"name": "e2e tracker", "modelVersion": "misko-open-field-bgsub 1.0.0",
-		"capabilities": []any{map[string]any{"paradigmKey": "OPEN_FIELD", "paradigmVersion": 1}},
-	})
-	if err != nil {
-		return nil, err
-	}
-	if err := api.AnalysisTick(ctx); err != nil {
-		return nil, err
+	// Analysis: a worker analyses every queued animal; M02 is analysed again
+	// so its review offers a newer run; two Day 14 results are accepted.
+	registered := s.post("/api/analysis/workers", map[string]any{"name": "e2e-tracker", "modelVersion": "tracker 1.0",
+		"capabilities": []any{map[string]any{"paradigmKey": "MWM", "paradigmVersion": 1}}})
+	if s.err != nil {
+		return nil, s.err
 	}
 	worker := &caller{handler: api.Handler, worker: text(registered, "token")}
-	job, err := worker.do(http.MethodPost, "/api/worker/claim", map[string]any{})
-	if err != nil {
-		return nil, err
-	}
-	run := nested(job, "run")
-	runID, attempt := text(run, "id"), int(nested(job, "run")["attempt"].(float64))
-	prefix := text(job, "outputPrefix")
-
-	// The fixture trajectory belongs to another run and to the whole video: point
-	// it at this run and at the clip that was analyzed.
-	patched, err := clipTo(trajectory, runID, attempt, clipStartUs, 4_000_000)
-	if err != nil {
-		return nil, err
-	}
-	for _, output := range []struct {
-		kind, name, contentType string
-		data                    []byte
-	}{
-		{"ANALYZED_VIDEO", "overlay.mp4", "video/mp4", overlay},
-		{"TRAJECTORY", "trajectory.json", "application/json", patched},
-	} {
-		if _, err := worker.do(http.MethodPost, "/api/worker/runs/"+runID+"/outputs", map[string]any{
-			"attempt": attempt, "kind": output.kind, "fileName": output.name, "contentType": output.contentType,
-			"sizeBytes": len(output.data), "crc32c": mediadomain.FormatCRC32C(crc32c(output.data)),
-		}); err != nil {
-			return nil, err
+	runs := 0
+	analyse := func() error {
+		if err := api.AnalysisTick(context.Background()); err != nil {
+			return err
 		}
-		store.put(prefix+output.name, output.data, output.contentType)
+		for {
+			job, err := worker.do(http.MethodPost, "/api/worker/claim", map[string]any{})
+			if err != nil {
+				return err
+			}
+			if nested(job, "run") == nil {
+				return nil
+			}
+			if err := submitRun(worker, store, job, video, trajectory); err != nil {
+				return err
+			}
+			runs++
+		}
 	}
-	result, err := worker.do(http.MethodPost, "/api/worker/runs/"+runID+"/result", map[string]any{
-		"attempt": attempt, "modelVersion": "misko-open-field-bgsub 1.0.0",
-		"artifacts": []any{
-			map[string]any{"kind": "ANALYZED_VIDEO", "objectName": prefix + "overlay.mp4"},
-			map[string]any{"kind": "TRAJECTORY", "objectName": prefix + "trajectory.json"},
-		},
-		// The worker rendered the whole recording, so a clip time is that far into
-		// both videos: source offset is the clip start the API requires, and the
-		// output offset is the same because the analyzed video covers the video too.
-		"pair": map[string]any{"analyzedObjectName": prefix + "overlay.mp4", "sourceOffsetUs": clipStartUs, "outputOffsetUs": clipStartUs, "timeMappingVersion": "identity-v1"},
-	})
-	if err != nil {
+	if err := analyse(); err != nil {
 		return nil, err
 	}
-	if text(result, "status") != "SUCCEEDED" {
-		return nil, fmt.Errorf("seeded run is %s", text(result, "status"))
+	s.post("/api/analysis/test-subjects/"+m02+"/runs", map[string]any{})
+	if s.err != nil {
+		return nil, s.err
 	}
-	// A read-only account, and a second recording whose analysis fails quality
-	// control, so the panel's roles and failure states have real data.
-	if _, err := c.do(http.MethodPost, "/api/users", map[string]any{
-		"email": "viewer@e2e.local", "name": "Viewer", "role": "VIEWER", "password": viewerPassword,
-	}); err != nil {
+	if err := analyse(); err != nil {
 		return nil, err
 	}
-	secondRunID, err := seedSecondRun(ctx, api, store, c, worker, testID, recordingID, overlay, trajectory)
-	if err != nil {
-		return nil, err
+	if runs != 8 {
+		return nil, fmt.Errorf("the worker analysed %d runs, want 8", runs)
 	}
-	failedRunID, err := seedFailedRun(ctx, api, store, c, worker, testID, overlay, trajectory)
-	if err != nil {
-		return nil, err
+	for _, accepted := range []string{m04, m06} {
+		s.post("/api/analysis/results/"+accepted+"/accept", map[string]any{"note": "Clean track"})
 	}
-	inheritedRecordingID, err := seedInheritedRecording(c, store, testID, text(nested(environment, "environment"), "id"), overlay)
-	if err != nil {
-		return nil, err
+	if s.err != nil {
+		return nil, s.err
 	}
 	return map[string]any{
-		"experimentId": experimentID, "experimentCode": "E2E", "subjectCode": "E2E-1",
-		"testId": testID, "recordingId": recordingID, "runId": runID,
-		"environmentId": text(nested(environment, "environment"), "id"), "inheritedRecordingId": inheritedRecordingID, "secondRunId": secondRunID, "failedRunId": failedRunID,
-		"viewerEmail": "viewer@e2e.local", "viewerPassword": viewerPassword,
+		"experimentId": experimentID, "experimentCode": "E2E", "dayZero": dayZero.Format("2006-01-02"),
+		"groups":            map[string]any{"healthy": healthy, "diseaseControl": disease, "treatment": treated},
+		"timepoints":        map[string]any{"baseline": baseline, "day7": day7, "day14": day14},
+		"protocolVersionId": versionID, "allocations": allocations, "subjects": subjects,
+		"environments":  map[string]any{"poolA": poolA, "poolB": poolB, "poolC": poolC},
+		"arenas":        map[string]any{"poolA": poolARevision, "poolB": poolBRevision, "poolC": poolCRevision},
+		"plannedTestId": text(overdue, "id"), "runningTestId": runningID, "day14TestId": day14ID, "accounts": accounts,
+		// Test subjects (an animal in a session) with analysis results.
+		"results": map[string]any{"M02": m02, "M03": m03, "M04": m04, "M06": m06, "M07": m07},
+		"blind": map[string]any{"experimentId": blindID, "experimentCode": "E2E-BLIND", "testId": blindTestID,
+			"results": map[string]any{"B01": blindAnimals[blindAllocations["B01"]], "B02": blindAnimals[blindAllocations["B02"]]}},
 	}, nil
 }
 
-const viewerPassword = "Viewer-password-1"
-
-// seedInheritedRecording calibrates the seeded environment once and adds a
-// verified recording that has no calibration of its own, so it is analyzed with
-// the environment's. It runs after every analysis tick on purpose: the earlier
-// seeds claim the oldest queued run, and this recording must not queue one.
-func seedInheritedRecording(c *caller, store *diskStore, testID, environmentID string, overlay []byte) (string, error) {
-	if _, err := c.do(http.MethodPost, "/api/environments/"+environmentID+"/revisions/1/calibrations", map[string]any{
-		"cameraId": "e2e-camera", "frameWidth": 320, "frameHeight": 240,
-		"crop": map[string]any{"x": 0, "y": 0, "width": 320, "height": 240}, "measurementPlane": "ARENA_FLOOR",
-		"fitPoints": correspondences(fitPoints), "checkPoints": correspondences(checkPoints),
-	}); err != nil {
-		return "", err
-	}
-	started, err := c.do(http.MethodPost, "/api/tests/"+testID+"/recordings", map[string]any{
-		"fileName": "inherited.mp4", "contentType": "video/mp4", "sizeBytes": len(overlay), "crc32c": mediadomain.FormatCRC32C(crc32c(overlay)),
-		"clipStartUs": 0, "clipEndUs": 4_000_000,
-	})
-	if err != nil {
-		return "", err
-	}
-	recordingID := text(nested(started, "recording"), "id")
-	uploaded, err := url.Parse(text(nested(started, "upload"), "url"))
-	if err != nil {
-		return "", err
-	}
-	store.put(uploaded.Query().Get("object"), overlay, "video/mp4")
-	if _, err := c.do(http.MethodPost, "/api/tests/"+testID+"/recordings/"+recordingID+"/finalize", map[string]any{}); err != nil {
-		return "", err
-	}
-	return recordingID, nil
-}
-
-// seedSecondRun reanalyzes the recording that already has a published result,
-// so the test has two runs whose pairs can both be opened. The analyzed video
-// of this run is its own object, which is how the panel is caught showing the
-// video of the run the laboratory is no longer looking at.
-func seedSecondRun(ctx context.Context, api bootstrap.API, store *diskStore, c, worker *caller, testID, recordingID string, overlay, trajectory []byte) (string, error) {
-	if _, err := c.do(http.MethodPost, "/api/tests/"+testID+"/recordings/"+recordingID+"/analysis-runs", map[string]any{}); err != nil {
-		return "", err
-	}
-	if err := api.AnalysisTick(ctx); err != nil {
-		return "", err
-	}
-	job, err := worker.do(http.MethodPost, "/api/worker/claim", map[string]any{})
-	if err != nil {
-		return "", err
-	}
+// submitRun does a worker's part for one claimed run: it uploads the analysed
+// video and the fixture trajectory, rewritten for this run, to the store and
+// submits the result. The API computes the metrics from the trajectory.
+func submitRun(worker *caller, store *diskStore, job map[string]any, video, trajectory []byte) error {
 	run := nested(job, "run")
-	runID, attempt := text(run, "id"), int(run["attempt"].(float64))
-	prefix := text(job, "outputPrefix")
-
-	patched, err := clipTo(trajectory, runID, attempt, clipStartUs, 4_000_000)
-	if err != nil {
-		return "", err
+	runID, attempt := text(run, "id"), run["attempt"]
+	var track map[string]any
+	if err := json.Unmarshal(trajectory, &track); err != nil {
+		return err
 	}
-	for _, output := range []struct {
-		kind, name, contentType string
-		data                    []byte
+	track["runId"], track["attempt"] = runID, attempt
+	duration, _ := track["durationUs"].(float64)
+	rewritten, err := json.Marshal(track)
+	if err != nil {
+		return err
+	}
+	path := "/api/worker/runs/" + runID
+	outputs := []struct {
+		kind, fileName, contentType string
+		data                        []byte
 	}{
-		{"ANALYZED_VIDEO", "reanalysis.mp4", "video/mp4", overlay},
-		{"TRAJECTORY", "trajectory.json", "application/json", patched},
-	} {
-		if _, err := worker.do(http.MethodPost, "/api/worker/runs/"+runID+"/outputs", map[string]any{
-			"attempt": attempt, "kind": output.kind, "fileName": output.name, "contentType": output.contentType,
-			"sizeBytes": len(output.data), "crc32c": mediadomain.FormatCRC32C(crc32c(output.data)),
-		}); err != nil {
-			return "", err
+		{"ANALYZED_VIDEO", "overlay.mp4", "video/mp4", video},
+		{"TRAJECTORY", "trajectory.json", "application/json", rewritten},
+	}
+	var artifacts []any
+	analyzed := ""
+	for _, o := range outputs {
+		out, err := worker.do(http.MethodPost, path+"/outputs", map[string]any{"attempt": attempt, "kind": o.kind, "fileName": o.fileName,
+			"contentType": o.contentType, "sizeBytes": len(o.data), "crc32c": mediadomain.FormatCRC32C(crc32c(o.data))})
+		if err != nil {
+			return err
 		}
-		store.put(prefix+output.name, output.data, output.contentType)
-	}
-	result, err := worker.do(http.MethodPost, "/api/worker/runs/"+runID+"/result", map[string]any{
-		"attempt": attempt, "modelVersion": "misko-open-field-bgsub 1.0.0",
-		"artifacts": []any{
-			map[string]any{"kind": "ANALYZED_VIDEO", "objectName": prefix + "reanalysis.mp4"},
-			map[string]any{"kind": "TRAJECTORY", "objectName": prefix + "trajectory.json"},
-		},
-		"pair": map[string]any{"analyzedObjectName": prefix + "reanalysis.mp4", "sourceOffsetUs": clipStartUs, "outputOffsetUs": clipStartUs, "timeMappingVersion": "identity-v1"},
-	})
-	if err != nil {
-		return "", err
-	}
-	if text(result, "status") != "SUCCEEDED" {
-		return "", fmt.Errorf("the reanalysis run is %s", text(result, "status"))
-	}
-	return runID, nil
-}
-
-// seedFailedRun analyzes a second recording of the same test with a trajectory
-// that lost half of its samples, which the API refuses on quality control.
-func seedFailedRun(ctx context.Context, api bootstrap.API, store *diskStore, c, worker *caller, testID string, overlay, trajectory []byte) (string, error) {
-	started, err := c.do(http.MethodPost, "/api/tests/"+testID+"/recordings", map[string]any{
-		"fileName": "second.mp4", "contentType": "video/mp4", "sizeBytes": len(overlay), "crc32c": mediadomain.FormatCRC32C(crc32c(overlay)),
-		"clipStartUs": 0, "clipEndUs": 4_000_000,
-	})
-	if err != nil {
-		return "", err
-	}
-	recordingID := text(nested(started, "recording"), "id")
-	uploaded, err := url.Parse(text(nested(started, "upload"), "url"))
-	if err != nil {
-		return "", err
-	}
-	store.put(uploaded.Query().Get("object"), overlay, "video/mp4")
-	if _, err := c.do(http.MethodPost, "/api/tests/"+testID+"/recordings/"+recordingID+"/finalize", map[string]any{}); err != nil {
-		return "", err
-	}
-	if _, err := c.do(http.MethodPost, "/api/tests/"+testID+"/recordings/"+recordingID+"/calibrations", map[string]any{
-		"cameraId": "e2e-camera", "frameWidth": 320, "frameHeight": 240,
-		"crop": map[string]any{"x": 0, "y": 0, "width": 320, "height": 240}, "referenceFrameUs": 0, "measurementPlane": "ARENA_FLOOR",
-		"fitPoints": correspondences(fitPoints), "checkPoints": correspondences(checkPoints),
-	}); err != nil {
-		return "", err
-	}
-	if err := api.AnalysisTick(ctx); err != nil {
-		return "", err
-	}
-	job, err := worker.do(http.MethodPost, "/api/worker/claim", map[string]any{})
-	if err != nil {
-		return "", err
-	}
-	run := nested(job, "run")
-	runID, attempt := text(run, "id"), int(run["attempt"].(float64))
-	prefix := text(job, "outputPrefix")
-
-	lossy, err := loseHalfTheSamples(trajectory, runID, attempt)
-	if err != nil {
-		return "", err
-	}
-	for _, output := range []struct {
-		kind, name, contentType string
-		data                    []byte
-	}{
-		{"ANALYZED_VIDEO", "overlay.mp4", "video/mp4", overlay},
-		{"TRAJECTORY", "trajectory.json", "application/json", lossy},
-	} {
-		if _, err := worker.do(http.MethodPost, "/api/worker/runs/"+runID+"/outputs", map[string]any{
-			"attempt": attempt, "kind": output.kind, "fileName": output.name, "contentType": output.contentType,
-			"sizeBytes": len(output.data), "crc32c": mediadomain.FormatCRC32C(crc32c(output.data)),
-		}); err != nil {
-			return "", err
-		}
-		store.put(prefix+output.name, output.data, output.contentType)
-	}
-	result, err := worker.do(http.MethodPost, "/api/worker/runs/"+runID+"/result", map[string]any{
-		"attempt": attempt, "modelVersion": "misko-open-field-bgsub 1.0.0",
-		"artifacts": []any{
-			map[string]any{"kind": "ANALYZED_VIDEO", "objectName": prefix + "overlay.mp4"},
-			map[string]any{"kind": "TRAJECTORY", "objectName": prefix + "trajectory.json"},
-		},
-		"pair": map[string]any{"analyzedObjectName": prefix + "overlay.mp4", "sourceOffsetUs": 0, "outputOffsetUs": 0, "timeMappingVersion": "identity-v1"},
-	})
-	if err != nil {
-		return "", err
-	}
-	if text(result, "status") != "FAILED" {
-		return "", fmt.Errorf("the lossy run is %s, not FAILED", text(result, "status"))
-	}
-	return runID, nil
-}
-
-// clipTo rebases the fixture trajectory, which covers the whole video, onto the
-// clip that was analyzed: samples before the clip start are dropped and the rest
-// are measured from it, which is what the API requires of a clipped recording.
-func clipTo(trajectory []byte, runID string, attempt int, startUs, endUs int64) ([]byte, error) {
-	var document map[string]any
-	if err := json.Unmarshal(trajectory, &document); err != nil {
-		return nil, err
-	}
-	document["runId"], document["attempt"], document["durationUs"] = runID, attempt, endUs-startUs
-	samples, ok := document["samples"].(map[string]any)
-	if !ok {
-		return nil, fmt.Errorf("trajectory has no samples")
-	}
-	times, _ := samples["tUs"].([]any)
-	keep := make([]int, 0, len(times))
-	for i, t := range times {
-		at, ok := t.(float64)
-		if !ok {
-			return nil, fmt.Errorf("sample %d has no time", i)
-		}
-		if int64(at) >= startUs && int64(at) <= endUs {
-			keep = append(keep, i)
+		object := text(out, "objectName")
+		store.put(object, o.data, o.contentType)
+		artifacts = append(artifacts, map[string]any{"kind": o.kind, "objectName": object})
+		if o.kind == "ANALYZED_VIDEO" {
+			analyzed = object
 		}
 	}
-	if len(keep) == 0 {
-		return nil, fmt.Errorf("the clip keeps no samples")
-	}
-	for _, key := range []string{"tUs", "xCm", "yCm", "tracked", "confidence"} {
-		column, _ := samples[key].([]any)
-		clipped := make([]any, 0, len(keep))
-		for _, i := range keep {
-			value := column[i]
-			if key == "tUs" {
-				value = float64(int64(value.(float64)) - startUs)
-			}
-			clipped = append(clipped, value)
-		}
-		samples[key] = clipped
-	}
-	return json.Marshal(document)
-}
-
-// loseHalfTheSamples marks every second sample untracked, which fails the
-// paradigm's max_lost_frame_ratio rule.
-func loseHalfTheSamples(trajectory []byte, runID string, attempt int) ([]byte, error) {
-	var document map[string]any
-	if err := json.Unmarshal(trajectory, &document); err != nil {
-		return nil, err
-	}
-	document["runId"], document["attempt"], document["durationUs"] = runID, attempt, 4_000_000
-	samples, ok := document["samples"].(map[string]any)
-	if !ok {
-		return nil, fmt.Errorf("trajectory has no samples")
-	}
-	tracked, _ := samples["tracked"].([]any)
-	x, _ := samples["xCm"].([]any)
-	y, _ := samples["yCm"].([]any)
-	confidence, _ := samples["confidence"].([]any)
-	for i := range tracked {
-		if i%2 == 1 {
-			tracked[i], x[i], y[i], confidence[i] = false, nil, nil, 0.0
-		}
-	}
-	return json.Marshal(document)
+	_, err = worker.do(http.MethodPost, path+"/result", map[string]any{"attempt": attempt, "modelVersion": "tracker 1.0",
+		"recordingDurationUs": int64(duration), "artifacts": artifacts,
+		"pair": map[string]any{"analyzedObjectName": analyzed, "sourceOffsetUs": 0, "outputOffsetUs": 0, "timeMappingVersion": "identity-v1"}})
+	return err
 }

@@ -1,4 +1,4 @@
-// Package subjectshttp exposes subjects over HTTP.
+// Package subjectshttp exposes subjects and their body weights over HTTP.
 package subjectshttp
 
 import (
@@ -22,6 +22,9 @@ var failures = []httpjson.Failure{
 	{Err: domain.ErrInvalidCode, Status: http.StatusBadRequest, Code: "subject.invalidCode"},
 	{Err: domain.ErrInvalidSpecies, Status: http.StatusBadRequest, Code: "subject.invalidSpecies"},
 	{Err: domain.ErrInvalidSex, Status: http.StatusBadRequest, Code: "subject.invalidSex"},
+	{Err: domain.ErrInvalidWeight, Status: http.StatusBadRequest, Code: "weight.invalid"},
+	{Err: domain.ErrMissingTime, Status: http.StatusBadRequest, Code: "common.invalidTime"},
+	{Err: domain.ErrFutureTime, Status: http.StatusBadRequest, Code: "common.futureTime"},
 }
 
 type handler struct {
@@ -37,6 +40,8 @@ func Register(mux *http.ServeMux, service *application.Service, authenticate fun
 	mux.HandleFunc("GET /api/subjects/{id}", h.get)
 	mux.HandleFunc("PATCH /api/subjects/{id}", h.update)
 	mux.HandleFunc("DELETE /api/subjects/{id}", h.delete)
+	mux.HandleFunc("GET /api/subjects/{id}/weights", h.listWeights)
+	mux.HandleFunc("POST /api/subjects/{id}/weights", h.recordWeight)
 }
 
 func (h handler) list(w http.ResponseWriter, r *http.Request) {
@@ -46,7 +51,7 @@ func (h handler) list(w http.ResponseWriter, r *http.Request) {
 	}
 	q := r.URL.Query()
 	page, err := h.service.List(r.Context(), actor, application.Query{
-		Search: q.Get("search"), Species: q.Get("species"), Sex: q.Get("sex"), Sort: q.Get("sort"), Order: q.Get("order"),
+		Search: q.Get("search"), Species: q.Get("species"), Sex: q.Get("sex"), Unallocated: q.Get("unallocated"), Sort: q.Get("sort"), Order: q.Get("order"),
 		Page: httpjson.QueryInt(q.Get("page")), PageSize: httpjson.QueryInt(q.Get("pageSize")),
 	})
 	if err != nil {
@@ -135,6 +140,46 @@ func (h handler) delete(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (h handler) listWeights(w http.ResponseWriter, r *http.Request) {
+	actor, ok := h.actor(w, r)
+	if !ok {
+		return
+	}
+	weights, err := h.service.Weights(r.Context(), actor, r.PathValue("id"))
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	data := make([]weightJSON, 0, len(weights))
+	for _, weight := range weights {
+		data = append(data, toWeightJSON(weight))
+	}
+	httpjson.Write(w, http.StatusOK, struct {
+		Data []weightJSON `json:"data"`
+	}{data})
+}
+
+func (h handler) recordWeight(w http.ResponseWriter, r *http.Request) {
+	actor, ok := h.actor(w, r)
+	if !ok {
+		return
+	}
+	var body struct {
+		Grams      string    `json:"grams"`
+		MeasuredAt time.Time `json:"measuredAt"`
+	}
+	if err := httpjson.Decode(w, r, &body); err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	weight, err := h.service.RecordWeight(r.Context(), actor, r.PathValue("id"), application.WeightInput(body))
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	httpjson.Write(w, http.StatusCreated, toWeightJSON(weight))
+}
+
 func (h handler) actor(w http.ResponseWriter, r *http.Request) (access.Actor, bool) {
 	actor, err := h.authenticate(r)
 	if err != nil {
@@ -149,14 +194,41 @@ func (h handler) fail(w http.ResponseWriter, r *http.Request, err error) {
 }
 
 type subjectJSON struct {
-	ID        string    `json:"id"`
-	Code      string    `json:"code"`
-	Species   string    `json:"species"`
-	Sex       string    `json:"sex"`
-	CreatedAt time.Time `json:"createdAt"`
-	UpdatedAt time.Time `json:"updatedAt"`
+	ID         string          `json:"id"`
+	Code       string          `json:"code"`
+	Species    string          `json:"species"`
+	Sex        string          `json:"sex"`
+	Allocation *allocationJSON `json:"allocation"`
+	CreatedAt  time.Time       `json:"createdAt"`
+	UpdatedAt  time.Time       `json:"updatedAt"`
+}
+
+type allocationJSON struct {
+	ExperimentID   string `json:"experimentId"`
+	ExperimentCode string `json:"experimentCode"`
+	GroupID        string `json:"groupId"`
+	GroupCode      string `json:"groupCode"`
+	GroupRole      string `json:"groupRole"`
+	Excluded       bool   `json:"excluded"`
 }
 
 func toJSON(s domain.Subject) subjectJSON {
-	return subjectJSON{ID: s.ID, Code: s.Code, Species: string(s.Species), Sex: string(s.Sex), CreatedAt: s.CreatedAt, UpdatedAt: s.UpdatedAt}
+	out := subjectJSON{ID: s.ID, Code: s.Code, Species: string(s.Species), Sex: string(s.Sex), CreatedAt: s.CreatedAt, UpdatedAt: s.UpdatedAt}
+	if a := s.Allocation; a != nil {
+		out.Allocation = &allocationJSON{a.ExperimentID, a.ExperimentCode, a.GroupID, a.GroupCode, a.GroupRole, a.Excluded}
+	}
+	return out
+}
+
+type weightJSON struct {
+	ID         string    `json:"id"`
+	SubjectID  string    `json:"subjectId"`
+	Grams      string    `json:"grams"`
+	MeasuredAt time.Time `json:"measuredAt"`
+	RecordedBy string    `json:"recordedBy"`
+	CreatedAt  time.Time `json:"createdAt"`
+}
+
+func toWeightJSON(w domain.Weight) weightJSON {
+	return weightJSON{w.ID, w.SubjectID, domain.FormatGrams(w.Milligrams), w.MeasuredAt, w.RecordedBy, w.CreatedAt}
 }

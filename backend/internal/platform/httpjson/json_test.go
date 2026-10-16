@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -81,5 +82,26 @@ func TestFailMapsKnownErrorsAndHidesUnknownOnes(t *testing.T) {
 	}
 	if strings.Contains(logs.String(), "header-secret") || strings.Contains(logs.String(), "query-secret") {
 		t.Fatalf("request credentials logged: %s", logs.String())
+	}
+}
+
+func TestLanguage(t *testing.T) {
+	supported := []string{"en", "tr"}
+	for _, tc := range []struct{ query, header, want string }{
+		{"", "", "en"},
+		{"", "tr-TR,tr;q=0.9,en;q=0.8", "tr"},
+		{"", "de-DE, en-US;q=0.7", "en"},
+		{"", "de", "en"},
+		{"tr", "en", "tr"},
+		{"xx", "tr", "tr"},
+		{"", " TR ", "tr"},
+	} {
+		r := httptest.NewRequest(http.MethodGet, "/x?lang="+tc.query, nil)
+		if tc.header != "" {
+			r.Header.Set("Accept-Language", tc.header)
+		}
+		if got := Language(r, supported); got != tc.want {
+			t.Errorf("lang=%q Accept-Language=%q: got %q want %q", tc.query, tc.header, got, tc.want)
+		}
 	}
 }

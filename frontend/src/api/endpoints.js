@@ -24,47 +24,13 @@ export const experiments = {
   update: (id, body) => api(`/experiments/${id}`, { method: "PATCH", body }),
   groups: (id) => api(`/experiments/${id}/groups`),
   addGroup: (id, body) => api(`/experiments/${id}/groups`, { method: "POST", body }),
-  enrollments: (id, query) => api(`/experiments/${id}/enrollments`, { query }),
-  enroll: (id, body) => api(`/experiments/${id}/enrollments`, { method: "POST", body }),
   tests: (id, query) => api(`/experiments/${id}/tests`, { query }),
   planTest: (id, body) => api(`/experiments/${id}/tests`, { method: "POST", body }),
 };
 
-export const tests = {
-  get: (id) => api(`/tests/${id}`),
-  // An empty body means "now"; the API fills the instant in.
-  start: (id, body = {}) => api(`/tests/${id}/start`, { method: "POST", body }),
-  complete: (id, body = {}) => api(`/tests/${id}/complete`, { method: "POST", body }),
-  cancel: (id, reason) => api(`/tests/${id}/cancel`, { method: "POST", body: { reason } }),
-  trials: (id) => api(`/tests/${id}/trials`),
-  recordTrial: (id, body) => api(`/tests/${id}/trials`, { method: "POST", body }),
-  comments: (id) => api(`/tests/${id}/comments`),
-  createComment: (id, body) => api(`/tests/${id}/comments`, { method: "POST", body: { body } }),
-  updateComment: (id, commentId, body) => api(`/tests/${id}/comments/${commentId}`, { method: "PATCH", body: { body } }),
-  deleteComment: (id, commentId) => api(`/tests/${id}/comments/${commentId}`, { method: "DELETE" }),
-};
 
-export const recordings = {
-  list: (testId) => api(`/tests/${testId}/recordings`),
-  // Declares the upload and returns { recording, upload }.
-  start: (testId, body) => api(`/tests/${testId}/recordings`, { method: "POST", body }),
-  finalize: (testId, recordingId) => api(`/tests/${testId}/recordings/${recordingId}/finalize`, { method: "POST", body: {} }),
-  readUrl: (testId, recordingId) => api(`/tests/${testId}/recordings/${recordingId}/read-url`),
-};
 
-export const calibration = {
-  status: (testId, recordingId) => api(`/tests/${testId}/recordings/${recordingId}/calibration-status`),
-  list: (testId, recordingId) => api(`/tests/${testId}/recordings/${recordingId}/calibrations`),
-  create: (testId, recordingId, body) => api(`/tests/${testId}/recordings/${recordingId}/calibrations`, { method: "POST", body }),
-};
 
-export const analysis = {
-  runsOfTest: (testId) => api(`/tests/${testId}/analysis-runs`),
-  run: (runId) => api(`/analysis-runs/${runId}`),
-  videoPair: (runId) => api(`/analysis-runs/${runId}/video-pair`),
-  reanalyze: (testId, recordingId) => api(`/tests/${testId}/recordings/${recordingId}/analysis-runs`, { method: "POST", body: {} }),
-  capabilities: () => api("/analysis/capabilities"),
-};
 
 export const paradigms = {
   list: () => api("/paradigms"),
@@ -93,23 +59,4 @@ export const environments = {
   calibrations: (id, number) => api(`/environments/${id}/revisions/${number}/calibrations`),
   calibrationStatus: (id, number) => api(`/environments/${id}/revisions/${number}/calibration-status`),
   calibrate: (id, number, body) => api(`/environments/${id}/revisions/${number}/calibrations`, { method: "POST", body }),
-};
-
-export const reports = {
-  metrics: (query) => api("/reports/metrics", { query }),
-  events: (query) => api("/reports/events", { query }),
-  summary: (query) => api("/reports/metric-summary", { query }),
-  // The export returns every matching row rather than the page on screen, and
-  // the session token travels in a header, so it is fetched rather than linked.
-  exportPath: (kind, query) => {
-    const search = new URLSearchParams();
-    for (const [key, value] of Object.entries(query || {})) {
-      if (value !== null && value !== undefined && value !== "") search.set(key, value);
-    }
-    return `/reports/${kind}/export${search.size ? `?${search}` : ""}`;
-  },
-};
-
-export const dashboard = {
-  summary: () => api("/dashboard/summary"),
 };

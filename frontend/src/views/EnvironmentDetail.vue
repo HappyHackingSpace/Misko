@@ -1,23 +1,28 @@
 <script setup>
-// One apparatus with its measurement revisions and, for each revision, the
-// calibration every video of that revision uses. It is entered once when the rig
-// is set up; a single video whose camera or arena moved is calibrated by hand
-// from its own test page. Reading is open to every role, calibrating needs
+// One arena (environment) with its revisions and, for each revision, the
+// default calibration every animal tested in it uses. It is entered once when
+// the rig is set up; an animal whose camera or arena moved is calibrated by
+// hand from its test. Reading is open to every role, writing needs
 // apparatus:write.
-import { computed, onMounted, onUnmounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import { useI18n } from "vue-i18n";
-import { NAlert, NButton, NCard, NDescriptions, NDescriptionsItem, NTag } from "naive-ui";
-import { environments, paradigms } from "../api/endpoints.js";
+import { NAlert, NButton, NCard, NDescriptions, NDescriptionsItem, NForm, NFormItem, NInput, NModal, NSpace, NTag, useMessage } from "naive-ui";
+import { environments, paradigmCatalog as paradigms, revisionParameters } from "../api/catalog.js";
 import { useAuth } from "../stores/auth.js";
 import { useBreadcrumb } from "../stores/breadcrumb.js";
 import PageHead from "../components/PageHead.vue";
-import CalibrationForm from "../components/CalibrationForm.vue";
+import Calibrator from "../components/calibration/Calibrator.vue";
+import CalibrationSummary from "../components/calibration/CalibrationSummary.vue";
+import ParameterFields from "../components/ParameterFields.vue";
+import { defaults, useParameters } from "../composables/useParameters.js";
 
-const { t } = useI18n();
+const { t, locale } = useI18n();
+const { format } = useParameters();
 const route = useRoute();
 const auth = useAuth();
 const crumb = useBreadcrumb();
+const message = useMessage();
 const canWrite = computed(() => auth.can("apparatus:write"));
 
 const environment = ref(null);
@@ -37,14 +42,35 @@ const latestOf = (number) => {
   const superseded = new Set(chain.map((c) => c.supersedesId).filter(Boolean));
   return chain.findLast((c) => !superseded.has(c.id)) || null;
 };
-const centimetres = (value) => `${Number(value).toFixed(2)} cm`;
-const tagType = (status) => ({ CALIBRATED: "success", VALID: "success", WAITING_FOR_CALIBRATION: "warning", REJECTED: "error" })[status] || "default";
+
+// Paradigm manifests by "KEY/version", for labels, units and defaults.
+const manifests = ref({});
+const manifestOf = (revision) => manifests.value[`${revision.paradigmKey}/${revision.paradigmVersion}`] || null;
+const environmentParameters = (m) => (m?.parameters || []).filter((p) => p.scope === "APPARATUS" || p.scope === "ANALYSIS");
+// A revision's parameters, labelled; analysis settings it does not store run at their default.
+const shownValues = (revision) =>
+  environmentParameters(manifestOf(revision)).map((parameter) => ({
+    parameter,
+    value: revision.parameters?.[parameter.key] ?? parameter.default,
+  }));
+const paradigmName = computed(() => (latest.value && manifestOf(latest.value)?.name) || environment.value?.paradigmKey || "");
+
+async function loadManifests() {
+  const wanted = new Set(revisions.value.map((r) => `${r.paradigmKey}/${r.paradigmVersion}`));
+  const loaded = {};
+  for (const id of wanted) {
+    const [key, version] = id.split("/");
+    loaded[id] = await paradigms.version(key, Number(version));
+  }
+  manifests.value = loaded;
+}
 
 async function load() {
   error.value = "";
   try {
     environment.value = await environments.get(environmentId.value);
     revisions.value = (await environments.revisions(environmentId.value)).data || [];
+    await loadManifests();
     for (const revision of revisions.value) {
       const status = await environments.calibrationStatus(environmentId.value, revision.number);
       const chain = status.status === "NOT_REQUIRED" ? [] : (await environments.calibrations(environmentId.value, revision.number)).data || [];
@@ -66,6 +92,7 @@ async function save(number, body) {
     // corrected rather than repeated from scratch.
     await environments.calibrate(environmentId.value, number, { ...body, supersedesId: latestOf(number)?.id || "" });
     calibrating.value = 0;
+    message.success(t("environments.calibration.saved"));
     await load();
   } catch (e) {
     error.value = e.message;
@@ -78,28 +105,33 @@ async function save(number, body) {
 // a revision, so every test keeps the values it was run with.
 const editing = ref(false);
 const details = ref({ name: "", notes: "" });
+const detailsError = ref("");
 const revising = ref(false);
 const manifest = ref(null);
 const values = ref({});
 const revisionNotes = ref("");
-const parameters = computed(() => manifest.value?.apparatusParameters || []);
+const showAnalysis = ref(false);
+const apparatusParameters = computed(() => (manifest.value?.parameters || []).filter((p) => p.scope === "APPARATUS"));
+const analysisParameters = computed(() => (manifest.value?.parameters || []).filter((p) => p.scope === "ANALYSIS"));
 const newestFirst = computed(() => [...revisions.value].reverse());
 const latest = computed(() => revisions.value[revisions.value.length - 1] || null);
 
 function openDetails() {
   details.value = { name: environment.value.name, notes: environment.value.notes || "" };
+  detailsError.value = "";
   editing.value = true;
 }
 
 async function saveDetails() {
   saving.value = true;
-  error.value = "";
+  detailsError.value = "";
   try {
     await environments.update(environmentId.value, { name: details.value.name.trim(), notes: details.value.notes.trim() });
     editing.value = false;
+    message.success(t("environments.detailsSaved"));
     await load();
   } catch (e) {
-    error.value = e.message;
+    detailsError.value = e.message;
   } finally {
     saving.value = false;
   }
@@ -111,7 +143,7 @@ async function openRevision() {
   error.value = "";
   try {
     manifest.value = await paradigms.version(latest.value.paradigmKey, latest.value.paradigmVersion);
-    values.value = { ...latest.value.apparatus };
+    values.value = { ...defaults([...apparatusParameters.value, ...analysisParameters.value]), ...latest.value.parameters };
     revisionNotes.value = "";
     revising.value = true;
   } catch (e) {
@@ -123,14 +155,13 @@ async function saveRevision() {
   saving.value = true;
   error.value = "";
   try {
-    const apparatus = {};
-    for (const parameter of parameters.value) apparatus[parameter.key] = Number(values.value[parameter.key]);
     await environments.addRevision(environmentId.value, {
       paradigmVersion: latest.value.paradigmVersion,
-      apparatus,
+      parameters: revisionParameters(apparatusParameters.value, analysisParameters.value, values.value),
       notes: revisionNotes.value.trim(),
     });
     revising.value = false;
+    message.success(t("environments.revisionSaved"));
     await load();
   } catch (e) {
     error.value = e.message;
@@ -140,11 +171,19 @@ async function saveRevision() {
 }
 
 onMounted(load);
+watch(locale, async () => {
+  try {
+    await loadManifests();
+    if (manifest.value) manifest.value = await paradigms.version(manifest.value.key, manifest.value.version);
+  } catch (e) {
+    error.value = e.message;
+  }
+});
 onUnmounted(() => crumb.clear());
 </script>
 
 <template>
-  <PageHead v-if="environment" :title="environment.name" :subtitle="environment.paradigmKey">
+  <PageHead v-if="environment" :title="environment.name" :subtitle="paradigmName">
     <template #actions v-if="canWrite">
       <NButton size="small" secondary data-test="environment-edit" :disabled="editing" @click="openDetails">
         {{ $t("environments.editDetails") }}
@@ -157,47 +196,46 @@ onUnmounted(() => crumb.clear());
   <NAlert v-if="error" type="error" :title="error" data-test="error" style="margin-bottom: 16px" />
   <p v-if="environment?.notes" class="muted notes">{{ environment.notes }}</p>
 
-  <NCard v-if="editing" :bordered="true" size="small" class="edit-card">
-    <form class="edit-form" data-test="environment-edit-form" @submit.prevent="saveDetails">
-      <label class="fld">
-        <span>{{ $t("common.name") }}</span>
-        <input v-model="details.name" data-test="environment-edit-name" required />
-      </label>
-      <label class="fld">
-        <span>{{ $t("common.notes") }}</span>
-        <textarea v-model="details.notes" rows="2" data-test="environment-edit-notes"></textarea>
-      </label>
-      <div class="actions">
-        <NButton type="primary" attr-type="submit" :loading="saving" data-test="environment-edit-save">{{ $t("common.save") }}</NButton>
-        <NButton quaternary data-test="environment-edit-cancel" @click="editing = false">{{ $t("common.cancel") }}</NButton>
-      </div>
-    </form>
-  </NCard>
+  <NModal v-model:show="editing" preset="card" :title="$t('environments.editDetails')" class="details-modal" :bordered="false">
+    <NForm data-test="environment-edit-form" @submit.prevent="saveDetails">
+      <NFormItem :label="$t('common.name')" required>
+        <NInput v-model:value="details.name" maxlength="120" data-test="environment-edit-name" />
+      </NFormItem>
+      <NFormItem :label="$t('common.notes')">
+        <NInput v-model:value="details.notes" type="textarea" maxlength="2000" :autosize="{ minRows: 2, maxRows: 6 }" data-test="environment-edit-notes" placeholder="" />
+      </NFormItem>
+      <NAlert v-if="detailsError" type="error" :title="detailsError" data-test="environment-edit-error" />
+    </NForm>
+    <template #footer>
+      <NSpace justify="end">
+        <NButton data-test="environment-edit-cancel" @click="editing = false">{{ $t("common.cancel") }}</NButton>
+        <NButton type="primary" :loading="saving" :disabled="!details.name.trim()" data-test="environment-edit-save" @click="saveDetails">{{ $t("common.save") }}</NButton>
+      </NSpace>
+    </template>
+  </NModal>
 
   <NCard v-if="revising" :bordered="true" size="small" class="edit-card">
     <form class="edit-form" data-test="revision-form" @submit.prevent="saveRevision">
       <p class="muted">{{ $t("environments.newRevisionHint") }}</p>
-      <div class="params">
-        <label class="fld" v-for="parameter in parameters" :key="parameter.key">
-          <span>{{ parameter.label }} <span class="muted">{{ parameter.unit }}</span></span>
-          <input
-            type="number"
-            step="any"
-            :min="parameter.min"
-            :max="parameter.max"
-            v-model="values[parameter.key]"
-            :data-test="`revision-${parameter.key}`"
-            required
-          />
-          <small class="muted">{{ parameter.min }} - {{ parameter.max }}</small>
-        </label>
-      </div>
+      <h4>{{ $t("environments.apparatus") }}</h4>
+      <ParameterFields v-if="apparatusParameters.length" v-model="values" :parameters="apparatusParameters" test-prefix="revision" />
+      <p class="muted" v-else>{{ $t("environments.noApparatus") }}</p>
+      <template v-if="analysisParameters.length">
+        <a href="#" class="link" data-test="revision-toggle-analysis" @click.prevent="showAnalysis = !showAnalysis">
+          {{ showAnalysis ? $t("environments.hideAnalysis") : $t("environments.showAnalysis") }}
+        </a>
+        <div v-show="showAnalysis">
+          <h4>{{ $t("environments.analysis") }}</h4>
+          <p class="muted">{{ $t("environments.analysisHint") }}</p>
+          <ParameterFields v-model="values" :parameters="analysisParameters" test-prefix="revision-analysis" />
+        </div>
+      </template>
       <label class="fld">
         <span>{{ $t("environments.revisionNotes") }}</span>
         <textarea v-model="revisionNotes" rows="2" data-test="revision-notes"></textarea>
       </label>
       <div class="actions">
-        <NButton type="primary" attr-type="submit" :loading="saving" :disabled="!parameters.length" data-test="revision-save">
+        <NButton type="primary" attr-type="submit" :loading="saving" :disabled="!manifest" data-test="revision-save">
           {{ $t("environments.saveRevision") }}
         </NButton>
         <NButton quaternary data-test="revision-cancel" @click="revising = false">{{ $t("common.cancel") }}</NButton>
@@ -222,7 +260,14 @@ onUnmounted(() => crumb.clear());
       </template>
 
       <NDescriptions :column="2" label-placement="left" size="small" bordered>
-        <NDescriptionsItem v-for="(value, key) in revision.apparatus" :key="key" :label="key">{{ value }}</NDescriptionsItem>
+        <NDescriptionsItem
+          v-for="item in shownValues(revision)"
+          :key="item.parameter.key"
+          :label="item.parameter.label"
+          :data-test="`revision-value-${item.parameter.key}`"
+        >
+          {{ format(item.parameter, item.value) }}
+        </NDescriptionsItem>
       </NDescriptions>
 
       <div class="calibration" data-test="environment-calibration" :data-status="stateOf(revision.number).status">
@@ -233,34 +278,11 @@ onUnmounted(() => crumb.clear());
         <template v-else-if="stateOf(revision.number).status">
           <p class="muted">{{ $t("environments.calibration.intro") }}</p>
 
-          <NDescriptions
+          <CalibrationSummary
             v-if="latestOf(revision.number)"
-            :column="1"
-            label-placement="left"
-            size="small"
-            bordered
-            data-test="calibration-summary"
-            :data-calibration-status="latestOf(revision.number).status"
-          >
-            <NDescriptionsItem :label="$t('calibration.camera')">{{ latestOf(revision.number).cameraId }}</NDescriptionsItem>
-            <NDescriptionsItem :label="$t('calibration.fitError')">
-              <span data-test="fit-error">{{ centimetres(latestOf(revision.number).fitRmsErrorCm) }}</span>
-            </NDescriptionsItem>
-            <NDescriptionsItem :label="$t('calibration.checkError')">
-              <span data-test="check-error">{{ centimetres(latestOf(revision.number).checkRmsErrorCm) }}</span>
-            </NDescriptionsItem>
-            <NDescriptionsItem :label="$t('calibration.maxError')">
-              {{ centimetres(latestOf(revision.number).checkMaxErrorCm) }}
-            </NDescriptionsItem>
-            <NDescriptionsItem :label="$t('calibration.tolerance')">
-              <span data-test="tolerance">{{ centimetres(latestOf(revision.number).toleranceCm) }}</span>
-            </NDescriptionsItem>
-            <NDescriptionsItem :label="$t('tests.status')">
-              <NTag size="small" round :bordered="false" :type="tagType(latestOf(revision.number).status)">
-                {{ $t(`statuses.${latestOf(revision.number).status}`) }}
-              </NTag>
-            </NDescriptionsItem>
-          </NDescriptions>
+            :calibration="latestOf(revision.number)"
+            :zones="manifestOf(revision)?.zones || []"
+          />
           <p v-else class="muted" data-test="calibration-waiting">{{ $t("environments.calibration.waiting") }}</p>
           <p class="err" v-if="latestOf(revision.number)?.status === 'REJECTED'" data-test="calibration-rejected">
             {{ $t("environments.calibration.rejected") }}
@@ -278,8 +300,10 @@ onUnmounted(() => crumb.clear());
             {{ $t(latestOf(revision.number) ? "environments.calibration.correct" : "environments.calibration.enter") }}
           </NButton>
 
-          <CalibrationForm
+          <Calibrator
             v-if="calibrating === revision.number"
+            :paradigm="manifestOf(revision)"
+            :parameters="revision.parameters || {}"
             :initial="latestOf(revision.number)"
             :correcting="!!latestOf(revision.number)"
             :note="$t('environments.calibration.note')"
@@ -298,6 +322,7 @@ onUnmounted(() => crumb.clear());
 <style scoped>
 .notes { margin: -8px 0 16px; }
 .edit-card { margin-bottom: 16px; }
+.details-modal { width: min(520px, calc(100vw - 32px)); }
 .edit-form { display: flex; flex-direction: column; gap: 12px; }
 .params { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; }
 .fld { display: flex; flex-direction: column; gap: 4px; }

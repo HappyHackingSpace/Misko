@@ -13,6 +13,8 @@ const props = defineProps({
   selected: { type: Object, default: null },
   // Only these types are listed; null lists every type.
   types: { type: Array, default: null },
+  // Event labels by type in the current language; falls back to events.<type>.
+  labels: { type: Object, default: () => ({}) },
 });
 const emit = defineEmits(["play"]);
 const { t, te } = useI18n();
@@ -31,7 +33,7 @@ function clock(us) {
   return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
 }
 
-const label = (type) => (te(`events.${type}`) ? t(`events.${type}`) : type);
+const label = (type) => props.labels[type] || (te(`events.${type}`) ? t(`events.${type}`) : type);
 const range = (event) => (event.kind === "POINT" ? clock(event.startUs) : `${clock(event.startUs)}-${clock(event.endUs)}`);
 const isSelected = (event) =>
   props.selected && props.selected.startUs === event.startUs && props.selected.type === event.type;

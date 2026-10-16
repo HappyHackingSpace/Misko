@@ -10,6 +10,7 @@ import (
 	"github.com/HappyHackingSpace/Misko/backend/internal/analysis/domain"
 	paradigms "github.com/HappyHackingSpace/Misko/backend/internal/paradigms/domain"
 	"slices"
+	"strings"
 )
 
 type Catalog struct{}
@@ -31,9 +32,17 @@ func (Catalog) Contract(key string, version int) (domain.Contract, error) {
 	c := domain.Contract{
 		MetricEngineVersion: paradigms.MetricEngineVersion, ResultSchemaVersion: paradigms.ResultSchemaVersion,
 		CalibrationRequired: needs.Required, MissingReasons: paradigms.MissingReasons(),
-		// A trajectory supplies samples only: no scored observations and no
-		// calibrated zone shapes.
-		TrajectoryAnalyzable: len(p.InputEvents) == 0 && !slices.ContainsFunc(p.Zones, func(z paradigms.Zone) bool { return z.Calibrated && z.Required }),
+		// A trajectory supplies samples and the pinned calibration supplies
+		// calibrated zone shapes. Observer-scored paradigms compute nothing
+		// from samples and stay worker-free; optional scored events of a
+		// tracked paradigm are left missing as unscored.
+		TrajectoryAnalyzable: tracked(p),
+		ObserverScored:       p.ObserverScored(),
+	}
+	for _, z := range p.Zones {
+		if z.Calibrated && z.Required {
+			c.RequiredZones = append(c.RequiredZones, z.Key)
+		}
 	}
 	for _, m := range p.Metrics {
 		c.Metrics = append(c.Metrics, domain.MetricSpec{Key: m.Key, Unit: string(m.Unit), Integer: m.Integer, Min: m.Min, Max: m.Max})
@@ -47,14 +56,29 @@ func (Catalog) Contract(key string, version int) (domain.Contract, error) {
 	return c, nil
 }
 
+// tracked reports whether any metric of the paradigm reads tracked samples.
+func tracked(p paradigms.Paradigm) bool {
+	return slices.ContainsFunc(p.Metrics, func(m paradigms.MetricDefinition) bool {
+		return slices.ContainsFunc(m.Inputs, func(input string) bool { return strings.HasPrefix(input, "samples") })
+	})
+}
+
 // Evaluate computes metrics and events of a trajectory with the run's pinned
-// parameters. Samples the engine rejects are ErrInvalidTrajectory.
-func (Catalog) Evaluate(key string, version int, parameters map[string]float64, t domain.Track, durationUs int64) (domain.Computed, error) {
+// parameters and the centimetre shapes of its calibration's zones. Samples the
+// engine rejects are ErrInvalidTrajectory.
+func (Catalog) Evaluate(key string, version int, parameters map[string]float64, t domain.Track, zones []domain.Zone, durationUs int64) (domain.Computed, error) {
 	samples := make([]paradigms.Sample, len(t.Samples))
 	for i, s := range t.Samples {
 		samples[i] = paradigms.Sample{TUs: s.TUs, X: s.X, Y: s.Y, Valid: s.Tracked}
 	}
-	r, err := paradigms.Evaluate(key, version, paradigms.Input{Parameters: parameters, Samples: samples, DurationUs: durationUs})
+	var shapes map[string][]paradigms.Shape
+	for _, z := range zones {
+		if shapes == nil {
+			shapes = map[string][]paradigms.Shape{}
+		}
+		shapes[z.Key] = append(shapes[z.Key], toShape(z.Centimeters))
+	}
+	r, err := paradigms.Evaluate(key, version, paradigms.Input{Parameters: parameters, Samples: samples, Zones: shapes, DurationUs: durationUs})
 	if errors.Is(err, paradigms.ErrInvalidSample) {
 		return domain.Computed{}, fmt.Errorf("%w: %v", domain.ErrInvalidTrajectory, err)
 	}
@@ -77,4 +101,15 @@ func (Catalog) Evaluate(key string, version int, parameters map[string]float64, 
 		c.Points = append(c.Points, domain.Point{Type: p.Type, AtUs: p.AtUs})
 	}
 	return c, nil
+}
+
+func toShape(s domain.Shape) paradigms.Shape {
+	out := paradigms.Shape{}
+	if s.Circle != nil {
+		out.Circle = &paradigms.Circle{X: s.Circle.X, Y: s.Circle.Y, Radius: s.Circle.Radius}
+	}
+	for _, v := range s.Polygon {
+		out.Polygon = append(out.Polygon, paradigms.Vertex{X: v.X, Y: v.Y})
+	}
+	return out
 }

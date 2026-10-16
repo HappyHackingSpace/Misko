@@ -39,13 +39,20 @@ type Contract struct {
 	MetricEngineVersion int
 	ResultSchemaVersion int
 	CalibrationRequired bool
-	// TrajectoryAnalyzable is false when the engine needs inputs a trajectory
-	// cannot provide, such as calibrated zone shapes or scored observations.
+	// TrajectoryAnalyzable is false when the metrics come from scored
+	// observations only, so a worker's trajectory cannot produce them.
+	// Calibrated zone shapes come from the pinned calibration.
 	TrajectoryAnalyzable bool
-	Metrics              []MetricSpec
-	Events               []EventSpec
-	MissingReasons       []string
-	QC                   []QCRule
+	// RequiredZones are the calibrated zones the pinned calibration must have
+	// a shape for before the paradigm can be analysed.
+	RequiredZones []string
+	// ObserverScored paradigms are scored by a person on the video; no worker
+	// ever analyses them.
+	ObserverScored bool
+	Metrics        []MetricSpec
+	Events         []EventSpec
+	MissingReasons []string
+	QC             []QCRule
 }
 
 // CalibrationRef is the pinned calibration a worker needs to map full-frame
@@ -56,6 +63,41 @@ type CalibrationRef struct {
 	CropX, CropY, CropWidth, CropHeight int
 	Plane                               string
 	Transform                           [9]float64
+	// Zones are the calibrated zone shapes drawn with the calibration.
+	Zones []Zone
+}
+
+type Vertex struct{ X, Y float64 }
+
+type Circle struct{ X, Y, Radius float64 }
+
+// Shape is either a circle or a polygon.
+type Shape struct {
+	Circle  *Circle
+	Polygon []Vertex
+}
+
+// Zone is one shape of a calibrated zone in full-frame pixels, for tracking
+// limits and the overlay, and in the calibration's centimetres, for metrics.
+type Zone struct {
+	Key         string
+	Pixels      Shape
+	Centimeters Shape
+}
+
+// MissingZones lists the required zones without a shape among zoneKeys.
+func MissingZones(required, zoneKeys []string) []string {
+	var missing []string
+	for _, key := range required {
+		found := false
+		for _, k := range zoneKeys {
+			found = found || k == key
+		}
+		if !found {
+			missing = append(missing, key)
+		}
+	}
+	return missing
 }
 
 type ArtifactInput struct {

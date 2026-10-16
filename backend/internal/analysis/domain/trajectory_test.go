@@ -55,6 +55,8 @@ func TestTrajectoriesBelongToTheirRunAndRecording(t *testing.T) {
 		"after the recording":   func(d map[string]any) { samples(d)["tUs"] = []any{0, 100_000, 200_000, 8_000_001} },
 		"confidence above one":  func(d map[string]any) { samples(d)["confidence"] = []any{0.9, 1.5, 0, 1} },
 		"tracked without place": func(d map[string]any) { samples(d)["xCm"] = []any{10.0, nil, nil, 13.0} },
+		"short inferred":        func(d map[string]any) { samples(d)["inferred"] = []any{false, true} },
+		"inferred but lost":     func(d map[string]any) { samples(d)["inferred"] = []any{false, false, true, false} },
 		"not JSON":              nil,
 	} {
 		data := []byte("{not json")
@@ -103,19 +105,75 @@ func TestQualityRulesUseTrackedSamples(t *testing.T) {
 	}
 }
 
+func TestInferredSamplesAreOptionalAndTracked(t *testing.T) {
+	run, _ := queued().Claim("worker-a", now, time.Minute)
+	// Without the member, as written by workers before inference existed.
+	tr, err := ParseTrajectory(trajectoryJSON(t, run, 8_000_000, nil), run, 8_000_000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range tr.Samples {
+		if s.Inferred {
+			t.Fatalf("inferred without the member: %+v", s)
+		}
+	}
+	for name, inferred := range map[string]any{"null": nil, "explicit": []any{false, true, false, false}} {
+		data := trajectoryJSON(t, run, 8_000_000, func(d map[string]any) { samples(d)["inferred"] = inferred })
+		tr, err := ParseTrajectory(data, run, 8_000_000)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		want := name == "explicit"
+		if tr.Samples[1].Inferred != want || !tr.Samples[1].Tracked || tr.Samples[1].X != 11 || tr.Samples[0].Inferred {
+			t.Fatalf("%s: %+v", name, tr.Samples)
+		}
+	}
+}
+
+func TestQualityReportsInferredSamplesWithoutCountingThemLost(t *testing.T) {
+	rules := []QCRule{{Key: "min_tracking_confidence", Operator: ">=", Value: 0.7}, {Key: "max_lost_frame_ratio", Operator: "<=", Value: 0.25}}
+	// Half of the samples were hidden and inferred with a low worker-assigned
+	// confidence; one of eight is lost.
+	tr := Track{Samples: []Sample{
+		{TUs: 0, Tracked: true, Confidence: 0.9}, {TUs: 1, Tracked: true, Confidence: 0.8}, {TUs: 2, Tracked: true, Confidence: 0.5, Inferred: true},
+		{TUs: 3, Tracked: true, Confidence: 0.5, Inferred: true}, {TUs: 4, Tracked: true, Confidence: 0.5, Inferred: true},
+		{TUs: 5, Tracked: true, Confidence: 0.5, Inferred: true}, {TUs: 6}, {TUs: 7, Tracked: true, Confidence: 1},
+	}}
+	q := tr.Quality()
+	if q != (Quality{Samples: 8, Tracked: 7, Inferred: 4, LostRatio: 0.125, InferredRatio: 0.5, MeanConfidence: 0.9}) {
+		t.Fatalf("quality: %+v", q)
+	}
+	// Inferred samples are neither lost nor part of the confidence mean.
+	if reason := CheckQC(rules, tr); reason != "" {
+		t.Fatalf("inferred samples failed QC: %s", reason)
+	}
+	capped := append(rules, QCRule{Key: "max_inferred_ratio", Operator: "<=", Value: 0.4})
+	if reason := CheckQC(capped, tr); !strings.HasPrefix(reason, "QC_FAILED: max_inferred_ratio 0.5 <= 0.4") {
+		t.Fatalf("inferred ratio rule: %q", reason)
+	}
+	// Only inferred positions: nothing was seen, so confidence fails.
+	unseen := Track{Samples: []Sample{{TUs: 0, Tracked: true, Confidence: 1, Inferred: true}}}
+	if reason := CheckQC(rules, unseen); !strings.HasPrefix(reason, "QC_FAILED: min_tracking_confidence 0 >= 0.7") {
+		t.Fatalf("only inferred: %q", reason)
+	}
+	if q := (Track{}).Quality(); q.LostRatio != 1 || q.InferredRatio != 0 || q.MeanConfidence != 0 {
+		t.Fatalf("empty: %+v", q)
+	}
+}
+
 func TestComputedEventsTakeTheConfidenceOfTheirSamples(t *testing.T) {
 	tr := Track{Samples: []Sample{
 		{TUs: 0, Tracked: true, Confidence: 1}, {TUs: 100, Tracked: true, Confidence: 0.5}, {TUs: 200, Confidence: 0.9}, {TUs: 300, Tracked: true, Confidence: 0.7},
 	}}
 	events := tr.Events(Computed{
-		Intervals: []Interval{{Type: "in_center", StartUs: 100, EndUs: 300}, {Type: "immobile", StartUs: 0, EndUs: 100}},
-		Points:    []Point{{Type: "center_entry", AtUs: 100}, {Type: "center_entry", AtUs: 200}},
+		Intervals: []Interval{{Type: "in_platform", StartUs: 100, EndUs: 300}, {Type: "in_wall_annulus", StartUs: 0, EndUs: 100}},
+		Points:    []Point{{Type: "platform_entry", AtUs: 100}, {Type: "platform_entry", AtUs: 200}},
 	})
 	want := []Event{
-		{Type: "immobile", Kind: "INTERVAL", StartUs: 0, EndUs: 100, Confidence: 0.75},
-		{Type: "center_entry", Kind: "POINT", StartUs: 100, EndUs: 100, Confidence: 0.5},
-		{Type: "in_center", Kind: "INTERVAL", StartUs: 100, EndUs: 300, Confidence: 0.6},
-		{Type: "center_entry", Kind: "POINT", StartUs: 200, EndUs: 200, Confidence: 0},
+		{Type: "in_wall_annulus", Kind: "INTERVAL", StartUs: 0, EndUs: 100, Confidence: 0.75},
+		{Type: "in_platform", Kind: "INTERVAL", StartUs: 100, EndUs: 300, Confidence: 0.6},
+		{Type: "platform_entry", Kind: "POINT", StartUs: 100, EndUs: 100, Confidence: 0.5},
+		{Type: "platform_entry", Kind: "POINT", StartUs: 200, EndUs: 200, Confidence: 0},
 	}
 	if len(events) != len(want) {
 		t.Fatalf("events: %+v", events)

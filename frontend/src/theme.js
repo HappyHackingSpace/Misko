@@ -40,8 +40,8 @@ const shape = {
 
 export const lightThemeOverrides = {
   common: {
-    // Monochrome in light mode: black on white, no blue. Dark mode keeps its
-    // blue accent below, since that wasn't the complaint.
+    // Monochrome in light mode: black on white, no blue. Dark mode mirrors it
+    // below with white on near-black.
     primaryColor: "#171717",
     primaryColorHover: "#3a3a3d",
     primaryColorPressed: "#000000",
@@ -64,24 +64,36 @@ export const lightThemeOverrides = {
 
 export const darkThemeOverrides = {
   common: {
-    primaryColor: "#4cc2ff",
-    primaryColorHover: "#6ccdff",
-    primaryColorPressed: "#2fa8e6",
-    primaryColorSuppl: "#4cc2ff",
+    primaryColor: "#f5f5f5",
+    primaryColorHover: "#ffffff",
+    primaryColorPressed: "#d4d4d4",
+    primaryColorSuppl: "#f5f5f5",
     fontFamily: FONT_FAMILY,
     fontSize: "14px",
-    bodyColor: "#0b0f14",
-    cardColor: "#121a24",
-    modalColor: "#121a24",
-    popoverColor: "#121a24",
-    textColorBase: "#e6edf3",
-    textColor1: "#e6edf3",
-    textColor2: "#c3ceda",
-    textColor3: "#8a9bb0",
-    borderColor: "#233244",
-    dividerColor: "#233244",
+    bodyColor: "#0a0a0a",
+    cardColor: "#141414",
+    modalColor: "#141414",
+    popoverColor: "#1a1a1a",
+    textColorBase: "#ededed",
+    textColor1: "#ededed",
+    textColor2: "#d4d4d4",
+    textColor3: "#a1a1a1",
+    borderColor: "#2a2a2a",
+    dividerColor: "#2a2a2a",
   },
   ...shape,
+  // The primary color is white here, so anything drawn on top of it (button
+  // text, the check mark, the switch knob) turns dark to stay readable.
+  Button: {
+    ...shape.Button,
+    textColorPrimary: "#0a0a0a",
+    textColorHoverPrimary: "#0a0a0a",
+    textColorPressedPrimary: "#0a0a0a",
+    textColorFocusPrimary: "#0a0a0a",
+    textColorDisabledPrimary: "#0a0a0a",
+  },
+  Checkbox: { checkMarkColor: "#0a0a0a" },
+  Switch: { buttonColor: "#0a0a0a" },
 };
 
 export { darkTheme };

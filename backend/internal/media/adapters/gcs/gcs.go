@@ -12,8 +12,10 @@ import (
 	"github.com/HappyHackingSpace/Misko/backend/internal/media/application"
 	"github.com/HappyHackingSpace/Misko/backend/internal/media/domain"
 	"io"
+	"maps"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"time"
 )
@@ -42,17 +44,30 @@ func (s *Store) Bucket() string { return s.bucket }
 // the returned headers; x-goog-if-generation-match: 0 makes the upload fail if
 // the object already exists, so a finished video is never overwritten.
 func (s *Store) UploadURL(_ context.Context, object, contentType string, expires time.Time) (application.SignedRequest, error) {
+	return s.signUpload(object, contentType, nil, expires)
+}
+
+// SizedUploadURL is UploadURL with x-goog-content-length-range signed in, so
+// storage refuses an upload of more than size bytes. The range starts at 0
+// because the POST that opens the session carries no body.
+func (s *Store) SizedUploadURL(_ context.Context, object, contentType string, size int64, expires time.Time) (application.SignedRequest, error) {
+	return s.signUpload(object, contentType, map[string]string{"x-goog-content-length-range": "0," + strconv.FormatInt(size, 10)}, expires)
+}
+
+func (s *Store) signUpload(object, contentType string, extra map[string]string, expires time.Time) (application.SignedRequest, error) {
+	headers := map[string]string{"x-goog-resumable": "start", "x-goog-if-generation-match": "0"}
+	maps.Copy(headers, extra)
 	opts := s.options(http.MethodPost, expires)
 	opts.ContentType = contentType
-	opts.Headers = []string{"x-goog-resumable:start", "x-goog-if-generation-match:0"}
+	for _, name := range slices.Sorted(maps.Keys(headers)) {
+		opts.Headers = append(opts.Headers, name+":"+headers[name])
+	}
 	signed, err := s.client.Bucket(s.bucket).SignedURL(object, opts)
 	if err != nil {
 		return application.SignedRequest{}, fmt.Errorf("sign upload: %w", err)
 	}
-	return application.SignedRequest{
-		Method: http.MethodPost, URL: signed, ExpiresAt: expires,
-		Headers: map[string]string{"Content-Type": contentType, "x-goog-resumable": "start", "x-goog-if-generation-match": "0"},
-	}, nil
+	headers["Content-Type"] = contentType
+	return application.SignedRequest{Method: http.MethodPost, URL: signed, ExpiresAt: expires, Headers: headers}, nil
 }
 
 // ReadURL signs a GET of one generation; GCS serves Range requests on it.

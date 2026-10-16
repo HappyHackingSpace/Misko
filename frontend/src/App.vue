@@ -2,7 +2,7 @@
 import { computed, h, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
-import { NConfigProvider, NLayout, NLayoutHeader, NLayoutSider, NLayoutContent, NMenu, dateEnUS, dateTrTR, enUS, trTR } from "naive-ui";
+import { NConfigProvider, NLayout, NLayoutHeader, NLayoutSider, NLayoutContent, NMenu, NMessageProvider, dateEnUS, dateTrTR, enUS, trTR } from "naive-ui";
 import { useAuth } from "./stores/auth.js";
 import { useLab } from "./stores/lab.js";
 import { usePrefs } from "./stores/prefs.js";
@@ -18,7 +18,7 @@ const lab = useLab();
 const prefs = usePrefs();
 const route = useRoute();
 const router = useRouter();
-const { t } = useI18n();
+const { t, locale } = useI18n();
 
 onMounted(() => lab.load());
 
@@ -82,11 +82,13 @@ const primaryOptions = computed(() => [
   { label: navLabel("nav.experiments", "nav-experiments"), key: "/experiments", icon: navIcon("experiments") },
   { label: navLabel("nav.tests", "nav-tests"), key: "/tests", icon: navIcon("test") },
   { label: t("nav.subjects"), key: "/subjects", icon: navIcon("subjects") },
+  { label: navLabel("nav.review", "nav-review"), key: "/review", icon: navIcon("test") },
   { label: navLabel("nav.reports", "nav-reports"), key: "/reports", icon: navIcon("reports") },
 ]);
 
 const managementOptions = computed(() => {
   const options = [
+    { label: t("nav.catalog"), key: "/catalog", icon: navIcon("paradigms") },
     { label: t("nav.paradigms"), key: "/paradigms", icon: navIcon("paradigms") },
     { label: t("nav.environments"), key: "/environments", icon: navIcon("environments") },
   ];
@@ -98,12 +100,13 @@ function onMenuSelect(key) {
   if (key && key !== route.path) router.push(key);
 }
 
-const topLevelKeys = ["/dashboard", "/experiments", "/tests", "/subjects", "/reports", "/paradigms", "/environments", "/users"];
+const topLevelKeys = ["/dashboard", "/experiments", "/tests", "/subjects", "/review", "/reports", "/catalog", "/paradigms", "/environments", "/users"];
 const activeKey = computed(() => topLevelKeys.find((k) => route.path.startsWith(k)) ?? null);
 </script>
 
 <template>
   <n-config-provider :theme="naiveTheme" :theme-overrides="naiveThemeOverrides" :locale="naiveLocale" :date-locale="naiveDateLocale" class="theme-root">
+    <n-message-provider>
     <div v-if="auth.isLoggedIn" class="app">
       <n-layout has-sider class="shell">
         <div v-if="isMobile && mobileOpen" class="sidebar-overlay" @click="closeMobile"></div>
@@ -183,12 +186,15 @@ const activeKey = computed(() => topLevelKeys.find((k) => route.path.startsWith(
           </n-layout-header>
           <n-layout-content content-style="padding: 26px 30px;" class="app-content">
             <Breadcrumb />
-            <RouterView />
+            <!-- Keyed by language: catalog wording and breadcrumbs come from the API
+                 and from each page's setup, so a language switch rebuilds the page. -->
+            <RouterView :key="locale" />
           </n-layout-content>
         </n-layout>
       </n-layout>
     </div>
     <RouterView v-else />
+    </n-message-provider>
   </n-config-provider>
 </template>
 

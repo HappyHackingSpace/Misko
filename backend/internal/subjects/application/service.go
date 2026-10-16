@@ -1,4 +1,5 @@
-// Package application contains subject use cases.
+// Package application contains subject and body weight use cases. Subject
+// changes need subject:write, weights need weight:write and reads need *:read.
 package application
 
 import (
@@ -8,13 +9,14 @@ import (
 	"github.com/HappyHackingSpace/Misko/backend/internal/subjects/domain"
 	"slices"
 	"strings"
+	"time"
 	"unicode/utf8"
 )
 
 var (
 	ErrNotFound     = errors.New("subject not found")
 	ErrCodeTaken    = errors.New("subject code is already in use")
-	ErrInUse        = errors.New("subject has enrollments or recorded measurements and cannot be deleted")
+	ErrInUse        = errors.New("subject is allocated or has recorded measurements and cannot be deleted")
 	ErrNoChanges    = errors.New("no fields to update")
 	ErrInvalidQuery = errors.New("invalid list query")
 )
@@ -28,9 +30,11 @@ type Changes struct {
 
 // Filter is a validated list query whose sort key is allowlisted.
 type Filter struct {
-	Search        string
-	Species       domain.Species
-	Sex           domain.Sex
+	Search  string
+	Species domain.Species
+	Sex     domain.Sex
+	// Unallocated keeps only animals not allocated to any group.
+	Unallocated   bool
 	Sort          string
 	Descending    bool
 	Limit, Offset int
@@ -42,13 +46,20 @@ type Store interface {
 	Subject(ctx context.Context, id string) (domain.Subject, error)
 	List(ctx context.Context, filter Filter) ([]domain.Subject, int, error)
 	Update(ctx context.Context, id string, changes Changes) (domain.Subject, error)
-	// Delete returns ErrInUse while the subject is enrolled anywhere.
+	// Delete returns ErrInUse while the subject is allocated or has weights.
 	Delete(ctx context.Context, id string) error
+	// CreateWeight returns ErrNotFound for an unknown subject.
+	CreateWeight(ctx context.Context, w domain.Weight) (domain.Weight, error)
+	// Weights lists a subject's weights, newest first.
+	Weights(ctx context.Context, subjectID string) ([]domain.Weight, error)
 }
 
-type Service struct{ store Store }
+type Service struct {
+	store Store
+	now   func() time.Time
+}
 
-func New(store Store) *Service { return &Service{store: store} }
+func New(store Store, now func() time.Time) *Service { return &Service{store: store, now: now} }
 
 func (s *Service) Subject(ctx context.Context, actor access.Actor, id string) (domain.Subject, error) {
 	if err := actor.Require(access.Read); err != nil {
@@ -111,9 +122,11 @@ func (s *Service) Delete(ctx context.Context, actor access.Actor, id string) err
 	return s.store.Delete(ctx, id)
 }
 
+// Query is a raw list query. Unallocated is "true" to keep only animals
+// without an allocation; "" and "false" do not filter.
 type Query struct {
-	Search, Species, Sex, Sort, Order string
-	Page, PageSize                    int
+	Search, Species, Sex, Unallocated, Sort, Order string
+	Page, PageSize                                 int
 }
 
 type Page struct {
@@ -142,6 +155,13 @@ func (s *Service) List(ctx context.Context, actor access.Actor, q Query) (Page, 
 			return Page{}, ErrInvalidQuery
 		}
 	}
+	switch q.Unallocated {
+	case "", "false":
+	case "true":
+		f.Unallocated = true
+	default:
+		return Page{}, ErrInvalidQuery
+	}
 	if f.Sort == "" {
 		f.Sort = "createdAt"
 	}
@@ -160,6 +180,37 @@ func (s *Service) List(ctx context.Context, actor access.Actor, q Query) (Page, 
 		return Page{}, err
 	}
 	return Page{Subjects: subjects, Total: total, Page: page, PageSize: f.Limit}, nil
+}
+
+type WeightInput struct {
+	Grams      string
+	MeasuredAt time.Time
+}
+
+func (s *Service) RecordWeight(ctx context.Context, actor access.Actor, subjectID string, in WeightInput) (domain.Weight, error) {
+	if err := actor.Require(access.WeightWrite); err != nil {
+		return domain.Weight{}, err
+	}
+	measuredAt := in.MeasuredAt
+	if !measuredAt.IsZero() {
+		measuredAt = measuredAt.UTC().Truncate(time.Microsecond)
+	}
+	w, err := domain.NewWeight(subjectID, in.Grams, measuredAt, s.now(), actor.UserID)
+	if err != nil {
+		return domain.Weight{}, err
+	}
+	return s.store.CreateWeight(ctx, w)
+}
+
+// Weights returns ErrNotFound for an unknown subject rather than an empty list.
+func (s *Service) Weights(ctx context.Context, actor access.Actor, subjectID string) ([]domain.Weight, error) {
+	if err := actor.Require(access.Read); err != nil {
+		return nil, err
+	}
+	if _, err := s.store.Subject(ctx, subjectID); err != nil {
+		return nil, err
+	}
+	return s.store.Weights(ctx, subjectID)
 }
 
 func validated[T any](value T, err error) (*T, error) {

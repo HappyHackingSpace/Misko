@@ -1,102 +1,194 @@
 ---
 title: Domain model
-description: The lean, scenario-centric data model Mişko owns as the system of record.
+description: The study model Mişko owns as the system of record, from the catalog and study design to test sessions, reviewed results and the report.
 ---
 
-Mişko is a **video-only behavioral test platform** with a deliberately small
-domain. Mişko owns this model as the **system of record**; the CV service stays
-independent. Metric definitions, MWM normalization and quality-control semantics
-are in [Measurement architecture](../measurements/).
-
-Five concepts, one straight line from setup to result:
+Mişko is the system of record for preclinical behavioral studies on rodents. A
+study answers one question: does substance X, at dose D, reverse the deficit
+caused by disease model M? The model follows from that question. Metric
+definitions and quality-control rules are in
+[Measurement architecture](../measurements/). The full design, with the
+reasoning and the decisions, is in `docs/plans/DOMAIN_REDESIGN.md`.
 
 ```txt
-Subject (mouse)
-Paradigm (read-only code catalog) -> Environment (named physical instance)
-                                          |
-                                          v
-                                       Scenario  (one or more environments)
-                                          |
-                                          v
-Test = Subject + Scenario -> per-environment metric results (data, no verdict)
+Catalog:    Substance, Disease model, Paradigm (code), Environment (arena)
+
+Design:     Experiment -> Groups (role + disease model) -> Regimen items
+                       -> Timepoints, Protocols, Endpoints
+
+Execution:  Subject -> Allocation (one group, ever) -> Administrations,
+                                                       Induction outcome
+            Test (session: timepoint x protocol step, one video)
+              -> Test subjects (animal + arena) -> Trials
+                                                -> Calibration (arena or override, with zones)
+                                                -> Scoring sheets (observer-scored paradigms)
+                                                -> Analysis runs (AUTOMATED or SCORED)
+                                                   -> Reviewed result
+
+Report:     accepted results per animal -> groups -> role-based comparisons
 ```
 
 ## Tenancy (single-tenant, on-prem)
 
-Mişko runs **one laboratory per installation** - a singleton, not multi-tenant.
+Mişko runs **one laboratory per installation**, a singleton, not multi-tenant.
 
-- **`Laboratory`** (singleton): name, code, timezone, settings.
-- **Installation wizard (CLI, at startup):** takes the lab name + superadmin
-  email and creates the `Laboratory` **and** the `SUPERADMIN` together. A
-  singleton guard refuses a second lab; the step is idempotent.
+- **`Laboratory`** (singleton): name, code, time zone. Day 0, dosing days and
+  default test times use the laboratory's time zone.
+- **Setup (CLI):** `bootstrap setup` takes the lab name and the administrator
+  email and creates the laboratory and the `SUPERADMIN` together. Running it
+  again creates nothing.
 
-## Subject (the mouse)
+## Catalog
 
-Kept simple: `code` (unique), `sex`, `groupName` (free-text experiment group).
+Laboratory-wide reference data reused across studies.
 
-## Paradigm and Environment
+- **Substance:** anything given to an animal: an active compound, a reference
+  drug, a vehicle (saline, 0.5% CMC) or an agent that induces a disease model
+  (MPTP, LPS, scopolamine). `kind` (`COMPOUND`, `REFERENCE_DRUG`, `VEHICLE`,
+  `INDUCER`) only guides pickers; the role of a substance in a study comes from
+  where it is used.
+- **Disease model:** how a deficit is produced (`CHEMICAL`, `SURGICAL`, `DIET`,
+  `STRESS`, `OTHER`) and, as free text, how it is confirmed. Every model is
+  induced.
+- **Paradigm:** a scientific test type **defined in code**, not an editable
+  database row: parameters, zones, scored events and metric definitions, in
+  published versions that never change. Registry: `MWM`, `NOVEL_OBJECT`,
+  `POLE`, `TREADMILL`.
+- **Environment:** one physical apparatus of one paradigm, such as a particular
+  water tank or one of three novel object boxes under one camera. Its
+  measurements are immutable numbered revisions. In a test, an animal is placed
+  in an **arena**, which is one environment revision.
 
-- **Paradigm:** a scientific test type **defined in code**, not an editable DB
-  row. The spec (parameters, zones, metric dictionary, and the event types, each
-  with a CV detect spec) is
-  engineering-owned and stable; only the values are user data. Read-only catalog
-  (`GET /api/paradigms`). Registry: `MWM`, `OPEN_FIELD`, `EPM`, `ROTAROD`,
-  `Y_MAZE`, `NOVEL_OBJECT`, `BARNES_MAZE`, `THREE_CHAMBER`, `LIGHT_DARK`, `POLE`,
-  `TREADMILL`.
-- **Environment (Ortam):** a lab's named, persisted instance of a paradigm. It
-  stores a self-contained snapshot `{ paradigmKey, schemaVersion, apparatus,
-  zones }`; apparatus values are validated against the code-fixed parameter
-  ranges and locked at test time. Many environments per paradigm (e.g. two
-  distinct Morris water tanks).
+## Subject
 
-The physical rig **is** the Environment - there is no separate `Apparatus` model.
-Camera-to-cm calibration is a later concern (roadmap Step 5).
+The animal: code, species (`MOUSE`, `RAT`) and sex. A subject can be registered
+before it joins a study. Body weights belong to the subject, are recorded with
+the time of measurement and never change.
 
-## Scenario (the central experiment definition)
+## Study design
 
-A `Scenario` is the reusable definition of one experiment, built once. It carries:
+Everything here is decided before any animal is touched and is frozen when the
+study starts.
 
-- `name`, `description`.
-- **environments** (N-N) - one or more environments to run on, so a scenario can
-  span one or more paradigms. Each environment's paradigm fixes its metrics.
-- **session parameters** (optional) - trial count, duration, etc.
+- **Experiment:** code, title, description, hypothesis, randomisation method and
+  whether it is blinded. Lifecycle `DRAFT -> RUNNING -> COMPLETED`. Starting
+  sets **day 0**; completing makes the experiment read-only.
+- **Group:** an arm of the study, defined by its role and its disease model:
 
-A scenario carries **no** pass/fail criteria. A behavioral result is **data, not
-a verdict** - interpretation happens at the analysis layer.
+  | Role | Disease model | Receives | Purpose |
+  |---|---|---|---|
+  | `HEALTHY_CONTROL` | none | vehicle, if any | normal baseline |
+  | `SHAM` | yes | a vehicle in place of the induction | controls for the induction procedure |
+  | `DISEASE_CONTROL` | yes | induction and vehicle | the deficit |
+  | `POSITIVE_CONTROL` | yes | induction and a reference drug | proves the test can detect a rescue |
+  | `TREATMENT` | yes | induction and the tested substance | efficacy and dose response |
 
-### Signal vs metric vs metric result
+  A group has a target size (n).
+- **Regimen item:** what a group receives: purpose (`INDUCTION`, `VEHICLE`,
+  `TREATMENT`), substance, dose, unit, route, frequency, and the first and last
+  study day. A group has at most one treatment item, so a treatment group has one
+  substance at one dose level; treatment groups of the same substance form the
+  dose response.
+- **Timepoint:** when animals are tested, as a study day relative to day 0
+  (Baseline on day -1, Day 14 on day 14).
+- **Protocol:** the test battery, with immutable versions of ordered steps. A
+  step is a paradigm version, a trial type, a number of trials and session
+  settings. It names no apparatus.
+- **Endpoint:** what the study is judged on: one metric of one paradigm at one
+  timepoint, primary or secondary, with the direction that counts as better and
+  an optional baseline timepoint. A study has one primary endpoint.
 
-Three separate layers: **signals** (the camera's raw real-time time series -
-trajectory, timestamps; they stay in the CV service, never in Mişko), **metrics**
-(the paradigm's definitions - what is measured, its unit/range/inputs), and
-**metric results** (the values for one run, computed by CV from signals or entered
-by hand). Mişko stores metric results, not signals.
+A study starts only when its design is complete: timepoints, groups with target
+sizes, a primary endpoint, a regimen that fits each role, and a disease control
+for every disease model that sham, treatment or positive control groups use.
 
-## Test (one run)
+## Execution
 
-A `Test` is a run of a `Scenario` against a `Subject`. The operator runs it
-**environment by environment** (Start → record metric results → Finish):
+- **Allocation:** an animal belongs to **exactly one group, so to one study,
+  ever**. Animals can be allocated by hand or randomised over the groups up to
+  their target sizes. In a draft an allocation can move or be removed; once the
+  study runs, the group is fixed.
+- **Exclusion:** an animal that leaves the study (`DIED`, `HUMANE_ENDPOINT`,
+  `INDUCTION_FAILED`, `TECHNICAL`, `OTHER`) is excluded with a reason, never
+  deleted. It stays visible in the report and is not tested or analyzed again.
+- **Administration:** every dose actually given, including the disease
+  induction and the vehicle, optionally linked to the regimen item it fulfils.
+  A per-kilogram dose records the weight it was computed from. The daily dosing
+  schedule is derived from the regimen items and day 0.
+- **Induction outcome:** whether the animal's disease model was confirmed,
+  recorded once.
 
-- `scenarioId`, `subjectId`, `operatorId`.
-- `status` (`PENDING | RUNNING | DONE | FAILED`), `startedAt`, `endedAt`.
-- `result` (JSON) - per environment:
-  `{ schemaVersion, environments: { [envId]: { status, startedAt, endedAt, metrics } } }`.
-  Metric values are validated against the environment's paradigm dictionary. The
-  same shape the CV service will push - manual entry fills the observable metrics
-  by hand.
+## Test (one session)
 
-There is **no** `passed`/verdict. Starting a test only asks for a subject and a
-scenario.
+A `Test` is one session of a running experiment: one timepoint, one protocol
+step, **one video**. It films one or more animals, the **test subjects**, each in
+its own arena; usually one, sometimes up to three arenas under one camera.
+
+- Status: `PLANNED -> IN_PROGRESS -> COMPLETED`, or `CANCELLED` with a reason.
+- Animals join or leave only while the test is planned. An animal is tested at
+  most once per timepoint and protocol step, and every arena must run the step's
+  paradigm.
+- Trials are recorded per animal and are append-only; a repeated trial gets the
+  next attempt number.
+- Animals of different groups may share a session. A measurement's group always
+  comes from the animal's allocation; nothing about the group is copied onto the
+  test.
+
+## Video, calibration and analysis
+
+- **Video:** a test has one current verified video. A replacement upload
+  supersedes it; earlier videos stay for provenance.
+- **Calibration:** maps pixels to centimeters. By default each arena
+  (environment revision) is calibrated once when the rig is set up, with its
+  crop as the arena's region of the camera frame. When the camera or arena moved,
+  a manual **override** applies to one test subject on the current video.
+  A paradigm may declare zones that are not derived from parameters; such
+  **calibrated zones** travel with the calibration, drawn on the frame in
+  pixels and stored in centimetres too (none of the current catalog does). A
+  calibration and its zones never change. Observer-scored paradigms need no
+  calibration.
+- **Scoring sheet:** for an observer-scored paradigm (`POLE`, `TREADMILL`,
+  `NOVEL_OBJECT`), the events a person marks for one test subject
+  on the current video, in microseconds from the clip start. A sheet is a
+  `DRAFT` while it is scored and `COMPLETED` once its scored event types and
+  recording length are fixed; reopening starts the next version and completed
+  sheets never change.
+- **Analysis run:** one per test subject. Its `method` is `AUTOMATED` when a
+  worker tracks the animal inside its arena's crop and uploads the trajectory
+  (`MWM`), or `SCORED` when it is computed from a completed scoring sheet,
+  with the scorer and no worker, calibration or video pair. Either way Mişko
+  computes every metric and event itself. Inputs are pinned, so reanalysis or
+  rescoring is a new run and old runs stay.
+- **Reviewed result:** every result is approved by a person. The first
+  successful run of an animal opens a `PENDING` result; a reviewer accepts it or
+  rejects it with a reason. In a blinded study the reviewer does not see the
+  group, disease, substance or dose. Only accepted results enter statistics.
+
+A behavioral result is **data, not a verdict**: there is no pass or fail on a
+test.
+
+## Report
+
+The experimental unit is the animal. For each endpoint the report takes the
+accepted results of animals that are not excluded and gives, per group, n, mean,
+SD, SEM and change from baseline, and the comparisons that follow from the group
+roles:
+
+- model validity: disease control against healthy control and sham;
+- assay sensitivity: positive control against disease control;
+- efficacy: each treatment group against its disease control, with rescue %;
+- dose response: the treatment groups of one substance ordered by dose.
+
+Results of different paradigm or metric engine versions are never pooled.
 
 ## Comment (test discussion)
 
 A `Comment` is a free-form note attached to a `Test`, forming a discussion
 thread.
 
-- `testId`, `authorId`, `body` (raw text), `createdAt`, `updatedAt`.
+- `testId`, `authorId`, `body` (plain text), `createdAt`, `updatedAt`.
 - `body` is stored verbatim and **never** interpreted as HTML; it is bounded
   (max 2000 chars), trimmed, and stripped of control characters at the API layer.
-- Deleting a test cascades to its comments; deleting a user cascades to theirs.
 
 Authorization is deliberately simple and not part of the permission matrix:
 
@@ -116,16 +208,19 @@ permissions):
 |---|:--:|:--:|:--:|:--:|:--:|
 | `user:manage`     | ✅ | ✅ | - | - | - |
 | `lab:configure`   | ✅ | ✅ | - | - | - |
+| `study:write` (catalog, design, allocation, protocols) | ✅ | ✅ | ✅ | - | - |
 | `subject:write`   | ✅ | ✅ | ✅ | - | - |
-| `apparatus:write` (environments & scenarios) | ✅ | ✅ | ✅ | - | - |
-| `test:write`      | ✅ | ✅ | ✅ | - | - |
-| `test:run`        | ✅ | ✅ | ✅ | ✅ | - |
+| `weight:write`    | ✅ | ✅ | ✅ | ✅ | - |
+| `apparatus:write` (environments, arena calibration) | ✅ | ✅ | ✅ | - | - |
+| `test:write` (planning tests) | ✅ | ✅ | ✅ | - | - |
+| `test:run` (running tests, videos, doses, review) | ✅ | ✅ | ✅ | ✅ | - |
 | `*:read`          | ✅ | ✅ | ✅ | ✅ | ✅ |
 
-Middleware `requirePermission("test:run")` is the primary gate.
+Every use case checks the permission itself (`actor.Require(...)`) before it
+touches a store.
 
-## What stays out of Mişko
+## What stays out of the database
 
-Per-frame telemetry and event rows live in the CV service's PostgreSQL. Video and
-trajectory files live in object storage - Mişko stores only URLs. There is no
-timeseries table in Mişko. See [Integration](../integration/).
+Video files, analyzed videos and trajectories live in private object storage;
+the database stores bucket, object name and generation, never video bytes or
+signed URLs. Paradigm definitions are code, not rows.

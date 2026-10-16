@@ -12,6 +12,7 @@ import (
 	"github.com/HappyHackingSpace/Misko/backend/internal/platform/pgtx"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"time"
 )
@@ -51,7 +52,9 @@ func (s *Store) User(ctx context.Context, id string) (domain.User, error) {
 	if err != nil {
 		return domain.User{}, missing(err, "get user")
 	}
-	return toUser(row.ID, row.Email, row.Name, row.Role, row.CreatedAt)
+	user, err := toUser(row.ID, row.Email, row.Name, row.Role, row.CreatedAt)
+	user.LastLoginAt = timestamp(row.LastLoginAt)
+	return user, err
 }
 
 func (s *Store) AccountByEmail(ctx context.Context, email string) (application.Account, error) {
@@ -92,6 +95,7 @@ func (s *Store) ListUsers(ctx context.Context, f application.UserFilter) ([]doma
 		if err != nil {
 			return nil, 0, err
 		}
+		user.LastLoginAt = timestamp(row.LastLoginAt)
 		users = append(users, user)
 	}
 	return users, int(total), nil
@@ -159,6 +163,22 @@ func missing(err error, operation string) error {
 		return application.ErrNotFound
 	}
 	return fmt.Errorf("%s: %w", operation, err)
+}
+
+func (s *Store) RecordLogin(ctx context.Context, id string) error {
+	if err := s.queries.RecordLogin(ctx, id); err != nil {
+		return fmt.Errorf("record login: %w", err)
+	}
+	return nil
+}
+
+// timestamp is nil for a NULL timestamp.
+func timestamp(t pgtype.Timestamptz) *time.Time {
+	if !t.Valid {
+		return nil
+	}
+	utc := t.Time.UTC()
+	return &utc
 }
 
 func toUser(id, email, name, rawRole string, createdAt time.Time) (domain.User, error) {

@@ -1,82 +1,101 @@
 <script setup>
-// One published paradigm version: the parameters it takes, the zones it knows,
-// and the metrics, events and quality rules the engine produces. Definitions
-// come from the API and are shown as written, because they are the scientific
-// contract.
+// One published paradigm version, read as a template: what it measures, the
+// values an environment and a protocol step have to provide, and the metrics,
+// zones, events and quality rules the engine produces. Names, explanations
+// and technical definitions come from the API in the chosen language;
+// formulas stay as written.
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import { useI18n } from "vue-i18n";
 import { api } from "../api/client.js";
 import { useAuth } from "../stores/auth.js";
 import { useBreadcrumb } from "../stores/breadcrumb.js";
+import { useParameters } from "../composables/useParameters.js";
 
-const { t } = useI18n();
+const { t, te, locale } = useI18n();
 const route = useRoute();
 const auth = useAuth();
 const crumb = useBreadcrumb();
+const { unit, format, range } = useParameters();
 
 // Turning a paradigm into a named apparatus needs apparatus:write.
 const canCreateEnvironment = computed(() => auth.can("apparatus:write"));
 
 const manifest = ref(null);
+// An introductory article; it is not part of a version's contract, so it
+// comes from the catalog list rather than the manifest.
+const reference = ref("");
+const referenceLabel = computed(() =>
+  locale.value !== "en" && reference.value.startsWith("https://en.") ? t("paradigms.referenceEnglish") : t("paradigms.reference"),
+);
 const error = ref("");
 const tab = ref("parameters");
+const open = ref({});
+
+const SCOPES = ["APPARATUS", "ANALYSIS", "SESSION"];
+const scopes = computed(() =>
+  SCOPES.map((scope) => ({ scope, parameters: (manifest.value?.parameters || []).filter((p) => p.scope === scope) })).filter(
+    (group) => group.parameters.length,
+  ),
+);
 
 const tabs = computed(() => {
   if (!manifest.value) return [];
-  const list = [{ key: "parameters", label: t("paradigms.apparatusParams") }];
+  const list = [{ key: "parameters", label: t("paradigms.parameters") }, { key: "metrics", label: t("paradigms.metrics") }];
   if (manifest.value.zones?.length) list.push({ key: "zones", label: t("paradigms.zones") });
-  list.push({ key: "metrics", label: t("paradigms.metrics") });
-  if (manifest.value.events?.length) list.push({ key: "events", label: t("paradigms.events") });
+  if (manifest.value.events?.length || manifest.value.inputEvents?.length) list.push({ key: "events", label: t("paradigms.events") });
   if (manifest.value.qc?.length) list.push({ key: "qc", label: t("paradigms.qc") });
   return list;
 });
-
 watch(tabs, (list) => {
   if (list.length && !list.some((entry) => entry.key === tab.value)) tab.value = list[0].key;
 });
 
-const parameters = computed(() => [
-  ...(manifest.value?.apparatusParameters || []).map((p) => ({ ...p, scope: t("paradigms.apparatus") })),
-  ...(manifest.value?.sessionParameters || []).map((p) => ({ ...p, scope: t("paradigms.session") })),
-]);
+// Scored observations reappear among the derived events; each type is listed once.
+const allEvents = computed(() => {
+  const seen = new Set();
+  return [...(manifest.value?.inputEvents || []), ...(manifest.value?.events || [])].filter(
+    (event) => !seen.has(event.type) && seen.add(event.type),
+  );
+});
+const metricUnit = (metric) => unit({ unit: metric.unit });
+const qcLabel = (rule) => (te(`paradigms.qcRules.${rule.key}`) ? t(`paradigms.qcRules.${rule.key}`) : rule.key);
+const category = (key) => t(`paradigms.categories.${String(key).toLowerCase()}`);
+const toggle = (key) => (open.value = { ...open.value, [key]: !open.value[key] });
 
 async function load() {
   error.value = "";
   try {
     // GET /paradigms/{key} already returns the latest manifest in full, so it
-    // is only fetched again when a specific version is asked for. Reading a
-    // "latestVersion" field off it asked for /versions/undefined, which is a
-    // 404, and left this page showing "unknown paradigm version" for every
-    // paradigm.
-    const latest = await api(`/paradigms/${route.params.key}`);
+    // is only fetched again when a specific version is asked for.
+    const [latest, list] = await Promise.all([api(`/paradigms/${route.params.key}`), api("/paradigms")]);
+    reference.value = (list.data || []).find((p) => p.key === route.params.key)?.reference || "";
     const asked = Number(route.query.version);
-    manifest.value = asked && asked !== latest.version
-      ? await api(`/paradigms/${route.params.key}/versions/${asked}`)
-      : latest;
-    crumb.set([
-      { label: t("paradigms.title"), to: "/paradigms" },
-      { label: manifest.value.name },
-    ]);
+    manifest.value = asked && asked !== latest.version ? await api(`/paradigms/${route.params.key}/versions/${asked}`) : latest;
+    crumb.set([{ label: t("paradigms.title"), to: "/paradigms" }, { label: manifest.value.name }]);
   } catch (e) {
     error.value = e.message;
   }
 }
 
 onMounted(load);
+watch(locale, load);
 onUnmounted(() => crumb.clear());
 </script>
 
 <template>
   <p class="err" v-if="error">{{ error }}</p>
-
   <div class="detail" v-if="manifest">
     <div class="card">
-      <h2 style="margin-top:0">
-        {{ manifest.name }} <span class="muted">{{ manifest.key }} v{{ manifest.version }}</span>
-      </h2>
+      <h2 style="margin-top:0">{{ manifest.name }}</h2>
+      <p>{{ manifest.description }}</p>
+      <p v-if="reference">
+        <a class="link" :href="reference" target="_blank" rel="noopener noreferrer" data-test="paradigm-reference">{{ referenceLabel }}</a>
+      </p>
       <p class="muted">
-        {{ $t("paradigms.metricEngine") }} {{ manifest.metricEngineVersion }} ·
+        {{ category(manifest.category) }} ·
+        {{ $t("paradigms.trialTypes") }}: {{ manifest.trialTypes.map((tt) => tt.label).join(", ") }} ·
+        v{{ manifest.version }} ·
         {{ $t("paradigms.automated") }}: {{ manifest.automatedAnalysis ? $t("common.yes") : $t("common.no") }}
       </p>
       <!-- A paradigm is a template. This is where it becomes a real apparatus
@@ -98,18 +117,53 @@ onUnmounted(() => crumb.clear());
         </button>
       </div>
 
-      <div class="table-scroll" v-show="tab === 'parameters'">
+      <div v-show="tab === 'parameters'">
+        <section v-for="group in scopes" :key="group.scope" class="scope" :data-test="`scope-${group.scope}`">
+          <h4>{{ $t(`paradigms.scopes.${group.scope}`) }}</h4>
+          <p class="muted hint">{{ $t(`paradigms.scopeHints.${group.scope}`) }}</p>
+          <div class="table-scroll">
+            <table class="rows">
+              <thead>
+                <tr><th>{{ $t("common.name") }}</th><th>{{ $t("paradigms.range") }}</th><th>{{ $t("paradigms.default") }}</th></tr>
+              </thead>
+              <tbody>
+                <tr v-for="parameter in group.parameters" :key="parameter.key">
+                  <td>
+                    <strong>{{ parameter.label }}</strong>
+                    <div class="muted small">{{ parameter.help }}</div>
+                  </td>
+                  <td class="muted nowrap">{{ range(parameter) }}</td>
+                  <td class="muted nowrap">{{ format(parameter, parameter.default) }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+        <p class="muted" v-if="!scopes.length">{{ $t("paradigms.noParameters") }}</p>
+      </div>
+
+      <div class="table-scroll" v-show="tab === 'metrics'">
         <table class="rows">
-          <thead>
-            <tr><th>{{ $t("common.name") }}</th><th>{{ $t("paradigms.unit") }}</th><th>{{ $t("paradigms.range") }}</th><th>{{ $t("paradigms.default") }}</th></tr>
-          </thead>
+          <thead><tr><th>{{ $t("paradigms.metric") }}</th><th>{{ $t("paradigms.unit") }}</th><th>{{ $t("paradigms.description") }}</th></tr></thead>
           <tbody>
-            <tr v-for="parameter in parameters" :key="parameter.key">
-              <td>{{ parameter.label }} <span class="muted">{{ parameter.scope }}</span></td>
-              <td class="muted">{{ parameter.unit }}</td>
-              <td class="muted">{{ parameter.min }} - {{ parameter.max }}</td>
-              <td class="muted">{{ parameter.default }}</td>
-            </tr>
+            <template v-for="metric in manifest.metrics" :key="metric.key">
+              <tr>
+                <td><strong>{{ metric.label }}</strong></td>
+                <td class="muted nowrap">{{ metricUnit(metric) }}</td>
+                <td>
+                  {{ metric.description }}
+                  <a href="#" class="link small toggle" @click.prevent="toggle(metric.key)">{{ $t("paradigms.technical") }}</a>
+                </td>
+              </tr>
+              <tr v-if="open[metric.key]" class="technical">
+                <td colspan="3">
+                  <div class="small"><span class="muted">{{ metric.key }}</span></div>
+                  <div class="small">{{ metric.definition }}</div>
+                  <div class="small"><span class="muted">{{ $t("paradigms.formula") }}:</span> <code>{{ metric.formula }}</code></div>
+                  <div class="small"><span class="muted">{{ $t("paradigms.missingWhen") }}:</span> {{ metric.missingWhen }}</div>
+                </td>
+              </tr>
+            </template>
           </tbody>
         </table>
       </div>
@@ -119,21 +173,8 @@ onUnmounted(() => crumb.clear());
           <thead><tr><th>{{ $t("paradigms.zone") }}</th><th>{{ $t("paradigms.geometry") }}</th></tr></thead>
           <tbody>
             <tr v-for="zone in manifest.zones" :key="zone.key">
-              <td>{{ zone.key }} <span class="muted">{{ zone.role }}</span></td>
-              <td class="muted">{{ zone.geometry }}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-
-      <div class="table-scroll" v-show="tab === 'metrics'">
-        <table class="rows">
-          <thead><tr><th>{{ $t("common.name") }}</th><th>{{ $t("paradigms.unit") }}</th><th>{{ $t("paradigms.definition") }}</th></tr></thead>
-          <tbody>
-            <tr v-for="metric in manifest.metrics" :key="metric.key">
-              <td>{{ metric.label }} <span class="muted">{{ metric.key }}</span></td>
-              <td class="muted">{{ metric.unit }}</td>
-              <td class="muted">{{ metric.definition }}</td>
+              <td><strong>{{ zone.label }}</strong></td>
+              <td class="muted small">{{ zone.geometry }}</td>
             </tr>
           </tbody>
         </table>
@@ -143,9 +184,9 @@ onUnmounted(() => crumb.clear());
         <table class="rows">
           <thead><tr><th>{{ $t("paradigms.event") }}</th><th>{{ $t("paradigms.definition") }}</th></tr></thead>
           <tbody>
-            <tr v-for="event in manifest.events" :key="event.type">
-              <td>{{ event.type }} <span class="muted">{{ event.kind }}</span></td>
-              <td class="muted">{{ event.definition }}</td>
+            <tr v-for="event in allEvents" :key="event.type">
+              <td><strong>{{ event.label }}</strong></td>
+              <td class="muted small">{{ event.definition }}</td>
             </tr>
           </tbody>
         </table>
@@ -156,8 +197,8 @@ onUnmounted(() => crumb.clear());
           <thead><tr><th>{{ $t("paradigms.rule") }}</th><th>{{ $t("paradigms.limit") }}</th></tr></thead>
           <tbody>
             <tr v-for="rule in manifest.qc" :key="rule.key">
-              <td>{{ rule.key }}</td>
-              <td class="muted">{{ rule.operator }} {{ rule.value }} {{ rule.unit }}</td>
+              <td>{{ qcLabel(rule) }}</td>
+              <td class="muted nowrap">{{ rule.operator }} {{ format({ unit: rule.unit }, rule.value) }}</td>
             </tr>
           </tbody>
         </table>
@@ -168,10 +209,17 @@ onUnmounted(() => crumb.clear());
 
 <style scoped>
 .detail { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
-.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 16px; }
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 16px; flex-wrap: wrap; }
 .tab { background: transparent; border: none; border-bottom: 2px solid transparent; border-radius: 0; padding: 8px 14px; color: var(--muted); font-size: 13px; margin-bottom: -1px; }
 .tab.active { color: var(--txt); border-bottom-color: var(--accent, #4cc2ff); font-weight: 600; }
+.scope + .scope { margin-top: 20px; }
+.scope h4 { margin: 0; font-size: 13px; }
+.hint { margin: 2px 0 8px; font-size: 12px; }
 .rows { width: 100%; border-collapse: collapse; }
 .rows th { text-align: left; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; padding: 6px 8px; }
-.rows td { padding: 6px 8px; border-top: 1px solid var(--line); vertical-align: top; }
+.rows td { padding: 8px; border-top: 1px solid var(--line); vertical-align: top; }
+.technical td { border-top: none; padding-top: 0; }
+.small { font-size: 12px; line-height: 1.5; }
+.nowrap { white-space: nowrap; }
+.toggle { margin-left: 6px; }
 </style>

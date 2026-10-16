@@ -41,6 +41,12 @@ func (o *objects) UploadURL(_ context.Context, object, contentType string, expir
 	return application.SignedRequest{Method: "POST", URL: "https://storage.test/" + object, Headers: map[string]string{"Content-Type": contentType}, ExpiresAt: expires}, nil
 }
 
+func (o *objects) SizedUploadURL(ctx context.Context, object, contentType string, size int64, expires time.Time) (application.SignedRequest, error) {
+	signed, err := o.UploadURL(ctx, object, contentType, expires)
+	signed.Headers["x-goog-content-length-range"] = "0," + strconv.FormatInt(size, 10)
+	return signed, err
+}
+
 func (o *objects) ReadURL(_ context.Context, object string, generation int64, expires time.Time) (string, error) {
 	return "https://storage.test/" + object + "?generation=" + strconv.FormatInt(generation, 10), nil
 }
@@ -75,33 +81,51 @@ func id(t *testing.T, pool *pgxpool.Pool, sql string, args ...any) string {
 	return out
 }
 
-// plannedTests creates two experiments, each with one planned test, using SQL only.
-func plannedTests(t *testing.T, pool *pgxpool.Pool) (string, string) {
+// study is a running experiment with one test in progress filming one
+// animal and one planned test, created with SQL only because the contexts that
+// own these tables are ported separately.
+type study struct {
+	experiment, test, planned string
+}
+
+func runningStudy(t *testing.T, pool *pgxpool.Pool, code string) study {
 	t.Helper()
-	var tests []string
-	for i, code := range []string{"E1", "E2"} {
-		exp := id(t, pool, "INSERT INTO misko.experiments (code, title) VALUES ($1, 'Study') RETURNING id", code)
-		subject := id(t, pool, "INSERT INTO misko.subjects (code, species, sex) VALUES ($1, 'MOUSE', 'MALE') RETURNING id", "S"+code)
-		enrollment := id(t, pool, "INSERT INTO misko.enrollments (experiment_id, subject_id, enrolled_at) VALUES ($1, $2, now() - interval '2 days') RETURNING id", exp, subject)
-		env := id(t, pool, "INSERT INTO misko.environments (name, paradigm_key) VALUES ($1, 'OPEN_FIELD') RETURNING id", "Arena "+code)
-		rev := id(t, pool, "INSERT INTO misko.environment_revisions (environment_id, paradigm_key, number, paradigm_version, apparatus, created_by) VALUES ($1, 'OPEN_FIELD', 1, 1, '{}', $2) RETURNING id", env, technician.UserID)
-		protocol := id(t, pool, "INSERT INTO misko.protocols (experiment_id, name) VALUES ($1, 'Battery') RETURNING id", exp)
-		var version string
-		err := pgx.BeginFunc(ctx, pool, func(tx pgx.Tx) error {
-			if err := tx.QueryRow(ctx, "INSERT INTO misko.protocol_versions (experiment_id, protocol_id, number, step_count, created_by) VALUES ($1, $2, 1, 1, $3) RETURNING id", exp, protocol, technician.UserID).Scan(&version); err != nil {
-				return err
-			}
-			_, err := tx.Exec(ctx, "INSERT INTO misko.protocol_steps (protocol_version_id, position, paradigm_key, paradigm_version, environment_revision_id, trial_type, trials, inter_trial_interval_s, session) VALUES ($1, 1, 'OPEN_FIELD', 1, $2, 'STANDARD', 1, 0, '{}')", version, rev)
+	exp := id(t, pool, "INSERT INTO misko.experiments (code, title) VALUES ($1, 'Study') RETURNING id", code)
+	group := id(t, pool, "INSERT INTO misko.experiment_groups (experiment_id, code, name, role) VALUES ($1, 'G1', 'Healthy', 'HEALTHY_CONTROL') RETURNING id", exp)
+	timepoint := id(t, pool, "INSERT INTO misko.timepoints (experiment_id, name, study_day, position) VALUES ($1, 'Day 1', 1, 1) RETURNING id", exp)
+	protocol := id(t, pool, "INSERT INTO misko.protocols (experiment_id, name) VALUES ($1, 'Battery') RETURNING id", exp)
+	var version string
+	err := pgx.BeginFunc(ctx, pool, func(tx pgx.Tx) error {
+		if err := tx.QueryRow(ctx, "INSERT INTO misko.protocol_versions (experiment_id, protocol_id, number, step_count, created_by) VALUES ($1, $2, 1, 1, $3) RETURNING id",
+			exp, protocol, technician.UserID).Scan(&version); err != nil {
 			return err
-		})
-		if err != nil {
-			t.Fatal(err)
 		}
-		tests = append(tests, id(t, pool, `INSERT INTO misko.tests (experiment_id, enrollment_id, subject_id, protocol_version_id, step_position, paradigm_key, paradigm_version, environment_revision_id, planned_trials, scheduled_at, created_by)
-			VALUES ($1, $2, $3, $4, 1, 'OPEN_FIELD', 1, $5, 1, now() - interval '1 day', $6) RETURNING id`, exp, enrollment, subject, version, rev, technician.UserID))
-		_ = i
+		_, err := tx.Exec(ctx, "INSERT INTO misko.protocol_steps (protocol_version_id, position, paradigm_key, paradigm_version, trial_type, trials, session) VALUES ($1, 1, 'MWM', 1, 'ACQUISITION', 1, '{}')", version)
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
-	return tests[0], tests[1]
+	if _, err := pool.Exec(ctx, "UPDATE misko.experiments SET status = 'RUNNING', day_zero = current_date, started_at = now() WHERE id = $1", exp); err != nil {
+		t.Fatal(err)
+	}
+	subject := id(t, pool, "INSERT INTO misko.subjects (code, species, sex) VALUES ($1, 'MOUSE', 'MALE') RETURNING id", "S-"+code)
+	allocation := id(t, pool, "INSERT INTO misko.allocations (experiment_id, group_id, subject_id, allocated_at, created_by) VALUES ($1, $2, $3, now() - interval '1 day', $4) RETURNING id",
+		exp, group, subject, technician.UserID)
+	env := id(t, pool, "INSERT INTO misko.environments (name, paradigm_key) VALUES ($1, 'MWM') RETURNING id", "Arena "+code)
+	arena := id(t, pool, `INSERT INTO misko.environment_revisions (environment_id, paradigm_key, paradigm_version, number, parameters, created_by)
+		VALUES ($1, 'MWM', 1, 1, '{"tank_diameter_cm": 120, "platform_diameter_cm": 10, "platform_x_cm": 30, "platform_y_cm": 30}', $2) RETURNING id`, env, technician.UserID)
+	plan := `INSERT INTO misko.tests (experiment_id, timepoint_id, protocol_version_id, step_position, paradigm_key, paradigm_version, planned_trials, scheduled_at, created_by)
+		VALUES ($1, $2, $3, 1, 'MWM', 1, 1, now(), $4) RETURNING id`
+	test, planned := id(t, pool, plan, exp, timepoint, version, technician.UserID), id(t, pool, plan, exp, timepoint, version, technician.UserID)
+	if _, err := pool.Exec(ctx, `INSERT INTO misko.test_subjects (experiment_id, test_id, allocation_id, environment_revision_id, paradigm_key, paradigm_version, created_by)
+		VALUES ($1, $2, $3, $4, 'MWM', 1, $5)`, exp, test, allocation, arena, technician.UserID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, "UPDATE misko.tests SET status = 'IN_PROGRESS', started_at = now() WHERE id = $1", test); err != nil {
+		t.Fatal(err)
+	}
+	return study{experiment: exp, test: test, planned: planned}
 }
 
 func request(size int64) domain.UploadRequest {
@@ -112,7 +136,8 @@ func TestUploadsAreVerifiedAndPinned(t *testing.T) {
 	pool := pgtest.Database(t)
 	store := &objects{stored: map[string]domain.ObjectAttrs{}}
 	s := application.New(postgres.NewStore(pool), store, settings, time.Now)
-	test, foreign := plannedTests(t, pool)
+	first, elsewhere := runningStudy(t, pool, "E1"), runningStudy(t, pool, "E2")
+	test, foreign := first.test, elsewhere.test
 
 	upload, err := s.StartUpload(ctx, technician, test, request(4096))
 	if err != nil {
@@ -120,7 +145,8 @@ func TestUploadsAreVerifiedAndPinned(t *testing.T) {
 	}
 	rec := upload.Recording
 	if rec.Asset.Status != domain.Pending || rec.Asset.Bucket != "misko-test-videos" || rec.Asset.ObjectName != "tests/"+test+"/originals/"+rec.Asset.ID ||
-		rec.Clip.StartUs != 250_000 || rec.TestID != test || !strings.HasSuffix(upload.Request.URL, rec.Asset.ObjectName) {
+		rec.Clip.StartUs != 250_000 || rec.TestID != test || rec.Current || rec.SupersedesID != "" || !strings.HasSuffix(upload.Request.URL, rec.Asset.ObjectName) ||
+		upload.Request.Headers["x-goog-content-length-range"] != "0,4096" {
 		t.Fatalf("started: %+v %+v", rec, upload.Request)
 	}
 	if _, err := s.FinalizeUpload(ctx, technician, test, rec.ID); !errors.Is(err, application.ErrUploadIncomplete) {
@@ -196,9 +222,18 @@ func TestUploadsAreVerifiedAndPinned(t *testing.T) {
 	if _, err := s.ReadURL(ctx, viewer, test, corrupt.Recording.ID); !errors.Is(err, application.ErrNotVerified) {
 		t.Fatalf("read a rejected video: %v", err)
 	}
+	// The corrupt upload extends the chain but is rejected, so the verified
+	// video stays current; both stay readable in the list.
 	list, err := s.Recordings(ctx, viewer, test)
-	if err != nil || len(list) != 2 || list[0].ID != rec.ID || list[1].Asset.Status != domain.Rejected {
+	if err != nil || len(list) != 2 || list[0].ID != rec.ID || !list[0].Current || list[1].Asset.Status != domain.Rejected ||
+		list[1].Current || list[1].SupersedesID != rec.ID {
 		t.Fatalf("recordings: %+v %v", list, err)
+	}
+	if current, err := s.Current(ctx, viewer, test); err != nil || current.ID != rec.ID {
+		t.Fatalf("current recording: %+v %v", current, err)
+	}
+	if _, err := s.Current(ctx, viewer, first.planned); !errors.Is(err, application.ErrRecordingNotFound) {
+		t.Fatalf("current recording of a test without video: %v", err)
 	}
 	if _, err := s.Recordings(ctx, viewer, "01a00000-0000-7000-8000-00000000dead"); !errors.Is(err, application.ErrTestNotFound) {
 		t.Fatalf("recordings of an unknown test: %v", err)
@@ -228,12 +263,88 @@ func TestUploadsAreVerifiedAndPinned(t *testing.T) {
 	if _, constraint := pgtx.Violation(err); constraint != "test_recordings_test_fkey" {
 		t.Errorf("a recording joined a test of another experiment: %v", err)
 	}
+	// A second chain head or a fork of the chain is refused by the database.
+	for name, supersedes := range map[string]any{"second first video": nil, "fork of a superseded video": rec.ID} {
+		_, err = pool.Exec(ctx, `INSERT INTO misko.test_recordings (experiment_id, test_id, video_asset_id, supersedes_id, created_by) VALUES ($1, $2, $3, $4, $5)`,
+			first.experiment, test, loose, supersedes, technician.UserID)
+		if _, constraint := pgtx.Violation(err); constraint != "test_recordings_first_key" && constraint != "test_recordings_supersedes_key" {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
 
+	for name, tc := range map[string]struct {
+		test string
+		want error
+	}{
+		"planned test":   {first.planned, domain.ErrTestNotStarted},
+		"unknown test":   {"01a00000-0000-7000-8000-00000000dead", application.ErrTestNotFound},
+		"malformed test": {"test", application.ErrTestNotFound},
+	} {
+		if _, err := s.StartUpload(ctx, technician, tc.test, request(10)); !errors.Is(err, tc.want) {
+			t.Errorf("upload to a %s: %v", name, err)
+		}
+	}
+	// The database rule behind the status check maps to the same error.
+	pending, _, err := domain.NewUpload(request(10), settings.MaxBytes, technician.UserID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pending.Bucket = "misko-test-videos"
+	err = postgres.NewStore(pool).Transaction(ctx, func(tx application.Store) error {
+		_, err := tx.CreateRecording(ctx, application.TestRef{ID: first.planned, ExperimentID: first.experiment, Status: "IN_PROGRESS"}, pending, domain.Clip{}, "")
+		return err
+	})
+	if !errors.Is(err, domain.ErrTestNotStarted) {
+		t.Fatalf("a video for a planned test past the status check: %v", err)
+	}
 	if _, err := pool.Exec(ctx, "UPDATE misko.tests SET status = 'CANCELLED', cancelled_at = now(), cancel_reason = 'duplicate' WHERE id = $1", foreign); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.StartUpload(ctx, technician, foreign, request(10)); !errors.Is(err, application.ErrTestCancelled) {
+	if _, err := s.StartUpload(ctx, technician, foreign, request(10)); !errors.Is(err, domain.ErrTestNotStarted) {
 		t.Fatalf("upload to a cancelled test: %v", err)
+	}
+	// A completed test still takes a replacement video.
+	if _, err := pool.Exec(ctx, "UPDATE misko.tests SET status = 'COMPLETED', completed_at = now() WHERE id = $1", test); err != nil {
+		t.Fatal(err)
+	}
+	if replaced, err := s.StartUpload(ctx, technician, test, request(10)); err != nil || replaced.Recording.SupersedesID != corrupt.Recording.ID {
+		t.Fatalf("replacement on a completed test: %+v %v", replaced.Recording, err)
+	}
+}
+
+// Concurrent uploads to one test form one linear chain: each supersedes the
+// one that was current when it took the test's lock.
+func TestConcurrentUploadsFormOneChain(t *testing.T) {
+	pool := pgtest.Database(t)
+	s := application.New(postgres.NewStore(pool), &objects{stored: map[string]domain.ObjectAttrs{}}, settings, time.Now)
+	test := runningStudy(t, pool, "E1").test
+	var wg sync.WaitGroup
+	for range 6 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if _, err := s.StartUpload(ctx, technician, test, request(10)); err != nil {
+				t.Errorf("concurrent upload: %v", err)
+			}
+		}()
+	}
+	wg.Wait()
+	list, err := s.Recordings(ctx, viewer, test)
+	if err != nil || len(list) != 6 {
+		t.Fatalf("recordings: %d %v", len(list), err)
+	}
+	superseded, current := map[string]bool{}, 0
+	for _, r := range list {
+		if r.SupersedesID != "" {
+			superseded[r.SupersedesID] = true
+		}
+		if r.Current {
+			current++
+		}
+	}
+	// Every upload joins one linear chain; none is verified, so none is current.
+	if len(superseded) != 5 || current != 0 {
+		t.Fatalf("chain: %d superseded, %d current", len(superseded), current)
 	}
 }
 

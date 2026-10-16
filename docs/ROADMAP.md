@@ -1,6 +1,14 @@
 # Mişko Roadmap
 
-> **2026-09-10 — Yeni hedef:** Go Clean Architecture, ayrı domainler, kodda
+> **2026-10-15, katalog daraltıldı:** paradigma kataloğu dört paradigmaya
+> indirildi: `MWM`, `NOVEL_OBJECT`, `POLE` ve `TREADMILL` (kategoriler
+> `LEARNING_MEMORY` ve `MOTOR`). Diğer yedi paradigma kaldırıldı.
+>
+> **2026-10-12, çalışma modeli:** eski denek/senaryo modeli yerine grup, hastalık
+> modeli ve rejim etrafında kurulan çalışma modeli geldi; şema sıfırdan yeniden
+> yazıldı. Model ve kararlar: [DOMAIN_REDESIGN.md](plans/DOMAIN_REDESIGN.md).
+>
+> **2026-09-10, yeni hedef:** Go Clean Architecture, ayrı domainler, kodda
 > tanımlı paradigmalar, mevcut RBAC'nin korunması ve yüklenen videonun otomatik
 > analizi için aktif plan: [Go refactor planı](plans/GO_CLEAN_ARCH_REFACTOR.md).
 > Aşağıdaki roadmap önceki kapsamı kaydeder; yeni uygulama sırası için aktif planı kullanın.
@@ -8,7 +16,7 @@
 > Philosophy: build the scientific contract and the video-only backbone before
 > adding real AI. Mişko and the CV service stay independent from the start. Their
 > contact point is the contract in `docs/INTEGRATION.md`. The domain model is in
-> `docs/DOMAIN.md`; measurement rules are in `docs/MEASUREMENTS.md`.
+> `docs/plans/DOMAIN_REDESIGN.md` (summary in `docs/DOMAIN.md`); measurement rules are in `docs/MEASUREMENTS.md`.
 
 ## Architecture north star
 
@@ -32,7 +40,7 @@ The core architecture is intentionally split:
 
 | Layer | Responsibility |
 |---|---|
-| Mişko | Lab workflow, users, subjects, environments, scenarios, paradigm specs, metric dictionary, summary results. |
+| Mişko | Lab workflow, users, catalog, subjects, study design, dosing, environments, test sessions, paradigm specs, metric dictionary, reviewed results. |
 | CV service | Video capture, frame processing, detection, tracking, telemetry, artifacts, metric computation. |
 | Object storage | Video, trajectory files, heatmaps, calibration images and debug overlays. |
 
@@ -78,11 +86,8 @@ Exit criteria:
 Goal: define what the system means by each paradigm and each measurement before
 real AI starts producing data.
 
-- Add code-backed `ParadigmSpec` registry: (done, 11 paradigms in `backend/src/config/paradigms.js`)
-  - `MWM`, `OPEN_FIELD`, `EPM`, `ROTAROD`
-  - `Y_MAZE`, `NOVEL_OBJECT`, `BARNES_MAZE` (learning and memory)
-  - `THREE_CHAMBER` (social)
-  - `LIGHT_DARK` (anxiety)
+- Add code-backed `ParadigmSpec` registry: (done; now the Go catalog in `backend/internal/paradigms`, trimmed to four paradigms on 2026-10-15)
+  - `MWM`, `NOVEL_OBJECT` (learning and memory)
   - `POLE`, `TREADMILL` (motor)
 - Add code-backed `MetricDefinition` registry from `docs/MEASUREMENTS.md`. (done, `backend/src/config/metrics.js`)
 - Lock canonical units: (done, `backend/src/config/units.js`)
@@ -92,7 +97,6 @@ real AI starts producing data.
   - ratios: `ratio` (0..1) and `percent`
   - counts: `count`
   - angle: `deg`
-  - rotarod speed: `rpm`
   - subject weight: `g`
   - event flags: `boolean`
   - apparatus parameters only: `mm`, `c`
@@ -119,52 +123,25 @@ Exit criteria:
 - Every metric has a unit, definition, input list and aggregation behavior. (done)
 - Researchers can inspect paradigm detail pages before running a test. (done; `frontend/src/views/Paradigms.vue`)
 
-## Step 3 - Scenario: the central experiment definition
+## Step 3 - Study model (superseded)
 
-Goal: make a `Scenario` the complete, reusable definition of an experiment, so
-that running a test is just "pick a subject and go".
+The original Step 3 made a `Scenario` (a bundle of environments) the central
+definition and a `Test` a `Subject` measured against it, with a free-text
+`groupName` on the subject. That model was replaced in the Go rebuild by the
+study model in [DOMAIN_REDESIGN.md](plans/DOMAIN_REDESIGN.md):
 
-The domain is intentionally small:
+- a catalog of substances and disease models;
+- experiments (`DRAFT -> RUNNING -> COMPLETED`) with groups that have one of five
+  roles (healthy control, sham, disease control, positive control, treatment), a
+  disease model and a regimen, plus timepoints, protocols and endpoints;
+- each animal allocated to exactly one group, excluded with a reason rather than
+  deleted, with every actual dose and the induction outcome recorded;
+- tests as sessions with one video and one or more animals in arenas, analyzed
+  per animal and reviewed by a person;
+- a report per endpoint with role-based comparisons.
 
-- **Subject** - the mouse (kept simple: code, sex, group).
-- **Paradigm** - read-only code catalog (Step 2).
-- **Environment** - a named instance of a paradigm: the physical setup snapshot
-  (apparatus + zones). (Step 1)
-- **Scenario** - the central object: a named bundle of one or more environments.
-- **Test** - a `Subject` measured against a `Scenario`, run environment by
-  environment.
-
-A `Scenario` references one or more `Environment`s (N-N), so it can span one or
-more paradigms; each environment's paradigm fixes its metrics. A scenario carries
-**no** pass/fail criteria. A `Test` = `Subject + Scenario`, run environment by
-environment (Start -> record metric results -> Finish). Results are stored per
-environment and are **data, not a verdict**.
-
-Separate the three layers: **signals** (raw, real-time, CV-side - never in
-Mişko), **metrics** (paradigm definitions), **metric results** (the values for a
-run; CV computes from signals, manual entry records the observable ones).
-
-Work items:
-
-- Redesign the starter `Scenario` (free `POOL | MAZE | STICK | PATH` type) into a
-  named bundle of N-N `environments` (+ optional `sessionParams`). (done)
-- `Test = Subject + Scenario`; `Test.result` is structured per-environment JSON:
-  `{ environments: { [envId]: { status, startedAt, endedAt, metrics } } }`.
-  **No `passed`/verdict.** (done)
-- Per-environment manual result entry: a form auto-generated from each
-  environment's paradigm metric dictionary, validated by `validateMetrics`. (done)
-- Keep `Subject` as the simple starter model. (done)
-
-Exit criteria:
-
-- A scenario fully defines an experiment (its environments); built once.
-- Running a test = pick a subject + scenario, then enter each environment's
-  metric results (manual now, CV later - same shape).
-
-Explicitly out of scope (dropped from the earlier research-grade plan): rich
-`Subject`, `WeightLog`, `DiseaseModel`/`Treatment`, `Study -> Group`, a separate
-`Apparatus` model. The physical rig is the `Environment`; calibration stays in
-Step 5.
+The schema was rebuilt from scratch for it; databases from the earlier
+migrations must be reset. Implemented rules and routes: `backend/README.md`.
 
 ## Step 4 - Video-only boundary with fake CV
 
@@ -239,16 +216,13 @@ Initial metric targets:
 | Paradigm | MVP metrics |
 |---|---|
 | MWM | Escape latency, path length, swim speed, quadrant time, thigmotaxis, platform crossings for probe trials. |
-| Open Field | Distance, mean speed, center time, periphery time, immobility. |
-| EPM | Open arm time, closed arm time, open arm entries, closed arm entries. |
-| Rotarod | Trial duration and fall candidate events, with manual review at first. |
 
 Exit criteria:
 
 - CV processes a real video and returns valid metrics.
 - Debug overlay shows detected animal, trajectory, zones and calibration.
-- MWM, Open Field and EPM can run with centroid tracking.
-- Rotarod is marked as experimental until fall detection is validated.
+- MWM can run with centroid tracking.
+- Pole test, treadmill and novel object stay observer scored until automated event detection is validated.
 
 ## Step 7 - Quality control and review
 
@@ -269,32 +243,32 @@ Goal: make results scientifically usable, not just numerically populated.
   - `FAIL`
 - QC qualifies the metric data; it is not a pass/fail verdict.
 - Add manual review screen with video, overlay, trajectory and metric summary.
-- Default scenario exports exclude `REVIEW_REQUIRED` and `FAIL` unless explicitly
+- Default study exports exclude `REVIEW_REQUIRED` and `FAIL` unless explicitly
   included.
 
 Exit criteria:
 
-- Bad tracking is visible and does not silently enter scenario summaries.
+- Bad tracking is visible and does not silently enter study summaries.
 - Reviewers can inspect artifacts and decide whether a test is usable.
 - Every exported result carries QC status and protocol version.
 
 ## Step 8 - Analysis and reporting
 
-Goal: turn individual tests into scenario-level evidence.
+Goal: turn individual tests into study-level evidence.
 
-- Scenario dashboards: aggregate the tests run under a scenario.
-- Compare subject groups (via `Subject.groupName`) within a scenario.
+- Study reports: aggregate the accepted results of an experiment per endpoint.
+- Compare groups by role (model validity, assay sensitivity, efficacy, dose
+  response) within an experiment.
 - Per-subject history across tests.
 - MWM acquisition curves.
 - Probe trial summaries.
-- Open Field center/periphery summaries.
-- EPM open-arm summaries.
-- Rotarod repeated-trial learning curves.
+- Novel object discrimination summaries.
+- Pole test and treadmill summaries.
 - Export CSV and JSON with metric definitions and QC status.
 
 Exit criteria:
 
-- Researchers can compare subject groups within a scenario.
+- Researchers can compare the groups of an experiment.
 - Reports include units, normalization, protocol version and QC filtering.
 - Raw video stays outside Mişko, but artifacts are linked.
 
@@ -313,7 +287,7 @@ enough.
   - freezing
   - risk assessment
   - head direction
-- Improve Rotarod fall detection.
+- Automated detection of observer-scored events (pole test turns and falls, novel object exploration).
 - Add multi-animal support only after single-animal workflows are stable.
 
 Exit criteria:
@@ -347,7 +321,7 @@ Goal: make the project installable and reproducible by other labs.
 - GHCR image publishing.
 - GitHub Pages docs deploy.
 - Example datasets and demo videos.
-- Reproducible seed data and sample scenario and environment definitions.
+- Reproducible seed data and sample experiment and environment definitions.
 
 Exit criteria:
 

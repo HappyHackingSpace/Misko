@@ -26,13 +26,24 @@ class WorkerApi:
         return self._post(f"/api/worker/runs/{run_id}/heartbeat", {"attempt": attempt})
 
     def source_url(self, run_id: str, attempt: int) -> str:
-        return self._post(f"/api/worker/runs/{run_id}/source-url", {"attempt": attempt})["url"]
+        return self.absolute(self._post(f"/api/worker/runs/{run_id}/source-url", {"attempt": attempt})["url"])
 
     def request_output(self, run_id: str, attempt: int, kind: str, file_name: str, content_type: str, size: int, crc32c: str) -> dict[str, Any]:
-        return self._post(
+        declared = self._post(
             f"/api/worker/runs/{run_id}/outputs",
             {"attempt": attempt, "kind": kind, "fileName": file_name, "contentType": content_type, "sizeBytes": size, "crc32c": crc32c},
         )
+        if isinstance(declared.get("upload"), dict) and "url" in declared["upload"]:
+            declared["upload"] = {**declared["upload"], "url": self.absolute(declared["upload"]["url"])}
+        return declared
+
+    def absolute(self, url: str) -> str:
+        """Signed URLs from a bucket are absolute; an API with local storage
+        signs paths on itself, such as /api/local-storage/object?..., which
+        live under the same base URL as the worker routes."""
+        if url.startswith("/") and not url.startswith("//"):
+            return self._base + url
+        return url
 
     def submit(self, run_id: str, body: dict[str, Any]) -> dict[str, Any]:
         return self._post(f"/api/worker/runs/{run_id}/result", body)

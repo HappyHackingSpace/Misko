@@ -7,99 +7,70 @@ import (
 	"slices"
 )
 
-const notScoredOrIncomplete = "Missing (NOT_SCORED) when the event was not scored; missing (INCOMPLETE_RECORDING) when it was not observed and the recording is shorter than max_trial_duration_s."
-
-func rotarodV1() definition {
-	fall := []string{"fall event", "max_trial_duration_s", "recording duration"}
-	return definition{
-		paradigm: Paradigm{
-			Key: "ROTAROD", Name: "Rotarod", Category: Motor, Version: 1,
-			Species: []string{"MOUSE", "RAT"}, TrialTypes: []string{"FIXED_SPEED", "ACCELERATING"},
-			ApparatusParameters: []Parameter{
-				param("start_rpm", "Rod speed at trial start", Rpm, 0, 80, 4),
-				param("end_rpm", "Rod speed after acceleration", Rpm, 1, 100, 40),
-			},
-			SessionParameters: []Parameter{
-				integerParam("accelerating", "Accelerating mode: 1 accelerating, 0 fixed at start_rpm", Boolean, 0, 1, 1),
-				param("acceleration_duration_s", "Time from start_rpm to end_rpm", Second, 1, 600, 300),
-				param("max_trial_duration_s", "Trial cut-off", Second, 30, 600, 300),
-			},
-			InputEvents: []EventDefinition{{Type: "fall", Kind: PointEvent, Single: true, Definition: "The subject falls or passively rotates a full turn."}},
-			Events:      []EventDefinition{{Type: "fall", Kind: PointEvent, Definition: "Scored fall, passed through."}},
-			Metrics: []MetricDefinition{
-				metric("latency_to_fall_s", "Latency to fall", Second, 3600, fall,
-					"Fall time; without a fall by the cut-off, the latency is censored at max_trial_duration_s.", "min(fall time, max_trial_duration_s)", notScoredOrIncomplete),
-				metric("fall_detected", "Fall detected", Boolean, 1, fall, "1 when a fall occurs by the cut-off, 0 when the whole trial was recorded without one.", "fall time <= max_trial_duration_s", notScoredOrIncomplete),
-				metric("rpm_at_fall", "Speed at fall", Rpm, 100, append(fall, "accelerating", "start_rpm", "end_rpm", "acceleration_duration_s"),
-					"Rod speed at the fall time; accelerating linearly from start_rpm to end_rpm, then constant.",
-					"accelerating: start + (end - start) x min(t, acceleration_duration_s) / acceleration_duration_s; fixed: start_rpm",
-					"Missing (EVENT_NOT_OBSERVED) without a fall by the cut-off; also missing when not scored or incompletely recorded."),
-			},
-			QC: scoringQC,
-		},
-		validate: func(p map[string]float64) error {
-			if p["end_rpm"] < p["start_rpm"] {
-				return fmt.Errorf("%w: end_rpm must not be below start_rpm", ErrParameterOutOfRange)
-			}
-			return nil
-		},
-		evaluate: func(e evaluation) computation {
-			if !e.scored["fall"] {
-				return computation{reason: ReasonNotScored}
-			}
-			p := e.params
-			c := newComputation()
-			c.points = echoPoints(e.events, "fall")
-			maxUs := int64(math.Round(p["max_trial_duration_s"] * 1e6))
-			fall, fell := firstEvent(e.events, "fall")
-			switch {
-			case fell && fall.StartUs <= maxUs:
-				t := seconds(fall.StartUs)
-				c.values["latency_to_fall_s"] = t
-				c.values["fall_detected"] = 1
-				rpm := p["start_rpm"]
-				if p["accelerating"] == 1 {
-					rpm += (p["end_rpm"] - p["start_rpm"]) * math.Min(t, p["acceleration_duration_s"]) / p["acceleration_duration_s"]
-				}
-				c.values["rpm_at_fall"] = rpm
-			case e.durationUs >= maxUs:
-				c.values["latency_to_fall_s"] = p["max_trial_duration_s"]
-				c.values["fall_detected"] = 0
-				c.missing["rpm_at_fall"] = ReasonNotObserved
-			default:
-				c.reason = ReasonIncompleteRecording
-			}
-			return c
-		},
-	}
-}
+var notScoredOrIncomplete = T("Missing (NOT_SCORED) when the event was not scored; missing (INCOMPLETE_RECORDING) when it was not observed and the recording is shorter than max_trial_duration_s.",
+	"Olay puanlanmadıysa eksik (NOT_SCORED); olay gözlenmediyse ve kayıt max_trial_duration_s değerinden kısaysa eksik (INCOMPLETE_RECORDING).")
 
 func poleTestV1() definition {
 	events := []string{"turn_complete event", "base_reached event"}
-	notSeen := "Missing (NOT_SCORED) when the event was not scored and (EVENT_NOT_OBSERVED) when it did not occur."
+	notSeen := T("Missing (NOT_SCORED) when the event was not scored and (EVENT_NOT_OBSERVED) when it did not occur.",
+		"Olay puanlanmadıysa eksik (NOT_SCORED), olay gerçekleşmediyse eksik (EVENT_NOT_OBSERVED).")
 	return definition{
 		paradigm: Paradigm{
-			Key: "POLE", Name: "Pole test", Category: Motor, Version: 1,
-			Species: []string{"MOUSE", "RAT"}, TrialTypes: []string{"STANDARD"},
-			ApparatusParameters: []Parameter{param("pole_length_cm", "Pole length", Centimeter, 30, 100, 50)},
-			SessionParameters:   []Parameter{param("max_trial_duration_s", "Trial cut-off", Second, 30, 120, 60)},
+			Key: "POLE", Category: Motor, Version: 1,
+			Name: T("Pole test", "Direk testi"),
+			Description: T(
+				"The animal is placed head-up at the top of a vertical pole and must turn and climb down to the base. Measures bradykinesia and motor coordination, often in Parkinson's disease models.",
+				"Hayvan dikey bir direğin tepesine başı yukarı bakacak şekilde konur; dönüp tabana inmesi gerekir. Özellikle Parkinson modellerinde bradikineziyi ve motor koordinasyonu ölçer.",
+			),
+			Species: []string{"MOUSE", "RAT"}, TrialTypes: []TrialType{trialType("STANDARD", T("Standard", "Standart"))},
+			Parameters: []Parameter{
+				param("pole_length_cm", ApparatusScope, T("Pole length", "Direk uzunluğu"),
+					T("Length of the pole from the top, where the animal is placed, down to the base.",
+						"Hayvanın konduğu tepe noktasından tabana kadar direğin uzunluğu."),
+					Centimeter, 30, 100, 50),
+				param("max_trial_duration_s", SessionScope, T("Trial cut-off", "Deneme süresi sınırı"),
+					T("Longest time a trial may last before it is stopped.", "Deneme durdurulmadan önce sürebileceği en uzun süre."),
+					Second, 30, 120, 60),
+			},
 			InputEvents: []EventDefinition{
-				{Type: "turn_complete", Kind: PointEvent, Single: true, Definition: "The subject has turned to face downward."},
-				{Type: "base_reached", Kind: PointEvent, Single: true, Definition: "All paws reach the base."},
-				{Type: "fall", Kind: PointEvent, Single: true, Definition: "The subject falls off the pole."},
+				{Type: "turn_complete", Kind: PointEvent, Single: true, Label: T("Turn completed", "Dönüş tamamlandı"),
+					Definition: T("The subject has turned to face downward.", "Denek dönüp başını aşağıya çevirmiştir.")},
+				{Type: "base_reached", Kind: PointEvent, Single: true, Label: T("Base reached", "Tabana ulaştı"),
+					Definition: T("All paws reach the base.", "Tüm patiler tabana ulaşır.")},
+				{Type: "fall", Kind: PointEvent, Single: true, Label: T("Fall", "Düşme"), Definition: T("The subject falls off the pole.", "Denek direkten düşer.")},
 			},
 			Events: []EventDefinition{
-				{Type: "turn_complete", Kind: PointEvent, Definition: "Scored turn, passed through."},
-				{Type: "base_reached", Kind: PointEvent, Definition: "Scored arrival at the base, passed through."},
-				{Type: "fall", Kind: PointEvent, Definition: "Scored fall, passed through."},
+				{Type: "turn_complete", Kind: PointEvent, Label: T("Turn completed", "Dönüş tamamlandı"), Definition: T("Scored turn, passed through.", "Puanlanan dönüş, olduğu gibi aktarılır.")},
+				{Type: "base_reached", Kind: PointEvent, Label: T("Base reached", "Tabana ulaştı"), Definition: T("Scored arrival at the base, passed through.", "Puanlanan tabana ulaşma, olduğu gibi aktarılır.")},
+				{Type: "fall", Kind: PointEvent, Label: T("Fall", "Düşme"), Definition: T("Scored fall, passed through.", "Puanlanan düşme, olduğu gibi aktarılır.")},
 			},
 			Metrics: []MetricDefinition{
-				metric("t_turn_s", "Time to turn", Second, 120, events[:1], "Time of the turn_complete event from the trial start.", "turn_complete time", notSeen),
-				metric("t_total_s", "Total time", Second, 120, events[1:], "Time of the base_reached event from the trial start. No cut-off value is imputed.", "base_reached time", notSeen),
-				metric("descent_time_s", "Descent time", Second, 120, events, "Time from completing the turn to reaching the base.", "t_total_s - t_turn_s", "Missing with the reason of the first missing event."),
-				metric("descent_speed_cm_s", "Descent speed", CentimeterPerSecond, 1e4, append(events, "pole_length_cm"), "Pole length divided by the descent time.", "pole_length_cm / descent_time_s",
-					"Missing (ZERO_DENOMINATOR) when the descent time is 0; otherwise missing with the reason of descent_time_s."),
-				metric("fall_detected", "Fall detected", Boolean, 1, []string{"fall event"}, "1 when a fall was scored, 0 when falls were scored and none occurred.", "fall observed", "Missing (NOT_SCORED) when falls were not scored."),
+				metric("t_turn_s", T("Time to turn", "Dönme süresi"),
+					T("Time the animal needed to turn head-down. Longer times suggest slowed movement.",
+						"Hayvanın başını aşağı çevirmesi için geçen süre. Daha uzun süre yavaşlamış harekete işaret eder."),
+					Second, 120, events[:1], T("Time of the turn_complete event from the trial start.", "Deneme başlangıcından itibaren turn_complete olayının zamanı."),
+					"turn_complete time", notSeen),
+				metric("t_total_s", T("Total time", "Toplam süre"),
+					T("Time from the trial start until the animal reached the base.", "Deneme başlangıcından hayvanın tabana ulaşmasına kadar geçen süre."),
+					Second, 120, events[1:], T("Time of the base_reached event from the trial start. No cut-off value is imputed.",
+						"Deneme başlangıcından itibaren base_reached olayının zamanı. Deneme süresi sınırı değeri atanmaz."),
+					"base_reached time", notSeen),
+				metric("descent_time_s", T("Descent time", "İniş süresi"),
+					T("Time from completing the turn to reaching the base.", "Dönüşü tamamlamaktan tabana ulaşmaya kadar geçen süre."),
+					Second, 120, events,
+					T("Time from completing the turn to reaching the base.", "Dönüşü tamamlamaktan tabana ulaşmaya kadar geçen süre."),
+					"t_total_s - t_turn_s", T("Missing with the reason of the first missing event.", "İlk eksik olayın gerekçesiyle eksik.")),
+				metric("descent_speed_cm_s", T("Descent speed", "İniş hızı"),
+					T("Pole length divided by the descent time. Lower speeds suggest impaired motor function.",
+						"Direk uzunluğunun iniş süresine bölümü. Daha düşük hız bozulmuş motor işleve işaret eder."),
+					CentimeterPerSecond, 1e4, append(events, "pole_length_cm"), T("Pole length divided by the descent time.", "Direk uzunluğunun iniş süresine bölümü."),
+					"pole_length_cm / descent_time_s",
+					T("Missing (ZERO_DENOMINATOR) when the descent time is 0; otherwise missing with the reason of descent_time_s.",
+						"İniş süresi 0 ise eksik (ZERO_DENOMINATOR); aksi halde descent_time_s ile aynı gerekçeyle eksik.")),
+				metric("fall_detected", T("Fall detected", "Düşme oldu"),
+					T("Whether the animal fell off the pole.", "Hayvanın direkten düşüp düşmediği."),
+					Boolean, 1, []string{"fall event"}, T("1 when a fall was scored, 0 when falls were scored and none occurred.", "Düşme puanlandıysa 1, düşmeler puanlandığı halde hiç düşme olmadıysa 0."),
+					"fall observed", T("Missing (NOT_SCORED) when falls were not scored.", "Düşmeler puanlanmadıysa eksik (NOT_SCORED).")),
 			},
 			QC: scoringQC,
 		},
@@ -162,33 +133,76 @@ func treadmillV1() definition {
 	run := []string{"exhaustion event", "max_trial_duration_s", "recording duration"}
 	return definition{
 		paradigm: Paradigm{
-			Key: "TREADMILL", Name: "Treadmill", Category: Motor, Version: 1,
-			Species: []string{"MOUSE", "RAT"}, TrialTypes: []string{"ENDURANCE", "FIXED_SPEED"},
-			ApparatusParameters: []Parameter{param("lane_length_cm", "Lane length", Centimeter, 20, 80, 40)},
-			SessionParameters: []Parameter{
-				integerParam("accelerating", "Accelerating belt: 1 accelerating, 0 fixed at start_speed_cm_s", Boolean, 0, 1, 1),
-				param("start_speed_cm_s", "Belt speed at start", CentimeterPerSecond, 1, 50, 5),
-				param("end_speed_cm_s", "Belt speed after acceleration", CentimeterPerSecond, 5, 120, 40),
-				param("acceleration_duration_s", "Time from start to end speed", Second, 1, 7200, 1800),
-				param("max_trial_duration_s", "Trial cut-off", Second, 60, 7200, 1800),
+			Key: "TREADMILL", Category: Motor, Version: 1,
+			Name: T("Treadmill", "Koşu bandı testi"),
+			Description: T(
+				"The animal runs on a motorized belt, at a fixed or increasing speed, until it can no longer keep up. Measures endurance and exercise capacity.",
+				"Hayvan sabit ya da giderek artan hızdaki motorlu bir bant üzerinde, artık devam edemeyene kadar koşar. Dayanıklılığı ve egzersiz kapasitesini ölçer.",
+			),
+			Species: []string{"MOUSE", "RAT"},
+			TrialTypes: []TrialType{
+				trialType("ENDURANCE", T("Endurance", "Dayanıklılık")),
+				trialType("FIXED_SPEED", T("Fixed speed", "Sabit hız")),
+			},
+			Parameters: []Parameter{
+				param("lane_length_cm", ApparatusScope, T("Lane length", "Kulvar uzunluğu"),
+					T("Length of the running lane on the belt, from the front wall to the rear grid.",
+						"Bant üzerindeki koşu kulvarının ön duvardan arka ızgaraya kadar uzunluğu."),
+					Centimeter, 20, 80, 40),
+				integerParam("accelerating", SessionScope, T("Accelerating belt", "Hızlanan bant"),
+					T("On: the belt speeds up from the start speed to the end speed. Off: the belt runs at the start speed for the whole trial.",
+						"Açık: bant başlangıç hızından bitiş hızına doğru hızlanır. Kapalı: bant deneme boyunca başlangıç hızında çalışır."),
+					Boolean, 0, 1, 1),
+				param("start_speed_cm_s", SessionScope, T("Belt start speed", "Bant başlangıç hızı"),
+					T("Belt speed when the trial starts.", "Deneme başladığında bandın hızı."),
+					CentimeterPerSecond, 1, 50, 5),
+				param("end_speed_cm_s", SessionScope, T("Belt end speed", "Bant bitiş hızı"),
+					T("Belt speed reached at the end of the acceleration and then kept. Must not be below the start speed.",
+						"Bandın hızlanma sonunda ulaştığı ve sonra koruduğu hız. Başlangıç hızından düşük olamaz."),
+					CentimeterPerSecond, 5, 120, 40),
+				param("acceleration_duration_s", SessionScope, T("Acceleration time", "Hızlanma süresi"),
+					T("Time the belt takes to go from the start speed to the end speed.", "Bandın başlangıç hızından bitiş hızına çıkması için geçen süre."),
+					Second, 1, 7200, 1800),
+				param("max_trial_duration_s", SessionScope, T("Trial cut-off", "Deneme süresi sınırı"),
+					T("The trial ends at this time even if the animal is still running.", "Hayvan hâlâ koşuyor olsa bile deneme bu sürede sona erer."),
+					Second, 60, 7200, 1800),
 			},
 			InputEvents: []EventDefinition{
-				{Type: "exhaustion", Kind: PointEvent, Single: true, Definition: "The exhaustion criterion is met."},
-				{Type: "shock", Kind: PointEvent, Definition: "A shock or rear-grid contact."},
+				{Type: "exhaustion", Kind: PointEvent, Single: true, Label: T("Exhaustion", "Tükenme"), Definition: T("The exhaustion criterion is met.", "Tükenme ölçütü karşılanır.")},
+				{Type: "shock", Kind: PointEvent, Label: T("Shock", "Şok"), Definition: T("A shock or rear-grid contact.", "Bir şok ya da arka ızgara teması.")},
 			},
 			Events: []EventDefinition{
-				{Type: "exhaustion", Kind: PointEvent, Definition: "Scored exhaustion, passed through."},
-				{Type: "shock", Kind: PointEvent, Definition: "Scored shock, passed through."},
+				{Type: "exhaustion", Kind: PointEvent, Label: T("Exhaustion", "Tükenme"), Definition: T("Scored exhaustion, passed through.", "Puanlanan tükenme, olduğu gibi aktarılır.")},
+				{Type: "shock", Kind: PointEvent, Label: T("Shock", "Şok"), Definition: T("Scored shock, passed through.", "Puanlanan şok, olduğu gibi aktarılır.")},
 			},
 			Metrics: []MetricDefinition{
-				metric("latency_to_exhaustion_s", "Latency to exhaustion", Second, 7200, run, "Exhaustion time by the cut-off.", "exhaustion time",
-					"Missing (NOT_SCORED) when not scored, (EVENT_NOT_OBSERVED) when the full trial was recorded without exhaustion, (INCOMPLETE_RECORDING) otherwise."),
-				metric("run_time_s", "Run time", Second, 7200, run, "Exhaustion time, or max_trial_duration_s when the full trial was recorded without exhaustion.", "min(exhaustion time, max_trial_duration_s)", notScoredOrIncomplete),
-				metric("run_distance_cm", "Run distance", Centimeter, 1e7, append(run, belt...),
-					"Integral of the belt speed over the run time; the speed rises linearly from start to end over acceleration_duration_s, then stays constant.",
+				metric("latency_to_exhaustion_s", T("Latency to exhaustion", "Tükenme latansı"),
+					T("Time until the animal met the exhaustion criterion. Longer latencies indicate greater endurance.",
+						"Hayvanın tükenme ölçütünü karşılamasına kadar geçen süre. Daha uzun latans daha yüksek dayanıklılığa işaret eder."),
+					Second, 7200, run,
+					T("Exhaustion time by the cut-off.", "Deneme süresi sınırına kadar gerçekleşen tükenmenin zamanı."), "exhaustion time",
+					T("Missing (NOT_SCORED) when not scored, (EVENT_NOT_OBSERVED) when the full trial was recorded without exhaustion, (INCOMPLETE_RECORDING) otherwise.",
+						"Puanlanmadıysa eksik (NOT_SCORED), deneme tükenme olmadan tümüyle kaydedildiyse eksik (EVENT_NOT_OBSERVED), aksi halde eksik (INCOMPLETE_RECORDING).")),
+				metric("run_time_s", T("Run time", "Koşu süresi"),
+					T("Time the animal ran, up to exhaustion or the trial cut-off.", "Hayvanın tükenmeye ya da deneme süresi sınırına kadar koştuğu süre."),
+					Second, 7200, run,
+					T("Exhaustion time, or max_trial_duration_s when the full trial was recorded without exhaustion.",
+						"Tükenme zamanı; deneme tükenme olmadan tümüyle kaydedildiyse max_trial_duration_s."),
+					"min(exhaustion time, max_trial_duration_s)", notScoredOrIncomplete),
+				metric("run_distance_cm", T("Run distance", "Koşu mesafesi"),
+					T("Distance covered on the belt during the run. Longer distances indicate greater endurance.",
+						"Koşu boyunca bant üzerinde kat edilen mesafe. Daha uzun mesafe daha yüksek dayanıklılığa işaret eder."),
+					Centimeter, 1e7, append(run, belt...),
+					T("Integral of the belt speed over the run time; the speed rises linearly from start to end over acceleration_duration_s, then stays constant.",
+						"Bant hızının koşu süresi boyunca integrali; hız acceleration_duration_s boyunca başlangıç değerinden bitiş değerine doğrusal olarak artar, sonra sabit kalır."),
 					"integral of speed(t) dt over [0, run_time_s]", notScoredOrIncomplete),
-				metric("shock_count", "Shocks", Count, 1e6, append(run, "shock events"), "Shocks strictly before the end of the run.", "count(shock time < run end)",
-					"Missing (NOT_SCORED) when shocks were not scored; otherwise missing with the reason of run_time_s."),
+				metric("shock_count", T("Shocks", "Şok sayısı"),
+					T("How many shocks or rear-grid contacts occurred during the run. More shocks suggest lower motivation or fatigue.",
+						"Koşu sırasında kaç şok ya da arka ızgara teması olduğu. Daha fazla şok düşük motivasyona ya da yorgunluğa işaret eder."),
+					Count, 1e6, append(run, "shock events"),
+					T("Shocks strictly before the end of the run.", "Koşunun bitişinden kesin olarak önce gerçekleşen şoklar."), "count(shock time < run end)",
+					T("Missing (NOT_SCORED) when shocks were not scored; otherwise missing with the reason of run_time_s.",
+						"Şoklar puanlanmadıysa eksik (NOT_SCORED); aksi halde run_time_s ile aynı gerekçeyle eksik.")),
 			},
 			QC: scoringQC,
 		},
@@ -260,31 +274,71 @@ func beltDistance(p map[string]float64, t float64) float64 {
 
 func novelObjectV1() definition {
 	exploration := []string{"exploration events"}
-	notScored := "Missing (NOT_SCORED) when exploration was not scored."
+	notScored := T("Missing (NOT_SCORED) when exploration was not scored.", "Keşif puanlanmadıysa eksik (NOT_SCORED).")
 	return definition{
 		paradigm: Paradigm{
-			Key: "NOVEL_OBJECT", Name: "Novel object recognition", Category: LearningMemory, Version: 1,
-			Species: []string{"MOUSE", "RAT"}, TrialTypes: []string{"FAMILIARIZATION", "TEST"},
-			ApparatusParameters: []Parameter{
-				param("arena_width_cm", "Arena width", Centimeter, 30, 100, 50),
-				param("arena_height_cm", "Arena depth", Centimeter, 30, 100, 50),
-				param("object_zone_radius_cm", "Distance from an object within which directed sniffing counts as exploration", Centimeter, 1, 10, 3),
+			Key: "NOVEL_OBJECT", Category: LearningMemory, Version: 1,
+			Name: T("Novel object recognition", "Yeni nesne tanıma testi"),
+			Description: T(
+				"After exploring two identical objects, the animal is tested with one familiar and one new object. Measures recognition memory: animals that remember the familiar object spend more time exploring the new one.",
+				"İki özdeş nesneyi keşfettikten sonra hayvan, biri tanıdık biri yeni iki nesneyle test edilir. Tanıma belleğini ölçer: tanıdık nesneyi hatırlayan hayvan yeni nesneyi daha uzun süre keşfeder.",
+			),
+			Species: []string{"MOUSE", "RAT"},
+			TrialTypes: []TrialType{
+				trialType("FAMILIARIZATION", T("Familiarization", "Alıştırma")),
+				trialType("TEST", T("Test", "Test")),
 			},
-			SessionParameters: []Parameter{param("min_total_exploration_s", "Minimum total exploration for a valid index", Second, 0, 120, 0)},
-			InputEvents: []EventDefinition{{Type: "exploration", Kind: IntervalEvent, Labels: []string{"novel", "familiar"},
-				Definition: "Nose directed at an object within object_zone_radius_cm; climbing or sitting on the object is not exploration."}},
+			Parameters: []Parameter{
+				param("arena_width_cm", ApparatusScope, T("Arena width", "Arena genişliği"),
+					T("Inside width of the arena floor, wall to wall, along the horizontal axis of the camera image.",
+						"Arena zemininin iç genişliği; duvardan duvara, kamera görüntüsünün yatay ekseni boyunca."),
+					Centimeter, 30, 100, 50),
+				param("arena_height_cm", ApparatusScope, T("Arena depth", "Arena derinliği"),
+					T("Inside depth of the arena floor, wall to wall, along the vertical axis of the camera image.",
+						"Arena zemininin iç derinliği; duvardan duvara, kamera görüntüsünün dikey ekseni boyunca."),
+					Centimeter, 30, 100, 50),
+				param("object_zone_radius_cm", AnalysisScope, T("Exploration distance", "Keşif mesafesi"),
+					T("Sniffing with the nose pointed at an object counts as exploration only within this distance from the object.",
+						"Burnu nesneye yönelik koklama, yalnızca nesneye bu mesafe içindeyken keşif sayılır."),
+					Centimeter, 1, 10, 3),
+				param("min_total_exploration_s", AnalysisScope, T("Minimum total exploration", "En az toplam keşif süresi"),
+					T("Animals that explore both objects for less than this in total get no discrimination index. 0 disables the criterion.",
+						"İki nesneyi toplamda bundan daha az keşfeden hayvanlar için ayırt etme indeksi hesaplanmaz. 0 bu ölçütü kapatır."),
+					Second, 0, 120, 0),
+			},
+			InputEvents: []EventDefinition{{Type: "exploration", Kind: IntervalEvent, Labels: []string{"novel", "familiar"}, Label: T("Object exploration", "Nesne keşfi"),
+				Definition: T("Nose directed at an object within object_zone_radius_cm; climbing or sitting on the object is not exploration.",
+					"Burun, object_zone_radius_cm mesafesi içinde nesneye yöneliktir; nesneye tırmanmak ya da üzerinde oturmak keşif sayılmaz.")}},
 			Events: []EventDefinition{
-				{Type: "exploration_novel", Kind: IntervalEvent, Definition: "Merged novel-object exploration."},
-				{Type: "exploration_familiar", Kind: IntervalEvent, Definition: "Merged familiar-object exploration."},
+				{Type: "exploration_novel", Kind: IntervalEvent, Label: T("Novel object exploration", "Yeni nesne keşfi"), Definition: T("Merged novel-object exploration.", "Birleştirilmiş yeni nesne keşfi.")},
+				{Type: "exploration_familiar", Kind: IntervalEvent, Label: T("Familiar object exploration", "Tanıdık nesne keşfi"), Definition: T("Merged familiar-object exploration.", "Birleştirilmiş tanıdık nesne keşfi.")},
 			},
 			Metrics: []MetricDefinition{
-				metric("novel_object_time_s", "Novel object exploration", Second, 86400, exploration, "Length of the union of novel exploration intervals; overlaps count once.", "union length(novel intervals)", notScored),
-				metric("familiar_object_time_s", "Familiar object exploration", Second, 86400, exploration, "Length of the union of familiar exploration intervals.", "union length(familiar intervals)", notScored),
-				metric("total_exploration_time_s", "Total exploration", Second, 86400, exploration, "Novel plus familiar exploration.", "novel_object_time_s + familiar_object_time_s", notScored),
+				metric("novel_object_time_s", T("Novel object exploration", "Yeni nesne keşif süresi"),
+					T("Time spent exploring the new object.", "Yeni nesneyi keşfetmekle geçen süre."),
+					Second, 86400, exploration,
+					T("Length of the union of novel exploration intervals; overlaps count once.",
+						"Yeni nesne keşif aralıklarının birleşiminin uzunluğu; çakışmalar bir kez sayılır."),
+					"union length(novel intervals)", notScored),
+				metric("familiar_object_time_s", T("Familiar object exploration", "Tanıdık nesne keşif süresi"),
+					T("Time spent exploring the familiar object.", "Tanıdık nesneyi keşfetmekle geçen süre."),
+					Second, 86400, exploration,
+					T("Length of the union of familiar exploration intervals.", "Tanıdık nesne keşif aralıklarının birleşiminin uzunluğu."),
+					"union length(familiar intervals)", notScored),
+				metric("total_exploration_time_s", T("Total exploration", "Toplam keşif süresi"),
+					T("Time spent exploring either object; very low values make the discrimination index unreliable.",
+						"Herhangi bir nesneyi keşfetmekle geçen süre; çok düşük değerler ayırt etme indeksini güvenilmez kılar."),
+					Second, 86400, exploration,
+					T("Novel plus familiar exploration.", "Yeni ve tanıdık nesne keşfinin toplamı."), "novel_object_time_s + familiar_object_time_s", notScored),
 				func() MetricDefinition {
-					m := metric("discrimination_index", "Discrimination index", Ratio, 1, append(exploration, "min_total_exploration_s"),
-						"Recognition memory, from -1 (familiar) to +1 (novel).", "(novel - familiar) / (novel + familiar)",
-						"Missing (NOT_SCORED) when not scored, (BELOW_EXPLORATION_CRITERION) when total exploration is below min_total_exploration_s, (ZERO_DENOMINATOR) when it is 0.")
+					m := metric("discrimination_index", T("Discrimination index", "Ayırt etme indeksi"),
+						T("Preference for the new object, from -1 to +1. Positive values indicate the familiar object is remembered; values near 0 indicate no preference.",
+							"Yeni nesneye tercih, -1 ile +1 arasında. Pozitif değerler tanıdık nesnenin hatırlandığına, 0 civarındaki değerler tercih olmadığına işaret eder."),
+						Ratio, 1, append(exploration, "min_total_exploration_s"),
+						T("Recognition memory, from -1 (familiar) to +1 (novel).", "Tanıma belleği, -1 (tanıdık) ile +1 (yeni) arasında."),
+						"(novel - familiar) / (novel + familiar)",
+						T("Missing (NOT_SCORED) when not scored, (BELOW_EXPLORATION_CRITERION) when total exploration is below min_total_exploration_s, (ZERO_DENOMINATOR) when it is 0.",
+							"Puanlanmadıysa eksik (NOT_SCORED), toplam keşif min_total_exploration_s değerinin altındaysa eksik (BELOW_EXPLORATION_CRITERION), toplam keşif 0 ise eksik (ZERO_DENOMINATOR)."))
 					m.Min = -1
 					return m
 				}(),

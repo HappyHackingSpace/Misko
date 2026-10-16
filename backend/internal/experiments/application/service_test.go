@@ -3,50 +3,185 @@ package application
 import (
 	"context"
 	"errors"
-	access "github.com/HappyHackingSpace/Misko/backend/internal/access/domain"
-	"github.com/HappyHackingSpace/Misko/backend/internal/experiments/domain"
+	"slices"
 	"testing"
 	"time"
+
+	access "github.com/HappyHackingSpace/Misko/backend/internal/access/domain"
+	"github.com/HappyHackingSpace/Misko/backend/internal/experiments/domain"
 )
 
-// Writes by roles without study:write must fail before any store call. The
-// allowed paths run against PostgreSQL in the adapter and HTTP integration tests.
-func TestExperimentPermissions(t *testing.T) {
-	ctx := context.Background()
-	name, position := "Renamed", 2
+var (
+	ctx        = context.Background()
+	researcher = access.Actor{UserID: "u", Role: access.Researcher}
+	now        = time.Date(2026, 10, 15, 12, 0, 0, 0, time.UTC)
+)
+
+// memory is an in-memory Store with just enough behaviour for the use cases;
+// the PostgreSQL store is covered by the integration tests. Methods it does
+// not implement panic through the nil embedded Store.
+type memory struct {
+	Store
+	experiment  domain.Experiment
+	groups      []GroupFill
+	items       []domain.RegimenItem
+	timepoints  []domain.Timepoint
+	endpoints   []domain.Endpoint
+	paradigms   []ParadigmVersion
+	allocations []domain.Allocation
+	openTests   int
+	calls       int
+}
+
+func (m *memory) Transaction(_ context.Context, fn func(Store) error) error { return fn(m) }
+
+func (m *memory) LockExperiment(_ context.Context, id string) (domain.Experiment, error) {
+	m.calls++
+	if id != m.experiment.ID {
+		return domain.Experiment{}, ErrExperimentNotFound
+	}
+	return m.experiment, nil
+}
+
+func (m *memory) Experiment(c context.Context, id string) (domain.Experiment, error) {
+	return m.LockExperiment(c, id)
+}
+
+func (m *memory) UpdateExperiment(_ context.Context, e domain.Experiment) (domain.Experiment, error) {
+	m.experiment = e
+	return e, nil
+}
+
+func (m *memory) StartExperiment(_ context.Context, _ string, day time.Time) (domain.Experiment, error) {
+	m.experiment.Status, m.experiment.DayZero = domain.Running, &day
+	return m.experiment, nil
+}
+
+func (m *memory) CompleteExperiment(context.Context, string) (domain.Experiment, error) {
+	m.experiment.Status = domain.Completed
+	return m.experiment, nil
+}
+
+func (m *memory) OpenTests(context.Context, string) (int, error) { return m.openTests, nil }
+func (m *memory) ProtocolParadigms(context.Context, string) ([]ParadigmVersion, error) {
+	return m.paradigms, nil
+}
+func (m *memory) Groups(context.Context, string) ([]GroupFill, error) { return m.groups, nil }
+func (m *memory) RegimenItems(context.Context, string) ([]domain.RegimenItem, error) {
+	return m.items, nil
+}
+func (m *memory) Timepoints(context.Context, string) ([]domain.Timepoint, error) {
+	return m.timepoints, nil
+}
+func (m *memory) Endpoints(context.Context, string) ([]domain.Endpoint, error) {
+	return m.endpoints, nil
+}
+
+func (m *memory) CreateEndpoint(_ context.Context, e domain.Endpoint) (domain.Endpoint, error) {
+	m.endpoints = append(m.endpoints, e)
+	return e, nil
+}
+
+func (m *memory) CreateGroup(_ context.Context, g domain.Group) (domain.Group, error) { return g, nil }
+
+func (m *memory) CreateAllocation(_ context.Context, a domain.Allocation) (domain.Allocation, error) {
+	m.allocations = append(m.allocations, a)
+	return a, nil
+}
+
+func (m *memory) LockAllocation(_ context.Context, _, id string) (domain.Allocation, error) {
+	for _, a := range m.allocations {
+		if a.ID == id {
+			return a, nil
+		}
+	}
+	return domain.Allocation{}, ErrAllocationNotFound
+}
+
+func (m *memory) UpdateAllocation(_ context.Context, a domain.Allocation) (domain.Allocation, error) {
+	for i := range m.allocations {
+		if m.allocations[i].ID == a.ID {
+			m.allocations[i] = a
+		}
+	}
+	return a, nil
+}
+
+func (m *memory) DeleteAllocation(context.Context, string, string) error { return nil }
+
+type metrics map[string][]string
+
+func (c metrics) Metrics(key string, version int) ([]string, error) { return c[key], nil }
+
+func service(m *memory) *Service {
+	return New(m, metrics{"MWM": {"path_length_cm", "escape_latency_s"}}, func() time.Time { return now }, func(n int) int { return n - 1 })
+}
+
+// Writes by roles without study:write fail before the store is touched.
+func TestPermissions(t *testing.T) {
+	text := "x"
 	writes := map[string]func(*Service, access.Actor) error{
 		"create experiment": func(s *Service, a access.Actor) error {
-			_, err := s.CreateExperiment(ctx, a, ExperimentInput{Code: "E", Title: "T"})
+			_, err := s.CreateExperiment(ctx, a, domain.ExperimentFields{Code: "E", Title: "T"})
 			return err
 		},
 		"update experiment": func(s *Service, a access.Actor) error {
-			_, err := s.UpdateExperiment(ctx, a, "x", ExperimentPatch{Title: &name})
+			_, err := s.UpdateExperiment(ctx, a, "e", ExperimentPatch{Title: &text})
 			return err
 		},
-		"create phase": func(s *Service, a access.Actor) error {
-			_, err := s.CreatePhase(ctx, a, "x", PhaseInput{Name: "P", Position: 1})
-			return err
-		},
-		"update phase": func(s *Service, a access.Actor) error {
-			_, err := s.UpdatePhase(ctx, a, "x", "p", PhasePatch{Position: &position})
-			return err
-		},
-		"delete phase": func(s *Service, a access.Actor) error { return s.DeletePhase(ctx, a, "x", "p") },
+		"start":    func(s *Service, a access.Actor) error { _, err := s.Start(ctx, a, "e", "2026-10-15"); return err },
+		"complete": func(s *Service, a access.Actor) error { _, err := s.Complete(ctx, a, "e"); return err },
 		"create group": func(s *Service, a access.Actor) error {
-			_, err := s.CreateGroup(ctx, a, "x", GroupInput{Name: "G", Role: "CONTROL"})
+			_, err := s.CreateGroup(ctx, a, "e", domain.GroupFields{Code: "G", Name: "G", Role: "HEALTHY_CONTROL"})
 			return err
 		},
 		"update group": func(s *Service, a access.Actor) error {
-			_, err := s.UpdateGroup(ctx, a, "x", "g", GroupPatch{Name: &name})
+			_, err := s.UpdateGroup(ctx, a, "e", "g", GroupPatch{Name: &text})
 			return err
 		},
-		"delete group": func(s *Service, a access.Actor) error { return s.DeleteGroup(ctx, a, "x", "g") },
-		"enroll": func(s *Service, a access.Actor) error {
-			_, err := s.Enroll(ctx, a, "x", EnrollInput{SubjectID: "s", EnrolledAt: time.Now()})
+		"delete group": func(s *Service, a access.Actor) error { return s.DeleteGroup(ctx, a, "e", "g") },
+		"create regimen item": func(s *Service, a access.Actor) error {
+			_, err := s.CreateRegimenItem(ctx, a, "e", domain.RegimenFields{})
 			return err
 		},
-		"assign": func(s *Service, a access.Actor) error {
-			_, err := s.Assign(ctx, a, "x", "e", AssignInput{GroupID: "g", EffectiveFrom: time.Now()})
+		"update regimen item": func(s *Service, a access.Actor) error {
+			_, err := s.UpdateRegimenItem(ctx, a, "e", "r", RegimenPatch{Amount: &text})
+			return err
+		},
+		"delete regimen item": func(s *Service, a access.Actor) error { return s.DeleteRegimenItem(ctx, a, "e", "r") },
+		"create timepoint": func(s *Service, a access.Actor) error {
+			_, err := s.CreateTimepoint(ctx, a, "e", domain.TimepointFields{Name: "T", Position: 1})
+			return err
+		},
+		"update timepoint": func(s *Service, a access.Actor) error {
+			_, err := s.UpdateTimepoint(ctx, a, "e", "t", TimepointPatch{Name: &text})
+			return err
+		},
+		"delete timepoint": func(s *Service, a access.Actor) error { return s.DeleteTimepoint(ctx, a, "e", "t") },
+		"create endpoint": func(s *Service, a access.Actor) error {
+			_, err := s.CreateEndpoint(ctx, a, "e", domain.EndpointFields{})
+			return err
+		},
+		"update endpoint": func(s *Service, a access.Actor) error {
+			_, err := s.UpdateEndpoint(ctx, a, "e", "p", EndpointPatch{Kind: &text})
+			return err
+		},
+		"delete endpoint": func(s *Service, a access.Actor) error { return s.DeleteEndpoint(ctx, a, "e", "p") },
+		"allocate": func(s *Service, a access.Actor) error {
+			_, err := s.Allocate(ctx, a, "e", AllocateInput{SubjectID: "s", GroupID: "g"})
+			return err
+		},
+		"update allocation": func(s *Service, a access.Actor) error {
+			_, err := s.UpdateAllocation(ctx, a, "e", "a", AllocationPatch{Cage: &text})
+			return err
+		},
+		"remove allocation": func(s *Service, a access.Actor) error { return s.RemoveAllocation(ctx, a, "e", "a") },
+		"exclude": func(s *Service, a access.Actor) error {
+			_, err := s.Exclude(ctx, a, "e", "a", ExcludeInput{Reason: "DIED"})
+			return err
+		},
+		"randomise": func(s *Service, a access.Actor) error {
+			_, err := s.Randomise(ctx, a, "e", RandomiseInput{SubjectIDs: []string{"s"}})
 			return err
 		},
 	}
@@ -55,134 +190,218 @@ func TestExperimentPermissions(t *testing.T) {
 			_, err := s.ListExperiments(ctx, a, ExperimentQuery{})
 			return err
 		},
-		"get experiment": func(s *Service, a access.Actor) error { _, err := s.Experiment(ctx, a, "x"); return err },
-		"phases":         func(s *Service, a access.Actor) error { _, err := s.Phases(ctx, a, "x"); return err },
-		"groups":         func(s *Service, a access.Actor) error { _, err := s.Groups(ctx, a, "x"); return err },
-		"list enrollments": func(s *Service, a access.Actor) error {
-			_, err := s.ListEnrollments(ctx, a, "x", EnrollmentQuery{})
+		"experiment":     func(s *Service, a access.Actor) error { _, err := s.Experiment(ctx, a, "e"); return err },
+		"readiness":      func(s *Service, a access.Actor) error { _, err := s.Readiness(ctx, a, "e"); return err },
+		"metric options": func(s *Service, a access.Actor) error { _, err := s.MetricOptions(ctx, a, "e"); return err },
+		"groups":         func(s *Service, a access.Actor) error { _, err := s.Groups(ctx, a, "e"); return err },
+		"regimen items":  func(s *Service, a access.Actor) error { _, err := s.RegimenItems(ctx, a, "e"); return err },
+		"timepoints":     func(s *Service, a access.Actor) error { _, err := s.Timepoints(ctx, a, "e"); return err },
+		"endpoints":      func(s *Service, a access.Actor) error { _, err := s.Endpoints(ctx, a, "e"); return err },
+		"allocations": func(s *Service, a access.Actor) error {
+			_, err := s.Allocations(ctx, a, "e", AllocationQuery{})
 			return err
 		},
-		"get enrollment":      func(s *Service, a access.Actor) error { _, err := s.Enrollment(ctx, a, "x", "e"); return err },
-		"subject enrollments": func(s *Service, a access.Actor) error { _, err := s.SubjectEnrollments(ctx, a, "s"); return err },
 	}
 	for _, role := range append(access.Roles(), "ROOT", "") {
 		actor := access.Actor{UserID: "u", Role: role}
 		if role == "" {
 			actor = access.Actor{}
 		}
-		for name, write := range writes {
-			if role.Allows(access.StudyWrite) {
-				continue
+		check := func(name string, op func(*Service, access.Actor) error, permission access.Permission) {
+			if role.Allows(permission) {
+				return
 			}
-			if err := write(New(readOnlyStore{}), actor); !errors.Is(err, access.ErrForbidden) && !errors.Is(err, access.ErrUnauthenticated) {
+			m := &memory{}
+			if err := op(service(m), actor); !errors.Is(err, access.ErrForbidden) && !errors.Is(err, access.ErrUnauthenticated) {
 				t.Errorf("%q %s: err=%v", role, name, err)
 			}
-		}
-		for name, read := range reads {
-			err := read(New(readOnlyStore{}), actor)
-			if role.Allows(access.Read) != (err == nil) {
-				t.Errorf("%q %s: err=%v", role, name, err)
+			if m.calls != 0 {
+				t.Errorf("%q %s touched the store", role, name)
 			}
 		}
-	}
-}
-
-func TestInputsAreValidatedBeforeTheStore(t *testing.T) {
-	ctx := context.Background()
-	s := New(readOnlyStore{})
-	researcher := access.Actor{UserID: "u", Role: access.Researcher}
-	blank := " "
-	for name, err := range map[string]error{
-		"zero enrollment time": second(s.Enroll(ctx, researcher, "x", EnrollInput{SubjectID: "s"})),
-		"zero assignment time": second(s.Assign(ctx, researcher, "x", "e", AssignInput{GroupID: "g"})),
-		"missing group":        second(s.Assign(ctx, researcher, "x", "e", AssignInput{EffectiveFrom: time.Now()})),
-		"invalid phase":        second(s.CreatePhase(ctx, researcher, "x", PhaseInput{Name: "P", Position: 0})),
-		"invalid group role":   second(s.CreateGroup(ctx, researcher, "x", GroupInput{Name: "G", Role: "PLACEBO"})),
-		"empty patch":          second(s.UpdateGroup(ctx, researcher, "x", "g", GroupPatch{})),
-		"blank title":          second(s.UpdateExperiment(ctx, researcher, "x", ExperimentPatch{Title: &blank})),
-		"unknown sort":         second(s.ListExperiments(ctx, researcher, ExperimentQuery{Sort: "description"})),
-		"unknown order":        second(s.ListEnrollments(ctx, researcher, "x", EnrollmentQuery{Order: "random"})),
-	} {
-		switch {
-		case err == nil:
-			t.Errorf("%s accepted", name)
-		case errors.Is(err, errUnexpectedStoreCall):
-			t.Errorf("%s reached the store", name)
+		for name, op := range writes {
+			check(name, op, access.StudyWrite)
+		}
+		for name, op := range reads {
+			check(name, op, access.Read)
 		}
 	}
-	if _, err := s.CreateGroup(ctx, researcher, "x", GroupInput{Name: "G", Role: "CONTROL", TargetSize: -1}); !errors.Is(err, domain.ErrInvalidTargetSize) {
-		t.Errorf("negative target: %v", err)
+}
+
+func readyDesign() *memory {
+	return &memory{
+		experiment: domain.Experiment{ID: "e", Code: "E1", Title: "Study", Status: domain.Draft},
+		groups: []GroupFill{
+			{Group: domain.Group{ID: "healthy", Role: domain.HealthyControl, TargetSize: 2}},
+			{Group: domain.Group{ID: "disease", Role: domain.DiseaseControl, DiseaseModelID: "mptp", TargetSize: 2}},
+		},
+		items: []domain.RegimenItem{
+			{GroupID: "disease", Purpose: domain.Induction},
+			{GroupID: "disease", Purpose: domain.Vehicle},
+		},
+		timepoints: []domain.Timepoint{{ID: "t"}},
+		endpoints:  []domain.Endpoint{{ID: "p", Kind: domain.Primary, ParadigmKey: "MWM", MetricKey: "path_length_cm"}},
+		paradigms:  []ParadigmVersion{{"MWM", 1}},
 	}
 }
 
-var errUnexpectedStoreCall = errors.New("unexpected store call")
-
-// readOnlyStore answers reads with empty data and fails every write.
-type readOnlyStore struct{}
-
-func (readOnlyStore) Transaction(context.Context, func(Store) error) error {
-	return errUnexpectedStoreCall
-}
-func (readOnlyStore) CreateExperiment(context.Context, domain.Experiment) (domain.Experiment, error) {
-	return domain.Experiment{}, errUnexpectedStoreCall
-}
-func (readOnlyStore) Experiment(context.Context, string) (domain.Experiment, error) {
-	return domain.Experiment{}, nil
-}
-func (readOnlyStore) ListExperiments(context.Context, ExperimentFilter) ([]domain.Experiment, int, error) {
-	return nil, 0, nil
-}
-func (readOnlyStore) UpdateExperiment(context.Context, string, ExperimentChanges) (domain.Experiment, error) {
-	return domain.Experiment{}, errUnexpectedStoreCall
-}
-func (readOnlyStore) Phases(context.Context, string) ([]domain.Phase, error) { return nil, nil }
-func (readOnlyStore) CreatePhase(context.Context, domain.Phase) (domain.Phase, error) {
-	return domain.Phase{}, errUnexpectedStoreCall
-}
-func (readOnlyStore) UpdatePhase(context.Context, string, string, PhaseChanges) (domain.Phase, error) {
-	return domain.Phase{}, errUnexpectedStoreCall
-}
-func (readOnlyStore) DeletePhase(context.Context, string, string) error {
-	return errUnexpectedStoreCall
-}
-func (readOnlyStore) GroupSizes(context.Context, string) ([]GroupSize, error) {
-	return nil, nil
-}
-func (readOnlyStore) Group(context.Context, string, string) (domain.Group, error) {
-	return domain.Group{}, nil
-}
-func (readOnlyStore) CreateGroup(context.Context, domain.Group) (domain.Group, error) {
-	return domain.Group{}, errUnexpectedStoreCall
-}
-func (readOnlyStore) UpdateGroup(context.Context, string, string, GroupChanges) (domain.Group, error) {
-	return domain.Group{}, errUnexpectedStoreCall
-}
-func (readOnlyStore) DeleteGroup(context.Context, string, string) error {
-	return errUnexpectedStoreCall
-}
-func (readOnlyStore) CreateEnrollment(context.Context, domain.Enrollment) (domain.Enrollment, error) {
-	return domain.Enrollment{}, errUnexpectedStoreCall
-}
-func (readOnlyStore) LockEnrollment(context.Context, string, string) (domain.Enrollment, error) {
-	return domain.Enrollment{}, errUnexpectedStoreCall
-}
-func (readOnlyStore) Enrollment(context.Context, string, string) (domain.Enrollment, error) {
-	return domain.Enrollment{}, nil
-}
-func (readOnlyStore) ListEnrollments(context.Context, EnrollmentFilter) ([]EnrollmentSummary, int, error) {
-	return nil, 0, nil
-}
-func (readOnlyStore) SubjectEnrollments(context.Context, string) ([]EnrollmentSummary, error) {
-	return nil, nil
-}
-func (readOnlyStore) Assignments(context.Context, string) ([]domain.Assignment, error) {
-	return nil, nil
-}
-func (readOnlyStore) CloseAssignment(context.Context, string, time.Time) error {
-	return errUnexpectedStoreCall
-}
-func (readOnlyStore) CreateAssignment(context.Context, domain.Assignment) (domain.Assignment, error) {
-	return domain.Assignment{}, errUnexpectedStoreCall
+func TestStartChecksTheRulesAndSetsDayZero(t *testing.T) {
+	m := readyDesign()
+	m.paradigms = nil
+	_, err := service(m).Start(ctx, researcher, "e", "2026-10-20")
+	var notReady *NotReadyError
+	if !errors.As(err, &notReady) || !errors.Is(err, ErrNotReady) || len(notReady.Problems) != 1 || notReady.Problems[0].Rule != domain.RuleEndpointMetricMissing {
+		t.Fatalf("start without protocols: %v %+v", err, notReady)
+	}
+	if m.experiment.Status != domain.Draft {
+		t.Fatal("started despite unmet rules")
+	}
+	m.paradigms = []ParadigmVersion{{"MWM", 1}}
+	if _, err := service(m).Start(ctx, researcher, "e", "20-10-2026"); !errors.Is(err, ErrInvalidDayZero) {
+		t.Fatalf("bad date: %v", err)
+	}
+	e, err := service(m).Start(ctx, researcher, "e", "2026-10-20")
+	if err != nil || e.Status != domain.Running || e.DayZero.Format(time.DateOnly) != "2026-10-20" {
+		t.Fatalf("start: %+v %v", e, err)
+	}
+	if _, err := service(m).Start(ctx, researcher, "e", "2026-10-20"); !errors.Is(err, ErrNotDraft) {
+		t.Fatalf("second start: %v", err)
+	}
+	if _, err := service(m).Start(ctx, researcher, "x", "2026-10-20"); !errors.Is(err, ErrExperimentNotFound) {
+		t.Fatalf("unknown experiment: %v", err)
+	}
 }
 
-func second[T any](_ T, err error) error { return err }
+func TestCompleteNeedsARunningExperimentWithoutOpenTests(t *testing.T) {
+	m := readyDesign()
+	if _, err := service(m).Complete(ctx, researcher, "e"); !errors.Is(err, ErrNotRunning) {
+		t.Fatalf("complete a draft: %v", err)
+	}
+	m.experiment.Status, m.openTests = domain.Running, 1
+	if _, err := service(m).Complete(ctx, researcher, "e"); !errors.Is(err, ErrOpenTests) {
+		t.Fatalf("complete with open tests: %v", err)
+	}
+	m.openTests = 0
+	if e, err := service(m).Complete(ctx, researcher, "e"); err != nil || e.Status != domain.Completed {
+		t.Fatalf("complete: %+v %v", e, err)
+	}
+}
+
+func TestDesignChangesOnlyInADraft(t *testing.T) {
+	m := readyDesign()
+	m.experiment.Status = domain.Running
+	if _, err := service(m).CreateGroup(ctx, researcher, "e", domain.GroupFields{Code: "G9", Name: "Late", Role: "HEALTHY_CONTROL"}); !errors.Is(err, ErrDesignFrozen) {
+		t.Fatalf("group in running study: %v", err)
+	}
+	blinded, title := true, "Renamed"
+	if _, err := service(m).UpdateExperiment(ctx, researcher, "e", ExperimentPatch{Blinded: &blinded}); !errors.Is(err, ErrDesignFrozen) {
+		t.Fatalf("blinding a running study: %v", err)
+	}
+	if e, err := service(m).UpdateExperiment(ctx, researcher, "e", ExperimentPatch{Title: &title}); err != nil || e.Title != title {
+		t.Fatalf("renaming a running study: %+v %v", e, err)
+	}
+	m.experiment.Status = domain.Completed
+	if _, err := service(m).UpdateExperiment(ctx, researcher, "e", ExperimentPatch{Title: &title}); !errors.Is(err, ErrExperimentCompleted) {
+		t.Fatalf("renaming a completed study: %v", err)
+	}
+}
+
+func TestEndpointMetricMustComeFromTheProtocols(t *testing.T) {
+	m := readyDesign()
+	m.endpoints = nil
+	f := domain.EndpointFields{TimepointID: "t", ParadigmKey: "MWM", MetricKey: "freezing_s", Kind: "SECONDARY", Direction: "LOWER_IS_BETTER"}
+	if _, err := service(m).CreateEndpoint(ctx, researcher, "e", f); !errors.Is(err, ErrMetricUnavailable) {
+		t.Fatalf("unknown metric: %v", err)
+	}
+	f.ParadigmKey, f.MetricKey = "POLE", "path_length_cm"
+	if _, err := service(m).CreateEndpoint(ctx, researcher, "e", f); !errors.Is(err, ErrMetricUnavailable) {
+		t.Fatalf("paradigm without protocol step: %v", err)
+	}
+	f.ParadigmKey, f.MetricKey = "MWM", "escape_latency_s"
+	if _, err := service(m).CreateEndpoint(ctx, researcher, "e", f); err != nil {
+		t.Fatalf("available metric: %v", err)
+	}
+}
+
+func TestRandomiseRespectsTargetsAndAllocatesAllOrNothing(t *testing.T) {
+	m := readyDesign()
+	m.groups[0].Allocated = 1
+	m.groups = append(m.groups, GroupFill{Group: domain.Group{ID: "untargeted", Role: domain.HealthyControl}})
+	if _, err := service(m).Randomise(ctx, researcher, "e", RandomiseInput{SubjectIDs: []string{"a", "b", "c", "d"}}); !errors.Is(err, ErrNotEnoughPlaces) {
+		t.Fatalf("too many animals: %v", err)
+	}
+	if len(m.allocations) != 0 {
+		t.Fatal("allocated part of the animals")
+	}
+	for _, in := range []RandomiseInput{{}, {SubjectIDs: []string{"a", "a"}}, {SubjectIDs: []string{""}}} {
+		if _, err := service(m).Randomise(ctx, researcher, "e", in); !errors.Is(err, ErrInvalidSubjects) {
+			t.Errorf("%v: %v", in, err)
+		}
+	}
+	if _, err := service(m).Randomise(ctx, researcher, "e", RandomiseInput{SubjectIDs: []string{"a"}, GroupIDs: []string{"other"}}); !errors.Is(err, ErrGroupNotInExperiment) {
+		t.Fatalf("foreign group: %v", err)
+	}
+	created, err := service(m).Randomise(ctx, researcher, "e", RandomiseInput{SubjectIDs: []string{"a", "b", "c"}, Cage: "C1"})
+	if err != nil || len(created) != 3 {
+		t.Fatalf("randomise: %v %v", created, err)
+	}
+	count := map[string]int{}
+	for _, a := range created {
+		count[a.GroupID]++
+		if a.Cage != "C1" || a.CreatedBy != "u" || !a.AllocatedAt.Equal(now) {
+			t.Errorf("allocation %+v", a)
+		}
+	}
+	if count["healthy"] != 1 || count["disease"] != 2 {
+		t.Fatalf("counts=%v", count)
+	}
+	m.experiment.Status = domain.Completed
+	if _, err := service(m).Randomise(ctx, researcher, "e", RandomiseInput{SubjectIDs: []string{"z"}}); !errors.Is(err, ErrAllocationFrozen) {
+		t.Fatalf("completed study: %v", err)
+	}
+}
+
+func TestAllocationsKeepTheirGroupOnceRunning(t *testing.T) {
+	m := readyDesign()
+	m.allocations = []domain.Allocation{{ID: "a", ExperimentID: "e", GroupID: "healthy", AllocatedAt: now.Add(-time.Hour)}}
+	other, cage := "disease", "C2"
+	if a, err := service(m).UpdateAllocation(ctx, researcher, "e", "a", AllocationPatch{GroupID: &other}); err != nil || a.GroupID != other {
+		t.Fatalf("move in draft: %+v %v", a, err)
+	}
+	m.experiment.Status = domain.Running
+	back := "healthy"
+	if _, err := service(m).UpdateAllocation(ctx, researcher, "e", "a", AllocationPatch{GroupID: &back}); !errors.Is(err, ErrAllocationFrozen) {
+		t.Fatalf("move while running: %v", err)
+	}
+	if err := service(m).RemoveAllocation(ctx, researcher, "e", "a"); !errors.Is(err, ErrAllocationFrozen) {
+		t.Fatalf("remove while running: %v", err)
+	}
+	if a, err := service(m).UpdateAllocation(ctx, researcher, "e", "a", AllocationPatch{GroupID: &other, Cage: &cage}); err != nil || a.Cage != cage {
+		t.Fatalf("cage while running: %+v %v", a, err)
+	}
+	if a, err := service(m).Exclude(ctx, researcher, "e", "a", ExcludeInput{Reason: "HUMANE_ENDPOINT"}); err != nil || !a.Excluded() {
+		t.Fatalf("exclude: %+v %v", a, err)
+	}
+	if _, err := service(m).Exclude(ctx, researcher, "e", "a", ExcludeInput{Reason: "DIED"}); !errors.Is(err, domain.ErrAlreadyExcluded) {
+		t.Fatalf("second exclusion: %v", err)
+	}
+	if _, err := service(m).UpdateAllocation(ctx, researcher, "e", "missing", AllocationPatch{Cage: &cage}); !errors.Is(err, ErrAllocationNotFound) {
+		t.Fatalf("unknown allocation: %v", err)
+	}
+}
+
+func TestListQueriesAreValidated(t *testing.T) {
+	m := readyDesign()
+	for _, q := range []ExperimentQuery{{Status: "PAUSED"}, {Sort: "status"}, {Order: "up"}, {Page: -1}} {
+		if _, err := service(m).ListExperiments(ctx, researcher, q); !errors.Is(err, ErrInvalidQuery) {
+			t.Errorf("%+v: %v", q, err)
+		}
+	}
+	if _, err := service(m).Allocations(ctx, researcher, "e", AllocationQuery{Excluded: "maybe"}); !errors.Is(err, ErrInvalidQuery) {
+		t.Errorf("excluded filter: %v", err)
+	}
+	options, err := service(m).MetricOptions(ctx, researcher, "e")
+	if err != nil || len(options) != 1 || !slices.Contains(options[0].Metrics, "path_length_cm") {
+		t.Fatalf("metric options: %v %v", options, err)
+	}
+}

@@ -6,60 +6,6 @@ import (
 	"testing"
 )
 
-func rotarod(t *testing.T, params map[string]float64, recording float64, scored bool, falls ...float64) Result {
-	t.Helper()
-	in := Input{Parameters: params, DurationUs: at(recording)}
-	if scored {
-		in.ScoredEvents = []string{"fall"}
-	}
-	for _, f := range falls {
-		in.Events = append(in.Events, mark("fall", f))
-	}
-	return run(t, "ROTAROD", in)
-}
-
-// Accelerating 4 to 40 rpm over 300 s: a fall at 150 s happens at 4 + 36 x 150/300 = 22 rpm.
-// Without a fall the latency is censored at the 300 s cut-off only when the whole trial was recorded.
-func TestRotarodHandCalculated(t *testing.T) {
-	accel := map[string]float64{"accelerating": 1, "start_rpm": 4, "end_rpm": 40, "acceleration_duration_s": 300, "max_trial_duration_s": 300}
-	r := rotarod(t, accel, 300, true, 150)
-	expectValue(t, r, "latency_to_fall_s", 150)
-	expectValue(t, r, "fall_detected", 1)
-	expectValue(t, r, "rpm_at_fall", 22)
-
-	fixed := maps.Clone(accel)
-	fixed["accelerating"] = 0
-	expectValue(t, rotarod(t, fixed, 300, true, 150), "rpm_at_fall", 4)
-
-	long := maps.Clone(accel)
-	long["max_trial_duration_s"] = 600
-	expectValue(t, rotarod(t, long, 600, true, 400), "rpm_at_fall", 40)
-
-	full := rotarod(t, accel, 300, true)
-	expectValue(t, full, "latency_to_fall_s", 300)
-	expectValue(t, full, "fall_detected", 0)
-	expectMissing(t, full, "rpm_at_fall", ReasonNotObserved)
-
-	late := rotarod(t, accel, 330, true, 320)
-	expectValue(t, late, "latency_to_fall_s", 300)
-	expectValue(t, late, "fall_detected", 0)
-
-	short := rotarod(t, accel, 200, true)
-	expectMissing(t, short, "latency_to_fall_s", ReasonIncompleteRecording)
-	expectMissing(t, short, "fall_detected", ReasonIncompleteRecording)
-	expectMissing(t, short, "rpm_at_fall", ReasonIncompleteRecording)
-
-	for _, key := range []string{"latency_to_fall_s", "fall_detected", "rpm_at_fall"} {
-		expectMissing(t, rotarod(t, accel, 300, false), key, ReasonNotScored)
-	}
-	unknownLength := rotarod(t, accel, 0, true, 150)
-	expectValue(t, unknownLength, "latency_to_fall_s", 150)
-
-	expectError(t, "ROTAROD", Input{ScoredEvents: []string{"fall"}, Events: []ObservedEvent{mark("fall", 10), mark("fall", 20)}}, ErrInvalidEvent)
-	expectError(t, "ROTAROD", Input{Parameters: map[string]float64{"start_rpm": 4, "end_rpm": 3}}, ErrParameterOutOfRange)
-	expectError(t, "ROTAROD", Input{Parameters: map[string]float64{"accelerating": 0.5}}, ErrParameterOutOfRange)
-}
-
 // Pole of 50 cm: turning completes at 2 s and the base is reached at 6 s, so the descent takes 4 s at 12.5 cm/s.
 func TestPoleTestHandCalculated(t *testing.T) {
 	all := []string{"turn_complete", "base_reached", "fall"}

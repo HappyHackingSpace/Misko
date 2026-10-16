@@ -1,6 +1,8 @@
-// Package domain holds analysis runs, their leases and the validation of
-// worker results. A run pins its source video generation, clip, calibration,
-// paradigm version and parameters; its inputs and published outputs never
+// Package domain holds analysis runs, their leases, the validation of worker
+// results and the human review of each animal's result. A run analyses one
+// animal of a test (a test subject) in the test's current video; it pins the
+// source video generation, clip, the calibration of that animal's arena,
+// paradigm version and parameters. Its inputs and published outputs never
 // change, and reanalysis is a new run.
 package domain
 
@@ -29,6 +31,15 @@ const (
 	Failed    Status = "FAILED"
 )
 
+// Method tells how a run's result was obtained: a worker tracked the video
+// (AUTOMATED) or a person scored it (SCORED, written by the scoring context).
+type Method string
+
+const (
+	Automated Method = "AUTOMATED"
+	Scored    Method = "SCORED"
+)
+
 type Trigger string
 
 const (
@@ -39,22 +50,22 @@ const (
 // ReasonLeaseExpired fails a run whose last attempt lost its lease.
 const ReasonLeaseExpired = "LEASE_EXPIRED"
 
-// Source is everything a run pins about its input.
+// Source is everything a run pins about its input: one animal of a test in
+// the test's video, with the calibration that crops and maps its arena.
 type Source struct {
-	ExperimentID          string
-	TestID                string
-	RecordingID           string
-	SourceAssetID         string
-	SourceGeneration      int64
-	SourceCRC32C          uint32
-	ClipStartUs           int64
-	ClipEndUs             *int64
-	CalibrationID         string
-	ParadigmKey           string
-	ParadigmVersion       int
-	EnvironmentRevisionID string
-	ProtocolVersionID     string
-	Parameters            map[string]float64
+	ExperimentID     string
+	TestID           string
+	TestSubjectID    string
+	RecordingID      string
+	SourceAssetID    string
+	SourceGeneration int64
+	SourceCRC32C     uint32
+	ClipStartUs      int64
+	ClipEndUs        *int64
+	CalibrationID    string
+	ParadigmKey      string
+	ParadigmVersion  int
+	Parameters       map[string]float64
 }
 
 type Run struct {
@@ -63,7 +74,10 @@ type Run struct {
 	MetricEngineVersion int
 	ResultSchemaVersion int
 	Trigger             Trigger
-	Status              Status
+	Method              Method
+	// ScoredBy is the person who scored a SCORED run.
+	ScoredBy string
+	Status   Status
 	// Attempt counts claims; the current attempt is the fencing token.
 	Attempt        int
 	MaxAttempts    int
@@ -79,7 +93,7 @@ type Run struct {
 
 func NewRun(source Source, trigger Trigger, createdBy string, now time.Time, maxAttempts, metricEngineVersion, resultSchemaVersion int) Run {
 	return Run{
-		Source: source, Trigger: trigger, Status: Queued, MaxAttempts: maxAttempts, AvailableAt: now, CreatedBy: createdBy,
+		Source: source, Trigger: trigger, Method: Automated, Status: Queued, MaxAttempts: maxAttempts, AvailableAt: now, CreatedBy: createdBy,
 		MetricEngineVersion: metricEngineVersion, ResultSchemaVersion: resultSchemaVersion,
 	}
 }

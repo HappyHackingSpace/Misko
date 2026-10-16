@@ -1,5 +1,5 @@
 // Package postgres reads the dashboard summary straight from the tables the
-// tests, analysis and calibration domains own. It never writes.
+// experiments, tests, analysis and calibration domains own. It never writes.
 package postgres
 
 import (
@@ -19,6 +19,44 @@ type Store struct {
 
 func NewStore(pool *pgxpool.Pool) *Store {
 	return &Store{queries: sqlcgen.New(pool)}
+}
+
+func (s *Store) ExperimentStatusCounts(ctx context.Context) (domain.ExperimentCounts, error) {
+	rows, err := s.queries.ExperimentStatusCounts(ctx)
+	if err != nil {
+		return domain.ExperimentCounts{}, fmt.Errorf("experiment status counts: %w", err)
+	}
+	var counts domain.ExperimentCounts
+	for _, row := range rows {
+		switch row.Status {
+		case "DRAFT":
+			counts.Draft = int(row.Total)
+		case "RUNNING":
+			counts.Running = int(row.Total)
+		case "COMPLETED":
+			counts.Completed = int(row.Total)
+		}
+	}
+	return counts, nil
+}
+
+func (s *Store) ResultStatusCounts(ctx context.Context) (domain.ResultCounts, error) {
+	rows, err := s.queries.ResultStatusCounts(ctx)
+	if err != nil {
+		return domain.ResultCounts{}, fmt.Errorf("result status counts: %w", err)
+	}
+	var counts domain.ResultCounts
+	for _, row := range rows {
+		switch row.Status {
+		case "PENDING":
+			counts.Pending = int(row.Total)
+		case "ACCEPTED":
+			counts.Accepted = int(row.Total)
+		case "REJECTED":
+			counts.Rejected = int(row.Total)
+		}
+	}
+	return counts, nil
 }
 
 func (s *Store) TestStatusCounts(ctx context.Context) (domain.StatusCounts, error) {
@@ -68,7 +106,7 @@ func (s *Store) RecentActivity(ctx context.Context, limit int) ([]domain.Activit
 	out := make([]domain.Activity, 0, len(rows))
 	for _, row := range rows {
 		activity := domain.Activity{
-			TestID: row.TestID, SubjectCode: row.SubjectCode, ExperimentCode: row.ExperimentCode,
+			TestID: row.TestID, TestSubjectID: row.TestSubjectID, SubjectCode: row.SubjectCode, ExperimentCode: row.ExperimentCode,
 			ParadigmKey: row.ParadigmKey, ParadigmVersion: int(row.ParadigmVersion),
 		}
 		if row.FinishedAt != nil {
@@ -87,7 +125,7 @@ func (s *Store) UpcomingTests(ctx context.Context, limit int) ([]domain.Upcoming
 	out := make([]domain.UpcomingTest, 0, len(rows))
 	for _, row := range rows {
 		out = append(out, domain.UpcomingTest{
-			ID: row.ID, SubjectCode: row.SubjectCode, ExperimentCode: row.ExperimentCode,
+			ID: row.ID, SubjectCodes: row.SubjectCodes, ExperimentCode: row.ExperimentCode, TimepointName: row.TimepointName,
 			ParadigmKey: row.ParadigmKey, ParadigmVersion: int(row.ParadigmVersion),
 			ScheduledAt: row.ScheduledAt.UTC(),
 		})
@@ -96,15 +134,15 @@ func (s *Store) UpcomingTests(ctx context.Context, limit int) ([]domain.Upcoming
 }
 
 func (s *Store) CalibrationCandidates(ctx context.Context) ([]application.CalibrationCandidate, error) {
-	rows, err := s.queries.RecordingsAwaitingCalibrationCheck(ctx)
+	rows, err := s.queries.TestSubjectsAwaitingCalibrationCheck(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("calibration candidates: %w", err)
 	}
 	out := make([]application.CalibrationCandidate, 0, len(rows))
 	for _, row := range rows {
 		var apparatus map[string]float64
-		if err := json.Unmarshal(row.Apparatus, &apparatus); err != nil {
-			return nil, fmt.Errorf("decode apparatus: %w", err)
+		if err := json.Unmarshal(row.Parameters, &apparatus); err != nil {
+			return nil, fmt.Errorf("decode arena parameters: %w", err)
 		}
 		out = append(out, application.CalibrationCandidate{
 			ParadigmKey: row.ParadigmKey, ParadigmVersion: int(row.ParadigmVersion), Apparatus: apparatus,

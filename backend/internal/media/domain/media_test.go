@@ -107,3 +107,13 @@ func TestParseCRC32C(t *testing.T) {
 		t.Error("format must round-trip")
 	}
 }
+
+func TestOnlyAStartedTestAcceptsAVideo(t *testing.T) {
+	for status, want := range map[string]error{
+		"PLANNED": ErrTestNotStarted, "IN_PROGRESS": nil, "COMPLETED": nil, "CANCELLED": ErrTestNotStarted, "": ErrTestNotStarted,
+	} {
+		if err := AcceptsVideo(status); !errors.Is(err, want) {
+			t.Errorf("%q: err=%v want %v", status, err, want)
+		}
+	}
+}

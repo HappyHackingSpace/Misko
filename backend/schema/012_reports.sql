@@ -1,50 +1,48 @@
 -- Read-only reporting views. They never write; every row comes from tables
--- owned by their domains.
+-- owned by their contexts, and the views reject writes even where PostgreSQL
+-- could forward them.
 
--- latest marks the newest succeeded run of a test for each metric engine
--- version, so reanalysis never counts a test twice within one version.
-CREATE INDEX analysis_runs_report_idx ON misko.analysis_runs (test_id, metric_engine_version, finished_at, id) WHERE status = 'SUCCEEDED';
-CREATE INDEX analysis_runs_source_idx ON misko.analysis_runs (source_asset_id);
+-- Every animal of every test with the design it belongs to: group role,
+-- disease model, the substance and dose of its group's treatment, the
+-- timepoint and study day, the arena, whether the animal is excluded and the
+-- review state of its result.
+CREATE VIEW misko.report_test_subjects AS
+SELECT ts.id AS test_subject_id, ts.test_id, ts.experiment_id,
+       e.code AS experiment_code, e.blinded,
+       a.id AS allocation_id, s.id AS subject_id, s.code AS subject_code, s.species, s.sex,
+       g.id AS group_id, g.code AS group_code, g.name AS group_name, g.role AS group_role,
+       g.disease_model_id, dm.name AS disease_model_name,
+       tr.substance_id AS treatment_substance_id, sub.name AS treatment_substance_name,
+       tr.dose_micro AS treatment_dose_micro, tr.unit AS treatment_unit,
+       a.excluded_at IS NOT NULL AS excluded,
+       tp.id AS timepoint_id, tp.name AS timepoint_name, tp.study_day,
+       t.paradigm_key, t.paradigm_version, t.status AS test_status, t.scheduled_at,
+       ts.environment_revision_id, er.environment_id, env.name AS environment_name, er.number AS environment_revision,
+       res.status AS result_status, res.run_id AS result_run_id
+FROM misko.test_subjects ts
+JOIN misko.tests t ON t.id = ts.test_id
+JOIN misko.experiments e ON e.id = ts.experiment_id
+JOIN misko.allocations a ON a.id = ts.allocation_id
+JOIN misko.subjects s ON s.id = a.subject_id
+JOIN misko.experiment_groups g ON g.id = a.group_id
+LEFT JOIN misko.disease_models dm ON dm.id = g.disease_model_id
+LEFT JOIN misko.regimen_items tr ON tr.group_id = g.id AND tr.purpose = 'TREATMENT'
+LEFT JOIN misko.substances sub ON sub.id = tr.substance_id
+JOIN misko.timepoints tp ON tp.id = t.timepoint_id
+JOIN misko.environment_revisions er ON er.id = ts.environment_revision_id
+JOIN misko.environments env ON env.id = er.environment_id
+LEFT JOIN misko.subject_results res ON res.test_subject_id = ts.id;
 
-CREATE VIEW misko.report_runs AS
-SELECT r.id, r.experiment_id, r.test_id, r.recording_id, r.source_asset_id, r.calibration_id, r.paradigm_key, r.paradigm_version,
-       r.metric_engine_version, r.result_schema_version, r.trigger, r.model_version, r.finished_at,
-       NOT EXISTS (
-           SELECT 1 FROM misko.analysis_runs n
-           WHERE n.status = 'SUCCEEDED' AND n.test_id = r.test_id AND n.metric_engine_version = r.metric_engine_version
-             AND (n.finished_at, n.id) > (r.finished_at, r.id)) AS latest
-FROM misko.analysis_runs r
-WHERE r.status = 'SUCCEEDED';
+-- Accepted measurements only: the numbers statistics are computed from.
+CREATE VIEW misko.report_accepted_metrics AS
+SELECT rts.*, m.metric_key, m.unit, m.value, m.missing_reason,
+       r.metric_engine_version, r.result_schema_version, r.model_version, r.finished_at
+FROM misko.report_test_subjects rts
+JOIN misko.analysis_runs r ON r.id = rts.result_run_id
+JOIN misko.metric_results m ON m.run_id = r.id
+WHERE rts.result_status = 'ACCEPTED' AND NOT rts.excluded;
 
-CREATE INDEX tests_group_idx ON misko.tests (group_id) WHERE group_id IS NOT NULL;
-CREATE INDEX tests_phase_idx ON misko.tests (phase_id) WHERE phase_id IS NOT NULL;
-CREATE INDEX tests_environment_revision_idx ON misko.tests (environment_revision_id);
-
--- A test with the subject, experiment, phase, group and environment it was run
--- in. The group and phase are the ones stored on the test, not today's. The
--- experiment and environment are scalar subqueries so report statements stay
--- within the planner's join collapse limit and filters reach the indexes.
-CREATE VIEW misko.report_tests AS
-SELECT t.id AS test_id, t.experiment_id,
-       (SELECT e.code FROM misko.experiments e WHERE e.id = t.experiment_id) AS experiment_code,
-       t.subject_id, s.code AS subject_code, s.species, s.sex,
-       t.phase_id, p.name AS phase_name,
-       t.group_id, g.name AS group_name, g.role AS group_role,
-       t.paradigm_key, t.paradigm_version, t.environment_revision_id,
-       (SELECT er.environment_id FROM misko.environment_revisions er WHERE er.id = t.environment_revision_id) AS environment_id,
-       (SELECT env.name FROM misko.environment_revisions er JOIN misko.environments env ON env.id = er.environment_id
-        WHERE er.id = t.environment_revision_id) AS environment_name,
-       (SELECT er.number FROM misko.environment_revisions er WHERE er.id = t.environment_revision_id) AS environment_revision,
-       t.status AS test_status, t.scheduled_at,
-       (SELECT count(*) FROM misko.trials tr WHERE tr.test_id = t.id) AS trial_count
-FROM misko.tests t
-JOIN misko.subjects s ON s.id = t.subject_id
-LEFT JOIN misko.experiment_phases p ON p.id = t.phase_id
-LEFT JOIN misko.experiment_groups g ON g.id = t.group_id;
-
--- Writes go through the owning domains; the views reject them even where
--- PostgreSQL could forward them to a base table.
-CREATE TRIGGER report_runs_read_only INSTEAD OF INSERT OR UPDATE OR DELETE ON misko.report_runs
+CREATE TRIGGER report_test_subjects_read_only INSTEAD OF INSERT OR UPDATE OR DELETE ON misko.report_test_subjects
     FOR EACH ROW EXECUTE FUNCTION misko.reject_change();
-CREATE TRIGGER report_tests_read_only INSTEAD OF INSERT OR UPDATE OR DELETE ON misko.report_tests
+CREATE TRIGGER report_accepted_metrics_read_only INSTEAD OF INSERT OR UPDATE OR DELETE ON misko.report_accepted_metrics
     FOR EACH ROW EXECUTE FUNCTION misko.reject_change();

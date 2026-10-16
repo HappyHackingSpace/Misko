@@ -13,15 +13,8 @@ body:
     attributes:
       label: Paradigm
       options:
-        - OPEN_FIELD
         - MWM
-        - EPM
-        - ROTAROD
-        - Y_MAZE
         - NOVEL_OBJECT
-        - BARNES_MAZE
-        - THREE_CHAMBER
-        - LIGHT_DARK
         - POLE
         - TREADMILL
     validations:
@@ -30,7 +23,7 @@ body:
     id: metric
     attributes:
       label: Metric
-      description: For example `distance_cm`, `center_entries_count`, `escape_latency_s`.
+      description: For example `escape_latency_s`, `discrimination_index`, `descent_time_s`.
     validations:
       required: true
   - type: textarea

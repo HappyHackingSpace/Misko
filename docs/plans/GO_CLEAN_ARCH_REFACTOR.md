@@ -137,6 +137,8 @@ Yeni domain önerisi: deney/grup/katılım ve müdahale planı yönetimi study:w
 
 ## 6. Paradigmaların Go'ya taşınması
 
+> **2026-10-15:** paradigma kataloğu `MWM`, `NOVEL_OBJECT`, `POLE` ve `TREADMILL` olmak üzere dört paradigmaya indirildi; diğer yedi paradigma kaldırıldı. Aşağıdaki metin bu değişiklikten öncesine aittir ve olduğu gibi korunur.
+
 Mevcut 11 anahtar korunur: MWM, OPEN_FIELD, EPM, ROTAROD, Y_MAZE, NOVEL_OBJECT, BARNES_MAZE, THREE_CHAMBER, LIGHT_DARK, POLE, TREADMILL.
 
 - internal/paradigms/domain altında tipli tanımlar ve paradigma başına dosya; ortak metric/unit/event tipleri. Registry salt okunur API sağlar, mutable map/slice dışarı sızdırmaz.

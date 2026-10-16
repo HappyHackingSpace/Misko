@@ -19,17 +19,22 @@ const (
 )
 
 var (
-	ErrInvalidTrajectory = errors.New("the trajectory must be misko.trajectory.v1 JSON for this run, attempt and recording duration, with equal-length sample arrays, strictly increasing times within the recording, confidences from 0 to 1 and coordinates for tracked samples")
+	ErrInvalidTrajectory = errors.New("the trajectory must be misko.trajectory.v1 JSON for this run, attempt and recording duration, with equal-length sample arrays, strictly increasing times within the recording, confidences from 0 to 1, coordinates for tracked samples and inferred samples only among tracked ones")
 	ErrMissingTrajectory = errors.New("a result needs exactly one TRAJECTORY artifact stored as application/json")
 )
 
-// Sample is one tracked position in arena centimeters. TUs is microseconds from
-// the recording (clip) start. Untracked samples carry no coordinates.
+// Sample is one tracked position in the calibration's centimeter frame. TUs is
+// microseconds from the recording (clip) start. Untracked samples carry no
+// coordinates. An Inferred sample is tracked, but its position was not seen:
+// the worker placed it (for example an animal hidden by part of the apparatus;
+// the current worker never infers a position).
+// Metrics count it as tracked; QC reports it separately.
 type Sample struct {
 	TUs        int64
 	X, Y       float64
 	Tracked    bool
 	Confidence float64
+	Inferred   bool
 }
 
 // Track is the worker's measurement of a recording; the metric engine
@@ -39,7 +44,8 @@ type Track struct {
 }
 
 // trajectoryFile is misko.trajectory.v1. Unknown members, such as worker
-// diagnostics, are ignored.
+// diagnostics, are ignored. samples.inferred is optional: absent means no
+// sample was inferred.
 type trajectoryFile struct {
 	Schema     string `json:"schema"`
 	RunID      string `json:"runId"`
@@ -51,6 +57,7 @@ type trajectoryFile struct {
 		Y          []*float64 `json:"yCm"`
 		Tracked    []bool     `json:"tracked"`
 		Confidence []float64  `json:"confidence"`
+		Inferred   []bool     `json:"inferred"`
 	} `json:"samples"`
 }
 
@@ -67,12 +74,15 @@ func ParseTrajectory(data []byte, r Run, durationUs int64) (Track, error) {
 		return Track{}, fmt.Errorf("%w: schema, run or attempt", ErrInvalidTrajectory)
 	case f.DurationUs != durationUs:
 		return Track{}, fmt.Errorf("%w: duration %d, recording %d", ErrInvalidTrajectory, f.DurationUs, durationUs)
-	case n > maxSamples, len(s.X) != n, len(s.Y) != n, len(s.Tracked) != n, len(s.Confidence) != n:
+	case n > maxSamples, len(s.X) != n, len(s.Y) != n, len(s.Tracked) != n, len(s.Confidence) != n, s.Inferred != nil && len(s.Inferred) != n:
 		return Track{}, fmt.Errorf("%w: sample arrays", ErrInvalidTrajectory)
 	}
 	out := Track{Samples: make([]Sample, n)}
 	for i := range n {
 		sample := Sample{TUs: s.TUs[i], Tracked: s.Tracked[i], Confidence: s.Confidence[i]}
+		if s.Inferred != nil {
+			sample.Inferred = s.Inferred[i]
+		}
 		switch {
 		case sample.TUs < 0 || sample.TUs > durationUs || (i > 0 && sample.TUs <= s.TUs[i-1]):
 			return Track{}, fmt.Errorf("%w: sample %d time", ErrInvalidTrajectory, i)
@@ -80,6 +90,8 @@ func ParseTrajectory(data []byte, r Run, durationUs int64) (Track, error) {
 			return Track{}, fmt.Errorf("%w: sample %d confidence", ErrInvalidTrajectory, i)
 		case sample.Tracked && (s.X[i] == nil || s.Y[i] == nil):
 			return Track{}, fmt.Errorf("%w: sample %d coordinates", ErrInvalidTrajectory, i)
+		case sample.Inferred && !sample.Tracked:
+			return Track{}, fmt.Errorf("%w: sample %d inferred but not tracked", ErrInvalidTrajectory, i)
 		}
 		if sample.Tracked {
 			sample.X, sample.Y = *s.X[i], *s.Y[i]
@@ -95,31 +107,61 @@ type QCRule struct {
 	Value         float64
 }
 
-// CheckQC applies the rules a trajectory can measure and returns the first
-// failure, or an empty string. min_tracking_confidence is compared with the mean
-// confidence of tracked samples and max_lost_frame_ratio with the share of
-// samples that are not tracked; a trajectory without tracked samples fails both.
-// Other rules, such as the calibration error, are checked where their inputs live.
-func CheckQC(rules []QCRule, t Track) string {
-	tracked, confidence := 0, 0.0
+// Quality summarizes a trajectory for QC. LostRatio is the share of samples
+// that are not tracked; InferredRatio the share that are tracked but inferred;
+// MeanConfidence the mean confidence of the observed samples (tracked and not
+// inferred), so a confidence the worker assigns to a position it did not see
+// never raises or lowers it.
+type Quality struct {
+	Samples, Tracked, Inferred               int
+	LostRatio, InferredRatio, MeanConfidence float64
+}
+
+// Quality measures the trajectory. Without samples everything counts as lost.
+func (t Track) Quality() Quality {
+	q := Quality{Samples: len(t.Samples), LostRatio: 1}
+	observed, confidence := 0, 0.0
 	for _, s := range t.Samples {
-		if s.Tracked {
-			tracked++
+		switch {
+		case s.Inferred:
+			q.Tracked++
+			q.Inferred++
+		case s.Tracked:
+			q.Tracked++
+			observed++
 			confidence += s.Confidence
 		}
 	}
-	lost, mean := 1.0, 0.0
-	if tracked > 0 {
-		lost = float64(len(t.Samples)-tracked) / float64(len(t.Samples))
-		mean = confidence / float64(tracked)
+	if q.Tracked > 0 {
+		q.LostRatio = float64(q.Samples-q.Tracked) / float64(q.Samples)
 	}
+	if q.Samples > 0 {
+		q.InferredRatio = float64(q.Inferred) / float64(q.Samples)
+	}
+	if observed > 0 {
+		q.MeanConfidence = confidence / float64(observed)
+	}
+	return q
+}
+
+// CheckQC applies the rules a trajectory can measure and returns the first
+// failure, or an empty string. min_tracking_confidence is compared with the mean
+// confidence of observed samples, max_lost_frame_ratio with the share of
+// samples that are not tracked (inferred samples are tracked) and, when a
+// paradigm sets it, max_inferred_ratio with the share of inferred samples. A
+// trajectory without tracked samples fails the first two. Other rules, such as
+// the calibration error, are checked where their inputs live.
+func CheckQC(rules []QCRule, t Track) string {
+	q := t.Quality()
 	for _, r := range rules {
 		var measured float64
 		switch r.Key {
 		case "min_tracking_confidence":
-			measured = mean
+			measured = q.MeanConfidence
 		case "max_lost_frame_ratio":
-			measured = lost
+			measured = q.LostRatio
+		case "max_inferred_ratio":
+			measured = q.InferredRatio
 		default:
 			continue
 		}

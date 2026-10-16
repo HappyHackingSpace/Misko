@@ -59,8 +59,47 @@ func (q *Queries) AddCapability(ctx context.Context, arg AddCapabilityParams) er
 	return err
 }
 
+const calibrationZones = `-- name: CalibrationZones :many
+SELECT zone_key, kind, pixels, centimeters
+FROM misko.calibration_zones
+WHERE calibration_id = $1
+ORDER BY zone_key, position
+`
+
+type CalibrationZonesRow struct {
+	ZoneKey     string
+	Kind        string
+	Pixels      []byte
+	Centimeters []byte
+}
+
+func (q *Queries) CalibrationZones(ctx context.Context, calibrationID string) ([]CalibrationZonesRow, error) {
+	rows, err := q.db.Query(ctx, calibrationZones, calibrationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CalibrationZonesRow
+	for rows.Next() {
+		var i CalibrationZonesRow
+		if err := rows.Scan(
+			&i.ZoneKey,
+			&i.Kind,
+			&i.Pixels,
+			&i.Centimeters,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const claimNext = `-- name: ClaimNext :one
-SELECT id, experiment_id, test_id, recording_id, source_asset_id, source_generation, source_crc32c, clip_start_us, clip_end_us, calibration_id, paradigm_key, paradigm_version, metric_engine_version, result_schema_version, environment_revision_id, protocol_version_id, parameters, trigger, status, attempt, max_attempts, worker_id, lease_expires_at, available_at, model_version, failure_reason, created_by, created_at, finished_at FROM misko.analysis_runs r
+SELECT id, experiment_id, test_id, test_subject_id, recording_id, source_asset_id, source_generation, source_crc32c, clip_start_us, clip_end_us, calibration_id, paradigm_key, paradigm_version, metric_engine_version, result_schema_version, parameters, trigger, status, attempt, max_attempts, worker_id, lease_expires_at, available_at, model_version, failure_reason, created_by, created_at, finished_at, method, scored_by FROM misko.analysis_runs r
 WHERE r.status = 'QUEUED' AND r.available_at <= $1::timestamptz
   AND (r.paradigm_key || '@' || r.paradigm_version::text) = ANY($2::text[])
 ORDER BY r.available_at, r.id
@@ -82,6 +121,7 @@ func (q *Queries) ClaimNext(ctx context.Context, arg ClaimNextParams) (MiskoAnal
 		&i.ID,
 		&i.ExperimentID,
 		&i.TestID,
+		&i.TestSubjectID,
 		&i.RecordingID,
 		&i.SourceAssetID,
 		&i.SourceGeneration,
@@ -93,8 +133,6 @@ func (q *Queries) ClaimNext(ctx context.Context, arg ClaimNextParams) (MiskoAnal
 		&i.ParadigmVersion,
 		&i.MetricEngineVersion,
 		&i.ResultSchemaVersion,
-		&i.EnvironmentRevisionID,
-		&i.ProtocolVersionID,
 		&i.Parameters,
 		&i.Trigger,
 		&i.Status,
@@ -108,8 +146,30 @@ func (q *Queries) ClaimNext(ctx context.Context, arg ClaimNextParams) (MiskoAnal
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.FinishedAt,
+		&i.Method,
+		&i.ScoredBy,
 	)
 	return i, err
+}
+
+const countReviewItems = `-- name: CountReviewItems :one
+SELECT count(*)
+FROM misko.subject_results sr
+JOIN misko.test_subjects ts ON ts.id = sr.test_subject_id
+WHERE ($1::uuid IS NULL OR ts.experiment_id = $1::uuid)
+  AND ($2::text = '' OR sr.status = $2::text)
+`
+
+type CountReviewItemsParams struct {
+	ExperimentID *string
+	Status       string
+}
+
+func (q *Queries) CountReviewItems(ctx context.Context, arg CountReviewItemsParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countReviewItems, arg.ExperimentID, arg.Status)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
 }
 
 const createAnalyzedAsset = `-- name: CreateAnalyzedAsset :one
@@ -180,40 +240,40 @@ func (q *Queries) CreateArtifact(ctx context.Context, arg CreateArtifactParams) 
 }
 
 const createAutomaticRun = `-- name: CreateAutomaticRun :execrows
-INSERT INTO misko.analysis_runs (experiment_id, test_id, recording_id, source_asset_id, source_generation, source_crc32c, clip_start_us, clip_end_us,
-    calibration_id, paradigm_key, paradigm_version, metric_engine_version, result_schema_version, environment_revision_id, protocol_version_id,
+INSERT INTO misko.analysis_runs (experiment_id, test_id, test_subject_id, recording_id, source_asset_id, source_generation, source_crc32c,
+    clip_start_us, clip_end_us, calibration_id, paradigm_key, paradigm_version, metric_engine_version, result_schema_version,
     parameters, trigger, status, max_attempts, available_at, created_by)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8,
-    $9, $10, $11, $12, $13, $14,
-    $15, $16, 'AUTOMATIC', 'QUEUED', $17, $18, NULL)
+VALUES ($1, $2, $3, $4, $5, $6, $7,
+    $8, $9, $10, $11, $12, $13,
+    $14, $15, 'AUTOMATIC', 'QUEUED', $16, $17, NULL)
 ON CONFLICT DO NOTHING
 `
 
 type CreateAutomaticRunParams struct {
-	ExperimentID          string
-	TestID                string
-	RecordingID           string
-	SourceAssetID         string
-	SourceGeneration      int64
-	SourceCrc32c          int64
-	ClipStartUs           int64
-	ClipEndUs             *int64
-	CalibrationID         *string
-	ParadigmKey           string
-	ParadigmVersion       int32
-	MetricEngineVersion   int32
-	ResultSchemaVersion   int32
-	EnvironmentRevisionID string
-	ProtocolVersionID     string
-	Parameters            []byte
-	MaxAttempts           int32
-	AvailableAt           time.Time
+	ExperimentID        string
+	TestID              string
+	TestSubjectID       string
+	RecordingID         string
+	SourceAssetID       string
+	SourceGeneration    int64
+	SourceCrc32c        int64
+	ClipStartUs         int64
+	ClipEndUs           *int64
+	CalibrationID       *string
+	ParadigmKey         string
+	ParadigmVersion     int32
+	MetricEngineVersion int32
+	ResultSchemaVersion int32
+	Parameters          []byte
+	MaxAttempts         int32
+	AvailableAt         time.Time
 }
 
 func (q *Queries) CreateAutomaticRun(ctx context.Context, arg CreateAutomaticRunParams) (int64, error) {
 	result, err := q.db.Exec(ctx, createAutomaticRun,
 		arg.ExperimentID,
 		arg.TestID,
+		arg.TestSubjectID,
 		arg.RecordingID,
 		arg.SourceAssetID,
 		arg.SourceGeneration,
@@ -225,8 +285,6 @@ func (q *Queries) CreateAutomaticRun(ctx context.Context, arg CreateAutomaticRun
 		arg.ParadigmVersion,
 		arg.MetricEngineVersion,
 		arg.ResultSchemaVersion,
-		arg.EnvironmentRevisionID,
-		arg.ProtocolVersionID,
 		arg.Parameters,
 		arg.MaxAttempts,
 		arg.AvailableAt,
@@ -238,27 +296,27 @@ func (q *Queries) CreateAutomaticRun(ctx context.Context, arg CreateAutomaticRun
 }
 
 const createEvent = `-- name: CreateEvent :exec
-INSERT INTO misko.analysis_events (run_id, attempt, test_id, event_type, kind, start_us, end_us, confidence, trial_id)
+INSERT INTO misko.analysis_events (run_id, attempt, test_subject_id, event_type, kind, start_us, end_us, confidence, trial_id)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 `
 
 type CreateEventParams struct {
-	RunID      string
-	Attempt    int32
-	TestID     string
-	EventType  string
-	Kind       string
-	StartUs    int64
-	EndUs      int64
-	Confidence float32
-	TrialID    *string
+	RunID         string
+	Attempt       int32
+	TestSubjectID string
+	EventType     string
+	Kind          string
+	StartUs       int64
+	EndUs         int64
+	Confidence    float32
+	TrialID       *string
 }
 
 func (q *Queries) CreateEvent(ctx context.Context, arg CreateEventParams) error {
 	_, err := q.db.Exec(ctx, createEvent,
 		arg.RunID,
 		arg.Attempt,
-		arg.TestID,
+		arg.TestSubjectID,
 		arg.EventType,
 		arg.Kind,
 		arg.StartUs,
@@ -270,41 +328,41 @@ func (q *Queries) CreateEvent(ctx context.Context, arg CreateEventParams) error 
 }
 
 const createManualRun = `-- name: CreateManualRun :one
-INSERT INTO misko.analysis_runs (experiment_id, test_id, recording_id, source_asset_id, source_generation, source_crc32c, clip_start_us, clip_end_us,
-    calibration_id, paradigm_key, paradigm_version, metric_engine_version, result_schema_version, environment_revision_id, protocol_version_id,
+INSERT INTO misko.analysis_runs (experiment_id, test_id, test_subject_id, recording_id, source_asset_id, source_generation, source_crc32c,
+    clip_start_us, clip_end_us, calibration_id, paradigm_key, paradigm_version, metric_engine_version, result_schema_version,
     parameters, trigger, status, max_attempts, available_at, created_by)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8,
-    $9, $10, $11, $12, $13, $14,
-    $15, $16, 'MANUAL', 'QUEUED', $17, $18, $19)
-RETURNING id, experiment_id, test_id, recording_id, source_asset_id, source_generation, source_crc32c, clip_start_us, clip_end_us, calibration_id, paradigm_key, paradigm_version, metric_engine_version, result_schema_version, environment_revision_id, protocol_version_id, parameters, trigger, status, attempt, max_attempts, worker_id, lease_expires_at, available_at, model_version, failure_reason, created_by, created_at, finished_at
+VALUES ($1, $2, $3, $4, $5, $6, $7,
+    $8, $9, $10, $11, $12, $13,
+    $14, $15, 'MANUAL', 'QUEUED', $16, $17, $18)
+RETURNING id, experiment_id, test_id, test_subject_id, recording_id, source_asset_id, source_generation, source_crc32c, clip_start_us, clip_end_us, calibration_id, paradigm_key, paradigm_version, metric_engine_version, result_schema_version, parameters, trigger, status, attempt, max_attempts, worker_id, lease_expires_at, available_at, model_version, failure_reason, created_by, created_at, finished_at, method, scored_by
 `
 
 type CreateManualRunParams struct {
-	ExperimentID          string
-	TestID                string
-	RecordingID           string
-	SourceAssetID         string
-	SourceGeneration      int64
-	SourceCrc32c          int64
-	ClipStartUs           int64
-	ClipEndUs             *int64
-	CalibrationID         *string
-	ParadigmKey           string
-	ParadigmVersion       int32
-	MetricEngineVersion   int32
-	ResultSchemaVersion   int32
-	EnvironmentRevisionID string
-	ProtocolVersionID     string
-	Parameters            []byte
-	MaxAttempts           int32
-	AvailableAt           time.Time
-	CreatedBy             *string
+	ExperimentID        string
+	TestID              string
+	TestSubjectID       string
+	RecordingID         string
+	SourceAssetID       string
+	SourceGeneration    int64
+	SourceCrc32c        int64
+	ClipStartUs         int64
+	ClipEndUs           *int64
+	CalibrationID       *string
+	ParadigmKey         string
+	ParadigmVersion     int32
+	MetricEngineVersion int32
+	ResultSchemaVersion int32
+	Parameters          []byte
+	MaxAttempts         int32
+	AvailableAt         time.Time
+	CreatedBy           *string
 }
 
 func (q *Queries) CreateManualRun(ctx context.Context, arg CreateManualRunParams) (MiskoAnalysisRun, error) {
 	row := q.db.QueryRow(ctx, createManualRun,
 		arg.ExperimentID,
 		arg.TestID,
+		arg.TestSubjectID,
 		arg.RecordingID,
 		arg.SourceAssetID,
 		arg.SourceGeneration,
@@ -316,8 +374,6 @@ func (q *Queries) CreateManualRun(ctx context.Context, arg CreateManualRunParams
 		arg.ParadigmVersion,
 		arg.MetricEngineVersion,
 		arg.ResultSchemaVersion,
-		arg.EnvironmentRevisionID,
-		arg.ProtocolVersionID,
 		arg.Parameters,
 		arg.MaxAttempts,
 		arg.AvailableAt,
@@ -328,6 +384,7 @@ func (q *Queries) CreateManualRun(ctx context.Context, arg CreateManualRunParams
 		&i.ID,
 		&i.ExperimentID,
 		&i.TestID,
+		&i.TestSubjectID,
 		&i.RecordingID,
 		&i.SourceAssetID,
 		&i.SourceGeneration,
@@ -339,8 +396,6 @@ func (q *Queries) CreateManualRun(ctx context.Context, arg CreateManualRunParams
 		&i.ParadigmVersion,
 		&i.MetricEngineVersion,
 		&i.ResultSchemaVersion,
-		&i.EnvironmentRevisionID,
-		&i.ProtocolVersionID,
 		&i.Parameters,
 		&i.Trigger,
 		&i.Status,
@@ -354,6 +409,8 @@ func (q *Queries) CreateManualRun(ctx context.Context, arg CreateManualRunParams
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.FinishedAt,
+		&i.Method,
+		&i.ScoredBy,
 	)
 	return i, err
 }
@@ -554,50 +611,56 @@ func (q *Queries) GetCalibration(ctx context.Context, id string) (GetCalibration
 }
 
 const getCandidate = `-- name: GetCandidate :one
-SELECT r.experiment_id, r.test_id, r.id AS recording_id, a.id AS source_asset_id, coalesce(a.generation, 0)::bigint AS source_generation,
-       a.crc32c AS source_crc32c, r.clip_start_us, r.clip_end_us, t.paradigm_key, t.paradigm_version,
-       t.environment_revision_id, t.protocol_version_id, e.apparatus, s.session, a.status AS video_status, t.status AS test_status,
-       coalesce(ec.calibration_id::text, '')::text AS calibration_id
-FROM misko.test_recordings r
-JOIN misko.effective_calibrations ec ON ec.recording_id = r.id
-JOIN misko.video_assets a ON a.id = r.video_asset_id
-JOIN misko.tests t ON t.id = r.test_id
-JOIN misko.environment_revisions e ON e.id = t.environment_revision_id
-JOIN misko.protocol_steps s ON s.protocol_version_id = t.protocol_version_id AND s.position = t.step_position
-WHERE r.test_id = $1 AND r.id = $2
+SELECT ts.experiment_id, ts.test_id, ts.id AS test_subject_id, coalesce(r.id::text, '')::text AS recording_id,
+       coalesce(a.id::text, '')::text AS source_asset_id, coalesce(a.generation, 0)::bigint AS source_generation,
+       coalesce(a.crc32c, 0)::bigint AS source_crc32c, coalesce(r.clip_start_us, 0)::bigint AS clip_start_us, r.clip_end_us,
+       t.paradigm_key, t.paradigm_version, er.parameters, ps.session, coalesce(a.status, '')::text AS video_status,
+       t.status AS test_status, e.status AS experiment_status, (al.excluded_at IS NOT NULL)::boolean AS excluded,
+       coalesce(ec.calibration_id::text, '')::text AS calibration_id,
+       ARRAY(SELECT DISTINCT z.zone_key FROM misko.calibration_zones z WHERE z.calibration_id = ec.calibration_id)::text[] AS zone_keys
+FROM misko.test_subjects ts
+JOIN misko.tests t ON t.id = ts.test_id
+JOIN misko.experiments e ON e.id = ts.experiment_id
+JOIN misko.allocations al ON al.id = ts.allocation_id
+JOIN misko.environment_revisions er ON er.id = ts.environment_revision_id
+JOIN misko.protocol_steps ps ON ps.protocol_version_id = t.protocol_version_id AND ps.position = t.step_position
+LEFT JOIN misko.effective_calibrations ec ON ec.test_subject_id = ts.id
+LEFT JOIN misko.test_recordings r ON r.id = ec.recording_id
+LEFT JOIN misko.video_assets a ON a.id = r.video_asset_id
+WHERE ts.id = $1
 `
 
-type GetCandidateParams struct {
-	TestID string
-	ID     string
-}
-
 type GetCandidateRow struct {
-	ExperimentID          string
-	TestID                string
-	RecordingID           string
-	SourceAssetID         string
-	SourceGeneration      int64
-	SourceCrc32c          int64
-	ClipStartUs           int64
-	ClipEndUs             *int64
-	ParadigmKey           string
-	ParadigmVersion       int32
-	EnvironmentRevisionID string
-	ProtocolVersionID     string
-	Apparatus             []byte
-	Session               []byte
-	VideoStatus           string
-	TestStatus            string
-	CalibrationID         string
+	ExperimentID     string
+	TestID           string
+	TestSubjectID    string
+	RecordingID      string
+	SourceAssetID    string
+	SourceGeneration int64
+	SourceCrc32c     int64
+	ClipStartUs      int64
+	ClipEndUs        *int64
+	ParadigmKey      string
+	ParadigmVersion  int32
+	Parameters       []byte
+	Session          []byte
+	VideoStatus      string
+	TestStatus       string
+	ExperimentStatus string
+	Excluded         bool
+	CalibrationID    string
+	ZoneKeys         []string
 }
 
-func (q *Queries) GetCandidate(ctx context.Context, arg GetCandidateParams) (GetCandidateRow, error) {
-	row := q.db.QueryRow(ctx, getCandidate, arg.TestID, arg.ID)
+// GetCandidate reads one animal of a test with its current video, if any, and
+// everything that decides whether it can be analysed.
+func (q *Queries) GetCandidate(ctx context.Context, id string) (GetCandidateRow, error) {
+	row := q.db.QueryRow(ctx, getCandidate, id)
 	var i GetCandidateRow
 	err := row.Scan(
 		&i.ExperimentID,
 		&i.TestID,
+		&i.TestSubjectID,
 		&i.RecordingID,
 		&i.SourceAssetID,
 		&i.SourceGeneration,
@@ -606,13 +669,14 @@ func (q *Queries) GetCandidate(ctx context.Context, arg GetCandidateParams) (Get
 		&i.ClipEndUs,
 		&i.ParadigmKey,
 		&i.ParadigmVersion,
-		&i.EnvironmentRevisionID,
-		&i.ProtocolVersionID,
-		&i.Apparatus,
+		&i.Parameters,
 		&i.Session,
 		&i.VideoStatus,
 		&i.TestStatus,
+		&i.ExperimentStatus,
+		&i.Excluded,
 		&i.CalibrationID,
+		&i.ZoneKeys,
 	)
 	return i, err
 }
@@ -656,7 +720,7 @@ func (q *Queries) GetPair(ctx context.Context, runID string) (GetPairRow, error)
 }
 
 const getRun = `-- name: GetRun :one
-SELECT id, experiment_id, test_id, recording_id, source_asset_id, source_generation, source_crc32c, clip_start_us, clip_end_us, calibration_id, paradigm_key, paradigm_version, metric_engine_version, result_schema_version, environment_revision_id, protocol_version_id, parameters, trigger, status, attempt, max_attempts, worker_id, lease_expires_at, available_at, model_version, failure_reason, created_by, created_at, finished_at FROM misko.analysis_runs WHERE id = $1
+SELECT id, experiment_id, test_id, test_subject_id, recording_id, source_asset_id, source_generation, source_crc32c, clip_start_us, clip_end_us, calibration_id, paradigm_key, paradigm_version, metric_engine_version, result_schema_version, parameters, trigger, status, attempt, max_attempts, worker_id, lease_expires_at, available_at, model_version, failure_reason, created_by, created_at, finished_at, method, scored_by FROM misko.analysis_runs WHERE id = $1
 `
 
 func (q *Queries) GetRun(ctx context.Context, id string) (MiskoAnalysisRun, error) {
@@ -666,6 +730,7 @@ func (q *Queries) GetRun(ctx context.Context, id string) (MiskoAnalysisRun, erro
 		&i.ID,
 		&i.ExperimentID,
 		&i.TestID,
+		&i.TestSubjectID,
 		&i.RecordingID,
 		&i.SourceAssetID,
 		&i.SourceGeneration,
@@ -677,8 +742,6 @@ func (q *Queries) GetRun(ctx context.Context, id string) (MiskoAnalysisRun, erro
 		&i.ParadigmVersion,
 		&i.MetricEngineVersion,
 		&i.ResultSchemaVersion,
-		&i.EnvironmentRevisionID,
-		&i.ProtocolVersionID,
 		&i.Parameters,
 		&i.Trigger,
 		&i.Status,
@@ -692,6 +755,8 @@ func (q *Queries) GetRun(ctx context.Context, id string) (MiskoAnalysisRun, erro
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.FinishedAt,
+		&i.Method,
+		&i.ScoredBy,
 	)
 	return i, err
 }
@@ -845,11 +910,18 @@ func (q *Queries) ListMetrics(ctx context.Context, runID string) ([]ListMetricsR
 }
 
 const listRuns = `-- name: ListRuns :many
-SELECT id, experiment_id, test_id, recording_id, source_asset_id, source_generation, source_crc32c, clip_start_us, clip_end_us, calibration_id, paradigm_key, paradigm_version, metric_engine_version, result_schema_version, environment_revision_id, protocol_version_id, parameters, trigger, status, attempt, max_attempts, worker_id, lease_expires_at, available_at, model_version, failure_reason, created_by, created_at, finished_at FROM misko.analysis_runs WHERE test_id = $1 ORDER BY created_at DESC, id DESC
+SELECT id, experiment_id, test_id, test_subject_id, recording_id, source_asset_id, source_generation, source_crc32c, clip_start_us, clip_end_us, calibration_id, paradigm_key, paradigm_version, metric_engine_version, result_schema_version, parameters, trigger, status, attempt, max_attempts, worker_id, lease_expires_at, available_at, model_version, failure_reason, created_by, created_at, finished_at, method, scored_by FROM misko.analysis_runs
+WHERE test_id = $1 AND ($2::uuid IS NULL OR test_subject_id = $2::uuid)
+ORDER BY created_at DESC, id DESC
 `
 
-func (q *Queries) ListRuns(ctx context.Context, testID string) ([]MiskoAnalysisRun, error) {
-	rows, err := q.db.Query(ctx, listRuns, testID)
+type ListRunsParams struct {
+	TestID        string
+	TestSubjectID *string
+}
+
+func (q *Queries) ListRuns(ctx context.Context, arg ListRunsParams) ([]MiskoAnalysisRun, error) {
+	rows, err := q.db.Query(ctx, listRuns, arg.TestID, arg.TestSubjectID)
 	if err != nil {
 		return nil, err
 	}
@@ -861,6 +933,7 @@ func (q *Queries) ListRuns(ctx context.Context, testID string) ([]MiskoAnalysisR
 			&i.ID,
 			&i.ExperimentID,
 			&i.TestID,
+			&i.TestSubjectID,
 			&i.RecordingID,
 			&i.SourceAssetID,
 			&i.SourceGeneration,
@@ -872,8 +945,6 @@ func (q *Queries) ListRuns(ctx context.Context, testID string) ([]MiskoAnalysisR
 			&i.ParadigmVersion,
 			&i.MetricEngineVersion,
 			&i.ResultSchemaVersion,
-			&i.EnvironmentRevisionID,
-			&i.ProtocolVersionID,
 			&i.Parameters,
 			&i.Trigger,
 			&i.Status,
@@ -887,6 +958,63 @@ func (q *Queries) ListRuns(ctx context.Context, testID string) ([]MiskoAnalysisR
 			&i.CreatedBy,
 			&i.CreatedAt,
 			&i.FinishedAt,
+			&i.Method,
+			&i.ScoredBy,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listSubjectRuns = `-- name: ListSubjectRuns :many
+SELECT id, experiment_id, test_id, test_subject_id, recording_id, source_asset_id, source_generation, source_crc32c, clip_start_us, clip_end_us, calibration_id, paradigm_key, paradigm_version, metric_engine_version, result_schema_version, parameters, trigger, status, attempt, max_attempts, worker_id, lease_expires_at, available_at, model_version, failure_reason, created_by, created_at, finished_at, method, scored_by FROM misko.analysis_runs WHERE test_subject_id = $1 ORDER BY created_at DESC, id DESC
+`
+
+func (q *Queries) ListSubjectRuns(ctx context.Context, testSubjectID string) ([]MiskoAnalysisRun, error) {
+	rows, err := q.db.Query(ctx, listSubjectRuns, testSubjectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []MiskoAnalysisRun
+	for rows.Next() {
+		var i MiskoAnalysisRun
+		if err := rows.Scan(
+			&i.ID,
+			&i.ExperimentID,
+			&i.TestID,
+			&i.TestSubjectID,
+			&i.RecordingID,
+			&i.SourceAssetID,
+			&i.SourceGeneration,
+			&i.SourceCrc32c,
+			&i.ClipStartUs,
+			&i.ClipEndUs,
+			&i.CalibrationID,
+			&i.ParadigmKey,
+			&i.ParadigmVersion,
+			&i.MetricEngineVersion,
+			&i.ResultSchemaVersion,
+			&i.Parameters,
+			&i.Trigger,
+			&i.Status,
+			&i.Attempt,
+			&i.MaxAttempts,
+			&i.WorkerID,
+			&i.LeaseExpiresAt,
+			&i.AvailableAt,
+			&i.ModelVersion,
+			&i.FailureReason,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.FinishedAt,
+			&i.Method,
+			&i.ScoredBy,
 		); err != nil {
 			return nil, err
 		}
@@ -941,7 +1069,7 @@ func (q *Queries) ListWorkers(ctx context.Context) ([]ListWorkersRow, error) {
 }
 
 const lockExpiredRuns = `-- name: LockExpiredRuns :many
-SELECT id, experiment_id, test_id, recording_id, source_asset_id, source_generation, source_crc32c, clip_start_us, clip_end_us, calibration_id, paradigm_key, paradigm_version, metric_engine_version, result_schema_version, environment_revision_id, protocol_version_id, parameters, trigger, status, attempt, max_attempts, worker_id, lease_expires_at, available_at, model_version, failure_reason, created_by, created_at, finished_at FROM misko.analysis_runs
+SELECT id, experiment_id, test_id, test_subject_id, recording_id, source_asset_id, source_generation, source_crc32c, clip_start_us, clip_end_us, calibration_id, paradigm_key, paradigm_version, metric_engine_version, result_schema_version, parameters, trigger, status, attempt, max_attempts, worker_id, lease_expires_at, available_at, model_version, failure_reason, created_by, created_at, finished_at, method, scored_by FROM misko.analysis_runs
 WHERE status = 'RUNNING' AND lease_expires_at < $1::timestamptz
 ORDER BY lease_expires_at, id
 LIMIT 100
@@ -961,6 +1089,7 @@ func (q *Queries) LockExpiredRuns(ctx context.Context, now time.Time) ([]MiskoAn
 			&i.ID,
 			&i.ExperimentID,
 			&i.TestID,
+			&i.TestSubjectID,
 			&i.RecordingID,
 			&i.SourceAssetID,
 			&i.SourceGeneration,
@@ -972,8 +1101,6 @@ func (q *Queries) LockExpiredRuns(ctx context.Context, now time.Time) ([]MiskoAn
 			&i.ParadigmVersion,
 			&i.MetricEngineVersion,
 			&i.ResultSchemaVersion,
-			&i.EnvironmentRevisionID,
-			&i.ProtocolVersionID,
 			&i.Parameters,
 			&i.Trigger,
 			&i.Status,
@@ -987,6 +1114,8 @@ func (q *Queries) LockExpiredRuns(ctx context.Context, now time.Time) ([]MiskoAn
 			&i.CreatedBy,
 			&i.CreatedAt,
 			&i.FinishedAt,
+			&i.Method,
+			&i.ScoredBy,
 		); err != nil {
 			return nil, err
 		}
@@ -998,19 +1127,50 @@ func (q *Queries) LockExpiredRuns(ctx context.Context, now time.Time) ([]MiskoAn
 	return items, nil
 }
 
-const lockRecordingRuns = `-- name: LockRecordingRuns :exec
-SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))
+const lockResult = `-- name: LockResult :one
+SELECT sr.test_subject_id, sr.run_id, sr.status, sr.reason, sr.note, sr.reviewed_by, sr.reviewed_at, sr.created_at, sr.updated_at,
+       misko.experiment_status(ts.experiment_id)::text AS experiment_status
+FROM misko.subject_results sr
+JOIN misko.test_subjects ts ON ts.id = sr.test_subject_id
+WHERE sr.test_subject_id = $1
+FOR UPDATE OF sr
 `
 
-// LockRecordingRuns serializes run creation for one recording until the
-// transaction ends, so two requests cannot both see no pending run.
-func (q *Queries) LockRecordingRuns(ctx context.Context, recordingID string) error {
-	_, err := q.db.Exec(ctx, lockRecordingRuns, recordingID)
-	return err
+type LockResultRow struct {
+	TestSubjectID    string
+	RunID            string
+	Status           string
+	Reason           *string
+	Note             *string
+	ReviewedBy       *string
+	ReviewedAt       *time.Time
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+	ExperimentStatus string
+}
+
+// LockResult locks a result for review and its experiment's status against a
+// concurrent completion.
+func (q *Queries) LockResult(ctx context.Context, testSubjectID string) (LockResultRow, error) {
+	row := q.db.QueryRow(ctx, lockResult, testSubjectID)
+	var i LockResultRow
+	err := row.Scan(
+		&i.TestSubjectID,
+		&i.RunID,
+		&i.Status,
+		&i.Reason,
+		&i.Note,
+		&i.ReviewedBy,
+		&i.ReviewedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.ExperimentStatus,
+	)
+	return i, err
 }
 
 const lockRun = `-- name: LockRun :one
-SELECT id, experiment_id, test_id, recording_id, source_asset_id, source_generation, source_crc32c, clip_start_us, clip_end_us, calibration_id, paradigm_key, paradigm_version, metric_engine_version, result_schema_version, environment_revision_id, protocol_version_id, parameters, trigger, status, attempt, max_attempts, worker_id, lease_expires_at, available_at, model_version, failure_reason, created_by, created_at, finished_at FROM misko.analysis_runs WHERE id = $1 FOR UPDATE
+SELECT id, experiment_id, test_id, test_subject_id, recording_id, source_asset_id, source_generation, source_crc32c, clip_start_us, clip_end_us, calibration_id, paradigm_key, paradigm_version, metric_engine_version, result_schema_version, parameters, trigger, status, attempt, max_attempts, worker_id, lease_expires_at, available_at, model_version, failure_reason, created_by, created_at, finished_at, method, scored_by FROM misko.analysis_runs WHERE id = $1 FOR UPDATE
 `
 
 func (q *Queries) LockRun(ctx context.Context, id string) (MiskoAnalysisRun, error) {
@@ -1020,6 +1180,7 @@ func (q *Queries) LockRun(ctx context.Context, id string) (MiskoAnalysisRun, err
 		&i.ID,
 		&i.ExperimentID,
 		&i.TestID,
+		&i.TestSubjectID,
 		&i.RecordingID,
 		&i.SourceAssetID,
 		&i.SourceGeneration,
@@ -1031,8 +1192,6 @@ func (q *Queries) LockRun(ctx context.Context, id string) (MiskoAnalysisRun, err
 		&i.ParadigmVersion,
 		&i.MetricEngineVersion,
 		&i.ResultSchemaVersion,
-		&i.EnvironmentRevisionID,
-		&i.ProtocolVersionID,
 		&i.Parameters,
 		&i.Trigger,
 		&i.Status,
@@ -1046,8 +1205,40 @@ func (q *Queries) LockRun(ctx context.Context, id string) (MiskoAnalysisRun, err
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.FinishedAt,
+		&i.Method,
+		&i.ScoredBy,
 	)
 	return i, err
+}
+
+const lockTestSubjectRuns = `-- name: LockTestSubjectRuns :exec
+SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))
+`
+
+// LockTestSubjectRuns serializes manual run creation for one animal of a
+// test until the transaction ends, so two requests cannot both see no
+// pending run.
+func (q *Queries) LockTestSubjectRuns(ctx context.Context, testSubjectID string) error {
+	_, err := q.db.Exec(ctx, lockTestSubjectRuns, testSubjectID)
+	return err
+}
+
+const openResult = `-- name: OpenResult :exec
+INSERT INTO misko.subject_results (test_subject_id, run_id)
+VALUES ($1, $2)
+ON CONFLICT (test_subject_id) DO NOTHING
+`
+
+type OpenResultParams struct {
+	TestSubjectID string
+	RunID         string
+}
+
+// OpenResult creates the PENDING result of an animal on its first successful
+// run; later runs leave the reviewed choice alone.
+func (q *Queries) OpenResult(ctx context.Context, arg OpenResultParams) error {
+	_, err := q.db.Exec(ctx, openResult, arg.TestSubjectID, arg.RunID)
+	return err
 }
 
 const outputUploads = `-- name: OutputUploads :many
@@ -1101,80 +1292,94 @@ func (q *Queries) OutputUploads(ctx context.Context, arg OutputUploadsParams) ([
 }
 
 const pendingRunExists = `-- name: PendingRunExists :one
-SELECT EXISTS (SELECT 1 FROM misko.analysis_runs WHERE recording_id = $1 AND status IN ('QUEUED', 'RUNNING'))::boolean
+SELECT EXISTS (SELECT 1 FROM misko.analysis_runs WHERE test_subject_id = $1 AND status IN ('QUEUED', 'RUNNING'))::boolean
 `
 
-func (q *Queries) PendingRunExists(ctx context.Context, recordingID string) (bool, error) {
-	row := q.db.QueryRow(ctx, pendingRunExists, recordingID)
+func (q *Queries) PendingRunExists(ctx context.Context, testSubjectID string) (bool, error) {
+	row := q.db.QueryRow(ctx, pendingRunExists, testSubjectID)
 	var column_1 bool
 	err := row.Scan(&column_1)
 	return column_1, err
 }
 
-const readyRecordings = `-- name: ReadyRecordings :many
+const readyTestSubjects = `-- name: ReadyTestSubjects :many
 WITH candidates AS (
-    SELECT r.experiment_id, r.test_id, r.id AS recording_id, a.id AS source_asset_id, a.generation AS source_generation,
-           a.crc32c AS source_crc32c, r.clip_start_us, r.clip_end_us, t.paradigm_key, t.paradigm_version,
-           t.environment_revision_id, t.protocol_version_id, e.apparatus, s.session, r.created_at,
-           coalesce(ec.calibration_id::text, '')::text AS calibration_id, coalesce(ec.source, '')::text AS calibration_source
-    FROM misko.test_recordings r
-    JOIN misko.effective_calibrations ec ON ec.recording_id = r.id
+    SELECT ts.experiment_id, ts.test_id, ts.id AS test_subject_id, r.id AS recording_id, a.id AS source_asset_id,
+           a.generation AS source_generation, a.crc32c AS source_crc32c, r.clip_start_us, r.clip_end_us,
+           t.paradigm_key, t.paradigm_version, er.parameters, ps.session, r.created_at,
+           coalesce(ec.calibration_id::text, '')::text AS calibration_id, coalesce(ec.source, '')::text AS calibration_source,
+           ARRAY(SELECT DISTINCT z.zone_key FROM misko.calibration_zones z WHERE z.calibration_id = ec.calibration_id)::text[] AS zone_keys
+    FROM misko.test_subjects ts
+    JOIN misko.effective_calibrations ec ON ec.test_subject_id = ts.id
+    JOIN misko.test_recordings r ON r.id = ec.recording_id
     JOIN misko.video_assets a ON a.id = r.video_asset_id
-    JOIN misko.tests t ON t.id = r.test_id
-    JOIN misko.environment_revisions e ON e.id = t.environment_revision_id
-    JOIN misko.protocol_steps s ON s.protocol_version_id = t.protocol_version_id AND s.position = t.step_position
-    WHERE a.status = 'VERIFIED' AND t.status <> 'CANCELLED'
-      AND EXISTS (SELECT 1 FROM misko.worker_capabilities wc JOIN misko.analysis_workers w ON w.id = wc.worker_id
-                  WHERE w.disabled_at IS NULL AND wc.paradigm_key = t.paradigm_key AND wc.paradigm_version = t.paradigm_version)
+    JOIN misko.tests t ON t.id = ts.test_id
+    JOIN misko.experiments e ON e.id = ts.experiment_id
+    JOIN misko.allocations al ON al.id = ts.allocation_id
+    JOIN misko.environment_revisions er ON er.id = ts.environment_revision_id
+    JOIN misko.protocol_steps ps ON ps.protocol_version_id = t.protocol_version_id AND ps.position = t.step_position
+    WHERE a.status = 'VERIFIED' AND t.status <> 'CANCELLED' AND e.status IN ('RUNNING', 'COMPLETED') AND al.excluded_at IS NULL
+      AND (t.paradigm_key || '@' || t.paradigm_version::text) = ANY($1::text[])
+      AND (ec.calibration_id IS NOT NULL OR NOT (t.paradigm_key || '@' || t.paradigm_version::text) = ANY($2::text[]))
 )
-SELECT c.experiment_id, c.test_id, c.recording_id, c.source_asset_id, c.source_generation::bigint AS source_generation,
-       c.source_crc32c, c.clip_start_us, c.clip_end_us, c.paradigm_key, c.paradigm_version, c.environment_revision_id,
-       c.protocol_version_id, c.apparatus, c.session, c.calibration_id
+SELECT c.experiment_id, c.test_id, c.test_subject_id, c.recording_id, c.source_asset_id, c.source_generation::bigint AS source_generation,
+       c.source_crc32c, c.clip_start_us, c.clip_end_us, c.paradigm_key, c.paradigm_version, c.parameters, c.session, c.calibration_id, c.zone_keys
 FROM candidates c
 WHERE NOT EXISTS (
     SELECT 1 FROM misko.analysis_runs x
-    WHERE x.trigger = 'AUTOMATIC' AND x.recording_id = c.recording_id AND x.source_generation = c.source_generation
-      AND x.paradigm_key = c.paradigm_key AND x.paradigm_version = c.paradigm_version
+    WHERE x.trigger = 'AUTOMATIC' AND x.test_subject_id = c.test_subject_id AND x.recording_id = c.recording_id
+      AND x.source_generation = c.source_generation AND x.paradigm_key = c.paradigm_key AND x.paradigm_version = c.paradigm_version
       AND (c.calibration_source = 'ENVIRONMENT' OR coalesce(x.calibration_id::text, '') IN (c.calibration_id, '')))
-ORDER BY c.created_at, c.recording_id
+ORDER BY c.created_at, c.test_subject_id
 LIMIT 500
 `
 
-type ReadyRecordingsRow struct {
-	ExperimentID          string
-	TestID                string
-	RecordingID           string
-	SourceAssetID         string
-	SourceGeneration      int64
-	SourceCrc32c          int64
-	ClipStartUs           int64
-	ClipEndUs             *int64
-	ParadigmKey           string
-	ParadigmVersion       int32
-	EnvironmentRevisionID string
-	ProtocolVersionID     string
-	Apparatus             []byte
-	Session               []byte
-	CalibrationID         string
+type ReadyTestSubjectsParams struct {
+	Capabilities []string
+	Calibrated   []string
 }
 
-// ReadyRecordings lists verified recordings of tests that are not cancelled,
-// with an active capability and no automatic run for the current source
-// generation and calibration. An environment calibration never triggers a run for
-// a recording that already has an automatic run: correcting the default must not
-// silently reanalyze every recording, that stays an explicit manual run.
-func (q *Queries) ReadyRecordings(ctx context.Context) ([]ReadyRecordingsRow, error) {
-	rows, err := q.db.Query(ctx, readyRecordings)
+type ReadyTestSubjectsRow struct {
+	ExperimentID     string
+	TestID           string
+	TestSubjectID    string
+	RecordingID      string
+	SourceAssetID    string
+	SourceGeneration int64
+	SourceCrc32c     int64
+	ClipStartUs      int64
+	ClipEndUs        *int64
+	ParadigmKey      string
+	ParadigmVersion  int32
+	Parameters       []byte
+	Session          []byte
+	CalibrationID    string
+	ZoneKeys         []string
+}
+
+// ReadyTestSubjects lists the animals the scheduler can analyse now: the
+// test's current video is verified, the test is not cancelled, the experiment
+// runs or completed, the animal is not excluded, an enabled worker supports the
+// paradigm version (capabilities, "KEY@version") and, when the paradigm needs
+// a calibration (calibrated), the animal's arena has a valid effective one.
+// Only candidates without an automatic run for the same video generation and
+// calibration are returned, so the oldest rows never starve newer ones. An
+// arena (environment) calibration never triggers a run for an animal that
+// already has an automatic run of this video: correcting the default must not
+// silently reanalyse every animal, that stays an explicit manual run.
+func (q *Queries) ReadyTestSubjects(ctx context.Context, arg ReadyTestSubjectsParams) ([]ReadyTestSubjectsRow, error) {
+	rows, err := q.db.Query(ctx, readyTestSubjects, arg.Capabilities, arg.Calibrated)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []ReadyRecordingsRow
+	var items []ReadyTestSubjectsRow
 	for rows.Next() {
-		var i ReadyRecordingsRow
+		var i ReadyTestSubjectsRow
 		if err := rows.Scan(
 			&i.ExperimentID,
 			&i.TestID,
+			&i.TestSubjectID,
 			&i.RecordingID,
 			&i.SourceAssetID,
 			&i.SourceGeneration,
@@ -1183,11 +1388,213 @@ func (q *Queries) ReadyRecordings(ctx context.Context) ([]ReadyRecordingsRow, er
 			&i.ClipEndUs,
 			&i.ParadigmKey,
 			&i.ParadigmVersion,
-			&i.EnvironmentRevisionID,
-			&i.ProtocolVersionID,
-			&i.Apparatus,
+			&i.Parameters,
 			&i.Session,
 			&i.CalibrationID,
+			&i.ZoneKeys,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const reviewItems = `-- name: ReviewItems :many
+SELECT sr.test_subject_id, sr.run_id, sr.status, sr.reason, sr.note, sr.reviewed_by, sr.reviewed_at, sr.created_at, sr.updated_at,
+       ts.test_id, ts.experiment_id, e.code AS experiment_code, e.blinded, e.status AS experiment_status,
+       s.code AS subject_code, (al.excluded_at IS NOT NULL)::boolean AS excluded,
+       ts.environment_revision_id, env.id AS environment_id, env.name AS environment_name, er.number AS environment_revision,
+       tp.id AS timepoint_id, tp.name AS timepoint_name, t.paradigm_key, t.paradigm_version, t.scheduled_at,
+       g.id AS group_id, g.code AS group_code, g.name AS group_name, g.role AS group_role, dm.name AS disease_model_name,
+       sub.name AS treatment_substance_name, tr.dose_micro AS treatment_dose_micro, tr.unit AS treatment_unit,
+       r.trigger, r.method, r.scored_by, r.model_version, r.metric_engine_version, r.finished_at, r.calibration_id, r.recording_id,
+       latest.id AS latest_run_id
+FROM misko.subject_results sr
+JOIN misko.test_subjects ts ON ts.id = sr.test_subject_id
+JOIN misko.tests t ON t.id = ts.test_id
+JOIN misko.experiments e ON e.id = ts.experiment_id
+JOIN misko.allocations al ON al.id = ts.allocation_id
+JOIN misko.subjects s ON s.id = al.subject_id
+JOIN misko.experiment_groups g ON g.id = al.group_id
+LEFT JOIN misko.disease_models dm ON dm.id = g.disease_model_id
+LEFT JOIN misko.regimen_items tr ON tr.group_id = g.id AND tr.purpose = 'TREATMENT'
+LEFT JOIN misko.substances sub ON sub.id = tr.substance_id
+JOIN misko.timepoints tp ON tp.id = t.timepoint_id
+JOIN misko.environment_revisions er ON er.id = ts.environment_revision_id
+JOIN misko.environments env ON env.id = er.environment_id
+JOIN misko.analysis_runs r ON r.id = sr.run_id
+JOIN LATERAL (
+    SELECT x.id FROM misko.analysis_runs x
+    WHERE x.test_subject_id = sr.test_subject_id AND x.status = 'SUCCEEDED'
+    ORDER BY x.finished_at DESC, x.id DESC
+    LIMIT 1
+) latest ON true
+WHERE ($1::uuid IS NULL OR ts.experiment_id = $1::uuid)
+  AND ($2::uuid IS NULL OR sr.test_subject_id = $2::uuid)
+  AND ($3::text = '' OR sr.status = $3::text)
+ORDER BY sr.created_at, sr.test_subject_id
+LIMIT $5::integer OFFSET $4::integer
+`
+
+type ReviewItemsParams struct {
+	ExperimentID  *string
+	TestSubjectID *string
+	Status        string
+	PageOffset    int32
+	PageLimit     int32
+}
+
+type ReviewItemsRow struct {
+	TestSubjectID          string
+	RunID                  string
+	Status                 string
+	Reason                 *string
+	Note                   *string
+	ReviewedBy             *string
+	ReviewedAt             *time.Time
+	CreatedAt              time.Time
+	UpdatedAt              time.Time
+	TestID                 string
+	ExperimentID           string
+	ExperimentCode         string
+	Blinded                bool
+	ExperimentStatus       string
+	SubjectCode            string
+	Excluded               bool
+	EnvironmentRevisionID  string
+	EnvironmentID          string
+	EnvironmentName        string
+	EnvironmentRevision    int32
+	TimepointID            string
+	TimepointName          string
+	ParadigmKey            string
+	ParadigmVersion        int32
+	ScheduledAt            time.Time
+	GroupID                string
+	GroupCode              string
+	GroupName              string
+	GroupRole              string
+	DiseaseModelName       *string
+	TreatmentSubstanceName *string
+	TreatmentDoseMicro     *int64
+	TreatmentUnit          *string
+	Trigger                string
+	Method                 string
+	ScoredBy               *string
+	ModelVersion           *string
+	MetricEngineVersion    int32
+	FinishedAt             *time.Time
+	CalibrationID          *string
+	RecordingID            string
+	LatestRunID            string
+}
+
+// ReviewItems lists results with what a reviewer sees: the animal, its arena,
+// the test and the run under review. Group, disease and treatment columns are
+// read here and blanked by the application for blinded experiments.
+func (q *Queries) ReviewItems(ctx context.Context, arg ReviewItemsParams) ([]ReviewItemsRow, error) {
+	rows, err := q.db.Query(ctx, reviewItems,
+		arg.ExperimentID,
+		arg.TestSubjectID,
+		arg.Status,
+		arg.PageOffset,
+		arg.PageLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ReviewItemsRow
+	for rows.Next() {
+		var i ReviewItemsRow
+		if err := rows.Scan(
+			&i.TestSubjectID,
+			&i.RunID,
+			&i.Status,
+			&i.Reason,
+			&i.Note,
+			&i.ReviewedBy,
+			&i.ReviewedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.TestID,
+			&i.ExperimentID,
+			&i.ExperimentCode,
+			&i.Blinded,
+			&i.ExperimentStatus,
+			&i.SubjectCode,
+			&i.Excluded,
+			&i.EnvironmentRevisionID,
+			&i.EnvironmentID,
+			&i.EnvironmentName,
+			&i.EnvironmentRevision,
+			&i.TimepointID,
+			&i.TimepointName,
+			&i.ParadigmKey,
+			&i.ParadigmVersion,
+			&i.ScheduledAt,
+			&i.GroupID,
+			&i.GroupCode,
+			&i.GroupName,
+			&i.GroupRole,
+			&i.DiseaseModelName,
+			&i.TreatmentSubstanceName,
+			&i.TreatmentDoseMicro,
+			&i.TreatmentUnit,
+			&i.Trigger,
+			&i.Method,
+			&i.ScoredBy,
+			&i.ModelVersion,
+			&i.MetricEngineVersion,
+			&i.FinishedAt,
+			&i.CalibrationID,
+			&i.RecordingID,
+			&i.LatestRunID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const runMetrics = `-- name: RunMetrics :many
+SELECT run_id, metric_key, unit, value, missing_reason
+FROM misko.metric_results
+WHERE run_id = ANY($1::uuid[])
+ORDER BY run_id, metric_key
+`
+
+type RunMetricsRow struct {
+	RunID         string
+	MetricKey     string
+	Unit          string
+	Value         *float64
+	MissingReason *string
+}
+
+func (q *Queries) RunMetrics(ctx context.Context, runIds []string) ([]RunMetricsRow, error) {
+	rows, err := q.db.Query(ctx, runMetrics, runIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []RunMetricsRow
+	for rows.Next() {
+		var i RunMetricsRow
+		if err := rows.Scan(
+			&i.RunID,
+			&i.MetricKey,
+			&i.Unit,
+			&i.Value,
+			&i.MissingReason,
 		); err != nil {
 			return nil, err
 		}
@@ -1210,13 +1617,67 @@ func (q *Queries) SourceObject(ctx context.Context, id string) (string, error) {
 	return object_name, err
 }
 
+const testSubjectArena = `-- name: TestSubjectArena :one
+SELECT environment_revision_id FROM misko.test_subjects WHERE id = $1
+`
+
+func (q *Queries) TestSubjectArena(ctx context.Context, id string) (string, error) {
+	row := q.db.QueryRow(ctx, testSubjectArena, id)
+	var environment_revision_id string
+	err := row.Scan(&environment_revision_id)
+	return environment_revision_id, err
+}
+
+const updateResult = `-- name: UpdateResult :one
+UPDATE misko.subject_results
+SET run_id = $1, status = $2, reason = $3, note = $4,
+    reviewed_by = $5, reviewed_at = $6
+WHERE test_subject_id = $7
+RETURNING test_subject_id, run_id, status, reason, note, reviewed_by, reviewed_at, created_at, updated_at
+`
+
+type UpdateResultParams struct {
+	RunID         string
+	Status        string
+	Reason        *string
+	Note          *string
+	ReviewedBy    *string
+	ReviewedAt    *time.Time
+	TestSubjectID string
+}
+
+func (q *Queries) UpdateResult(ctx context.Context, arg UpdateResultParams) (MiskoSubjectResult, error) {
+	row := q.db.QueryRow(ctx, updateResult,
+		arg.RunID,
+		arg.Status,
+		arg.Reason,
+		arg.Note,
+		arg.ReviewedBy,
+		arg.ReviewedAt,
+		arg.TestSubjectID,
+	)
+	var i MiskoSubjectResult
+	err := row.Scan(
+		&i.TestSubjectID,
+		&i.RunID,
+		&i.Status,
+		&i.Reason,
+		&i.Note,
+		&i.ReviewedBy,
+		&i.ReviewedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const updateRun = `-- name: UpdateRun :one
 UPDATE misko.analysis_runs
 SET status = $1, attempt = $2, worker_id = $3, lease_expires_at = $4,
     available_at = $5, model_version = $6, failure_reason = $7,
     finished_at = $8
 WHERE id = $9
-RETURNING id, experiment_id, test_id, recording_id, source_asset_id, source_generation, source_crc32c, clip_start_us, clip_end_us, calibration_id, paradigm_key, paradigm_version, metric_engine_version, result_schema_version, environment_revision_id, protocol_version_id, parameters, trigger, status, attempt, max_attempts, worker_id, lease_expires_at, available_at, model_version, failure_reason, created_by, created_at, finished_at
+RETURNING id, experiment_id, test_id, test_subject_id, recording_id, source_asset_id, source_generation, source_crc32c, clip_start_us, clip_end_us, calibration_id, paradigm_key, paradigm_version, metric_engine_version, result_schema_version, parameters, trigger, status, attempt, max_attempts, worker_id, lease_expires_at, available_at, model_version, failure_reason, created_by, created_at, finished_at, method, scored_by
 `
 
 type UpdateRunParams struct {
@@ -1248,6 +1709,7 @@ func (q *Queries) UpdateRun(ctx context.Context, arg UpdateRunParams) (MiskoAnal
 		&i.ID,
 		&i.ExperimentID,
 		&i.TestID,
+		&i.TestSubjectID,
 		&i.RecordingID,
 		&i.SourceAssetID,
 		&i.SourceGeneration,
@@ -1259,8 +1721,6 @@ func (q *Queries) UpdateRun(ctx context.Context, arg UpdateRunParams) (MiskoAnal
 		&i.ParadigmVersion,
 		&i.MetricEngineVersion,
 		&i.ResultSchemaVersion,
-		&i.EnvironmentRevisionID,
-		&i.ProtocolVersionID,
 		&i.Parameters,
 		&i.Trigger,
 		&i.Status,
@@ -1274,6 +1734,8 @@ func (q *Queries) UpdateRun(ctx context.Context, arg UpdateRunParams) (MiskoAnal
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.FinishedAt,
+		&i.Method,
+		&i.ScoredBy,
 	)
 	return i, err
 }

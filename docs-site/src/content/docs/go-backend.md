@@ -1,12 +1,12 @@
 ---
 title: Go backend (preview)
-description: Install and use the Go backend being rebuilt on the new-backend branch, including sign-in, users, roles, laboratory settings, subjects and experiments.
+description: Install and use the Go backend, including sign-in, users, roles, the catalog, study design, dosing, test sessions, videos, calibration, analysis review and the study report.
 ---
 
 :::caution
-This page describes the unreleased `new-backend` branch. The Go API does not yet
-serve the Vue panel, so the Installation and Usage pages still describe the
-current release. Do not deploy this branch.
+This page describes the unreleased Go backend. The Vue panel is still being
+moved to this API, so the Installation and Usage pages still describe the
+current release. Do not deploy it.
 :::
 
 ## What exists today
@@ -17,27 +17,29 @@ current release. Do not deploy this branch.
 | Sign-in, current user, own password change | Implemented |
 | User management with the five roles | Implemented |
 | Laboratory settings (one laboratory per installation) | Implemented |
-| Subjects, experiments, phases, groups and enrollments | Implemented |
-| Disease models, substances, intervention plans and administrations | Implemented |
-| Paradigm catalog with metric definitions for eleven paradigms | Implemented |
+| Catalog of substances and disease models | Implemented |
+| Subjects and body weights | Implemented |
+| Experiments: groups with roles, regimens, timepoints, endpoints, allocation and exclusion | Implemented |
+| Dosing: administrations, daily dosing schedule, induction outcomes | Implemented |
+| Paradigm catalog with metric definitions for four paradigms | Implemented |
 | Environments with measurement revisions and experiment test protocols | Implemented |
-| Tests, trials and test comments | Implemented |
-| Video uploads to Google Cloud Storage | Implemented, live storage test pending |
-| Environment calibration with per-video override | Implemented |
-| Analysis runs and worker protocol | Implemented, no vision worker yet |
-| Reports, CSV/JSON exports and group comparisons | Implemented |
-| Vue panel on the new API | Not yet |
+| Tests as sessions with one or more animals in arenas, trials and comments | Implemented |
+| Video uploads to Google Cloud Storage, one current video per test | Implemented, live storage test pending |
+| Calibration per arena with per-animal overrides | Implemented |
+| Analysis runs per animal and human review of every result | Implemented; the worker tracks the water maze (`MWM`), tested on synthetic video only |
+| Observer scoring of pole, treadmill and novel object | Implemented |
+| Study report with role-based comparisons, CSV export, dashboard | Implemented |
+| Vue panel on the new API | Scaffolded, not complete |
 
 ## Installation
 
-You need Docker with Docker Compose. Run these commands from the repository root
-on the `new-backend` branch:
+You need Docker with Docker Compose. Run these commands from the repository root:
 
 ```bash
 docker compose up -d db
 docker compose --profile setup run --rm migrate
 docker compose --profile setup run --rm setup
-docker compose up --build -d backend
+docker compose up --build -d backend jobs
 curl --fail http://127.0.0.1:4000/api/ready
 ```
 
@@ -46,7 +48,7 @@ curl --fail http://127.0.0.1:4000/api/ready
 3. `setup` creates the laboratory and the first administrator, then prints the
    administrator's email and generated password **once** in your terminal. Run
    it again and it creates nothing.
-4. `backend` starts the API on `127.0.0.1:4000`.
+4. `backend` starts the API on `127.0.0.1:4000`, and `jobs` queues analysis runs.
 
 If `setup` runs without a terminal (for example in CI), it refuses to start
 unless you pass `-credentials-file PATH`. The password then goes into that new
@@ -54,8 +56,15 @@ file, readable only by its owner. It is never written to logs.
 
 If you use your own PostgreSQL server instead of the Compose database, it must be
 PostgreSQL 18 or later. The user that runs `migrate` needs permission to create
-objects in the database, because the schema enables the bundled `btree_gist`
-extension.
+a schema in the database.
+
+### Databases from before the schema rebuild
+
+The database schema was rebuilt from scratch for the study model described
+below. `migrate` refuses a database that was installed with the earlier
+migrations and changes nothing in it. Such a database must be reset: drop and
+recreate it, or with Compose remove the volume with `docker compose down -v`,
+then run `migrate` and `setup` again. Earlier data is not carried over.
 
 ### Settings
 
@@ -69,9 +78,9 @@ set your own values:
 | `BCRYPT_COST` | `12` | Password hashing strength, from 10 to 14. |
 | `ADMIN_EMAIL` | `admin@misko.local` | Email of the first administrator created by `setup`. |
 | `LAB_NAME` | `Misko Laboratory` | Laboratory name. |
-| `LAB_TIMEZONE` | `UTC` | Laboratory time zone, as an IANA name such as `Europe/Istanbul`. |
+| `LAB_TIMEZONE` | `UTC` | Laboratory time zone, as an IANA name such as `Europe/Istanbul`. Day 0, dosing days and default test times use it. |
 
-The backend README lists every variable, including database and timeout settings.
+The backend README lists every variable, including database, storage and timeout settings.
 
 ## Usage
 
@@ -96,10 +105,20 @@ English (such as ş or ğ) take more than one byte each.
 
 | Role | Can do |
 |------|--------|
-| SUPERADMIN, LAB_MANAGER | Everything, including managing users and laboratory settings |
-| RESEARCHER | Manage studies, subjects, apparatus and tests; read everything |
-| TECHNICIAN | Record weights and run tests; read everything |
+| SUPERADMIN, LAB_MANAGER | Everything, including managing users, laboratory settings and analysis workers |
+| RESEARCHER | Design studies, maintain the catalog, subjects, apparatus and protocols, plan and run tests; read everything |
+| TECHNICIAN | Record weights, run tests, record doses and induction outcomes, calibrate one animal of a test, review analysis results; read everything |
 | VIEWER | Read only |
+
+| Permission | Covers |
+|---|---|
+| `study:write` | Catalog, experiment design and lifecycle, allocation and exclusion, protocols |
+| `apparatus:write` | Environments, their revisions and arena calibrations |
+| `subject:write` | Subjects |
+| `weight:write` | Body weights |
+| `test:write` | Planning tests: creating them, adding or removing animals, cancelling |
+| `test:run` | Running tests and trials, videos, per-animal calibration overrides, doses, induction outcomes, manual analysis runs, result review |
+| `*:read` | Reading everything |
 
 A role change takes effect on the user's next request. Deleting a user signs
 them out immediately.
@@ -127,7 +146,23 @@ change `name`, `code` and `timezone` with `PATCH /api/lab`. An empty `code`
 clears it. `GET /api/meta` is public and returns the laboratory name for the
 sign-in screen.
 
-### Subjects
+### Catalog
+
+Substances and disease models are shared by every study of the laboratory.
+Researchers and the roles above them maintain them; everyone can read them.
+
+- `POST /api/catalog/substances` (`name`, `kind`, optional `description`).
+  `kind` is `COMPOUND`, `REFERENCE_DRUG`, `VEHICLE` or `INDUCER`; it only helps
+  pickers. What a substance does in a study comes from the regimen that uses it.
+- `POST /api/catalog/disease-models` (`name`, `inductionType` of `CHEMICAL`,
+  `SURGICAL`, `DIET`, `STRESS` or `OTHER`, optional `confirmationCriterion` and
+  `description`). Every disease model is induced; the inducing agent and its
+  dose are part of each study's regimen.
+- Both lists accept `search`; substances filter by `kind` and disease models by
+  `inductionType`. Change an entry with `PATCH`. An entry still in use cannot be
+  deleted (`substance.inUse`, `diseaseModel.inUse`).
+
+### Subjects and weights
 
 Every signed-in user can read subjects. SUPERADMIN, LAB_MANAGER and RESEARCHER
 can change them.
@@ -135,79 +170,112 @@ can change them.
 - `POST /api/subjects` creates a subject with `code`, `species` (`MOUSE` or
   `RAT`) and `sex` (`FEMALE`, `MALE` or `UNKNOWN`). Codes are unique regardless
   of upper or lower case.
-- `GET /api/subjects` lists subjects with `search`, `species`, `sex`, `sort`,
-  `order`, `page` and `pageSize`.
+- `GET /api/subjects` lists subjects with `search`, `species`, `sex`,
+  `unallocated=true`, `sort`, `order`, `page` and `pageSize`. Each subject shows
+  its `allocation` (experiment, group and whether it is excluded), or null.
 - `PATCH /api/subjects/{id}` changes the fields you send.
-- `DELETE /api/subjects/{id}` deletes a subject that is not enrolled in any experiment.
-- `GET /api/subjects/{id}/enrollments` shows every experiment the subject is enrolled in.
+- `DELETE /api/subjects/{id}` deletes a subject that is not allocated and has no weights.
+- Technicians and the roles above them record body weight with
+  `POST /api/subjects/{id}/weights` (`grams`, `measuredAt`). Weights belong to
+  the animal and never change.
 
-A subject exists on its own, so the same animal can join several experiments
-without being copied.
+An animal can be registered before it joins a study, and it joins exactly one.
 
 ### Experiments
 
-Every signed-in user can read experiments. SUPERADMIN, LAB_MANAGER and
-RESEARCHER can design them and enroll subjects.
+An experiment is designed as a draft, started, and completed. Every signed-in
+user can read experiments. SUPERADMIN, LAB_MANAGER and RESEARCHER design and
+start them and allocate animals.
 
 1. Create the experiment with `POST /api/experiments` (`code`, `title`, optional
-   `description` and `requiresControl`). The experiment detail shows
-   `controlRequirementMet`, which becomes true once a control group exists.
-2. Add measurement phases with `POST /api/experiments/{id}/phases` (`name`,
-   `position`), for example Baseline at position 1 and Post-treatment at position 2.
-3. Add groups with `POST /api/experiments/{id}/groups` (`name`, `role` of
-   `CONTROL` or `TREATMENT`, optional `targetSize`).
-   `GET /api/experiments/{id}/groups` shows each group's target and how many
-   subjects are in it right now.
-4. Enroll a subject with `POST /api/experiments/{id}/enrollments` (`subjectId`,
-   `enrolledAt`, optional `groupId`). A subject can be enrolled only once in
-   each experiment.
-5. Move a subject to another group with
-   `POST /api/experiments/{id}/enrollments/{enrollmentId}/assignments`
-   (`groupId`, `effectiveFrom`). The previous group period ends at that moment
-   and stays in the history shown by
-   `GET /api/experiments/{id}/enrollments/{enrollmentId}`.
+   `description`, `hypothesis`, `randomisation` and `blinded`). It starts as
+   `DRAFT`.
+2. Add groups with `POST /api/experiments/{id}/groups` (`code` such as `G1`,
+   `name`, `role`, `diseaseModelId`, `targetSize`). The role is one of:
 
-Phases and groups are separate on purpose. A phase says when a subject is
-measured; a group says which arm it belongs to. A treated subject measured at a
-healthy baseline stays in its treatment group.
+   | Role | Disease model | Receives | Purpose |
+   |---|---|---|---|
+   | `HEALTHY_CONTROL` | none | vehicle, if any | normal baseline |
+   | `SHAM` | required | a vehicle in place of the induction | controls for the induction procedure |
+   | `DISEASE_CONTROL` | required | induction and vehicle | the deficit |
+   | `POSITIVE_CONTROL` | required | induction and a reference drug | proves the test can detect a rescue |
+   | `TREATMENT` | required | induction and the tested substance | efficacy and dose response |
 
-The system refuses:
+3. Describe what each group receives with
+   `POST /api/experiments/{id}/regimen-items` (`groupId`, `purpose` of
+   `INDUCTION`, `VEHICLE` or `TREATMENT`, `substanceId`, `amount`, `unit`,
+   `route`, `frequency` of `ONCE`, `DAILY`, `TWICE_DAILY`, `WEEKLY` or
+   `EVERY_N_DAYS` with `intervalDays`, `startDay`, `endDay`). Days are study
+   days counted from day 0. A group has at most one `TREATMENT` item, so a
+   treatment group has one substance at one dose. Several treatment groups of
+   the same substance at different doses form the dose response.
+4. Add timepoints with `POST /api/experiments/{id}/timepoints` (`name`,
+   `studyDay`, `position`), for example Baseline on day -1 and Day 14 on day 14.
+5. Add a protocol (see below), then choose what the study is judged on with
+   `POST /api/experiments/{id}/endpoints` (`timepointId`, `paradigmKey`,
+   `metricKey`, `kind` of `PRIMARY` or `SECONDARY`, `direction` of
+   `HIGHER_IS_BETTER` or `LOWER_IS_BETTER`, optional `baselineTimepointId`).
+   `GET /api/experiments/{id}/metric-options` lists the metrics the protocol's
+   paradigms can measure. There is at most one primary endpoint.
+6. Check the design with `GET /api/experiments/{id}/readiness`, which lists every
+   unmet rule, then start with `POST /api/experiments/{id}/start` (`dayZero`, a
+   date). Starting needs at least one timepoint and one group, a target size on
+   every group, one primary endpoint, and a regimen that matches each role: a
+   treatment or positive control group has one treatment and an induction, a
+   disease control has an induction and a vehicle, a sham has a vehicle and no
+   induction, a healthy control has no induction or treatment, and every sham,
+   treatment and positive control group has a disease control with the same
+   disease model.
+7. When every test is completed or cancelled, close the study with
+   `POST /api/experiments/{id}/complete`. A completed experiment is read-only.
 
-- phases, groups or enrollments that belong to another experiment,
-- a group period that overlaps another one, starts before enrollment or does not
-  start after the current period,
-- deleting a group that still has assignments, or a subject that is enrolled.
+Starting freezes groups, regimen items, timepoints and endpoints. The code,
+title and description can still be edited until completion.
 
-Experiments and enrollments cannot be deleted yet, so research records are kept.
+### Allocation and exclusion
 
-### Interventions
+- Put an animal in a group with `POST /api/experiments/{id}/allocations`
+  (`subjectId`, `groupId`, optional `cage`), or let the system do it with
+  `POST /api/experiments/{id}/allocations/randomise` (`subjectIds`, optional
+  `groupIds` and `cage`). Randomisation fills the groups evenly up to their
+  target sizes and allocates either every animal or none.
+- An animal belongs to one group of one experiment, for good. While the
+  experiment is a draft you can move it to another group or remove it. Once the
+  study runs, only its cage can change.
+- If an animal leaves the study, exclude it with
+  `POST /api/experiments/{id}/allocations/{allocationId}/exclusion` (`reason`:
+  `DIED`, `HUMANE_ENDPOINT`, `INDUCTION_FAILED`, `TECHNICAL` or `OTHER`, optional
+  note). An excluded animal is never deleted: it stays visible in the report,
+  joins no new test and is not analyzed again.
+- `GET /api/experiments/{id}/allocations` lists the animals (filter by `groupId`
+  or `excluded`) and each group's count against its target.
 
-Disease models and substances are shared lists. SUPERADMIN, LAB_MANAGER and
-RESEARCHER maintain them with `POST /api/disease-models` and
-`POST /api/substances` (`name`, optional `description`).
+### Dosing
 
-- **Plans**: `POST /api/experiments/{id}/intervention-plans` describes what a
-  group should receive (`groupId`, `substanceId`, `amount`, `unit`, `route`,
-  `schedule`, optional `phaseId`). A plan never records that anything was given.
-- **Weights**: TECHNICIAN and above record body weight with
-  `POST /api/subjects/{id}/weights` (`grams`, `measuredAt`).
-- **Conditions**: TECHNICIAN and above record observations with
-  `POST /api/subjects/{id}/conditions` (`diseaseModelId`, `status`,
-  `observedAt`). Record induction (`INDUCED`) and confirmation (`CONFIRMED` or
-  `NOT_CONFIRMED`) as separate observations. `GET /api/subjects/{id}/conditions`
-  shows the history and the current status, and
-  `GET /api/conditions?current=true&status=CONFIRMED` finds subjects by their
-  current status.
-- **Administrations**: TECHNICIAN and above record what was actually given with
-  `POST /api/experiments/{id}/enrollments/{enrollmentId}/administrations`
-  (`substanceId`, `amount`, `unit`, `route`, `administeredAt`, optional `planId`
-  and `weightMeasurementId`). Doses per kilogram (`mg/kg`, `ug/kg`, `IU/kg`)
-  need a weight of the same animal from the previous 7 days, and the response
-  shows the absolute dose. `GET /api/subjects/{id}/administrations` and
-  `GET /api/administrations` filter by `substanceId`, `experimentId`, `from` and `to`.
+Technicians and the roles above them record what was actually given while the
+experiment runs.
 
-Write amounts as decimal text, for example `"0.25"`. Records keep the names and
-doses they were saved with, even if a substance is renamed or a plan changes later.
+- `GET /api/experiments/{id}/dosing?date=YYYY-MM-DD` lists every dose due that
+  day per animal, from the regimen items and day 0, with how many were already
+  given and the dose for the animal's latest weight. Without `date` it uses
+  today in the laboratory's time zone.
+- `POST /api/experiments/{id}/allocations/{allocationId}/administrations`
+  records one dose. With `regimenItemId` the substance, dose and route come from
+  the plan and you may enter a different actual amount or route; an unplanned
+  dose names them all. Doses per kilogram (`mg/kg`, `ug/kg`, `mL/kg`, `IU/kg`)
+  need a weight of the same animal from the previous 7 days; the latest one is
+  used unless you name `weightMeasurementId`, and the response shows the
+  absolute dose. Disease induction is recorded the same way, with purpose
+  `INDUCTION`.
+- `POST /api/experiments/{id}/allocations/{allocationId}/induction-outcome`
+  records once whether the animal's disease model was `CONFIRMED` or
+  `NOT_CONFIRMED`.
+- `GET /api/experiments/{id}/administrations`,
+  `GET /api/subjects/{id}/administrations` and
+  `GET /api/experiments/{id}/induction-outcomes` list the records.
+
+Write amounts as decimal text, for example `"0.25"`. Records keep the names,
+doses and weights they were saved with, and they never change.
 
 ### Paradigm catalog
 
@@ -215,79 +283,101 @@ Every signed-in user can read the paradigm catalog. Paradigms are defined in the
 code and cannot be created, edited or deleted through the API.
 
 - `GET /api/paradigms` lists paradigms with their published versions and whether
-  automated video analysis is available (`automatedAnalysis`). Eleven
-  paradigms are published: `BARNES_MAZE`, `EPM`, `LIGHT_DARK`, `MWM`,
-  `NOVEL_OBJECT`, `OPEN_FIELD`, `POLE`, `ROTAROD`, `THREE_CHAMBER`, `TREADMILL`
-  and `Y_MAZE`. Automated analysis is not available for any of them yet.
+  automated video analysis is available (`automatedAnalysis`). Four
+  paradigms are published: `MWM`, `NOVEL_OBJECT`, `POLE` and `TREADMILL`, in
+  two categories (`LEARNING_MEMORY` for `MWM` and `NOVEL_OBJECT`, `MOTOR` for
+  `POLE` and `TREADMILL`). `MWM` is tracked by an analysis worker, and automated
+  analysis is available for it once a worker is registered for the paradigm
+  version. The other three (`NOVEL_OBJECT`, `POLE`, `TREADMILL`) are scored by
+  an observer on the video (see [Observer scoring](#observer-scoring)).
 - `GET /api/paradigms/{key}` returns the latest version, and
   `GET /api/paradigms/{key}/versions/{version}` returns one exact version. Each
-  version lists its apparatus and session parameters with units, allowed ranges
-  and defaults, its zones and events, and for every metric the definition,
-  formula, inputs and what happens when data is missing.
+  version lists its parameters, each with its scope (`APPARATUS` and `ANALYSIS`
+  on an environment, `SESSION` on a protocol step), label, help text, unit,
+  allowed range and default; its zones and events; and for every metric a plain
+  description, the definition, formula, inputs and what happens when data is
+  missing. Names, labels and descriptions follow `?lang=` or
+  `Accept-Language` (`en` or `tr`).
 
 Some paradigms need more than a tracked position:
 
-- Zones marked `calibrated`, such as the elevated plus maze arms or the Barnes
-  maze holes, are drawn per video as circles or polygons. Other zones, such as the
-  water maze platform, come from the apparatus parameters.
+- Zones come from the apparatus parameters, such as the water maze platform.
+  A paradigm may also declare zones marked `calibrated`, drawn as circles or
+  polygons; none of the current catalog does.
 - `inputEvents` lists observations that are scored rather than tracked, such as
-  a rotarod fall, pole test turns or novel object exploration. An event type that
+  pole test turns, a treadmill exhaustion or novel object exploration. An event type that
   was not scored produces missing metrics, not zeros.
 
 Results always name the paradigm version, the metric engine version and the
 result schema version they were computed with. A metric that cannot be computed
 is reported as missing with a reason, never as zero. For example, a probe trial
-without an escape reports `EVENT_NOT_OBSERVED`, and a Y maze trial with fewer
-than three arm entries reports `INSUFFICIENT_ENTRIES`. A published version never
+without an escape reports `EVENT_NOT_OBSERVED`, and a novel object trial whose
+total exploration is below the minimum reports `BELOW_EXPLORATION_CRITERION`
+for the discrimination index. A published version never
 changes; a changed definition is published as a new version.
 
 ### Environments and protocols
 
-An environment is one physical apparatus, such as a particular water tank, set up
-for one paradigm. Researchers, lab managers and super admins can create and
-revise environments and protocols; every signed-in user can read them.
+An environment is one physical apparatus, such as a particular water tank or one
+of several novel object boxes under one camera, set up for one paradigm. In a test
+each animal is placed in an arena, which is one revision of an environment.
+Researchers, lab managers and super admins create and revise environments and
+protocols; every signed-in user can read them.
 
 - `POST /api/environments` creates an environment with its first revision. Give
-  every apparatus measurement of the paradigm version, for example the tank and
-  platform sizes for `MWM`. Values outside the allowed ranges, or inconsistent
-  values such as a platform outside the tank, are rejected.
+  every apparatus measurement of the paradigm version in `parameters`, for
+  example the tank and platform sizes for `MWM`, and optionally its analysis
+  settings; omitted analysis settings use their defaults. Values outside the
+  allowed ranges, or inconsistent values such as a platform outside the tank,
+  are rejected.
 - When the apparatus changes, add a revision with
   `POST /api/environments/{id}/revisions`. Earlier revisions never change and
   cannot be deleted. You can still rename an environment or edit its notes.
+  `GET /api/environment-revisions` lists every revision for arena pickers.
 
-A protocol describes how an experiment tests its subjects. It belongs to one
-experiment and can combine paradigms, for example an open field test followed by
-an elevated plus maze.
+A protocol is the test battery of an experiment. It can combine paradigms, for
+example a pole test followed by a treadmill run.
 
 - `POST /api/experiments/{id}/protocols` creates a protocol with its first
-  version. Each step gives its position, the paradigm and its version, an
-  environment revision of that paradigm, the trial type, the number of trials,
-  the pause between trials in seconds and any session parameters.
-- Number the steps from 1 without gaps. An environment of another paradigm, a
-  trial type the paradigm does not define and session values out of range are
-  rejected. Session parameters you leave out get the paradigm defaults, and the
-  stored version shows them.
+  version. Each step gives its position, the paradigm and its version, the trial
+  type, the number of trials, the pause between trials in seconds and any
+  session parameters. A step names no apparatus: the arena is chosen per animal
+  in each test.
+- Number the steps from 1 without gaps. A trial type the paradigm does not define
+  and session values out of range are rejected. Session parameters you leave out
+  get the paradigm defaults, and the stored version shows them.
 - To change a protocol, add a version with
   `POST /api/experiments/{id}/protocols/{protocolId}/versions`. Stored versions
-  never change, and a new environment revision does not change a version that
-  uses an earlier revision.
+  never change.
 
 ### Tests, trials and comments
 
-A test is one session of an enrolled subject on one step of a protocol. The step
-decides the paradigm, the environment and how many trials are planned.
+A test is one session of a running experiment: one timepoint, one protocol step
+and one video. It films one or more animals, each in its own arena; usually one,
+sometimes up to three boxes under one camera. Animals of different groups may
+share a session. The group of every measurement comes from the animal's
+allocation.
 
 - Researchers, lab managers and super admins plan tests with
-  `POST /api/experiments/{id}/tests`: choose the enrollment, optionally the phase,
-  the protocol version, the step and the scheduled time. The subject and its
-  group at that time are filled in for you.
+  `POST /api/experiments/{id}/tests`: the timepoint, the protocol version and
+  step, optionally the scheduled time, and `subjects`, a list of
+  `allocationId` and `environmentRevisionId` pairs (up to 12). Without a time,
+  the test is scheduled on day 0 plus the timepoint's study day. Every arena must
+  run the step's paradigm, and an animal cannot be in two tests of the same
+  timepoint and step.
+- While a test is planned, add an animal with `POST /api/tests/{id}/subjects` or
+  remove one with `DELETE /api/tests/{id}/subjects/{subjectId}`. The last animal
+  cannot be removed; cancel the test instead.
 - Technicians and the roles above them run tests: `POST /api/tests/{id}/start`,
-  then record each trial with `POST /api/tests/{id}/trials`, then
-  `POST /api/tests/{id}/complete`. If a trial has to be repeated, record the same
-  repetition again; it gets the next attempt number and the earlier trial is kept.
-- A test that has not been completed can be cancelled with a reason. A test cannot
-  start if the subject moved to another group after it was planned; cancel it and
-  plan a new one.
+  then record each animal's trials with
+  `POST /api/tests/{id}/subjects/{subjectId}/trials`, then
+  `POST /api/tests/{id}/complete`. Every animal needs at least one trial. If a
+  trial has to be repeated, record the same repetition again; it gets the next
+  attempt number and the earlier trial is kept.
+- A test that has not been completed can be cancelled with a reason. A test with
+  an excluded animal cannot start until that animal is removed.
+- `GET /api/tests` is the worklist across experiments, filtered by experiment,
+  status, timepoint and date range.
 
 Everyone who is signed in, including viewers, can comment on a test. You can edit
 only your own comments. Lab managers and super admins can delete any comment.
@@ -300,6 +390,9 @@ administrator sets `GCS_BUCKET` (and, with workload identity, `GCS_SIGNER_EMAIL`
 video routes answer 503 with `media.storageNotConfigured`. See
 `backend/README.md` for the bucket, CORS and permission setup.
 
+A test has one video, which shows all of its animals. Videos can be attached
+once the test has started.
+
 - Technicians and the roles above them start an upload with
   `POST /api/tests/{id}/recordings`, giving the file name, type (MP4, MOV or
   WebM), size and CRC32C checksum. The response contains a signed request; the
@@ -308,148 +401,179 @@ video routes answer 503 with `media.storageNotConfigured`. See
   `POST /api/tests/{id}/recordings/{recordingId}/finalize`. The server checks the
   stored file. A file that does not match is marked `REJECTED` with the reason,
   such as `CHECKSUM_MISMATCH`.
+- A new upload replaces the test's video. The earlier one is kept for
+  provenance, and `GET /api/tests/{id}/recordings/current` returns the newest
+  verified one.
 - Everyone who is signed in can get a short-lived link to a verified video with
   `GET /api/tests/{id}/recordings/{recordingId}/read-url`. Players can seek in it.
 
 ### Calibration
 
 Before a video can be turned into distances and times in zones, the system needs
-to know how camera pixels map to centimeters.
+to know how camera pixels map to centimeters in each arena.
 
-- A calibration belongs to the environment. When the rig is set up, someone who
-  can change apparatus opens a frame from the fixed camera and calibrates the
+- A calibration belongs to the arena. When the rig is set up, someone who can
+  change apparatus opens a frame from the fixed camera and calibrates each
   environment revision once, with
-  `POST /api/environments/{id}/revisions/{number}/calibrations`. Every video of
-  a test in that environment then uses it, so 200 videos do not need 200
-  calibrations.
-- The camera and the arena can move. Nothing checks that yet: the calibration
-  status of a video that uses the environment's calibration says
-  `drift: UNCHECKED`. If a video does not match, a technician (or a role above)
-  calibrates that one video by hand. It replaces the environment's calibration
-  for that video only, and if it is rejected the video waits instead of falling
-  back to the environment. A corrected environment calibration does not
-  reanalyze videos that were already analyzed.
-- Marking points works the same either way: a frame where
-  the arena is visible, with points: at least 4 FIT points and at least 3
-  separate CHECK points, each with its pixel position and its real position in
-  centimeters. Send them with
-  `POST /api/tests/{id}/recordings/{recordingId}/calibrations` for a video.
-- The FIT points define the mapping and the CHECK points test it. If a CHECK point
-  is off by more than the paradigm allows (2 cm for the trajectory paradigms),
-  the calibration is stored as `REJECTED`.
+  `POST /api/environments/{id}/revisions/{number}/calibrations`. Its crop is that
+  arena's region of the frame, so three arenas under one camera each get their
+  own calibration. Every animal tested in that arena then uses it.
+- The camera and the arena can move. Nothing checks that yet: the status of an
+  animal that uses its arena's calibration says `drift: UNCHECKED`. If a video
+  does not match, a technician (or a role above) calibrates that one animal by
+  hand with `POST /api/tests/{id}/subjects/{testSubjectId}/calibrations` on the
+  test's current video. The override replaces the arena calibration for that
+  animal only, and if it is rejected the animal waits instead of falling back to
+  the arena. A replacement video starts from the arena calibrations again.
+- Both kinds take the same points: at least 4 FIT points and at least 3 separate
+  CHECK points, each with its pixel position and its real position in
+  centimeters. The FIT points define the mapping and the CHECK points test it. If
+  a CHECK point is off by more than the paradigm allows (2 cm for the trajectory
+  paradigms), the calibration is stored as `REJECTED`.
+- A paradigm with `calibrated` zones (none of the current catalog has any)
+  also needs those zones drawn on the same frame. Send them as `zones` in
+  pixels, for example
+  `{"key": "zone_a", "polygon": [{"x": 300, "y": 480}, ...]}` or
+  `{"key": "zone_b", "circle": {"x": 960, "y": 540, "radius": 60}}`; a key may
+  have several shapes. Every required zone needs a
+  shape and every shape must lie inside the frame. Misko converts them to
+  centimeters with the calibration and returns each zone in both. The worker
+  receives them with its job, and the metrics use the centimeter shapes. In the
+  panel the visual calibrator places the points, the crop and the zones on a
+  frame of a video: for an environment default a video file chosen on the
+  computer (read in the browser, never uploaded), for an override the test's
+  current video.
+- World points must use the frame the paradigm's zones are defined in. For the
+  water maze that frame is tank-centred: (0, 0) is the tank centre, x points
+  east and y north, so the wall points are (r, 0), (0, r), (-r, 0) and (0, -r)
+  with r = tank diameter / 2. A paradigm with calibrated zones may use any
+  frame.
 - To fix a calibration, send a new one with `supersedesId` set to the latest
-  calibration. The camera and frame size must stay the same. Earlier
-  calibrations are kept.
-- `GET /api/tests/{id}/recordings/{recordingId}/calibration-status` shows
-  `WAITING_FOR_CALIBRATION` until a valid calibration exists, then `CALIBRATED`.
-  Paradigms without video measurements, such as the rotarod, show `NOT_REQUIRED`.
+  calibration of the same arena or animal. Earlier calibrations are kept.
+- `GET /api/tests/{id}/calibration-status` lists every animal of a test:
+  `WAITING_FOR_VIDEO`, `WAITING_FOR_CALIBRATION` until a valid calibration
+  with every required zone applies, then `CALIBRATED`. Paradigms without video measurements, such as the
+  pole test, show `NOT_REQUIRED`.
 
 ### Video analysis
 
-Tracking runs in separate analysis workers that talk to the API. The first
-worker, for recorded single-subject Open Field video from a fixed camera, is in
-the `worker/` folder. It has only been tested on synthetic video so far; do not
-use its results for research until it has been checked against a manually
-annotated recording.
+Tracking runs in separate analysis workers that talk to the API. The worker in
+the `worker/` folder tracks recorded fixed-camera video of the tracked
+paradigm, `MWM` version 1. It has only been tested on synthetic video so far;
+do not use its results for research until it has been checked against a
+manually annotated recording.
 
-- The worker finds the animal in every frame, converts its position to
-  centimeters with the video's calibration, and uploads the positions (the
-  trajectory) and an annotated video that shows the path and the center zone.
-- Misko computes every metric and event from the uploaded trajectory with the
-  same calculations the paradigm catalog describes. A worker cannot send its own
-  numbers.
-- If too many frames are lost (more than 10% for the open field) or the tracking
-  confidence is too low, the run is marked `FAILED` with a `QC_FAILED` reason and
-  nothing is published.
-- To run it, register a worker for `OPEN_FIELD` version 1, then start it with
+- A lab manager registers a worker with `POST /api/analysis/workers`, giving its
+  name, model version and the paradigm versions it supports. Register the
+  bundled worker with model version `misko-tracker-bgsub 2.0.0` and `MWM` at
+  version 1 (see [Installation](../installation/#analysis-worker)).
+  Observer-scored paradigms are refused with `worker.unknownCapability`. The
+  response shows the worker's token only once; store it in the worker's secret
+  configuration.
+  `POST /api/analysis/workers/{id}/disable` revokes it. Start the worker with
   `MISKO_WORKER_TOKEN` set, for example
   `docker compose --profile worker up -d worker`.
+- Every `JOB_INTERVAL` (10 seconds by default) the `jobs` process queues one run
+  per animal of a test, when the experiment is running or completed, the animal
+  is not excluded, the test's video is verified, the animal's calibration is
+  valid (when the paradigm needs one) and a worker supports the paradigm.
+  Observer-scored paradigms never get such runs.
+- The worker finds the animal inside its arena's crop in every frame, converts
+  its position to centimeters, and uploads the positions (the trajectory) and an
+  annotated video. It never learns the animal's group or treatment. Misko
+  computes every metric and event from the trajectory; a worker cannot send its
+  own numbers. If too many frames are lost or the tracking confidence is too
+  low, the run is `FAILED` with a `QC_FAILED` reason and nothing is published.
+  A worker may mark samples as inferred (the optional `inferred` flag), for
+  example while the animal is hidden: they count as tracked, but not in the
+  confidence mean. The bundled worker sends none.
+- Every run has a `method`: `AUTOMATED` for a worker run, `SCORED` for a run
+  computed from an observer's scoring (with `scoredBy` and no worker,
+  calibration or video pair).
+- A run records exactly what was analyzed: the video version, the clip, the
+  calibration, the paradigm version and the parameters. To analyze an animal
+  again, a technician (or a role above) calls
+  `POST /api/analysis/test-subjects/{testSubjectId}/runs`. Earlier results stay.
+- `GET /api/tests/{id}/analysis-runs` and `GET /api/analysis-runs/{runId}` show
+  runs and their metrics and events. `GET /api/analysis-runs/{runId}/video-pair`
+  returns short-lived links to the original and analyzed video with the offsets
+  needed to play them in sync.
 
-- A lab manager registers a worker with
-  `POST /api/analysis/workers`, giving its name, model version and the paradigm
-  versions it supports. The response shows the worker's token only once; store it
-  in the worker's secret configuration. `POST /api/analysis/workers/{id}/disable`
-  revokes it.
-- Start the scheduler next to the API with
-  `docker compose up --build -d backend jobs`. Every `JOB_INTERVAL` (10 seconds by
-  default) it queues one run for each verified video that has a valid calibration
-  (when its paradigm needs one) and a worker that supports its paradigm.
-- A run records exactly what was analyzed: the video version in storage, the clip,
-  the calibration, the paradigm version and the parameters. Nothing about a run
-  changes later.
-- To analyze a video again, for example after a new calibration or with a new
-  worker model, a technician (or a role above) calls
-  `POST /api/tests/{id}/recordings/{recordingId}/analysis-runs`. This creates a new
-  run; earlier results stay.
-- Everyone who is signed in can list runs with `GET /api/tests/{id}/analysis-runs`
-  and open one with `GET /api/analysis-runs/{runId}`, which includes the metrics
-  and events once the run `SUCCEEDED`.
-  `GET /api/analysis-runs/{runId}/video-pair` returns short-lived links to the
-  original video and the analyzed video of that run, with the time offsets needed
-  to play them in sync.
-- A worker that stops responding loses its run after 5 minutes and another worker
-  can take it. A run is tried at most 3 times, then it is `FAILED`. Results from a
-  worker that lost its run are refused, and a result is published only after the
-  API has checked every uploaded file in storage.
+### Observer scoring
+
+Pole, treadmill and novel object tests are scored by a person on the
+test's current video. Technicians and the roles above them can score; everyone
+signed in can read.
+
+- `GET /api/tests/{id}/subjects/{testSubjectId}/scoring` returns the paradigm's
+  input events (type, `POINT` or `INTERVAL`, labels such as `novel` and
+  `familiar`, whether it is scored once), the current video's clip and the
+  newest scoring sheet with its events.
+- `POST .../scoring/events` with `{type, label?, startUs, endUs?}` adds an event
+  to the draft sheet (the first event starts version 1). Times are microseconds
+  from the clip start. `PATCH .../events/{eventId}` replaces an event and
+  `DELETE` removes it.
+- `POST .../scoring/complete` with `{scoredEventTypes?, durationUs?}` fixes which
+  event types were watched for (default all) and the recording length (default
+  the clip). The engine computes the metrics and a `SUCCEEDED` run with method
+  `SCORED` is stored; its result opens `PENDING` in the review queue like any
+  other.
+- `POST .../scoring/reopen` starts the next sheet version with a copy of the
+  events; completing it adds another run the reviewer can choose. Completed
+  sheets never change.
+- Scoring needs a test in progress or completed, a running experiment, an
+  animal that is not excluded and a verified video.
+
+### Review
+
+Every result is approved by a person before it counts. The first successful run
+of an animal, automated or scored, opens its result as `PENDING`.
+
+- `GET /api/analysis/results` is the review queue (`status`, `experimentId`).
+  In a blinded experiment it shows no group, disease, substance or dose.
+- Technicians and the roles above them accept a result with
+  `POST /api/analysis/results/{testSubjectId}/accept` or reject it with
+  `POST .../reject` and a `reason` (`TRACKING_LOST`, `WRONG_ANIMAL`,
+  `VIDEO_DEFECT`, `PROTOCOL_DEVIATION`, `OTHER`). `POST .../run` puts another
+  successful run under review, and `POST /api/analysis/results/bulk-accept`
+  accepts up to 100 at once.
+- A newer run never replaces a reviewed result by itself. Once the experiment is
+  completed, decisions cannot change.
+
+### Study report and dashboard
+
+Everyone who is signed in can read reports. They only read records.
+
+- `GET /api/experiments/{id}/report` returns every endpoint, primary first. The
+  unit is the animal: each animal contributes one value per timepoint, and only
+  accepted results of animals that are not excluded count. Per group it shows n,
+  mean, SD, SEM, minimum, maximum, change from baseline and how many animals are
+  pending review, waiting for analysis, rejected or excluded.
+- Comparisons follow the group roles: model validity (disease control against
+  healthy control and sham), assay sensitivity (positive control against disease
+  control), efficacy of each treatment group against its disease control with
+  rescue %, and dose response for the treatment groups of one substance.
+- Results from different paradigm or metric engine versions are never mixed; the
+  report lists the versions and leaves the comparison out.
+- `GET /api/experiments/{id}/report/export` downloads CSV, one row per animal
+  (`level=animals`) or per group (`level=groups`); `excel=1` writes a file Excel
+  opens directly.
+- `GET /api/dashboard/summary` counts experiments, tests, runs and results by
+  status and animals waiting for calibration, and lists the latest results and
+  the next planned sessions.
 
 ### The panel
 
-The Vue panel in `frontend/` runs the workflow against this API. Sign in, open
-an experiment and pick one of its tests.
-
-- A test screen lists its recordings with the video status and whether the
-  recording is calibrated, and lets a technician (or a role above) upload a
-  video. The file goes straight from the browser to storage, in a resumable
-  upload that continues where it left off; the panel checksums the file first,
-  so the API can read the object back and refuse anything that does not match.
-  A recording only reads as verified once the API has done that.
-- Analysis runs of the test appear as buttons. The screen opens the newest run
-  that published a result, so a later failed attempt never hides a readable one.
-  A queued or running job says so, and a failed one shows its reason, for example
-  a quality control failure. A recording can be analyzed more than once, and
-  every run keeps its own videos: opening an earlier run shows that run's
-  analyzed video and its events, not the ones that were on screen before.
-- For a published run the panel shows the metrics and the events. Clicking an
-  event, for example "In center 00:03-00:04", plays exactly that stretch in the
-  side panel and stops at its end. The original and the analyzed video sit side
-  by side on the same timeline, so both show the same moment. Event times are
-  measured from the clip, which need not start where the video starts, so the
-  panel shifts both players by the offsets the run's video pair reports.
-- Every event is reachable with the keyboard: Tab moves between them and Enter
-  plays the selected one.
-- Read links are short lived. When one expires the panel asks the API for a new
-  pair and puts the reader back where they were, rather than at the start.
-- A viewer reads results but sees no upload or reanalysis controls, the same way
-  the API would refuse those actions.
-
-### Reports and exports
-
-Everyone who is signed in can read reports. They only read results; nothing in a
-report changes research records.
-
-- `GET /api/reports/metrics` lists metric results with where they came from: the
-  experiment, subject, group and phase of the test, the test, the environment,
-  the video and the analysis run with its model and metric engine versions.
-  Filter by experiment, subject, group, phase, test, environment, video, run,
-  disease model, substance, paradigm, metric engine version or metric key, and
-  page through the rows with `page` and `pageSize`.
-- By default each test counts once: only its newest successful run is used (per
-  metric engine version). Add `selection=all` to see older runs as well.
-- A result the worker could not measure stays empty with its reason. It is never
-  shown as zero.
-- `GET /api/reports/events` lists events with the trial they belong to.
-- Add `/export` to either report (`/api/reports/metrics/export`) to download every
-  matching row as CSV, or as JSON with `format=json`. An export holds up to
-  100,000 rows; narrow the filters for more.
-- `GET /api/reports/metric-summary?experimentId=...&metricKey=...` compares the
-  groups of an experiment. Every animal counts once, with the average of its
-  tests, so repeated tests do not inflate the number of animals. If the results
-  come from different paradigm or metric engine versions, the API refuses to mix
-  them and tells you which versions to choose.
+The Vue panel in `frontend/` is being moved to this API. Screens for the
+catalog, the experiment tabs (design, allocation, dosing, tests, report) and the
+review queue are scaffolded but not complete. Until they are, use the API
+directly.
 
 ### Errors
 
-Every error has a stable `code`, such as `auth.forbidden` or
-`user.lastPrivileged`, and an English message. A 401 status means you are not
-signed in or your token is no longer valid. A 403 status means your role does not
-allow the action.
+Every error has a stable `code`, such as `auth.forbidden`,
+`experiment.notReady` or `allocation.frozen`, and an English message. A 401
+status means you are not signed in or your token is no longer valid. A 403 status
+means your role does not allow the action. A 409 status means the record's state
+does not allow the change, for example editing the design of a running
+experiment.

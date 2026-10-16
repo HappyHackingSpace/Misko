@@ -22,7 +22,7 @@ var failures = []httpjson.Failure{
 	{Err: application.ErrInvalidQuery, Status: http.StatusBadRequest, Code: "common.invalidQuery"},
 	{Err: application.ErrUnknownParadigm, Status: http.StatusBadRequest, Code: "environment.unknownParadigm"},
 	{Err: application.ErrUnknownParadigmVersion, Status: http.StatusBadRequest, Code: "environment.unknownParadigmVersion"},
-	{Err: application.ErrInvalidApparatus, Status: http.StatusBadRequest, Code: "environment.invalidApparatus"},
+	{Err: application.ErrInvalidParameters, Status: http.StatusBadRequest, Code: "environment.invalidParameters"},
 	{Err: domain.ErrInvalidName, Status: http.StatusBadRequest, Code: "common.invalidName"},
 	{Err: domain.ErrInvalidNotes, Status: http.StatusBadRequest, Code: "common.invalidNotes"},
 	{Err: domain.ErrInvalidParadigmKey, Status: http.StatusBadRequest, Code: "environment.invalidParadigmKey"},
@@ -60,7 +60,7 @@ func (h handler) with(next func(http.ResponseWriter, *http.Request, access.Actor
 
 type revisionBody struct {
 	ParadigmVersion int                `json:"paradigmVersion"`
-	Apparatus       map[string]float64 `json:"apparatus"`
+	Parameters      map[string]float64 `json:"parameters"`
 	Notes           string             `json:"notes"`
 }
 
@@ -177,7 +177,7 @@ type revisionJSONBody struct {
 	Number          int                `json:"number"`
 	ParadigmKey     string             `json:"paradigmKey"`
 	ParadigmVersion int                `json:"paradigmVersion"`
-	Apparatus       map[string]float64 `json:"apparatus"`
+	Parameters      map[string]float64 `json:"parameters"`
 	Notes           *string            `json:"notes"`
 	CreatedBy       string             `json:"createdBy"`
 	CreatedAt       time.Time          `json:"createdAt"`
@@ -197,11 +197,11 @@ func revisionSummaryJSON(r domain.RevisionSummary) revisionSummaryJSONBody {
 }
 
 func revisionJSON(r domain.Revision) revisionJSONBody {
-	apparatus := r.Apparatus
-	if apparatus == nil {
-		apparatus = map[string]float64{}
+	parameters := r.Parameters
+	if parameters == nil {
+		parameters = map[string]float64{}
 	}
-	return revisionJSONBody{r.ID, r.EnvironmentID, r.Number, r.ParadigmKey, r.ParadigmVersion, apparatus, nullable(r.Notes), r.CreatedBy, r.CreatedAt}
+	return revisionJSONBody{r.ID, r.EnvironmentID, r.Number, r.ParadigmKey, r.ParadigmVersion, parameters, nullable(r.Notes), r.CreatedBy, r.CreatedAt}
 }
 
 func mapSlice[T, U any](items []T, convert func(T) U) []U {

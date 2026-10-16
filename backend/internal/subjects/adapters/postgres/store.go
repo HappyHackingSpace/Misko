@@ -24,7 +24,9 @@ func (s *Store) Create(ctx context.Context, subject domain.Subject) (domain.Subj
 	if err != nil {
 		return domain.Subject{}, translate(err, "create subject")
 	}
-	return toSubject(row), nil
+	return toSubject(sqlcgen.ListSubjectsRow{
+		ID: row.ID, Code: row.Code, Species: row.Species, Sex: row.Sex, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
+	}), nil
 }
 
 func (s *Store) Subject(ctx context.Context, id string) (domain.Subject, error) {
@@ -35,19 +37,21 @@ func (s *Store) Subject(ctx context.Context, id string) (domain.Subject, error) 
 	if err != nil {
 		return domain.Subject{}, translate(err, "get subject")
 	}
-	return toSubject(row), nil
+	return toSubject(sqlcgen.ListSubjectsRow(row)), nil
 }
 
 func (s *Store) List(ctx context.Context, f application.Filter) ([]domain.Subject, int, error) {
 	search := pgtx.EscapeLike(f.Search)
 	rows, err := s.queries.ListSubjects(ctx, sqlcgen.ListSubjectsParams{
-		Search: search, Species: string(f.Species), Sex: string(f.Sex), SortKey: f.Sort, Descending: f.Descending,
+		Search: search, Species: string(f.Species), Sex: string(f.Sex), Unallocated: f.Unallocated, SortKey: f.Sort, Descending: f.Descending,
 		PageLimit: int32(f.Limit), PageOffset: int32(f.Offset),
 	})
 	if err != nil {
 		return nil, 0, fmt.Errorf("list subjects: %w", err)
 	}
-	total, err := s.queries.CountSubjects(ctx, sqlcgen.CountSubjectsParams{Search: search, Species: string(f.Species), Sex: string(f.Sex)})
+	total, err := s.queries.CountSubjects(ctx, sqlcgen.CountSubjectsParams{
+		Search: search, Species: string(f.Species), Sex: string(f.Sex), Unallocated: f.Unallocated,
+	})
 	if err != nil {
 		return nil, 0, fmt.Errorf("count subjects: %w", err)
 	}
@@ -62,13 +66,12 @@ func (s *Store) Update(ctx context.Context, id string, c application.Changes) (d
 	if !pgtx.ValidUUID(id) {
 		return domain.Subject{}, application.ErrNotFound
 	}
-	row, err := s.queries.UpdateSubject(ctx, sqlcgen.UpdateSubjectParams{
+	if _, err := s.queries.UpdateSubject(ctx, sqlcgen.UpdateSubjectParams{
 		ID: id, Code: c.Code, Species: text(c.Species), Sex: text(c.Sex),
-	})
-	if err != nil {
+	}); err != nil {
 		return domain.Subject{}, translate(err, "update subject")
 	}
-	return toSubject(row), nil
+	return s.Subject(ctx, id)
 }
 
 func (s *Store) Delete(ctx context.Context, id string) error {
@@ -85,6 +88,39 @@ func (s *Store) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
+func (s *Store) CreateWeight(ctx context.Context, w domain.Weight) (domain.Weight, error) {
+	if !pgtx.ValidUUID(w.SubjectID) {
+		return domain.Weight{}, application.ErrNotFound
+	}
+	row, err := s.queries.CreateWeight(ctx, sqlcgen.CreateWeightParams{
+		SubjectID: w.SubjectID, BodyMilligrams: w.Milligrams, MeasuredAt: w.MeasuredAt, RecordedBy: w.RecordedBy,
+	})
+	if _, constraint := pgtx.Violation(err); constraint == "weight_measurements_subject_id_fkey" {
+		return domain.Weight{}, application.ErrNotFound
+	}
+	if err != nil {
+		return domain.Weight{}, translate(err, "create weight")
+	}
+	return toWeight(row), nil
+}
+
+func (s *Store) Weights(ctx context.Context, subjectID string) ([]domain.Weight, error) {
+	if !pgtx.ValidUUID(subjectID) {
+		return []domain.Weight{}, nil
+	}
+	rows, err := s.queries.ListWeights(ctx, subjectID)
+	if err != nil {
+		return nil, fmt.Errorf("list weights: %w", err)
+	}
+	weights := make([]domain.Weight, 0, len(rows))
+	for _, row := range rows {
+		weights = append(weights, toWeight(row))
+	}
+	return weights, nil
+}
+
+// translate maps a missing row to ErrNotFound and a subject still referenced
+// by an allocation or a weight to ErrInUse.
 func translate(err error, operation string) error {
 	if errors.Is(err, pgx.ErrNoRows) {
 		return application.ErrNotFound
@@ -98,11 +134,33 @@ func translate(err error, operation string) error {
 	return fmt.Errorf("%s: %w", operation, err)
 }
 
-func toSubject(row sqlcgen.MiskoSubject) domain.Subject {
-	return domain.Subject{
+func toSubject(row sqlcgen.ListSubjectsRow) domain.Subject {
+	s := domain.Subject{
 		ID: row.ID, Code: row.Code, Species: domain.Species(row.Species), Sex: domain.Sex(row.Sex),
 		CreatedAt: row.CreatedAt.UTC(), UpdatedAt: row.UpdatedAt.UTC(),
 	}
+	if row.AllocationExperimentID != nil {
+		s.Allocation = &domain.Allocation{
+			ExperimentID: *row.AllocationExperimentID, ExperimentCode: value(row.AllocationExperimentCode),
+			GroupID: value(row.AllocationGroupID), GroupCode: value(row.AllocationGroupCode), GroupRole: value(row.AllocationGroupRole),
+			Excluded: row.AllocationExcluded,
+		}
+	}
+	return s
+}
+
+func toWeight(row sqlcgen.MiskoWeightMeasurement) domain.Weight {
+	return domain.Weight{
+		ID: row.ID, SubjectID: row.SubjectID, Milligrams: row.BodyMilligrams, MeasuredAt: row.MeasuredAt.UTC(),
+		RecordedBy: row.RecordedBy, CreatedAt: row.CreatedAt.UTC(),
+	}
+}
+
+func value(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }
 
 func text[T ~string](value *T) *string {

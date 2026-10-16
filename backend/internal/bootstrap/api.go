@@ -8,14 +8,21 @@ import (
 	calibrationhttp "github.com/HappyHackingSpace/Misko/backend/internal/calibration/adapters/http"
 	calibrationpostgres "github.com/HappyHackingSpace/Misko/backend/internal/calibration/adapters/postgres"
 	calibrationapp "github.com/HappyHackingSpace/Misko/backend/internal/calibration/application"
+	cataloghttp "github.com/HappyHackingSpace/Misko/backend/internal/catalog/adapters/http"
+	catalogpostgres "github.com/HappyHackingSpace/Misko/backend/internal/catalog/adapters/postgres"
+	catalogapp "github.com/HappyHackingSpace/Misko/backend/internal/catalog/application"
 	dashboardcatalog "github.com/HappyHackingSpace/Misko/backend/internal/dashboard/adapters/catalog"
 	dashboardhttp "github.com/HappyHackingSpace/Misko/backend/internal/dashboard/adapters/http"
 	dashboardpostgres "github.com/HappyHackingSpace/Misko/backend/internal/dashboard/adapters/postgres"
 	dashboardapp "github.com/HappyHackingSpace/Misko/backend/internal/dashboard/application"
+	dosinghttp "github.com/HappyHackingSpace/Misko/backend/internal/dosing/adapters/http"
+	dosingpostgres "github.com/HappyHackingSpace/Misko/backend/internal/dosing/adapters/postgres"
+	dosingapp "github.com/HappyHackingSpace/Misko/backend/internal/dosing/application"
 	environmentscatalog "github.com/HappyHackingSpace/Misko/backend/internal/environments/adapters/catalog"
 	environmentshttp "github.com/HappyHackingSpace/Misko/backend/internal/environments/adapters/http"
 	environmentspostgres "github.com/HappyHackingSpace/Misko/backend/internal/environments/adapters/postgres"
 	environmentsapp "github.com/HappyHackingSpace/Misko/backend/internal/environments/application"
+	experimentscatalog "github.com/HappyHackingSpace/Misko/backend/internal/experiments/adapters/catalog"
 	experimentshttp "github.com/HappyHackingSpace/Misko/backend/internal/experiments/adapters/http"
 	experimentspostgres "github.com/HappyHackingSpace/Misko/backend/internal/experiments/adapters/postgres"
 	experimentsapp "github.com/HappyHackingSpace/Misko/backend/internal/experiments/application"
@@ -27,14 +34,12 @@ import (
 	identitypostgres "github.com/HappyHackingSpace/Misko/backend/internal/identity/adapters/postgres"
 	"github.com/HappyHackingSpace/Misko/backend/internal/identity/adapters/token"
 	identityapp "github.com/HappyHackingSpace/Misko/backend/internal/identity/application"
-	interventionshttp "github.com/HappyHackingSpace/Misko/backend/internal/interventions/adapters/http"
-	interventionspostgres "github.com/HappyHackingSpace/Misko/backend/internal/interventions/adapters/postgres"
-	interventionsapp "github.com/HappyHackingSpace/Misko/backend/internal/interventions/application"
 	laboratoryhttp "github.com/HappyHackingSpace/Misko/backend/internal/laboratory/adapters/http"
 	laboratorypostgres "github.com/HappyHackingSpace/Misko/backend/internal/laboratory/adapters/postgres"
 	laboratoryapp "github.com/HappyHackingSpace/Misko/backend/internal/laboratory/application"
 	mediagcs "github.com/HappyHackingSpace/Misko/backend/internal/media/adapters/gcs"
 	mediahttp "github.com/HappyHackingSpace/Misko/backend/internal/media/adapters/http"
+	medialocalfs "github.com/HappyHackingSpace/Misko/backend/internal/media/adapters/localfs"
 	mediapostgres "github.com/HappyHackingSpace/Misko/backend/internal/media/adapters/postgres"
 	mediaapp "github.com/HappyHackingSpace/Misko/backend/internal/media/application"
 	paradigmshttp "github.com/HappyHackingSpace/Misko/backend/internal/paradigms/adapters/http"
@@ -49,6 +54,10 @@ import (
 	reportshttp "github.com/HappyHackingSpace/Misko/backend/internal/reports/adapters/http"
 	reportspostgres "github.com/HappyHackingSpace/Misko/backend/internal/reports/adapters/postgres"
 	reportsapp "github.com/HappyHackingSpace/Misko/backend/internal/reports/application"
+	scoringcatalog "github.com/HappyHackingSpace/Misko/backend/internal/scoring/adapters/catalog"
+	scoringhttp "github.com/HappyHackingSpace/Misko/backend/internal/scoring/adapters/http"
+	scoringpostgres "github.com/HappyHackingSpace/Misko/backend/internal/scoring/adapters/postgres"
+	scoringapp "github.com/HappyHackingSpace/Misko/backend/internal/scoring/application"
 	subjectshttp "github.com/HappyHackingSpace/Misko/backend/internal/subjects/adapters/http"
 	subjectspostgres "github.com/HappyHackingSpace/Misko/backend/internal/subjects/adapters/postgres"
 	subjectsapp "github.com/HappyHackingSpace/Misko/backend/internal/subjects/application"
@@ -58,6 +67,7 @@ import (
 	"github.com/HappyHackingSpace/Misko/backend/schema"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"log/slog"
+	"math/rand/v2"
 	"net"
 	"net/http"
 	"time"
@@ -77,15 +87,27 @@ func Run(ctx context.Context, cfg config.Config, auth config.Auth, storage confi
 	}
 	defer pool.Close()
 	var options []Option
-	if storage.Enabled() {
+	mediaSettings := mediaapp.Settings{MaxBytes: storage.MaxVideoBytes, UploadTTL: storage.UploadURLTTL, ReadTTL: storage.ReadURLTTL}
+	switch {
+	case storage.Local():
+		objects, err := medialocalfs.New(storage.LocalDir, auth.JWTSecret, time.Now)
+		if err != nil {
+			return errors.New("could not open the local storage directory")
+		}
+		options = append(options, WithLocalStorage(objects, mediaSettings))
+		logger.Info("videos are stored in a local directory", "prefix", medialocalfs.Prefix)
+	case storage.Enabled():
+		if storage.LocalDir != "" {
+			logger.Warn("GCS_BUCKET is set; LOCAL_STORAGE_DIR is ignored")
+		}
 		objects, err := mediagcs.New(ctx, storage.Bucket, storage.SignerEmail)
 		if err != nil {
 			return errors.New("could not initialize Cloud Storage client")
 		}
 		defer objects.Close()
-		options = append(options, WithStorage(objects, mediaapp.Settings{MaxBytes: storage.MaxVideoBytes, UploadTTL: storage.UploadURLTTL, ReadTTL: storage.ReadURLTTL}))
-	} else {
-		logger.Warn("GCS_BUCKET is not set; video upload and read routes return 503")
+		options = append(options, WithStorage(objects, mediaSettings))
+	default:
+		logger.Warn("neither GCS_BUCKET nor LOCAL_STORAGE_DIR is set; video upload and read routes return 503")
 	}
 	api, err := NewAPI(pool, cfg, auth, logger, options...)
 	if err != nil {
@@ -113,6 +135,8 @@ type API struct {
 type options struct {
 	objects       mediaapp.ObjectStore
 	mediaSettings mediaapp.Settings
+	// storageHandler serves signed storage URLs on the API itself.
+	storageHandler http.Handler
 }
 
 type Option func(*options)
@@ -120,6 +144,14 @@ type Option func(*options)
 // WithStorage enables video routes with an object store.
 func WithStorage(objects mediaapp.ObjectStore, settings mediaapp.Settings) Option {
 	return func(o *options) { o.objects, o.mediaSettings = objects, settings }
+}
+
+// WithLocalStorage keeps videos and analysis outputs in a local directory and
+// serves their signed URLs under medialocalfs.Prefix on the API.
+func WithLocalStorage(objects *medialocalfs.Store, settings mediaapp.Settings) Option {
+	return func(o *options) {
+		o.objects, o.mediaSettings, o.storageHandler = objects, settings, objects.Handler()
+	}
 }
 
 // NewAPI wires concrete adapters into use cases and mounts every HTTP route.
@@ -138,9 +170,10 @@ func NewAPI(pool *pgxpool.Pool, cfg config.Config, auth config.Auth, logger *slo
 	}
 	identity := identityapp.New(identitypostgres.NewStore(pool), tokens, passwords)
 	laboratory := laboratoryapp.New(laboratorypostgres.NewStore(pool))
-	subjects := subjectsapp.New(subjectspostgres.NewStore(pool))
-	experiments := experimentsapp.New(experimentspostgres.NewStore(pool))
-	interventions := interventionsapp.New(interventionspostgres.NewStore(pool), time.Now)
+	subjects := subjectsapp.New(subjectspostgres.NewStore(pool), time.Now)
+	catalog := catalogapp.New(catalogpostgres.NewStore(pool))
+	experiments := experimentsapp.New(experimentspostgres.NewStore(pool), experimentscatalog.New(), time.Now, rand.IntN)
+	dosing := dosingapp.New(dosingpostgres.NewStore(pool), time.Now)
 	environments := environmentsapp.New(environmentspostgres.NewStore(pool), environmentscatalog.New())
 	protocols := protocolsapp.New(protocolspostgres.NewStore(pool), protocolscatalog.New())
 	// One user may create or edit at most 20 comments per minute on this instance.
@@ -148,6 +181,7 @@ func NewAPI(pool *pgxpool.Pool, cfg config.Config, auth config.Auth, logger *slo
 	media := mediaapp.New(mediapostgres.NewStore(pool), o.objects, o.mediaSettings, time.Now)
 	calibration := calibrationapp.New(calibrationpostgres.NewStore(pool), calibrationcatalog.New(), time.Now)
 	analysis := newAnalysis(pool, o.objects, o.mediaSettings)
+	scoring := scoringapp.New(scoringpostgres.NewStore(pool), scoringcatalog.New(), time.Now)
 	readiness := healthapp.New(healthpostgres.New(pool, schema.Latest()), cfg.ProbeTimeout)
 
 	mux := http.NewServeMux()
@@ -158,8 +192,9 @@ func NewAPI(pool *pgxpool.Pool, cfg config.Config, auth config.Auth, logger *slo
 	authenticate := identityhttp.Authenticator(identity)
 	laboratoryhttp.Register(mux, laboratory, authenticate, logger)
 	subjectshttp.Register(mux, subjects, authenticate, logger)
+	cataloghttp.Register(mux, catalog, authenticate, logger)
 	experimentshttp.Register(mux, experiments, authenticate, logger)
-	interventionshttp.Register(mux, interventions, authenticate, logger)
+	dosinghttp.Register(mux, dosing, authenticate, logger)
 	paradigmshttp.Register(mux, paradigmsapp.New(newWorkerCapabilities(pool)), authenticate, logger)
 	environmentshttp.Register(mux, environments, authenticate, logger)
 	protocolshttp.Register(mux, protocols, authenticate, logger)
@@ -167,10 +202,15 @@ func NewAPI(pool *pgxpool.Pool, cfg config.Config, auth config.Auth, logger *slo
 	mediahttp.Register(mux, media, authenticate, logger)
 	calibrationhttp.Register(mux, calibration, authenticate, logger)
 	analysishttp.Register(mux, analysis, authenticate, logger)
+	scoringhttp.Register(mux, scoring, authenticate, logger)
 	reportshttp.Register(mux, reportsapp.New(reportspostgres.NewStore(pool), reportExportLimit), authenticate, logger)
 	dashboardhttp.Register(mux, dashboardapp.New(dashboardpostgres.NewStore(pool), dashboardcatalog.New()), authenticate, logger)
+	if o.storageHandler != nil {
+		mux.Handle(medialocalfs.Prefix+"/", o.storageHandler)
+	}
 	tick := func(ctx context.Context) error {
-		_, err := analysis.Tick(ctx)
+		report, err := analysis.Tick(ctx)
+		logTick(ctx, logger, report, err)
 		return err
 	}
 	return API{Handler: mux, BeginDrain: readiness.BeginDrain, AnalysisTick: tick}, nil

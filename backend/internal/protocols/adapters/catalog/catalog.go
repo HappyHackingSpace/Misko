@@ -18,10 +18,22 @@ func (Catalog) TrialTypes(key string, version int) ([]string, error) {
 	if err != nil {
 		return nil, translate(err)
 	}
-	return p.TrialTypes, nil
+	return p.TrialTypeKeys(), nil
 }
 
-func (Catalog) ResolveSession(key string, version int, apparatus, session map[string]float64) (map[string]float64, error) {
+// ResolveSession validates session values without an arena. A step no longer
+// names an environment, but ResolveSetup requires every apparatus value, so
+// the paradigm's apparatus defaults stand in for them; analysis values fall
+// back to their defaults inside ResolveSetup.
+func (Catalog) ResolveSession(key string, version int, session map[string]float64) (map[string]float64, error) {
+	p, err := paradigms.Version(key, version)
+	if err != nil {
+		return nil, translate(err)
+	}
+	apparatus := map[string]float64{}
+	for _, param := range p.In(paradigms.ApparatusScope) {
+		apparatus[param.Key] = param.Default
+	}
 	resolved, err := paradigms.ResolveSetup(key, version, apparatus, session)
 	if err != nil {
 		return nil, translate(err)

@@ -38,7 +38,7 @@ func TestLiveResumableUploadRangeExpiryAndCORS(t *testing.T) {
 	}
 	object := "smoke/" + time.Now().UTC().Format("20060102T150405.000000000")
 
-	start, err := s.UploadURL(ctx, object, "video/mp4", time.Now().Add(10*time.Minute))
+	start, err := s.SizedUploadURL(ctx, object, "video/mp4", int64(len(body)), time.Now().Add(10*time.Minute))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,6 +62,17 @@ func TestLiveResumableUploadRangeExpiryAndCORS(t *testing.T) {
 	}
 	if res := startRequest(t, again.URL, again.Headers, origin); res.StatusCode != http.StatusPreconditionFailed {
 		t.Fatalf("overwrite start: %d, want 412", res.StatusCode)
+	}
+
+	// A session signed for fewer bytes than are sent refuses the upload.
+	small, err := s.SizedUploadURL(ctx, object+"-oversized", "video/mp4", int64(len(body))-1, time.Now().Add(10*time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	oversized, _ := http.NewRequest(http.MethodPut, startSession(t, small.URL, small.Headers, origin), bytes.NewReader(body))
+	oversized.Header.Set("Content-Type", "video/mp4")
+	if res := do(t, oversized); res.StatusCode < 400 {
+		t.Fatalf("upload above the declared size: %d, want a 4xx", res.StatusCode)
 	}
 
 	read, err := s.ReadURL(ctx, object, attrs.Generation, time.Now().Add(5*time.Minute))

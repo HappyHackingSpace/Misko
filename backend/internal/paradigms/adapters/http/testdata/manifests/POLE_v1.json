@@ -1,33 +1,39 @@
 {
   "key": "POLE",
   "name": "Pole test",
+  "description": "The animal is placed head-up at the top of a vertical pole and must turn and climb down to the base. Measures bradykinesia and motor coordination, often in Parkinson's disease models.",
   "category": "MOTOR",
   "species": [
     "MOUSE",
     "RAT"
   ],
   "trialTypes": [
-    "STANDARD"
+    {
+      "key": "STANDARD",
+      "label": "Standard"
+    }
   ],
   "version": 1,
   "metricEngineVersion": 1,
   "resultSchemaVersion": 1,
   "automatedAnalysis": false,
-  "apparatusParameters": [
+  "parameters": [
     {
       "key": "pole_length_cm",
+      "scope": "APPARATUS",
       "label": "Pole length",
+      "help": "Length of the pole from the top, where the animal is placed, down to the base.",
       "unit": "cm",
       "valueType": "number",
       "min": 30,
       "max": 100,
       "default": 50
-    }
-  ],
-  "sessionParameters": [
+    },
     {
       "key": "max_trial_duration_s",
+      "scope": "SESSION",
       "label": "Trial cut-off",
+      "help": "Longest time a trial may last before it is stopped.",
       "unit": "s",
       "valueType": "number",
       "min": 30,
@@ -39,6 +45,7 @@
   "inputEvents": [
     {
       "type": "turn_complete",
+      "label": "Turn completed",
       "kind": "POINT",
       "labels": [],
       "single": true,
@@ -46,6 +53,7 @@
     },
     {
       "type": "base_reached",
+      "label": "Base reached",
       "kind": "POINT",
       "labels": [],
       "single": true,
@@ -53,6 +61,7 @@
     },
     {
       "type": "fall",
+      "label": "Fall",
       "kind": "POINT",
       "labels": [],
       "single": true,
@@ -62,6 +71,7 @@
   "events": [
     {
       "type": "turn_complete",
+      "label": "Turn completed",
       "kind": "POINT",
       "labels": [],
       "single": false,
@@ -69,6 +79,7 @@
     },
     {
       "type": "base_reached",
+      "label": "Base reached",
       "kind": "POINT",
       "labels": [],
       "single": false,
@@ -76,6 +87,7 @@
     },
     {
       "type": "fall",
+      "label": "Fall",
       "kind": "POINT",
       "labels": [],
       "single": false,
@@ -86,6 +98,7 @@
     {
       "key": "t_turn_s",
       "label": "Time to turn",
+      "description": "Time the animal needed to turn head-down. Longer times suggest slowed movement.",
       "unit": "s",
       "valueType": "number",
       "definition": "Time of the turn_complete event from the trial start.",
@@ -101,6 +114,7 @@
     {
       "key": "t_total_s",
       "label": "Total time",
+      "description": "Time from the trial start until the animal reached the base.",
       "unit": "s",
       "valueType": "number",
       "definition": "Time of the base_reached event from the trial start. No cut-off value is imputed.",
@@ -116,6 +130,7 @@
     {
       "key": "descent_time_s",
       "label": "Descent time",
+      "description": "Time from completing the turn to reaching the base.",
       "unit": "s",
       "valueType": "number",
       "definition": "Time from completing the turn to reaching the base.",
@@ -132,6 +147,7 @@
     {
       "key": "descent_speed_cm_s",
       "label": "Descent speed",
+      "description": "Pole length divided by the descent time. Lower speeds suggest impaired motor function.",
       "unit": "cm_s",
       "valueType": "number",
       "definition": "Pole length divided by the descent time.",
@@ -149,6 +165,7 @@
     {
       "key": "fall_detected",
       "label": "Fall detected",
+      "description": "Whether the animal fell off the pole.",
       "unit": "boolean",
       "valueType": "integer",
       "definition": "1 when a fall was scored, 0 when falls were scored and none occurred.",

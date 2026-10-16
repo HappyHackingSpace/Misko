@@ -9,10 +9,14 @@ import (
 )
 
 // workerFixture is written by worker/tests/contract_fixture.py: the trajectory
-// the Python worker produced from a synthetic walk, and the true positions of
-// that walk.
+// the Python worker produced from a synthetic swim, and the true positions of
+// that swim.
 type workerFixture struct {
-	Algorithm  string             `json:"algorithm"`
+	Algorithm string `json:"algorithm"`
+	Paradigm  struct {
+		Key     string `json:"key"`
+		Version int    `json:"version"`
+	} `json:"paradigm"`
 	Parameters map[string]float64 `json:"parameters"`
 	Truth      struct {
 		TUs []int64   `json:"tUs"`
@@ -24,19 +28,23 @@ type workerFixture struct {
 
 // TestWorkerTrajectoriesMatchTheEngineContract parses the worker's output with
 // the API's parser and compares the engine's results on it with the results on
-// the true positions. Tolerances for this synthetic fixture (6 s, 25 fps, 320 x
-// 240, about 4.4 px/cm): distance within 2%, zone and immobility times within
-// 0.08 s (two frames), the same center entries, and event boundaries within
-// 0.08 s. Measured when generated: distance +0.12%, times and boundaries equal.
-// This is not evidence of accuracy on real animals.
+// the true positions. Tolerances for this synthetic water maze swim (7 s, 25
+// fps, tank-centred centimetres): path length and mean distance to the platform
+// within 2%, the escape latency and the quadrant and wall zone times within
+// 0.08 s (two frames), the same platform crossings, and event boundaries within
+// 0.08 s. Measured when generated: path length +0.25%, mean distance +0.04%,
+// times and boundaries equal. This is not evidence of accuracy on real animals.
 func TestWorkerTrajectoriesMatchTheEngineContract(t *testing.T) {
-	raw, err := os.ReadFile("testdata/worker_open_field_walk.json")
+	raw, err := os.ReadFile("testdata/worker_mwm_swim.json")
 	if err != nil {
 		t.Fatal(err)
 	}
 	var fixture workerFixture
 	if err := json.Unmarshal(raw, &fixture); err != nil {
 		t.Fatal(err)
+	}
+	if fixture.Paradigm.Key != "MWM" || fixture.Paradigm.Version != 1 {
+		t.Fatalf("fixture paradigm: %+v", fixture.Paradigm)
 	}
 	var header struct {
 		RunID      string `json:"runId"`
@@ -59,11 +67,11 @@ func TestWorkerTrajectoriesMatchTheEngineContract(t *testing.T) {
 		truth.Samples = append(truth.Samples, domain.Sample{TUs: tUs, X: fixture.Truth.X[i], Y: fixture.Truth.Y[i], Tracked: true, Confidence: 1})
 	}
 
-	got, err := New().Evaluate("OPEN_FIELD", 1, fixture.Parameters, measured, header.DurationUs)
+	got, err := New().Evaluate("MWM", 1, fixture.Parameters, measured, nil, header.DurationUs)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want, err := New().Evaluate("OPEN_FIELD", 1, fixture.Parameters, truth, header.DurationUs)
+	want, err := New().Evaluate("MWM", 1, fixture.Parameters, truth, nil, header.DurationUs)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,21 +84,25 @@ func TestWorkerTrajectoriesMatchTheEngineContract(t *testing.T) {
 		t.Fatalf("metric %s missing", key)
 		return 0
 	}
-	for key, tolerance := range map[string]float64{"center_time_s": 0.08, "periphery_time_s": 0.08, "immobility_s": 0.08, "duration_s": 1e-9, "center_entries_count": 0} {
+	duration := value(want, "duration_s")
+	for key, tolerance := range map[string]float64{"duration_s": 1e-9, "escape_latency_s": 0.08,
+		"target_quadrant_time_ratio": 0.08 / duration, "thigmotaxis_time_ratio": 0.08 / duration, "platform_crossings_count": 0} {
 		g, w := value(got, key), value(want, key)
 		t.Logf("%s: worker %.4f, truth %.4f", key, g, w)
 		if math.Abs(g-w) > tolerance {
-			t.Errorf("%s: worker %.4f, truth %.4f, tolerance %.2f", key, g, w, tolerance)
+			t.Errorf("%s: worker %.4f, truth %.4f, tolerance %.4f", key, g, w, tolerance)
 		}
 	}
-	g, w := value(got, "distance_cm"), value(want, "distance_cm")
-	t.Logf("distance_cm: worker %.4f, truth %.4f", g, w)
-	if math.Abs(g-w) > 0.02*w {
-		t.Errorf("distance_cm: worker %.4f, truth %.4f", g, w)
+	for _, key := range []string{"path_length_cm", "mean_distance_to_platform_cm"} {
+		g, w := value(got, key), value(want, key)
+		t.Logf("%s: worker %.4f, truth %.4f", key, g, w)
+		if math.Abs(g-w) > 0.02*w {
+			t.Errorf("%s: worker %.4f, truth %.4f", key, g, w)
+		}
 	}
 
-	// Movement boundaries: each immobile interval and center interval of the
-	// truth has a counterpart starting and ending within 0.08 s.
+	// Platform visits: each platform interval of the truth has a counterpart
+	// starting and ending within 0.08 s.
 	const boundary = 80_000
 	for _, wantInterval := range want.Intervals {
 		matched := false

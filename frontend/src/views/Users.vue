@@ -37,13 +37,35 @@ const columns = computed(() => [
     sortOrder: sortOrderFor("createdAt"),
     render: (row) => new Date(row.createdAt).toLocaleDateString(locale.value),
   },
+  {
+    title: t("users.lastLogin"),
+    key: "lastLoginAt",
+    render: (row) =>
+      row.lastLoginAt
+        ? h("span", { title: lastLogin(row) }, relativeLogin(row.lastLoginAt))
+        : h("span", { class: "muted" }, t("users.neverLoggedIn")),
+  },
 ]);
+
+// "3 hours ago", with the exact date and time on hover.
+const lastLogin = (row) =>
+  row.lastLoginAt ? new Date(row.lastLoginAt).toLocaleString(locale.value, { dateStyle: "medium", timeStyle: "short" }) : t("users.neverLoggedIn");
+function relativeLogin(at) {
+  const seconds = Math.round((new Date(at).getTime() - Date.now()) / 1000);
+  const units = [["year", 31536000], ["month", 2592000], ["day", 86400], ["hour", 3600], ["minute", 60]];
+  const rtf = new Intl.RelativeTimeFormat(locale.value, { numeric: "auto" });
+  for (const [unit, size] of units) {
+    if (Math.abs(seconds) >= size) return rtf.format(Math.round(seconds / size), unit);
+  }
+  return rtf.format(0, "minute");
+}
 
 const exportColumns = [
   { key: "name", label: t("common.name") },
   { key: "email", label: t("users.email") },
   { key: "role", label: t("users.role"), value: (row) => t(`roles.${row.role}`) },
   { key: "createdAt", label: t("common.addedAt"), value: (row) => new Date(row.createdAt).toLocaleDateString(locale.value) },
+  { key: "lastLoginAt", label: t("users.lastLogin"), value: (row) => lastLogin(row) },
 ];
 const { exportCsv, exportPdf } = useTableExport({
   state: table.state,

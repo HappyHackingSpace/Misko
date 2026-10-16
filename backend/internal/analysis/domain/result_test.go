@@ -10,7 +10,7 @@ import (
 func submission(run Run) Submission {
 	prefix := run.OutputPrefix()
 	return Submission{
-		WorkerID: run.WorkerID, Attempt: run.Attempt, ModelVersion: "open-field-tracker 1.4.0",
+		WorkerID: run.WorkerID, Attempt: run.Attempt, ModelVersion: "mwm-tracker 1.4.0",
 		Artifacts: []ArtifactInput{
 			{Kind: AnalyzedVideo, ObjectName: prefix + "overlay.mp4"},
 			{Kind: Trajectory, ObjectName: prefix + "trajectory.json"},
@@ -26,7 +26,7 @@ func TestSubmissionsNameTheirOutputsAndPair(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.DurationUs != 8_000_000 || result.TrajectoryObject != run.OutputPrefix()+"trajectory.json" || result.ModelVersion != "open-field-tracker 1.4.0" || len(result.Artifacts) != 3 {
+	if result.DurationUs != 8_000_000 || result.TrajectoryObject != run.OutputPrefix()+"trajectory.json" || result.ModelVersion != "mwm-tracker 1.4.0" || len(result.Artifacts) != 3 {
 		t.Fatalf("result: %+v", result)
 	}
 
