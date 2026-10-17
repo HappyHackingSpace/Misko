@@ -19,13 +19,13 @@ Tasarım:    Deney -> Gruplar (rol + hastalık modeli) -> Rejim kalemleri
 Yürütme:    Denek -> Atama (ömür boyu tek grup) -> Uygulamalar,
                                                    İndüksiyon sonucu
             Test (oturum: zaman noktası x protokol adımı, tek video)
-              -> Test denekleri (hayvan + arena) -> Denemeler
+              -> Test denekleri (denek + arena) -> Denemeler
                                                  -> Kalibrasyon (arena veya düzeltme, bölgelerle)
                                                  -> Puanlama sayfaları (gözlemci puanlamalı paradigmalar)
                                                  -> Analiz çalıştırmaları (AUTOMATED veya SCORED)
                                                     -> Onaylanmış sonuç
 
-Rapor:      hayvan başına kabul edilmiş sonuçlar -> gruplar -> rol tabanlı karşılaştırmalar
+Rapor:      denek başına kabul edilmiş sonuçlar -> gruplar -> rol tabanlı karşılaştırmalar
 ```
 
 ## Kiracılık (tek kiracı, on-prem)
@@ -43,7 +43,7 @@ değil.
 
 Çalışmalar arasında yeniden kullanılan, laboratuvar genelindeki referans veri.
 
-- **Madde:** bir hayvana verilen her şey: etkin bir bileşik, referans ilaç,
+- **Madde:** bir deneğe verilen her şey: etkin bir bileşik, referans ilaç,
   taşıyıcı (serum fizyolojik, %0,5 CMC) ya da bir hastalık modelini indükleyen
   ajan (MPTP, LPS, skopolamin). `kind` (`COMPOUND`, `REFERENCE_DRUG`, `VEHICLE`,
   `INDUCER`) yalnızca seçim listelerine yardım eder; bir maddenin çalışmadaki
@@ -57,18 +57,18 @@ değil.
   `NOVEL_OBJECT`, `POLE`, `TREADMILL`.
 - **Ortam:** tek bir paradigmanın tek bir fiziksel düzeneği; örneğin belirli bir
   su tankı ya da tek kamera altındaki üç yeni nesne kutusundan biri. Ölçüleri
-  değişmeyen, numaralı revizyonlardır. Bir testte hayvan bir **arenaya** konur;
+  değişmeyen, numaralı revizyonlardır. Bir testte denek bir **arenaya** konur;
   arena, bir ortam revizyonudur.
 
 ## Denek
 
-Hayvan: kod, tür (`MOUSE`, `RAT`) ve cinsiyet. Bir denek bir çalışmaya
+Denek: kod, tür (`MOUSE`, `RAT`) ve cinsiyet. Bir denek bir çalışmaya
 katılmadan önce kaydedilebilir. Vücut ağırlıkları deneğe aittir, ölçüm zamanıyla
 kaydedilir ve hiç değişmez.
 
 ## Çalışma tasarımı
 
-Buradaki her şey hiçbir hayvana dokunulmadan önce kararlaştırılır ve çalışma
+Buradaki her şey hiçbir deneğe dokunulmadan önce kararlaştırılır ve çalışma
 başladığında dondurulur.
 
 - **Deney:** kod, başlık, açıklama, hipotez, randomizasyon yöntemi ve kör olup
@@ -90,7 +90,7 @@ başladığında dondurulur.
   günü. Bir grubun en fazla bir tedavi kalemi olur; böylece bir tedavi grubu tek
   bir maddeyi tek bir dozda alır. Aynı maddenin tedavi grupları doz yanıtını
   oluşturur.
-- **Zaman noktası:** hayvanların test edildiği an; gün 0'a göre çalışma günü
+- **Zaman noktası:** deneklerin test edildiği an; gün 0'a göre çalışma günü
   olarak (gün -1'de Baseline, gün 14'te Day 14).
 - **Protokol:** test bataryası; sıralı adımlardan oluşan, değişmeyen sürümleri
   vardır. Bir adım; paradigma sürümü, deneme türü, deneme sayısı ve oturum
@@ -107,35 +107,35 @@ hastalık kontrolü.
 
 ## Yürütme
 
-- **Atama:** bir hayvan **ömür boyu tam olarak bir gruba, dolayısıyla tek bir
-  çalışmaya** aittir. Hayvanlar elle atanabilir ya da hedef sayılarına kadar
+- **Atama:** bir denek **ömür boyu tam olarak bir gruba, dolayısıyla tek bir
+  çalışmaya** aittir. Denekler elle atanabilir ya da hedef sayılarına kadar
   gruplara rastgele dağıtılabilir. Taslakta atama taşınabilir veya kaldırılabilir;
   çalışma başladıktan sonra grup sabittir.
-- **Dışlama:** çalışmadan ayrılan bir hayvan (`DIED`, `HUMANE_ENDPOINT`,
+- **Dışlama:** çalışmadan ayrılan bir denek (`DIED`, `HUMANE_ENDPOINT`,
   `INDUCTION_FAILED`, `TECHNICAL`, `OTHER`) bir gerekçeyle dışlanır, asla
   silinmez. Raporda görünmeye devam eder ve yeniden test veya analiz edilmez.
 - **Uygulama:** gerçekten verilen her doz; hastalık indüksiyonu ve taşıyıcı
   dahil. İsteğe bağlı olarak karşıladığı rejim kalemine bağlanır. Kilogram başına
   bir doz, hesaplandığı ağırlığı kaydeder. Günlük doz takvimi rejim
   kalemlerinden ve gün 0'dan türetilir.
-- **İndüksiyon sonucu:** hayvanın hastalık modelinin doğrulanıp doğrulanmadığı;
+- **İndüksiyon sonucu:** deneğin hastalık modelinin doğrulanıp doğrulanmadığı;
   bir kez kaydedilir.
 
 ## Test (tek oturum)
 
 `Test`, çalışan bir deneyin tek bir oturumudur: bir zaman noktası, bir protokol
 adımı, **tek bir video**. Her biri kendi arenasında olan bir veya daha fazla
-hayvanı, yani **test deneklerini** kaydeder; genellikle bir, bazen tek kamera
+deneği, yani **test deneklerini** kaydeder; genellikle bir, bazen tek kamera
 altında en fazla üç arena.
 
 - Durum: `PLANNED -> IN_PROGRESS -> COMPLETED`, ya da gerekçeyle `CANCELLED`.
-- Hayvanlar yalnızca test planlıyken katılır veya ayrılır. Bir hayvan her zaman
+- Denekler yalnızca test planlıyken katılır veya ayrılır. Bir denek her zaman
   noktası ve protokol adımında en fazla bir kez test edilir ve her arena adımın
   paradigmasını çalıştırmalıdır.
-- Denemeler hayvan başına kaydedilir ve yalnızca eklenir; tekrarlanan bir deneme
+- Denemeler denek başına kaydedilir ve yalnızca eklenir; tekrarlanan bir deneme
   bir sonraki deneme numarasını alır.
-- Farklı gruplardaki hayvanlar aynı oturumu paylaşabilir. Bir ölçümün grubu her
-  zaman hayvanın atamasından gelir; grupla ilgili hiçbir şey teste kopyalanmaz.
+- Farklı gruplardaki denekler aynı oturumu paylaşabilir. Bir ölçümün grubu her
+  zaman deneğin atamasından gelir; grupla ilgili hiçbir şey teste kopyalanmaz.
 
 ## Video, kalibrasyon ve analiz
 
@@ -156,14 +156,14 @@ altında en fazla üç arena.
   sayfa puanlanırken `DRAFT`, puanlanan olay türleri ve kayıt uzunluğu
   sabitlendiğinde `COMPLETED` olur; yeniden açmak bir sonraki sürümü başlatır ve
   tamamlanmış sayfalar asla değişmez.
-- **Analiz çalıştırması:** test deneği başına bir tane. Bir worker hayvanı
+- **Analiz çalıştırması:** test deneği başına bir tane. Bir worker deneği
   arenasının kırpma alanında izleyip yörüngeyi yüklediğinde `method` alanı
   `AUTOMATED` olur (`MWM`); tamamlanmış bir puanlama sayfasından
   hesaplandığında ise puanlayanla birlikte, worker, kalibrasyon ve video çifti
   olmadan `SCORED` olur. Her iki durumda da Mişko her metriği ve olayı kendisi
   hesaplar. Girdiler sabitlenir; yeniden analiz ya da yeniden puanlama yeni bir
   çalıştırmadır ve eski çalıştırmalar kalır.
-- **Onaylanmış sonuç:** her sonucu bir kişi onaylar. Bir hayvanın ilk başarılı
+- **Onaylanmış sonuç:** her sonucu bir kişi onaylar. Bir deneğin ilk başarılı
   çalıştırması `PENDING` bir sonuç açar; inceleyen kişi kabul eder ya da bir
   gerekçeyle reddeder. Kör bir çalışmada inceleyen kişi grubu, hastalığı, maddeyi
   veya dozu görmez. İstatistiklere yalnızca kabul edilen sonuçlar girer.
@@ -173,7 +173,7 @@ yoktur.
 
 ## Rapor
 
-Deney birimi hayvandır. Her sonlanım noktası için rapor, dışlanmamış hayvanların
+Deney birimi denektir. Her sonlanım noktası için rapor, dışlanmamış deneklerin
 kabul edilmiş sonuçlarını alır ve grup başına n, ortalama, SD, SEM ve başlangıca
 göre değişimi, ayrıca grup rollerinden çıkan karşılaştırmaları verir:
 

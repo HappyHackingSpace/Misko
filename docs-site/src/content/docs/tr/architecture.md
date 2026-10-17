@@ -45,14 +45,14 @@ Alanlar çalışma modelini izler (bkz. [Alan modeli](../domain/)):
 |---|---|
 | `identity`, `laboratory` | Kullanıcılar, giriş, roller, laboratuvar singleton'ı |
 | `catalog` | Maddeler ve hastalık modelleri |
-| `subjects` | Hayvanlar ve vücut ağırlıkları |
+| `subjects` | Denekler ve vücut ağırlıkları |
 | `experiments` | Deneyler ve yaşam döngüleri, gruplar, rejim kalemleri, zaman noktaları, sonlanım noktaları, atama ve dışlama |
 | `dosing` | Uygulamalar, günlük doz takvimi, indüksiyon sonuçları |
 | `paradigms` | Sürümlü paradigma kataloğu ve metrik motoru (yalnızca kod) |
 | `environments`, `protocols` | Ölçüm revizyonlu arenalar; bir deneyin test bataryaları |
-| `tests` | Oturumlar, arenalarıyla birlikte içlerindeki hayvanlar, denemeler, yorumlar |
-| `media`, `calibration` | Bir testin videosu; arena başına kalibrasyon ve hayvan başına düzeltmeler |
-| `analysis` | Worker'lar, hayvan başına çalıştırmalar, sonuç yayını ve onayı |
+| `tests` | Oturumlar, arenalarıyla birlikte içlerindeki denekler, denemeler, yorumlar |
+| `media`, `calibration` | Bir testin videosu; arena başına kalibrasyon ve denek başına düzeltmeler |
+| `analysis` | Worker'lar, denek başına çalıştırmalar, sonuç yayını ve onayı |
 | `reports`, `dashboard` | Salt okunur çalışma raporu, CSV dışa aktarma ve açılış ekranı sayıları |
 
 Alanlar birbirini import etmez. Biri diğerine başvurduğunda, örneğin bir
@@ -93,11 +93,11 @@ Panel ──► Go API ──► PostgreSQL (kayıtlar, metrikler, olaylar)
 ```
 
 Bir test, tek videosu ve her biri kendi arenasında olan bir veya daha fazla
-hayvanı olan tek bir oturumdur. Jobs süreci hayvan başına bir çalıştırma kuyruğa
-alır; worker bunu, kırpma alanı arenanın karedeki bölgesi olan o hayvanın arena
+deneği olan tek bir oturumdur. Jobs süreci denek başına bir çalıştırma kuyruğa
+alır; worker bunu, kırpma alanı arenanın karedeki bölgesi olan o deneğin arena
 kalibrasyonuyla üstlenir. Worker sabitlenmiş kaynak videoyu okur ve bir analiz
 videosu ile bir `misko.trajectory.v1` yörüngesi yükler. Metrik göndermez ve
-hayvanın grubunu veya tedavisini hiç öğrenmez. API yüklenen her nesneyi bildirilen boyut, sağlama ve içerik türüne
+deneğin grubunu veya tedavisini hiç öğrenmez. API yüklenen her nesneyi bildirilen boyut, sağlama ve içerik türüne
 karşı doğrular, paradigmanın kalite kurallarını uygular; ardından Go metrik
 motoru metrikleri ve olayları yörüngeden hesaplar. Böylece takibi ne üretirse
 üretsin, her ölçümün tek bir tanımı API içinde kalır. Bir sonuç, ancak bir kişi

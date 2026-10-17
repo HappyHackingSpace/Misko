@@ -637,7 +637,7 @@ export default {
       sexMale: "Erkek",
       sexUnknown: "Bilinmiyor",
       title: "Denekler (Fareler)",
-      subtitle: "Laboratuvar hayvanları; tür ve cinsiyet bilgileriyle.",
+      subtitle: "Laboratuvar denekleri; tür ve cinsiyet bilgileriyle.",
       code: "Kod",
       sex: "Cinsiyet",
       male: "Erkek",

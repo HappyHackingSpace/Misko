@@ -20,7 +20,7 @@ Her sonuç dört katmandan geçer:
 | `Calibration` | Sabit düzenek veya tek test oturumu için pikselden cm'ye eşleme. |
 | `MetricDefinition` | Her metrik anahtarının birim, formül, normalizasyon ve QC bağımlılığını tanımlayan kod sahipli sözlük. |
 
-CV hayvanı takip eder. Bilimsel kontratı Mişko tanımlar.
+CV deneği takip eder. Bilimsel kontratı Mişko tanımlar.
 
 ## Paradigmalar şablondur
 
@@ -89,8 +89,8 @@ vardır.
 | `NOVEL_OBJECT` | Gözlemci puanlar | `exploration` (`novel` ya da `familiar` etiketli aralıklar) | yok |
 
 - **Takip edilen paradigmaları** bir işçi analiz eder. Testin videosu
-  doğrulandığında, hayvanın kalibrasyonu geçerli olduğunda ve etkin bir işçinin
-  yetenekleri arasında paradigma sürümü bulunduğunda jobs süreci hayvan başına
+  doğrulandığında, deneğin kalibrasyonu geçerli olduğunda ve etkin bir işçinin
+  yetenekleri arasında paradigma sürümü bulunduğunda jobs süreci denek başına
   bir `AUTOMATED` çalıştırma kuyruğa ekler. İşçi, kalibrasyonun santimetre
   çerçevesinde bir yörünge yükler; API ondan asla metrik kabul etmez.
 - **Gözlemci puanlamalı paradigmalar** asla işçi çalıştırması almaz ve bir işçi
@@ -102,7 +102,7 @@ vardır.
   gözlenmedi sayılır; puanlanmamış bir olay türünün metrikleri sıfır değil,
   eksik olur.
 
-Her iki çalıştırma türü de aynı hayvan başına sonucu besler; bu sonuç insan
+Her iki çalıştırma türü de aynı denek başına sonucu besler; bu sonuç insan
 onayı için `PENDING` olarak açılır ve yalnızca kabul edilen sonuçlar rapora
 girer.
 
@@ -122,7 +122,7 @@ Bölgeler iki yerden birinden gelir:
   saklanır ve kalibrasyonun uydurulan dönüşümüyle santimetreye çevrilir; karenin
   içinde kalmaları gerekir ve kalibrasyon kaydedildikten sonra asla değişmezler
   (`014_calibration_zones.sql` migrasyonu). Her zorunlu bölgesi olan geçerli bir
-  kalibrasyon uygulanana kadar hayvan `WAITING_FOR_CALIBRATION` durumunda kalır
+  kalibrasyon uygulanana kadar denek `WAITING_FOR_CALIBRATION` durumunda kalır
   ve analiz edilmez. İşçi takibi bölgelerin dışbükey zarfıyla (bir payla)
   sınırlar; böylece bölgeler arasında kalan ve hiçbir bölgeye ait olmayan
   alanlar da takip edilir.
@@ -130,7 +130,7 @@ Bölgeler iki yerden birinden gelir:
 ### Çıkarımlı örnekler
 
 `misko.trajectory.v1` her örnek için isteğe bağlı bir `inferred` alanı taşır.
-Bir worker, hayvanın gizli olduğu bir kare dizisini `tracked` ve
+Bir worker, deneğin gizli olduğu bir kare dizisini `tracked` ve
 `inferred: true` olarak işaretlenmiş örneklerle doldurabilir; bu örnekler
 takip edilmiş sayılır ama takip güveni ortalamasına girmez. Güncel katalogdaki
 hiçbir paradigma buna ihtiyaç duymaz ve paketle gelen worker çıkarımlı örnek
