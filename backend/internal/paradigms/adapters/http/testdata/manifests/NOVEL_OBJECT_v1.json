@@ -44,30 +44,59 @@
       "default": 50
     },
     {
-      "key": "object_zone_radius_cm",
+      "key": "min_bout_s",
       "scope": "ANALYSIS",
-      "label": "Exploration radius",
-      "help": "Sniffing directed at an object counts as exploration only within this distance of the object.",
-      "unit": "cm",
+      "label": "Minimum exploration bout",
+      "help": "A visit to an object's zone counts as exploration only when the subject stays in the zone at least this long; shorter passes are ignored.",
+      "unit": "s",
       "valueType": "number",
-      "min": 1,
-      "max": 10,
-      "default": 3
+      "min": 0,
+      "max": 5,
+      "default": 0.3
     },
     {
       "key": "min_total_exploration_s",
       "scope": "ANALYSIS",
       "label": "Minimum total exploration time",
-      "help": "No discrimination index is computed for animals whose combined exploration of both objects falls below this value. Set to 0 to disable the criterion.",
+      "help": "No discrimination index is computed for subjects whose combined exploration of both objects falls below this value. Set to 0 to disable the criterion.",
       "unit": "s",
       "valueType": "number",
       "min": 0,
       "max": 120,
       "default": 0
+    },
+    {
+      "key": "max_sample_gap_s",
+      "scope": "ANALYSIS",
+      "label": "Maximum tracking gap",
+      "help": "Longest tracking dropout that is bridged; movement across a longer gap is excluded. Increase only for low-frame-rate videos.",
+      "unit": "s",
+      "valueType": "number",
+      "min": 0.01,
+      "max": 5,
+      "default": 0.5
     }
   ],
-  "zones": [],
-  "inputEvents": [
+  "zones": [
+    {
+      "key": "novel_object",
+      "label": "Novel object",
+      "role": "OBJECT",
+      "geometry": "Drawn on the calibration around the novel object, enclosing the object's footprint plus the exploration distance (about 2 cm). One circle or polygon.",
+      "calibrated": true,
+      "required": true
+    },
+    {
+      "key": "familiar_object",
+      "label": "Familiar object",
+      "role": "OBJECT",
+      "geometry": "Drawn on the calibration around the familiar object, enclosing the object's footprint plus the exploration distance (about 2 cm). One circle or polygon.",
+      "calibrated": true,
+      "required": true
+    }
+  ],
+  "inputEvents": [],
+  "events": [
     {
       "type": "exploration",
       "label": "Object exploration",
@@ -77,25 +106,7 @@
         "familiar"
       ],
       "single": false,
-      "definition": "Nose directed toward an object within object_zone_radius_cm; climbing or sitting on the object does not count as exploration."
-    }
-  ],
-  "events": [
-    {
-      "type": "exploration_novel",
-      "label": "Novel object exploration",
-      "kind": "INTERVAL",
-      "labels": [],
-      "single": false,
-      "definition": "Novel object exploration bouts, with overlapping intervals merged."
-    },
-    {
-      "type": "exploration_familiar",
-      "label": "Familiar object exploration",
-      "kind": "INTERVAL",
-      "labels": [],
-      "single": false,
-      "definition": "Familiar object exploration bouts, with overlapping intervals merged."
+      "definition": "An exploration bout is a run of contiguous counted intervals whose earlier sample lies in the object's zone and that lasts at least min_bout_s; shorter visits are not exploration. The label names the object: novel or familiar. Exploration is approximated by the body center in the zone, so sitting on the object counts too."
     }
   ],
   "metrics": [
@@ -105,11 +116,15 @@
       "description": "Time spent exploring the novel object.",
       "unit": "s",
       "valueType": "number",
-      "definition": "Total length of the union of novel object exploration intervals; overlapping time is counted once.",
-      "formula": "union length(novel intervals)",
-      "missingWhen": "Missing (NOT_SCORED) when exploration was not scored.",
+      "definition": "Coordinates are in centimeters in the calibration's arena frame: origin at a corner of the arena floor, x to the right and y down the image. A counted interval is a pair of consecutive tracked samples separated by 0 \u003c dt \u003c= max_sample_gap_s. Total length of the novel object's exploration bouts.",
+      "formula": "sum(novel bout lengths)",
+      "missingWhen": "Missing (NO_VALID_INTERVALS) when there are no counted intervals.",
       "inputs": [
-        "exploration events"
+        "samples",
+        "max_sample_gap_s",
+        "min_bout_s",
+        "novel_object zone",
+        "familiar_object zone"
       ],
       "min": 0,
       "max": 86400,
@@ -121,11 +136,15 @@
       "description": "Time spent exploring the familiar object.",
       "unit": "s",
       "valueType": "number",
-      "definition": "Total length of the union of familiar object exploration intervals.",
-      "formula": "union length(familiar intervals)",
-      "missingWhen": "Missing (NOT_SCORED) when exploration was not scored.",
+      "definition": "Total length of the familiar object's exploration bouts.",
+      "formula": "sum(familiar bout lengths)",
+      "missingWhen": "Missing (NO_VALID_INTERVALS) when there are no counted intervals.",
       "inputs": [
-        "exploration events"
+        "samples",
+        "max_sample_gap_s",
+        "min_bout_s",
+        "novel_object zone",
+        "familiar_object zone"
       ],
       "min": 0,
       "max": 86400,
@@ -139,9 +158,13 @@
       "valueType": "number",
       "definition": "Sum of the novel and familiar object exploration times.",
       "formula": "novel_object_time_s + familiar_object_time_s",
-      "missingWhen": "Missing (NOT_SCORED) when exploration was not scored.",
+      "missingWhen": "Missing (NO_VALID_INTERVALS) when there are no counted intervals.",
       "inputs": [
-        "exploration events"
+        "samples",
+        "max_sample_gap_s",
+        "min_bout_s",
+        "novel_object zone",
+        "familiar_object zone"
       ],
       "min": 0,
       "max": 86400,
@@ -155,9 +178,13 @@
       "valueType": "number",
       "definition": "Relative exploration of the novel object, from -1 (familiar object only) to +1 (novel object only).",
       "formula": "(novel - familiar) / (novel + familiar)",
-      "missingWhen": "Missing (NOT_SCORED) when exploration was not scored, (BELOW_EXPLORATION_CRITERION) when total exploration time is below min_total_exploration_s, and (ZERO_DENOMINATOR) when it is 0.",
+      "missingWhen": "Missing (NO_VALID_INTERVALS) when there are no counted intervals, (BELOW_EXPLORATION_CRITERION) when total exploration time is below min_total_exploration_s, and (ZERO_DENOMINATOR) when it is 0.",
       "inputs": [
-        "exploration events",
+        "samples",
+        "max_sample_gap_s",
+        "min_bout_s",
+        "novel_object zone",
+        "familiar_object zone",
         "min_total_exploration_s"
       ],
       "min": -1,
@@ -167,10 +194,22 @@
   ],
   "qc": [
     {
-      "key": "max_event_time_uncertainty_s",
+      "key": "min_tracking_confidence",
+      "operator": "\u003e=",
+      "value": 0.7,
+      "unit": "ratio"
+    },
+    {
+      "key": "max_lost_frame_ratio",
       "operator": "\u003c=",
-      "value": 0.5,
-      "unit": "s"
+      "value": 0.1,
+      "unit": "ratio"
+    },
+    {
+      "key": "max_calibration_error_cm",
+      "operator": "\u003c=",
+      "value": 2,
+      "unit": "cm"
     }
   ]
 }

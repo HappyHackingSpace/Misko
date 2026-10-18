@@ -23,7 +23,7 @@ func morrisWaterMazeV1() definition {
 			Name: T("Morris water maze", "Morris su labirenti"),
 			Description: T(
 				"The animal swims in a circular pool of opaque water and learns to locate a submerged escape platform using distal cues around the room. Assesses spatial learning and memory.",
-				"Hayvan, bulanık su dolu yuvarlak bir havuzda yüzer ve odadaki ipuçlarını kullanarak gizli bir platformu bulmayı öğrenir. Uzamsal öğrenmeyi ve hafızayı ölçer.",
+				"Denek, bulanık su dolu yuvarlak bir havuzda yüzer ve odadaki ipuçlarını kullanarak gizli bir platformu bulmayı öğrenir. Uzamsal öğrenmeyi ve hafızayı ölçer.",
 			),
 			Species: []string{"MOUSE", "RAT"},
 			TrialTypes: []TrialType{
@@ -53,7 +53,7 @@ func morrisWaterMazeV1() definition {
 					Centimeter, 4, 30, 12),
 				param("min_platform_dwell_s", AnalysisScope, T("Minimum platform dwell time", "Kaçış için platformda kalma süresi"),
 					T("The animal must remain on the platform for at least this long for the trial to count as an escape; brief contacts are ignored.",
-						"Denemenin kaçışla bitmiş sayılması için hayvanın platformda en az bu kadar kalması gerekir. Kısa temaslar sayılmaz."),
+						"Denemenin kaçışla bitmiş sayılması için deneğin platformda en az bu kadar kalması gerekir. Kısa temaslar sayılmaz."),
 					Second, 0, 10, 1),
 				gapParameter,
 			},
@@ -61,7 +61,7 @@ func morrisWaterMazeV1() definition {
 			Events: append(occupancyEvents(zoneList, "platform"), entryEvents(zoneList, "platform")...),
 			Metrics: []MetricDefinition{
 				metric("duration_s", T("Tracked duration", "Analiz edilen süre"),
-					T("Total time during which the animal was tracked.", "Hayvanın izlenebildiği toplam süre."),
+					T("Total time during which the animal was tracked.", "Deneğin izlenebildiği toplam süre."),
 					Second, 86400, trajectory, J(frame, trackedPair), "sum(dt over counted intervals)", missingNoPairs),
 				metric("escape_latency_s", T("Escape latency", "Kaçış latansı"),
 					T("Time taken to reach the platform; latencies that decrease across trials indicate learning.",
@@ -89,7 +89,7 @@ func morrisWaterMazeV1() definition {
 					Ratio, 1, append(trajectory, "wall_annulus_width_cm"), T("Fraction of the tracked duration in counted intervals whose earlier sample lies in the wall annulus.", "Analiz edilen sürenin, önceki örneği duvar kenarı bölgesinde olan kısmının oranı."), "wall annulus time / duration_s", missingNoPairs),
 				metric("platform_crossings_count", T("Platform crossings", "Platform geçiş sayısı"),
 					T("Number of times the animal crossed the platform location; in a probe trial, more crossings indicate better spatial memory.",
-						"Hayvanın platform konumunun üzerinden kaç kez geçtiği; hafıza testinde daha fazla geçiş daha iyi hafızayı gösterir."),
+						"Deneğin platform konumunun üzerinden kaç kez geçtiği; hafıza testinde daha fazla geçiş daha iyi hafızayı gösterir."),
 					Count, 1e6, platform, T("Number of counted intervals that enter the platform disk; starting the trial on the platform is not a crossing.", "Platform diskine giren sayılan aralıklar; platform üzerinde başlamak geçiş sayılmaz."), "count(platform entries)", missingNoPairs),
 				metric("mean_distance_to_platform_cm", T("Mean distance to platform", "Platforma ortalama uzaklık"),
 					T("Average distance from the platform location; smaller values indicate a more focused search.",

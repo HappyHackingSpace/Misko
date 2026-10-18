@@ -26,8 +26,8 @@ current release. Do not deploy it.
 | Tests as sessions with one or more animals in arenas, trials and comments | Implemented |
 | Video uploads to Google Cloud Storage, one current video per test | Implemented, live storage test pending |
 | Calibration per arena with per-animal overrides | Implemented |
-| Analysis runs per animal and human review of every result | Implemented; the worker tracks the water maze (`MWM`), tested on synthetic video only |
-| Observer scoring of pole, treadmill and novel object | Implemented |
+| Analysis service (jobs) for animals of tests and paradigm trials, human review of every animal's result | Implemented for all four paradigms; the worker is tested on synthetic video only |
+| Paradigm trials: a paradigm tried on one video outside any experiment | Implemented in the API; panel pages pending |
 | Study report with role-based comparisons, CSV export, dashboard | Implemented |
 | Vue panel on the new API | Scaffolded, not complete |
 
@@ -107,7 +107,7 @@ English (such as ş or ğ) take more than one byte each.
 |------|--------|
 | SUPERADMIN, LAB_MANAGER | Everything, including managing users, laboratory settings and analysis workers |
 | RESEARCHER | Design studies, maintain the catalog, subjects, apparatus and protocols, plan and run tests; read everything |
-| TECHNICIAN | Record weights, run tests, record doses and induction outcomes, calibrate one animal of a test, review analysis results; read everything |
+| TECHNICIAN | Record weights, run tests, record doses and induction outcomes, calibrate one animal of a test, review analysis results, run paradigm trials; read everything |
 | VIEWER | Read only |
 
 | Permission | Covers |
@@ -117,7 +117,8 @@ English (such as ş or ğ) take more than one byte each.
 | `subject:write` | Subjects |
 | `weight:write` | Body weights |
 | `test:write` | Planning tests: creating them, adding or removing animals, cancelling |
-| `test:run` | Running tests and trials, videos, per-animal calibration overrides, doses, induction outcomes, manual analysis runs, result review |
+| `test:run` | Running tests and trials, videos, per-animal calibration overrides, doses, induction outcomes, manual analysis of an animal, result review |
+| `trial:run` | Paradigm trials: creating them, uploading and calibrating their video, analysing them again, deleting them |
 | `*:read` | Reading everything |
 
 A role change takes effect on the user's next request. Deleting a user signs
@@ -285,9 +286,10 @@ code and cannot be created, edited or deleted through the API.
 - `GET /api/paradigms` lists paradigms with their published versions. Four
   paradigms are published: `MWM`, `NOVEL_OBJECT`, `POLE` and `TREADMILL`, in
   two categories (`LEARNING_MEMORY` for `MWM` and `NOVEL_OBJECT`, `MOTOR` for
-  `POLE` and `TREADMILL`). `MWM` is tracked by an analysis worker once a worker
-  is registered for the paradigm version. The other three (`NOVEL_OBJECT`, `POLE`, `TREADMILL`) are scored by
-  an observer on the video (see [Observer scoring](#observer-scoring)).
+  `POLE` and `TREADMILL`). Every paradigm is analysed automatically: an
+  analysis worker tracks the subject on the video once a worker is registered
+  for the paradigm version, Misko derives every event and metric, and a person
+  only reviews the result. There is no observer scoring.
 - `GET /api/paradigms/{key}` returns the latest version, and
   `GET /api/paradigms/{key}/versions/{version}` returns one exact version. Each
   version lists its parameters, each with its scope (`APPARATUS` and `ANALYSIS`
@@ -297,14 +299,20 @@ code and cannot be created, edited or deleted through the API.
   missing. Names, labels and descriptions follow `?lang=` or
   `Accept-Language` (`en` or `tr`).
 
-Some paradigms need more than a tracked position:
+Every paradigm is measured from the tracked position of the subject and its
+zones:
 
-- Zones come from the apparatus parameters, such as the water maze platform.
-  A paradigm may also declare zones marked `calibrated`, drawn as circles or
-  polygons; none of the current catalog does.
-- `inputEvents` lists observations that are scored rather than tracked, such as
-  pole test turns, a treadmill exhaustion or novel object exploration. An event type that
-  was not scored produces missing metrics, not zeros.
+- The water maze derives its zones from the apparatus parameters (platform,
+  target quadrant, wall zone). The other paradigms declare zones marked
+  `calibrated`, drawn as circles or polygons with the calibration: the novel
+  and the familiar object (`novel_object`, `familiar_object`), the pole and its
+  base (`pole`, `base`) and the treadmill's shock grid (`shock_grid`).
+- `events` lists what Misko derives from the positions and the zones:
+  exploration bouts labelled `novel` or `familiar`, the pole turn, base and
+  fall, treadmill shocks and exhaustion, water maze platform visits. Every rule
+  threshold (minimum bout, turn descent, fall speed, time on the grid for a
+  shock or for exhaustion) is an `ANALYSIS` parameter with a standard default
+  that a lab can change per environment. `inputEvents` is always empty.
 
 Results always name the paradigm version, the metric engine version and the
 result schema version they were computed with. A metric that cannot be computed
@@ -426,14 +434,18 @@ to know how camera pixels map to centimeters in each arena.
 - Both kinds take the same points: at least 4 FIT points and at least 3 separate
   CHECK points, each with its pixel position and its real position in
   centimeters. The FIT points define the mapping and the CHECK points test it. If
-  a CHECK point is off by more than the paradigm allows (2 cm for the trajectory
-  paradigms), the calibration is stored as `REJECTED`.
-- A paradigm with `calibrated` zones (none of the current catalog has any)
-  also needs those zones drawn on the same frame. Send them as `zones` in
-  pixels, for example
-  `{"key": "zone_a", "polygon": [{"x": 300, "y": 480}, ...]}` or
-  `{"key": "zone_b", "circle": {"x": 960, "y": 540, "radius": 60}}`; a key may
-  have several shapes. Every required zone needs a
+  a CHECK point is off by more than the paradigm allows (2 cm), the calibration
+  is stored as `REJECTED`. The measurement plane is `ARENA_FLOOR`,
+  `WATER_SURFACE`, `APPARATUS_TOP`, or `APPARATUS_SIDE` for rigs filmed from the
+  side (the pole and the treadmill lane).
+- A paradigm with `calibrated` zones (novel object, pole, treadmill) also needs
+  those zones drawn on the same frame. Send them as `zones` in pixels, for
+  example `{"key": "base", "polygon": [{"x": 300, "y": 480}, ...]}` or
+  `{"key": "novel_object", "circle": {"x": 960, "y": 540, "radius": 60}}`; a
+  key may have several shapes. Without a required zone the calibration is
+  refused (`calibration.missingZone`). A per animal override on the test video
+  carries its own zones, for example when the novel object is on the other
+  side. Every required zone needs a
   shape and every shape must lie inside the frame. Misko converts them to
   centimeters with the calibration and returns each zone in both. The worker
   receives them with its job, and the metrics use the centimeter shapes. In the
@@ -444,8 +456,12 @@ to know how camera pixels map to centimeters in each arena.
 - World points must use the frame the paradigm's zones are defined in. For the
   water maze that frame is tank-centred: (0, 0) is the tank centre, x points
   east and y north, so the wall points are (r, 0), (0, r), (-r, 0) and (0, -r)
-  with r = tank diameter / 2. A paradigm with calibrated zones may use any
-  frame.
+  with r = tank diameter / 2. The novel object arena is seen from above with
+  the origin at a corner of the floor, x to the right and y down the image, and
+  its points lie within the arena. The pole is seen from the side with x
+  horizontal and y the height above the base (base at 0, top at the pole
+  length); the treadmill from the side with x along the lane from the shock
+  grid (0) to the front. Use at least four non-collinear points of the rig.
 - To fix a calibration, send a new one with `supersedesId` set to the latest
   calibration of the same arena or animal. Earlier calibrations are kept.
 - `GET /api/tests/{id}/calibration-status` lists every animal of a test:
@@ -456,86 +472,97 @@ to know how camera pixels map to centimeters in each arena.
 ### Video analysis
 
 Tracking runs in separate analysis workers that talk to the API. The worker in
-the `worker/` folder tracks recorded fixed-camera video of the tracked
-paradigm, `MWM` version 1. It has only been tested on synthetic video so far;
+the `worker/` folder tracks the subject's centroid in recorded fixed-camera
+video of every paradigm at version 1. It has only been tested on synthetic video so far;
 do not use its results for research until it has been checked against a
 manually annotated recording.
 
+The analysis service analyses one video with one paradigm version, its
+parameters and a copy of the calibration. Each piece of work is a **job**: what
+it analyses never changes, so analysing again creates a new job and earlier
+jobs stay. Jobs are requested by an animal of a test (an experiment) or by a
+paradigm trial; the service itself knows nothing about experiments.
+
 - A lab manager registers a worker with `POST /api/analysis/workers`, giving its
   name, model version and the paradigm versions it supports. Register the
-  bundled worker with model version `misko-tracker-bgsub 2.0.0` and `MWM` at
-  version 1 (see [Installation](../installation/#analysis-worker)).
-  Observer-scored paradigms are refused with `worker.unknownCapability`. The
+  bundled worker with the paradigms it supports at version 1 (see
+  [Installation](../installation/#analysis-worker)). Versions outside the
+  catalog are refused with `worker.unknownCapability`. The
   response shows the worker's token only once; store it in the worker's secret
   configuration.
   `POST /api/analysis/workers/{id}/disable` revokes it. Start the worker with
   `MISKO_WORKER_TOKEN` set, for example
   `docker compose --profile worker up -d worker`.
-- Every `JOB_INTERVAL` (10 seconds by default) the `jobs` process queues one run
-  per animal of a test, when the experiment is running or completed, the animal
-  is not excluded, the test's video is verified, the animal's calibration is
-  valid (when the paradigm needs one) and a worker supports the paradigm.
-  Observer-scored paradigms never get such runs.
-- The worker finds the animal inside its arena's crop in every frame, converts
-  its position to centimeters, and uploads the positions (the trajectory) and an
-  annotated video. It never learns the animal's group or treatment. Misko
-  computes every metric and event from the trajectory; a worker cannot send its
-  own numbers. If too many frames are lost or the tracking confidence is too
-  low, the run is `FAILED` with a `QC_FAILED` reason and nothing is published.
-  A worker may mark samples as inferred (the optional `inferred` flag), for
-  example while the animal is hidden: they count as tracked, but not in the
-  confidence mean. The bundled worker sends none.
-- Every run has a `method`: `AUTOMATED` for a worker run, `SCORED` for a run
-  computed from an observer's scoring (with `scoredBy` and no worker,
-  calibration or video pair).
-- A run records exactly what was analyzed: the video version, the clip, the
-  calibration, the paradigm version and the parameters. To analyze an animal
-  again, a technician (or a role above) calls
+- Every `JOB_INTERVAL` (10 seconds by default) the `jobs` process submits one
+  job per animal of a test, when the experiment is running or completed, the
+  animal is not excluded, the test's video is verified and the animal's
+  calibration is valid with every required zone. It also analyses paradigm
+  trials that became ready (below). A job waits in the queue until a worker
+  that supports its paradigm claims it.
+- The worker finds the animal inside the calibration's crop in every frame,
+  converts its position to centimeters, and uploads the positions (the
+  trajectory) and an annotated video. It never learns the animal's group or
+  treatment. Misko computes every metric and event from the trajectory; a
+  worker cannot send its own numbers. If too many frames are lost or the
+  tracking confidence is too low, the job is `FAILED` with a `QC_FAILED` reason;
+  the quality figures (lost and inferred ratios, mean confidence) are kept
+  with the job either way. A worker may mark samples as inferred (the optional
+  `inferred` flag), for example while the animal is hidden: they count as
+  tracked, but not in the confidence mean. The bundled worker sends none.
+- A job records exactly what was analysed: the video version, the clip, a copy
+  of the calibration with its zones, the paradigm version and the parameters.
+  To analyse an animal again, a technician (or a role above) calls
   `POST /api/analysis/test-subjects/{testSubjectId}/runs`. Earlier results stay.
-- `GET /api/tests/{id}/analysis-runs` and `GET /api/analysis-runs/{runId}` show
-  runs and their metrics and events. `GET /api/analysis-runs/{runId}/video-pair`
-  returns short-lived links to the original and analyzed video with the offsets
-  needed to play them in sync.
+- `GET /api/tests/{id}/analysis-runs` lists the jobs of a test's animals.
+  `GET /api/analysis/jobs/{jobId}` shows a job with its metrics, events and
+  quality, `GET /api/analysis/jobs/{jobId}/video-pair` returns short-lived links
+  to the original and analysed video with the offsets needed to play them in
+  sync, and `GET /api/analysis/jobs/{jobId}/outputs/TRAJECTORY/read-url` a link
+  to the trajectory for drawing the track. The older
+  `GET /api/analysis-runs/{jobId}` routes still answer.
 
-### Observer scoring
+### Paradigm trials
 
-Pole, treadmill and novel object tests are scored by a person on the
-test's current video. Technicians and the roles above them can score; everyone
-signed in can read.
+A paradigm trial tries a paradigm version on one video in one arena, outside
+any experiment: to check a new rig, a camera position or a threshold. It has no
+groups, no review and no report, and its results never move into an
+experiment. Technicians and the roles above them run trials (`trial:run`);
+everyone can read them.
 
-- `GET /api/tests/{id}/subjects/{testSubjectId}/scoring` returns the paradigm's
-  input events (type, `POINT` or `INTERVAL`, labels such as `novel` and
-  `familiar`, whether it is scored once), the current video's clip and the
-  newest scoring sheet with its events.
-- `POST .../scoring/events` with `{type, label?, startUs, endUs?}` adds an event
-  to the draft sheet (the first event starts version 1). Times are microseconds
-  from the clip start. `PATCH .../events/{eventId}` replaces an event and
-  `DELETE` removes it.
-- `POST .../scoring/complete` with `{scoredEventTypes?, durationUs?}` fixes which
-  event types were watched for (default all) and the recording length (default
-  the clip). The engine computes the metrics and a `SUCCEEDED` run with method
-  `SCORED` is stored; its result opens `PENDING` in the review queue like any
-  other.
-- `POST .../scoring/reopen` starts the next sheet version with a copy of the
-  events; completing it adds another run the reviewer can choose. Completed
-  sheets never change.
-- Scoring needs a test in progress or completed, a running experiment, an
-  animal that is not excluded and a verified video.
+1. Create the trial: `POST /api/trials` with a name, the paradigm key and
+   version and an environment revision of that version.
+2. Upload its video: `POST /api/trials/{id}/video` returns a signed upload,
+   then `POST /api/trials/{id}/video/finalize` verifies it.
+3. If the arena has no calibration, or the camera moved, calibrate on the
+   trial's video: `POST /api/trials/{id}/calibrations` (same body as an arena
+   calibration, with the zones the paradigm needs). This never changes the
+   arena's calibration. `GET /api/trials/{id}/calibration-status` tells
+   whether the trial is ready.
+4. Once the video is verified and the calibration is ready, the trial is
+   analysed automatically (at once, or at the next tick after a later
+   calibration). `GET /api/trials/{id}` shows every analysis with its metrics
+   and quality.
+5. To try other thresholds, `POST /api/trials/{id}/analyses` with
+   `{"overrides": {"min_bout_s": 1.5}}` runs a new analysis of the same video
+   with those ANALYSIS values; only ANALYSIS parameters of the paradigm are
+   accepted. Earlier analyses stay for comparison.
+6. `DELETE /api/trials/{id}` hides the trial; its analyses stay readable by job.
 
 ### Review
 
-Every result is approved by a person before it counts. The first successful run
-of an animal, automated or scored, opens its result as `PENDING`.
+Every result of an animal of a test is approved by a person before it counts.
+The first successful job of an animal opens its result as `PENDING`. Paradigm
+trials are never reviewed.
 
 - `GET /api/analysis/results` is the review queue (`status`, `experimentId`).
   In a blinded experiment it shows no group, disease, substance or dose.
 - Technicians and the roles above them accept a result with
   `POST /api/analysis/results/{testSubjectId}/accept` or reject it with
   `POST .../reject` and a `reason` (`TRACKING_LOST`, `WRONG_ANIMAL`,
-  `VIDEO_DEFECT`, `PROTOCOL_DEVIATION`, `OTHER`). `POST .../run` puts another
-  successful run under review, and `POST /api/analysis/results/bulk-accept`
-  accepts up to 100 at once.
-- A newer run never replaces a reviewed result by itself. Once the experiment is
+  `VIDEO_DEFECT`, `PROTOCOL_DEVIATION`, `OTHER`). `POST .../run` with a
+  `jobId` puts another successful job of the animal under review, and
+  `POST /api/analysis/results/bulk-accept` accepts up to 100 at once.
+- A newer job never replaces a reviewed result by itself. Once the experiment is
   completed, decisions cannot change.
 
 ### Study report and dashboard

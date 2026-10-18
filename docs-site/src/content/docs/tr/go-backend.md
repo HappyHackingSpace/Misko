@@ -23,11 +23,11 @@ Canlıya almayın.
 | Dozlama: uygulamalar, günlük doz takvimi, indüksiyon sonuçları | Hazır |
 | Dört paradigmanın metrik tanımlarıyla paradigma kataloğu | Hazır |
 | Ölçüm revizyonlarıyla ortamlar ve deney test protokolleri | Hazır |
-| Arenalarda bir veya birden çok hayvanla oturum olarak testler, denemeler ve yorumlar | Hazır |
+| Arenalarda bir veya birden çok denekle oturum olarak testler, denemeler ve yorumlar | Hazır |
 | Google Cloud Storage'a video yükleme, test başına tek güncel video | Hazır, gerçek depolama testi bekliyor |
-| Arena başına kalibrasyon ve hayvan başına düzeltme | Hazır |
-| Hayvan başına analiz çalıştırmaları ve her sonucun insan onayı | Hazır; worker su labirentini (`MWM`) izler, yalnızca sentetik videoyla test edildi |
-| Direk, koşu bandı ve yeni nesne için gözlemci puanlaması | Hazır |
+| Arena başına kalibrasyon ve denek başına düzeltme | Hazır |
+| Test denekleri ve paradigma testleri için analiz servisi (işler), her denek sonucunun insan onayı | Dört paradigma için hazır; worker yalnızca sentetik videoyla test edildi |
+| Paradigma testleri: bir paradigmanın herhangi bir deney dışında tek videoda denenmesi | API'de hazır; panel sayfaları bekliyor |
 | Rol tabanlı karşılaştırmalarla çalışma raporu, CSV dışa aktarma, gösterge paneli | Hazır |
 | Yeni API üzerinde Vue paneli | İskeleti var, tamamlanmadı |
 
@@ -109,7 +109,7 @@ dışı harfler birden fazla bayt kaplar.
 |-----|-----------------|
 | SUPERADMIN, LAB_MANAGER | Kullanıcı, laboratuvar ayarları ve analiz worker'ları yönetimi dahil her şey |
 | RESEARCHER | Çalışma tasarlamak; kataloğu, denekleri, düzenekleri ve protokolleri yönetmek; test planlamak ve çalıştırmak; her şeyi okumak |
-| TECHNICIAN | Ağırlık kaydetmek, test çalıştırmak, doz ve indüksiyon sonucu kaydetmek, bir testteki tek hayvanı kalibre etmek, analiz sonuçlarını onaylamak; her şeyi okumak |
+| TECHNICIAN | Ağırlık kaydetmek, test çalıştırmak, doz ve indüksiyon sonucu kaydetmek, bir testteki tek deneği kalibre etmek, analiz sonuçlarını onaylamak, paradigma testi yapmak; her şeyi okumak |
 | VIEWER | Yalnızca okuma |
 
 | İzin | Kapsamı |
@@ -118,8 +118,9 @@ dışı harfler birden fazla bayt kaplar.
 | `apparatus:write` | Ortamlar, revizyonları ve arena kalibrasyonları |
 | `subject:write` | Denekler |
 | `weight:write` | Vücut ağırlıkları |
-| `test:write` | Test planlamak: oluşturmak, hayvan eklemek veya çıkarmak, iptal etmek |
-| `test:run` | Test ve deneme çalıştırmak, videolar, hayvan başına kalibrasyon düzeltmesi, dozlar, indüksiyon sonuçları, elle analiz çalıştırması, sonuç onayı |
+| `test:write` | Test planlamak: oluşturmak, denek eklemek veya çıkarmak, iptal etmek |
+| `test:run` | Test ve deneme çalıştırmak, videolar, denek başına kalibrasyon düzeltmesi, dozlar, indüksiyon sonuçları, bir deneğin elle analizi, sonuç onayı |
+| `trial:run` | Paradigma testleri: oluşturmak, videosunu yükleyip üzerinde kalibre etmek, yeniden analiz etmek, silmek |
 | `*:read` | Her şeyi okumak |
 
 Rol değişikliği kullanıcının bir sonraki isteğinde geçerli olur. Kullanıcı
@@ -179,16 +180,16 @@ RESEARCHER denekleri değiştirebilir.
 - `PATCH /api/subjects/{id}`, gönderdiğiniz alanları değiştirir.
 - `DELETE /api/subjects/{id}`, bir gruba atanmamış ve ağırlık kaydı olmayan bir deneği siler.
 - TECHNICIAN ve üstü roller vücut ağırlığını `POST /api/subjects/{id}/weights`
-  (`grams`, `measuredAt`) ile kaydeder. Ağırlıklar hayvana aittir ve değişmez.
+  (`grams`, `measuredAt`) ile kaydeder. Ağırlıklar deneğe aittir ve değişmez.
 
-Bir hayvan bir çalışmaya katılmadan önce kaydedilebilir ve yalnızca bir
+Bir denek bir çalışmaya katılmadan önce kaydedilebilir ve yalnızca bir
 çalışmaya katılır.
 
 ### Deneyler
 
 Bir deney taslak olarak tasarlanır, başlatılır ve tamamlanır. Giriş yapmış her
 kullanıcı deneyleri okuyabilir. SUPERADMIN, LAB_MANAGER ve RESEARCHER deney
-tasarlar, başlatır ve hayvanları gruplara atar.
+tasarlar, başlatır ve denekleri gruplara atar.
 
 1. Deneyi `POST /api/experiments` (`code`, `title`, isteğe bağlı
    `description`, `hypothesis`, `randomisation` ve `blinded`) ile oluşturun.
@@ -242,20 +243,20 @@ düzenlenebilir.
 
 ### Atama ve dışlama
 
-- Bir hayvanı `POST /api/experiments/{id}/allocations` (`subjectId`, `groupId`,
+- Bir deneği `POST /api/experiments/{id}/allocations` (`subjectId`, `groupId`,
   isteğe bağlı `cage`) ile bir gruba atayın ya da bunu
   `POST /api/experiments/{id}/allocations/randomise` (`subjectIds`, isteğe bağlı
   `groupIds` ve `cage`) ile sisteme bırakın. Rastgele atama grupları hedef
-  sayılarına kadar dengeli doldurur ve ya tüm hayvanları atar ya da hiçbirini.
-- Bir hayvan kalıcı olarak tek bir deneyin tek bir grubuna aittir. Deney
-  taslakken hayvanı başka gruba taşıyabilir ya da çıkarabilirsiniz. Çalışma
+  sayılarına kadar dengeli doldurur ve ya tüm denekleri atar ya da hiçbirini.
+- Bir denek kalıcı olarak tek bir deneyin tek bir grubuna aittir. Deney
+  taslakken deneği başka gruba taşıyabilir ya da çıkarabilirsiniz. Çalışma
   başladıktan sonra yalnızca kafesi değişebilir.
-- Bir hayvan çalışmadan ayrılırsa
+- Bir denek çalışmadan ayrılırsa
   `POST /api/experiments/{id}/allocations/{allocationId}/exclusion` (`DIED`,
   `HUMANE_ENDPOINT`, `INDUCTION_FAILED`, `TECHNICAL` veya `OTHER` değerli
-  `reason`, isteğe bağlı not) ile dışlayın. Dışlanan hayvan silinmez: raporda
+  `reason`, isteğe bağlı not) ile dışlayın. Dışlanan denek silinmez: raporda
   görünmeye devam eder, yeni bir teste katılmaz ve yeniden analiz edilmez.
-- `GET /api/experiments/{id}/allocations` hayvanları (`groupId` veya `excluded`
+- `GET /api/experiments/{id}/allocations` denekleri (`groupId` veya `excluded`
   ile süzülerek) ve her grubun hedefe göre doluluğunu listeler.
 
 ### Dozlama
@@ -263,18 +264,18 @@ düzenlenebilir.
 TECHNICIAN ve üstü roller, deney çalışırken gerçekten verileni kaydeder.
 
 - `GET /api/experiments/{id}/dosing?date=YYYY-MM-DD`, o gün verilmesi gereken
-  her dozu rejim kalemlerinden ve gün 0'dan hayvan bazında listeler; kaçının
-  verildiğini ve hayvanın son ağırlığına göre dozu gösterir. `date` verilmezse
+  her dozu rejim kalemlerinden ve gün 0'dan denek bazında listeler; kaçının
+  verildiğini ve deneğin son ağırlığına göre dozu gösterir. `date` verilmezse
   laboratuvarın saat dilimindeki bugün kullanılır.
 - `POST /api/experiments/{id}/allocations/{allocationId}/administrations` bir
   dozu kaydeder. `regimenItemId` verilirse madde, doz ve uygulama yolu plandan
   gelir; gerçekte verilen farklı bir miktar veya yol girilebilir. Plansız bir doz
   hepsini belirtir. Kilogram başına dozlar (`mg/kg`, `ug/kg`, `mL/kg`,
-  `IU/kg`) aynı hayvanın son 7 gün içindeki bir ağırlığını gerektirir;
+  `IU/kg`) aynı deneğin son 7 gün içindeki bir ağırlığını gerektirir;
   `weightMeasurementId` verilmezse en son ağırlık kullanılır ve yanıt mutlak dozu
   gösterir. Hastalık indüksiyonu da aynı şekilde, `INDUCTION` amacıyla kaydedilir.
 - `POST /api/experiments/{id}/allocations/{allocationId}/induction-outcome`
-  hayvanın hastalık modelinin `CONFIRMED` ya da `NOT_CONFIRMED` olduğunu bir kez
+  deneğin hastalık modelinin `CONFIRMED` ya da `NOT_CONFIRMED` olduğunu bir kez
   kaydeder.
 - `GET /api/experiments/{id}/administrations`,
   `GET /api/subjects/{id}/administrations` ve
@@ -291,9 +292,10 @@ tanımlıdır; API üzerinden oluşturulamaz, düzenlenemez veya silinemez.
 - `GET /api/paradigms`, paradigmaları yayınlanmış sürümleriyle listeler. Dört
   paradigma yayınlanmıştır: `MWM`, `NOVEL_OBJECT`, `POLE` ve `TREADMILL`; iki
   kategoride toplanırlar (`MWM` ve `NOVEL_OBJECT` için `LEARNING_MEMORY`, `POLE`
-  ve `TREADMILL` için `MOTOR`). Paradigma sürümü için bir worker kaydedildiğinde
-  `MWM` bu analiz worker'ı tarafından takip edilir. Diğer üçü (`NOVEL_OBJECT`, `POLE`, `TREADMILL`) videoda bir gözlemci
-  tarafından puanlanır (aşağıdaki Gözlemci puanlaması bölümüne bakın).
+  ve `TREADMILL` için `MOTOR`). Her paradigma otomatik analiz edilir:
+  paradigma sürümü için bir worker kaydedildiğinde analiz worker'ı deneği
+  videoda takip eder, Mişko her olayı ve metriği türetir ve bir kişi yalnızca
+  sonucu inceler. Gözlemci puanlaması yoktur.
 - `GET /api/paradigms/{key}` en son sürümü, `GET /api/paradigms/{key}/versions/{version}`
   ise belirli bir sürümü döndürür. Her sürüm; parametrelerini kapsamı (ortamda
   `APPARATUS` ve `ANALYSIS`, protokol adımında `SESSION`), etiketi, yardım metni,
@@ -302,14 +304,20 @@ tanımlıdır; API üzerinden oluşturulamaz, düzenlenemez veya silinemez.
   olduğunda ne olacağını listeler. Adlar, etiketler ve açıklamalar `?lang=` ya da
   `Accept-Language` ile (`en` veya `tr`) seçilir.
 
-Bazı paradigmalar izlenen bir konumdan fazlasına ihtiyaç duyar:
+Her paradigma deneğin takip edilen konumundan ve bölgelerinden ölçülür:
 
-- Su labirenti platformu gibi bölgeler düzenek parametrelerinden gelir. Bir
-  paradigma daire ya da çokgen olarak çizilen `calibrated` işaretli bölgeler de
-  tanımlayabilir; güncel katalogdaki hiçbir paradigma bunu kullanmaz.
-- `inputEvents`, izlenmek yerine puanlanan gözlemleri listeler; örneğin direk
-  testinde dönüşler, koşu bandında tükenme veya yeni nesne keşfi. Puanlanmamış bir olay
-  türü sıfır değil, eksik metrik üretir.
+- Su labirenti bölgelerini düzenek parametrelerinden türetir (platform, hedef
+  çeyrek, duvar kenarı bölgesi). Diğer paradigmalar kalibrasyonla daire ya da
+  çokgen olarak çizilen `calibrated` işaretli bölgeler tanımlar: yeni ve
+  tanıdık nesne (`novel_object`, `familiar_object`), direk ve tabanı (`pole`,
+  `base`) ve koşu bandının şok ızgarası (`shock_grid`).
+- `events`, Mişko'nun konumlardan ve bölgelerden türettiklerini listeler:
+  `novel` ya da `familiar` etiketli keşif dönemleri, direkte dönüş, tabana
+  ulaşma ve düşme, koşu bandında şoklar ve tükenme, su labirentinde platform
+  ziyaretleri. Her kural eşiği (en kısa keşif dönemi, dönüş için iniş, düşme
+  hızı, şok ya da tükenme için ızgarada kalma süresi) standart varsayılanı olan
+  ve laboratuvarın ortam başına değiştirebileceği bir `ANALYSIS`
+  parametresidir. `inputEvents` her zaman boştur.
 
 Sonuçlar her zaman hesaplandıkları paradigma sürümünü, metrik motoru sürümünü ve
 sonuç şeması sürümünü belirtir. Hesaplanamayan bir metrik hiçbir zaman sıfır
@@ -323,7 +331,7 @@ değişen bir tanım yeni bir sürüm olarak yayınlanır.
 
 Ortam, tek bir paradigma için kurulmuş tek bir fiziksel düzenektir; örneğin belirli
 bir su tankı ya da tek kameranın gördüğü birkaç yeni nesne kutusundan biri. Bir
-testte her hayvan bir arenaya konur; arena, bir ortamın bir revizyonudur.
+testte her denek bir arenaya konur; arena, bir ortamın bir revizyonudur.
 RESEARCHER, LAB_MANAGER ve SUPERADMIN ortam ve protokol oluşturup
 güncelleyebilir; giriş yapmış her kullanıcı bunları okuyabilir.
 
@@ -344,7 +352,7 @@ direk testinin ardından koşu bandı.
 - `POST /api/experiments/{id}/protocols`, ilk sürümüyle birlikte bir protokol
   oluşturur. Her adım sırasını, paradigmayı ve sürümünü, deneme türünü, deneme
   sayısını, denemeler arasındaki bekleme süresini saniye olarak ve oturum
-  parametrelerini verir. Adım bir düzenek belirtmez: arena her testte hayvan
+  parametrelerini verir. Adım bir düzenek belirtmez: arena her testte denek
   başına seçilir.
 - Adımları 1'den başlayarak boşluksuz numaralandırın. Paradigmanın tanımlamadığı
   bir deneme türü ve aralık dışındaki oturum değerleri reddedilir. Verilmeyen
@@ -357,9 +365,9 @@ direk testinin ardından koşu bandı.
 ### Testler, denemeler ve yorumlar
 
 Test, çalışan bir deneyin tek bir oturumudur: bir zaman noktası, bir protokol
-adımı ve bir video. Her biri kendi arenasında olan bir veya daha fazla hayvanı
+adımı ve bir video. Her biri kendi arenasında olan bir veya daha fazla deneği
 kaydeder; genellikle bir, bazen tek kamera altında en fazla üç kutu. Farklı
-gruplardaki hayvanlar aynı oturumu paylaşabilir. Her ölçümün grubu hayvanın
+gruplardaki denekler aynı oturumu paylaşabilir. Her ölçümün grubu deneğin
 atamasından gelir.
 
 - RESEARCHER, LAB_MANAGER ve SUPERADMIN testleri
@@ -367,19 +375,19 @@ atamasından gelir.
   ve adımı, isteğe bağlı planlanan zaman ve `subjects`, yani `allocationId` ve
   `environmentRevisionId` çiftlerinden oluşan bir liste (en fazla 12). Zaman
   verilmezse test, gün 0 artı zaman noktasının çalışma gününe planlanır. Her
-  arena adımın paradigmasını çalıştırmalıdır ve bir hayvan aynı zaman noktası ve
+  arena adımın paradigmasını çalıştırmalıdır ve bir denek aynı zaman noktası ve
   adımın iki testinde yer alamaz.
-- Test planlıyken `POST /api/tests/{id}/subjects` ile hayvan ekleyin ya da
-  `DELETE /api/tests/{id}/subjects/{subjectId}` ile çıkarın. Son hayvan
+- Test planlıyken `POST /api/tests/{id}/subjects` ile denek ekleyin ya da
+  `DELETE /api/tests/{id}/subjects/{subjectId}` ile çıkarın. Son denek
   çıkarılamaz; bunun yerine testi iptal edin.
 - TECHNICIAN ve üstü roller testleri çalıştırır: `POST /api/tests/{id}/start`,
-  ardından her hayvanın denemelerini
+  ardından her deneğin denemelerini
   `POST /api/tests/{id}/subjects/{subjectId}/trials` ile kaydedin, sonra
-  `POST /api/tests/{id}/complete`. Her hayvanın en az bir denemesi olmalıdır. Bir
+  `POST /api/tests/{id}/complete`. Her deneğin en az bir denemesi olmalıdır. Bir
   deneme tekrarlanacaksa aynı tekrarı yeniden kaydedin; bir sonraki deneme
   numarasını alır ve önceki deneme korunur.
-- Tamamlanmamış bir test bir gerekçeyle iptal edilebilir. Dışlanmış bir hayvanı
-  olan test, o hayvan çıkarılana kadar başlatılamaz.
+- Tamamlanmamış bir test bir gerekçeyle iptal edilebilir. Dışlanmış bir deneği
+  olan test, o denek çıkarılana kadar başlatılamaz.
 - `GET /api/tests`, deneyler arası iş listesidir; deney, durum, zaman noktası ve
   tarih aralığıyla süzülür.
 
@@ -395,7 +403,7 @@ değerini de) ayarlayana kadar video rotaları `media.storageNotConfigured` kodu
 503 döndürür. Bucket, CORS ve izin kurulumu için `backend/README.md` dosyasına
 bakın.
 
-Bir testin, tüm hayvanlarını gösteren tek bir videosu vardır. Videolar test
+Bir testin, tüm deneklerini gösteren tek bir videosu vardır. Videolar test
 başladıktan sonra eklenebilir.
 
 - TECHNICIAN ve üstü roller yüklemeyi `POST /api/tests/{id}/recordings` ile
@@ -424,25 +432,29 @@ gerekir.
   `POST /api/environments/{id}/revisions/{number}/calibrations` ile kalibre
   eder. Kırpma alanı o arenanın karedeki bölgesidir; böylece tek kamera altındaki
   üç arenanın her biri kendi kalibrasyonunu alır. O arenada test edilen her
-  hayvan bunu kullanır.
+  denek bunu kullanır.
 - Kamera ve arena kayabilir. Bunu henüz hiçbir şey kontrol etmez: arena
-  kalibrasyonunu kullanan bir hayvanın durumu `drift: UNCHECKED` gösterir. Bir
-  video uyuşmuyorsa TECHNICIAN (veya üstü bir rol) o tek hayvanı testin güncel
+  kalibrasyonunu kullanan bir deneğin durumu `drift: UNCHECKED` gösterir. Bir
+  video uyuşmuyorsa TECHNICIAN (veya üstü bir rol) o tek deneği testin güncel
   videosunda `POST /api/tests/{id}/subjects/{testSubjectId}/calibrations` ile
-  elle kalibre eder. Düzeltme, arena kalibrasyonunun yerini yalnızca o hayvan
-  için alır; reddedilirse hayvan arenaya geri dönmek yerine bekler. Yeni bir video
+  elle kalibre eder. Düzeltme, arena kalibrasyonunun yerini yalnızca o denek
+  için alır; reddedilirse denek arenaya geri dönmek yerine bekler. Yeni bir video
   yeniden arena kalibrasyonlarıyla başlar.
 - İki tür de aynı noktaları alır: en az 4 FIT noktası ve en az 3 ayrı CHECK
   noktası; her biri piksel konumu ve santimetre cinsinden gerçek konumuyla. FIT
   noktaları dönüşümü belirler, CHECK noktaları onu sınar. Bir CHECK noktası
-  paradigmanın izin verdiğinden fazla saparsa (yörünge paradigmaları için 2 cm)
-  kalibrasyon `REJECTED` olarak kaydedilir.
-- `calibrated` bölgeleri olan bir paradigma (güncel katalogda böyle bir
-  paradigma yoktur) bu bölgelerin aynı kare üzerinde çizilmesini de ister.
-  Bunları piksel cinsinden `zones` olarak gönderin; örneğin
-  `{"key": "zone_a", "polygon": [{"x": 300, "y": 480}, ...]}` ya da
-  `{"key": "zone_b", "circle": {"x": 960, "y": 540, "radius": 60}}`. Bir
-  anahtarın birden çok şekli olabilir. Her zorunlu bölgenin bir
+  paradigmanın izin verdiğinden fazla saparsa (2 cm) kalibrasyon `REJECTED`
+  olarak kaydedilir. Ölçüm düzlemi `ARENA_FLOOR`, `WATER_SURFACE`,
+  `APPARATUS_TOP` ya da yandan çekilen düzenekler (direk ve koşu bandı
+  kulvarı) için `APPARATUS_SIDE` olur.
+- `calibrated` bölgeleri olan bir paradigma (yeni nesne, direk, koşu bandı) bu
+  bölgelerin aynı kare üzerinde çizilmesini de ister. Bunları piksel cinsinden
+  `zones` olarak gönderin; örneğin
+  `{"key": "base", "polygon": [{"x": 300, "y": 480}, ...]}` ya da
+  `{"key": "novel_object", "circle": {"x": 960, "y": 540, "radius": 60}}`. Bir
+  anahtarın birden çok şekli olabilir. Zorunlu bir bölge eksikse kalibrasyon
+  reddedilir (`calibration.missingZone`). Test videosundaki denek başına bir
+  düzeltme kendi bölgelerini taşır; örneğin yeni nesne diğer taraftaysa. Her zorunlu bölgenin bir
   şekli olmalı ve her şekil karenin içinde kalmalıdır. Misko bunları kalibrasyonla
   santimetreye çevirir ve her bölgeyi iki birimde de döndürür. Worker bölgeleri
   işiyle birlikte alır; metrikler santimetre şekilleriyle hesaplanır. Panelde
@@ -453,12 +465,16 @@ gerekir.
 - Dünya noktaları, paradigmanın bölgelerinin tanımlandığı çerçeveyi kullanmalıdır.
   Su labirentinde bu çerçeve tank merkezlidir: (0, 0) tankın merkezi, x doğuyu,
   y kuzeyi gösterir; duvar noktaları r = tank çapı / 2 olmak üzere (r, 0),
-  (0, r), (-r, 0) ve (0, -r) olur. Kalibre edilen bölgeleri olan bir paradigma
-  herhangi bir çerçeveyi kullanabilir.
+  (0, r), (-r, 0) ve (0, -r) olur. Yeni nesne arenası yukarıdan görülür;
+  başlangıç noktası zeminin bir köşesidir, x görüntüde sağa, y aşağıya doğrudur
+  ve noktalar arenanın içinde kalır. Direk yandan görülür; x yatay, y tabandan
+  yüksekliktir (taban 0, tepe direk uzunluğu). Koşu bandı da yandan görülür; x
+  kulvar boyunca şok ızgarasından (0) öne doğrudur. Düzeneğin doğrusal olmayan
+  en az dört noktasını kullanın.
 - Bir kalibrasyonu düzeltmek için, `supersedesId` alanına aynı arenanın ya da
-  hayvanın en son kalibrasyonunu yazarak yeni bir kalibrasyon gönderin. Önceki
+  deneğin en son kalibrasyonunu yazarak yeni bir kalibrasyon gönderin. Önceki
   kalibrasyonlar saklanır.
-- `GET /api/tests/{id}/calibration-status` bir testin tüm hayvanlarını
+- `GET /api/tests/{id}/calibration-status` bir testin tüm deneklerini
   listeler: `WAITING_FOR_VIDEO`, her zorunlu bölgesi çizilmiş geçerli bir
   kalibrasyon uygulanana kadar `WAITING_FOR_CALIBRATION`, sonra `CALIBRATED`. Direk testi gibi video ölçümü
   olmayan paradigmalar `NOT_REQUIRED` gösterir.
@@ -466,79 +482,90 @@ gerekir.
 ### Video analizi
 
 Takip, API ile konuşan ayrı analiz worker'larında çalışır. `worker/`
-klasöründeki worker, takip edilen paradigmanın, `MWM` sürüm 1'in, sabit
-kameradan kaydedilmiş videosunu izler. Şimdiye kadar yalnızca
+klasöründeki worker, her paradigmanın sürüm 1'inde sabit kameradan kaydedilmiş
+videoda deneğin ağırlık merkezini izler. Şimdiye kadar yalnızca
 sentetik videoyla test edildi; elle işaretlenmiş bir kayda karşı doğrulanana
 kadar sonuçlarını araştırmada kullanmayın.
 
+Analiz servisi bir videoyu tek paradigma sürümü, parametreleri ve
+kalibrasyonun bir kopyasıyla analiz eder. Her iş birimi bir **analiz işidir**:
+neyi analiz ettiği asla değişmez, bu yüzden yeniden analiz yeni bir iş oluşturur
+ve önceki işler kalır. İşleri bir test deneği (bir deney) veya bir paradigma
+testi ister; servisin kendisi deneyler hakkında hiçbir şey bilmez.
+
 - LAB_MANAGER bir worker'ı `POST /api/analysis/workers` ile kaydeder; adını, model
   sürümünü ve desteklediği paradigma sürümlerini verir. Paketle gelen worker'ı
-  `misko-tracker-bgsub 2.0.0` model sürümüyle ve `MWM` sürüm 1 ile
-  kaydedin (bkz. [Kurulum](../installation/)). Gözlemci
-  puanlamalı paradigmalar `worker.unknownCapability` ile reddedilir. Yanıt
+  desteklediği paradigmaların sürüm 1'iyle kaydedin (bkz.
+  [Kurulum](../installation/)). Katalog dışındaki sürümler
+  `worker.unknownCapability` ile reddedilir. Yanıt
   worker'ın token'ını yalnızca bir kez gösterir; bunu worker'ın gizli
   yapılandırmasında saklayın. `POST /api/analysis/workers/{id}/disable` token'ı iptal eder.
   Worker'ı `MISKO_WORKER_TOKEN` ayarlıyken başlatın, örneğin
   `docker compose --profile worker up -d worker`.
 - `jobs` süreci her `JOB_INTERVAL` aralığında (varsayılan 10 saniye) bir
-  testteki her hayvan için bir çalıştırma kuyruğa alır: deney çalışıyor veya
-  tamamlanmış, hayvan dışlanmamış, testin videosu doğrulanmış, hayvanın
-  kalibrasyonu (paradigma gerektiriyorsa) geçerli ve paradigmayı destekleyen bir
-  worker varsa. Gözlemci puanlamalı paradigmalar asla böyle bir çalıştırma
-  almaz.
-- Worker hayvanı her karede arenasının kırpma alanında bulur, konumunu
+  testteki her denek için bir iş gönderir: deney çalışıyor veya tamamlanmış,
+  denek dışlanmamış, testin videosu doğrulanmış ve deneğin kalibrasyonu her
+  zorunlu bölgesiyle geçerliyse. Hazır hale gelen paradigma testlerini de
+  analiz eder (aşağıda). Bir iş, paradigmasını destekleyen bir worker onu
+  üstlenene kadar kuyrukta bekler.
+- Worker deneği her karede kalibrasyonun kırpma alanında bulur, konumunu
   santimetreye çevirir ve konumları (yörüngeyi) ve işaretlenmiş bir videoyu
-  yükler. Hayvanın grubunu veya tedavisini hiç öğrenmez. Mişko her metriği ve
+  yükler. Deneğin grubunu veya tedavisini hiç öğrenmez. Mişko her metriği ve
   olayı yörüngeden hesaplar; worker kendi sayılarını gönderemez. Çok fazla kare
-  kaybedilirse veya takip güveni çok düşükse çalıştırma `QC_FAILED` gerekçesiyle
-  `FAILED` olur ve hiçbir şey yayınlanmaz. Bir worker örnekleri çıkarımlı
-  olarak işaretleyebilir (isteğe bağlı `inferred` alanı), örneğin hayvan
-  gizliyken: takip edilmiş sayılırlar ama güven ortalamasına
-  girmezler. Paketle gelen worker böyle örnek göndermez.
-- Her çalıştırmanın bir `method` alanı vardır: worker çalıştırması için
-  `AUTOMATED`, bir gözlemcinin puanlamasından hesaplanan çalıştırma için
-  `SCORED` (`scoredBy` ile; worker, kalibrasyon ve video çifti olmadan).
-- Bir çalıştırma neyin analiz edildiğini tam olarak kaydeder: video sürümü, klip,
-  kalibrasyon, paradigma sürümü ve parametreler. Bir hayvanı yeniden analiz
-  etmek için TECHNICIAN (veya üstü bir rol)
+  kaybedilirse veya takip güveni çok düşükse iş `QC_FAILED` gerekçesiyle
+  `FAILED` olur; kalite değerleri (kayıp ve çıkarımlı oranları, ortalama güven)
+  her durumda işle birlikte saklanır. Bir worker örnekleri çıkarımlı olarak
+  işaretleyebilir (isteğe bağlı `inferred` alanı), örneğin denek gizliyken:
+  takip edilmiş sayılırlar ama güven ortalamasına girmezler. Paketle gelen
+  worker böyle örnek göndermez.
+- Bir iş neyin analiz edildiğini tam olarak kaydeder: video sürümü, klip,
+  bölgeleriyle kalibrasyonun bir kopyası, paradigma sürümü ve parametreler. Bir
+  deneği yeniden analiz etmek için TECHNICIAN (veya üstü bir rol)
   `POST /api/analysis/test-subjects/{testSubjectId}/runs` çağırır. Önceki
   sonuçlar kalır.
-- `GET /api/tests/{id}/analysis-runs` ve `GET /api/analysis-runs/{runId}`
-  çalıştırmaları, metriklerini ve olaylarını gösterir.
-  `GET /api/analysis-runs/{runId}/video-pair`, orijinal ve analiz videosuna kısa
-  süreli bağlantıları, ikisini eş zamanlı oynatmak için gereken kaymalarla
-  döndürür.
+- `GET /api/tests/{id}/analysis-runs` bir testin deneklerinin işlerini
+  listeler. `GET /api/analysis/jobs/{jobId}` bir işi metrikleri, olayları ve
+  kalitesiyle gösterir; `GET /api/analysis/jobs/{jobId}/video-pair` orijinal
+  ve analiz videosuna kısa süreli bağlantıları, ikisini eş zamanlı oynatmak
+  için gereken kaymalarla döndürür;
+  `GET /api/analysis/jobs/{jobId}/outputs/TRAJECTORY/read-url` izi çizmek için
+  yörüngeye bir bağlantı verir. Eski `GET /api/analysis-runs/{jobId}` yolları
+  da yanıt vermeye devam eder.
 
-### Gözlemci puanlaması
+### Paradigma testleri
 
-Direk, koşu bandı ve yeni nesne testleri testin güncel videosunda bir
-kişi tarafından puanlanır. TECHNICIAN ve üstü roller puanlayabilir; giriş yapmış
-herkes okuyabilir.
+Bir paradigma testi, bir paradigma sürümünü herhangi bir deney dışında, tek
+arenada tek videoda dener: yeni bir düzeneği, bir kamera konumunu veya bir
+eşiği kontrol etmek için. Grubu, onayı ve raporu yoktur; sonuçları hiçbir zaman
+bir deneye taşınmaz. TECHNICIAN ve üstü roller paradigma testi yapar
+(`trial:run`); herkes okuyabilir.
 
-- `GET /api/tests/{id}/subjects/{testSubjectId}/scoring` paradigmanın girdi
-  olaylarını (tür, `POINT` ya da `INTERVAL`, `novel` ve `familiar` gibi
-  etiketler, bir kez puanlanıp puanlanmadığı), güncel videonun klibini ve en
-  yeni puanlama sayfasını olaylarıyla döndürür.
-- `POST .../scoring/events`, `{type, label?, startUs, endUs?}` ile taslak
-  sayfaya bir olay ekler (ilk olay sürüm 1'i başlatır). Zamanlar klip
-  başlangıcından itibaren mikrosaniyedir. `PATCH .../events/{eventId}` bir olayı
-  değiştirir, `DELETE` kaldırır.
-- `POST .../scoring/complete`, `{scoredEventTypes?, durationUs?}` ile hangi olay
-  türlerinin izlendiğini (varsayılan hepsi) ve kayıt uzunluğunu (varsayılan
-  klip) sabitler. Motor metrikleri hesaplar ve `SCORED` yöntemli `SUCCEEDED` bir
-  çalıştırma saklanır; sonucu diğerleri gibi onay kuyruğunda `PENDING` olarak
-  açılır.
-- `POST .../scoring/reopen`, olayların bir kopyasıyla bir sonraki sayfa
-  sürümünü başlatır; tamamlanması, inceleyenin seçebileceği başka bir
-  çalıştırma ekler. Tamamlanmış sayfalar asla değişmez.
-- Puanlama için test sürüyor ya da tamamlanmış, deney çalışıyor, hayvan
-  dışlanmamış ve video doğrulanmış olmalıdır.
+1. Paradigma testini oluşturun: `POST /api/trials` ile bir ad, paradigma
+   anahtarı ve sürümü ve bu sürümden bir ortam revizyonu verin.
+2. Videosunu yükleyin: `POST /api/trials/{id}/video` imzalı bir yükleme
+   döndürür, ardından `POST /api/trials/{id}/video/finalize` onu doğrular.
+3. Arenanın kalibrasyonu yoksa veya kamera kaydıysa, paradigma testinin
+   videosunda kalibre edin: `POST /api/trials/{id}/calibrations` (arena
+   kalibrasyonuyla aynı gövde, paradigmanın gerektirdiği bölgelerle). Bu,
+   arenanın kalibrasyonunu asla değiştirmez.
+   `GET /api/trials/{id}/calibration-status` paradigma testinin hazır olup
+   olmadığını söyler.
+4. Video doğrulanıp kalibrasyon hazır olduğunda paradigma testi kendiliğinden
+   analiz edilir (hemen ya da kalibrasyon sonradan yapıldıysa bir sonraki
+   turda). `GET /api/trials/{id}` her analizi metrikleri ve kalitesiyle
+   gösterir.
+5. Başka eşikleri denemek için `POST /api/trials/{id}/analyses` ile
+   `{"overrides": {"min_bout_s": 1.5}}` gönderin; aynı video bu ANALYSIS
+   değerleriyle yeniden analiz edilir. Yalnızca paradigmanın ANALYSIS
+   parametreleri kabul edilir. Önceki analizler karşılaştırma için kalır.
+6. `DELETE /api/trials/{id}` paradigma testini gizler; analizleri iş üzerinden
+   okunabilir kalır.
 
 ### Onay
 
-Her sonuç sayılmadan önce bir kişi tarafından onaylanır. Bir hayvanın ilk
-başarılı çalıştırması, otomatik ya da puanlanmış, sonucunu `PENDING` olarak
-açar.
+Bir test deneğinin her sonucu sayılmadan önce bir kişi tarafından onaylanır.
+Bir deneğin ilk başarılı işi sonucunu `PENDING` olarak açar. Paradigma
+testleri onaya gelmez.
 
 - `GET /api/analysis/results` onay kuyruğudur (`status`, `experimentId`). Kör
   bir deneyde grup, hastalık, madde veya doz göstermez.
@@ -546,21 +573,21 @@ açar.
   `POST /api/analysis/results/{testSubjectId}/accept` ile kabul eder ya da
   `POST .../reject` ile bir `reason` (`TRACKING_LOST`, `WRONG_ANIMAL`,
   `VIDEO_DEFECT`, `PROTOCOL_DEVIATION`, `OTHER`) vererek reddeder.
-  `POST .../run` başka bir başarılı çalıştırmayı incelemeye alır;
-  `POST /api/analysis/results/bulk-accept` tek seferde en fazla 100 sonucu kabul
-  eder.
-- Daha yeni bir çalıştırma, incelenmiş bir sonucun yerini kendiliğinden almaz.
-  Deney tamamlandıktan sonra kararlar değiştirilemez.
+  `POST .../run` bir `jobId` ile deneğin başarılı başka bir işini incelemeye
+  alır; `POST /api/analysis/results/bulk-accept` tek seferde en fazla 100
+  sonucu kabul eder.
+- Daha yeni bir iş, incelenmiş bir sonucun yerini kendiliğinden almaz. Deney
+  tamamlandıktan sonra kararlar değiştirilemez.
 
 ### Çalışma raporu ve gösterge paneli
 
 Giriş yapmış herkes raporları okuyabilir. Raporlar yalnızca kayıtları okur.
 
 - `GET /api/experiments/{id}/report` her sonlanım noktasını, birincil olan önce
-  gelecek şekilde döndürür. Birim hayvandır: her hayvan her zaman noktasında bir
-  değer katar ve yalnızca dışlanmamış hayvanların kabul edilmiş sonuçları sayılır.
+  gelecek şekilde döndürür. Birim denektir: her denek her zaman noktasında bir
+  değer katar ve yalnızca dışlanmamış deneklerin kabul edilmiş sonuçları sayılır.
   Grup başına n, ortalama, SD, SEM, en küçük, en büyük, başlangıca göre değişim ve
-  kaç hayvanın onay beklediğini, analiz beklediğini, reddedildiğini veya
+  kaç deneğin onay beklediğini, analiz beklediğini, reddedildiğini veya
   dışlandığını gösterir.
 - Karşılaştırmalar grup rollerinden çıkar: model geçerliliği (hastalık kontrolü
   ile sağlıklı kontrol ve sham), test duyarlılığı (pozitif kontrol ile hastalık
@@ -568,11 +595,11 @@ Giriş yapmış herkes raporları okuyabilir. Raporlar yalnızca kayıtları oku
   kurtarma yüzdesi, ve aynı maddenin tedavi grupları için doz yanıtı.
 - Farklı paradigma veya metrik motoru sürümlerinin sonuçları hiç karıştırılmaz;
   rapor sürümleri listeler ve karşılaştırmayı yapmaz.
-- `GET /api/experiments/{id}/report/export` hayvan başına (`level=animals`) ya
+- `GET /api/experiments/{id}/report/export` denek başına (`level=animals`) ya
   da grup başına (`level=groups`) bir satırla CSV indirir; `excel=1` Excel'in
   doğrudan açtığı bir dosya yazar.
 - `GET /api/dashboard/summary` deneyleri, testleri, çalıştırmaları ve sonuçları
-  durumlarına göre, kalibrasyon bekleyen hayvanları da sayar; son sonuçları ve
+  durumlarına göre, kalibrasyon bekleyen denekleri da sayar; son sonuçları ve
   sıradaki planlı oturumları listeler.
 
 ### Panel

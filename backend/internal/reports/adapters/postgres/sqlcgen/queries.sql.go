@@ -152,7 +152,7 @@ func (q *Queries) ReportGroups(ctx context.Context, experimentID string) ([]Repo
 
 const reportMeasurements = `-- name: ReportMeasurements :many
 SELECT rts.test_subject_id, rts.test_id, rts.allocation_id, rts.subject_id, rts.subject_code, rts.group_id, rts.excluded::boolean AS excluded,
-       rts.result_status, rts.result_run_id, rts.timepoint_id, rts.paradigm_version, rts.environment_name, rts.scheduled_at,
+       rts.result_status, rts.result_job_id, rts.timepoint_id, rts.paradigm_version, rts.environment_name, rts.scheduled_at,
        m.unit AS metric_unit, m.value AS metric_value, m.missing_reason, m.metric_engine_version
 FROM misko.report_test_subjects rts
 LEFT JOIN misko.report_accepted_metrics m ON m.test_subject_id = rts.test_subject_id AND m.metric_key = $1::text
@@ -177,7 +177,7 @@ type ReportMeasurementsRow struct {
 	GroupID             string
 	Excluded            bool
 	ResultStatus        *string
-	ResultRunID         *string
+	ResultJobID         *string
 	TimepointID         string
 	ParadigmVersion     int32
 	EnvironmentName     string
@@ -215,7 +215,7 @@ func (q *Queries) ReportMeasurements(ctx context.Context, arg ReportMeasurements
 			&i.GroupID,
 			&i.Excluded,
 			&i.ResultStatus,
-			&i.ResultRunID,
+			&i.ResultJobID,
 			&i.TimepointID,
 			&i.ParadigmVersion,
 			&i.EnvironmentName,

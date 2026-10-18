@@ -1,10 +1,11 @@
 // Package domain holds calibrations: a pixel-to-centimeter homography fitted
 // from FIT points and validated against independent CHECK points. A
-// calibration is either the default of an environment revision (one arena's
-// region of a fixed camera frame) or a manual override for one animal of a
-// test (a test subject) on the test's current video. Calibrations never
+// calibration is owned by an environment revision (its default: one arena's
+// region of a fixed camera frame), by one animal of a test (a test subject:
+// a manual override on the test's current video) or by a paradigm trial (on
+// the trial's own video, never changing the environment). Calibrations never
 // change; a correction is a new calibration that supersedes the latest one of
-// the same chain: the revision's, or the test subject's across its videos.
+// the same chain: the owner's, across its videos.
 package domain
 
 import (
@@ -26,7 +27,7 @@ var (
 	ErrInvalidCamera           = errors.New("camera id must contain 1 to 120 printable characters")
 	ErrInvalidFrame            = errors.New("frame width and height must be between 1 and 16384 pixels")
 	ErrInvalidCrop             = errors.New("crop must be a non-empty rectangle inside the frame")
-	ErrInvalidPlane            = errors.New("measurement plane must be ARENA_FLOOR, WATER_SURFACE or APPARATUS_TOP")
+	ErrInvalidPlane            = errors.New("measurement plane must be ARENA_FLOOR, WATER_SURFACE, APPARATUS_TOP or APPARATUS_SIDE")
 	ErrInvalidReferenceFrame   = errors.New("reference frame time must not be negative")
 	ErrInsufficientFitPoints   = errors.New("a calibration needs 4 to 100 FIT points")
 	ErrInsufficientCheckPoints = errors.New("a calibration needs 3 to 100 independent CHECK points")
@@ -45,6 +46,9 @@ const (
 	ArenaFloor   Plane = "ARENA_FLOOR"
 	WaterSurface Plane = "WATER_SURFACE"
 	ApparatusTop Plane = "APPARATUS_TOP"
+	// ApparatusSide is a vertical plane of a rig filmed from the side, such as
+	// the pole or the treadmill lane.
+	ApparatusSide Plane = "APPARATUS_SIDE"
 )
 
 // Scope tells what a calibration applies to. The values match the source
@@ -58,6 +62,8 @@ const (
 	// ScopeOverride is a manual calibration of one test subject on one video,
 	// used when the camera or the arena moved.
 	ScopeOverride Scope = "OVERRIDE"
+	// ScopeTrial is a calibration of a paradigm trial on its own video.
+	ScopeTrial Scope = "TRIAL"
 )
 
 type Status string
@@ -109,10 +115,13 @@ type Input struct {
 
 type Calibration struct {
 	ID string
-	// TestSubjectID and RecordingID are empty for an environment calibration;
-	// an override names the animal and the video it was read from.
+	// TestSubjectID and RecordingID are set for an override: the animal and
+	// the video it was read from. TrialID and VideoAssetID are set for a
+	// paradigm trial's calibration. An environment calibration has none.
 	TestSubjectID string
 	RecordingID   string
+	TrialID       string
+	VideoAssetID  string
 	// EnvironmentRevisionID is the revision whose measurements the points were
 	// validated against.
 	EnvironmentRevisionID   string
@@ -153,7 +162,7 @@ func New(in Input, req Requirement, createdBy string, now time.Time) (Calibratio
 	case in.Crop.X < 0 || in.Crop.Y < 0 || in.Crop.Width < 1 || in.Crop.Height < 1 ||
 		in.Crop.X+in.Crop.Width > in.FrameWidth || in.Crop.Y+in.Crop.Height > in.FrameHeight:
 		return Calibration{}, ErrInvalidCrop
-	case in.Plane != ArenaFloor && in.Plane != WaterSurface && in.Plane != ApparatusTop:
+	case in.Plane != ArenaFloor && in.Plane != WaterSurface && in.Plane != ApparatusTop && in.Plane != ApparatusSide:
 		return Calibration{}, ErrInvalidPlane
 	case in.ReferenceFrameUs < 0:
 		return Calibration{}, ErrInvalidReferenceFrame
@@ -212,12 +221,24 @@ func New(in Input, req Requirement, createdBy string, now time.Time) (Calibratio
 	return c, nil
 }
 
-// Scope is ScopeOverride when the calibration belongs to a test subject.
+// Scope names the calibration's owner.
 func (c Calibration) Scope() Scope {
-	if c.TestSubjectID != "" {
+	switch {
+	case c.TestSubjectID != "":
 		return ScopeOverride
+	case c.TrialID != "":
+		return ScopeTrial
 	}
 	return ScopeEnvironment
+}
+
+// Video names the video the points were read from: the test recording of an
+// override, the video asset of a trial, empty for an environment.
+func (c Calibration) Video() string {
+	if c.RecordingID != "" {
+		return c.RecordingID
+	}
+	return c.VideoAssetID
 }
 
 // Latest returns the calibration no other calibration supersedes, or nil.
@@ -264,27 +285,29 @@ func SameSetup(previous Calibration, in Input) error {
 }
 
 // CheckCorrection decides whether in may join chain as a calibration read from
-// the video recordingID (empty for an environment). It must supersede the
-// latest calibration of the chain. An override chain spans the videos of a
-// test, and a replacement video may come from another camera, so the camera
+// the video (empty for an environment). It must supersede the latest
+// calibration of the chain. An override or trial chain spans the owner's
+// videos, and a replacement video may come from another camera, so the camera
 // and frame size must match only within the same video.
-func CheckCorrection(chain []Calibration, in Input, recordingID string) error {
+func CheckCorrection(chain []Calibration, in Input, video string) error {
 	if err := CanCorrect(chain, in.SupersedesID); err != nil {
 		return err
 	}
-	if latest := Latest(chain); latest != nil && latest.RecordingID == recordingID {
+	if latest := Latest(chain); latest != nil && latest.Video() == video {
 		return SameSetup(*latest, in)
 	}
 	return nil
 }
 
-// Source names the chain that decides an animal's calibration, as the
-// effective_calibrations view reports it.
+// Source names the chain that decides the calibration of an animal or a
+// trial, as the effective_calibrations and trial_effective_calibrations views
+// report it.
 type Source string
 
 const (
 	SourceEnvironment Source = "ENVIRONMENT"
 	SourceOverride    Source = "OVERRIDE"
+	SourceTrial       Source = "TRIAL"
 )
 
 // Resolution is the calibration that applies. A nil Calibration means analysis

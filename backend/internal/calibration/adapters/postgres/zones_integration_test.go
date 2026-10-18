@@ -20,8 +20,8 @@ func square(x0, y0, x1, y1 float64) domain.Shape {
 }
 
 // zonedCatalog is the published catalog, except that the water maze declares
-// two required calibrated zones and an optional one. No published paradigm
-// declares calibrated zones, but their storage stays generic.
+// two required calibrated zones and an optional one, so the storage rules are
+// exercised on a pool whose zones would otherwise derive from parameters.
 type zonedCatalog struct{ catalog.Catalog }
 
 func (c zonedCatalog) Requirement(key string, version int, parameters map[string]float64) (domain.Requirement, error) {

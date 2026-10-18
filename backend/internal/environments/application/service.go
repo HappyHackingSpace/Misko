@@ -47,6 +47,14 @@ type Store interface {
 	// AllRevisions lists every revision of every environment, by environment name.
 	AllRevisions(ctx context.Context) ([]domain.RevisionSummary, error)
 	Revision(ctx context.Context, environmentID string, number int) (domain.Revision, error)
+	// RevisionByID returns ErrRevisionNotFound for an unknown id.
+	RevisionByID(ctx context.Context, id string) (NamedRevision, error)
+}
+
+// NamedRevision is a revision with the name of its environment.
+type NamedRevision struct {
+	domain.Revision
+	EnvironmentName string
 }
 
 type Service struct {
@@ -217,4 +225,10 @@ func (s *Service) Revision(ctx context.Context, actor access.Actor, id string, n
 		return domain.Revision{}, ErrRevisionNotFound
 	}
 	return s.store.Revision(ctx, id, number)
+}
+
+// RevisionByID is the environment port: other modules read the revision they
+// run a paradigm in and authorize their own users.
+func (s *Service) RevisionByID(ctx context.Context, id string) (NamedRevision, error) {
+	return s.store.RevisionByID(ctx, id)
 }

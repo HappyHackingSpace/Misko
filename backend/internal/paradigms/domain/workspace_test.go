@@ -13,10 +13,11 @@ func TestCalibrationRequirements(t *testing.T) {
 	}{
 		"MWM": {map[string]float64{"tank_diameter_cm": 120, "platform_diameter_cm": 10, "platform_x_cm": 30, "platform_y_cm": 30, "wall_annulus_width_cm": 12},
 			true, &Bounds{-60, -60, 60, 60}},
-		// Observer-scored paradigms are never tracked, so they need no calibration.
-		"POLE":         {map[string]float64{"pole_length_cm": 50}, false, nil},
-		"TREADMILL":    {map[string]float64{"lane_length_cm": 40}, false, nil},
-		"NOVEL_OBJECT": {map[string]float64{"arena_width_cm": 50, "arena_height_cm": 50, "object_zone_radius_cm": 3}, false, nil},
+		// The arena frame starts at a corner of the floor; the side views of the
+		// pole and the lane choose their own frame.
+		"NOVEL_OBJECT": {map[string]float64{"arena_width_cm": 50, "arena_height_cm": 40}, true, &Bounds{0, 0, 50, 40}},
+		"POLE":         {map[string]float64{"pole_length_cm": 50}, true, nil},
+		"TREADMILL":    {map[string]float64{"lane_length_cm": 40}, true, nil},
 	} {
 		req, err := CalibrationRequirement(key, 1, tc.apparatus)
 		if err != nil || req.Required != tc.required {

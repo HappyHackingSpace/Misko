@@ -8,10 +8,10 @@ export default {
     created: "{name} ortamı oluşturuldu",
     revisionSaved: "Yeni revizyon oluşturuldu",
     calibration: {
-      intro: "Düzenek kurulurken bir kez kalibre edin. Bu arenada test edilen her hayvan, testi elle kalibre edilmedikçe bunu kullanır.",
-      waiting: "Henüz kalibre edilmedi. Kalibre edilene kadar bu arenada test edilen hayvanlar santimetre cinsinden analiz edilemez.",
+      intro: "Düzenek kurulurken bir kez kalibre edin. Bu arenada test edilen her denek, testi elle kalibre edilmedikçe bunu kullanır.",
+      waiting: "Henüz kalibre edilmedi. Kalibre edilene kadar bu arenada test edilen denekler santimetre cinsinden analiz edilemez.",
       rejected: "Reddedildi: kontrol noktaları toleranstan fazla sapıyor. Düzeltilene kadar bu arenadaki analizler bekler.",
-      fixedCamera: "Bu, kamera ve arenanın yerinde kaldığını varsayar. Videosu uymayan bir hayvan, kendi testinden elle kalibre edilebilir.",
+      fixedCamera: "Bu, kamera ve arenanın yerinde kaldığını varsayar. Videosu uymayan bir denek, kendi testinden elle kalibre edilebilir.",
       saved: "Kalibrasyon kaydedildi",
     },
   },

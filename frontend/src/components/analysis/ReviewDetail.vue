@@ -7,9 +7,10 @@ import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { RouterLink } from "vue-router";
 import { NAlert, NButton, NCollapse, NCollapseItem, NInput, NSelect, NSpin, NTag, useMessage } from "naive-ui";
-import { results, runs } from "../../api/analysis.js";
+import { jobs, results, runs } from "../../api/analysis.js";
 import { selectOption } from "../../composables/selectOptions.js";
 import EventTimeline from "../EventTimeline.vue";
+import MetricTiles from "./MetricTiles.vue";
 import VideoPairPanel from "../VideoPairPanel.vue";
 import { reviewTag, useNumbers, useParadigmText } from "./format.js";
 
@@ -41,10 +42,6 @@ const playing = ref(null);
 const closed = computed(() => props.item.experimentStatus === "COMPLETED");
 const writable = computed(() => props.canReview && !closed.value);
 const underReview = computed(() => viewRunId.value === props.item.run.id);
-// A run scored by an observer has no analysed video and no calibration; its
-// recording is shown in the scoring player instead.
-const viewedRun = computed(() => (props.item.runs || []).find((run) => run.id === viewRunId.value) || (underReview.value ? props.item.run : null));
-const scored = computed(() => (detail.value?.id === viewRunId.value ? detail.value.method : viewedRun.value?.method) === "SCORED");
 const metrics = computed(() => detail.value?.result?.metrics || (underReview.value ? props.item.run.metrics : []));
 const events = computed(() => detail.value?.result?.events || []);
 const missing = computed(() => metrics.value.filter((m) => m.value === null));
@@ -85,23 +82,21 @@ const checks = computed(() => {
     const reasons = [...new Set(failedRuns.value.map((run) => failureText(run.failureReason)))].join(", ");
     list.push({ tone: "warning", key: "failed", text: t("review.checks.failedRuns", { count: failedRuns.value.length, reasons }) });
   }
-  if (!scored.value) {
-    list.push({
-      tone: "default",
-      key: "calibration",
-      text: props.item.run.calibrationId ? t("review.checks.calibrated") : t("review.checks.noCalibration"),
-    });
-  }
+  list.push({
+    tone: "default",
+    key: "calibration",
+    text: props.item.run.calibrationId ? t("review.checks.calibrated") : t("review.checks.noCalibration"),
+  });
   return list;
 });
-const failureText = (reason) => (reason && te(`analysis.failureReasons.${reason}`) ? t(`analysis.failureReasons.${reason}`) : reason || "");
+const failureText = (reason) => fmt.failure(reason);
 
 async function loadRun() {
   if (!viewRunId.value) return;
   loadingRun.value = true;
   playing.value = null;
   try {
-    detail.value = await runs.get(viewRunId.value);
+    detail.value = await jobs.get(viewRunId.value);
   } catch (e) {
     detail.value = null;
     error.value = e.message;
@@ -229,15 +224,9 @@ const groupDose = computed(() => (group.value?.doseMicro != null ? fmt.dose(grou
     <NSpin :show="loadingRun">
       <section>
         <h4>{{ $t("review.metrics") }}</h4>
-        <div class="kpis" data-test="review-metrics">
-          <div v-for="metric in metrics" :key="metric.key" class="kpi" :class="{ missing: metric.value === null }" :data-test="`review-metric-${metric.key}`">
-            <span class="kpi-label">{{ metricLabel(metric.key) }}</span>
-            <span class="kpi-value">{{ metric.value === null ? $t("analysis.missing") : fmt.metric(metric.value, metric.unit) }}</span>
-            <span v-if="metric.value === null" class="kpi-note">{{ fmt.missingReason(metric.missingReason) }}</span>
-          </div>
-        </div>
+        <MetricTiles class="metrics" :metrics="metrics" :label="metricLabel" test-prefix="review-metric" />
       </section>
-      <VideoPairPanel v-if="viewRunId && !scored" :run-id="viewRunId" :play="playing" />
+      <VideoPairPanel v-if="viewRunId" :job-id="viewRunId" :play="playing" />
       <NCollapse v-if="events.length" class="events">
         <NCollapseItem :title="`${$t('analysis.events')} (${events.length})`" name="events">
           <EventTimeline :events="events" :selected="playing" :labels="eventLabels" @play="playing = $event" />
@@ -302,12 +291,7 @@ h4 { margin: 0 0 8px; font-size: 12px; color: var(--muted); text-transform: uppe
 .bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .pick { flex: 1; min-width: 220px; }
 .hint { margin: 6px 0 0; }
-.kpis { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; margin-bottom: 14px; }
-.kpi { background: var(--panel2); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.kpi.missing { border-color: color-mix(in srgb, var(--warn) 60%, var(--line)); }
-.kpi-label { font-size: 11.5px; color: var(--muted); }
-.kpi-value { font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums; }
-.kpi-note { font-size: 11px; color: var(--warn); }
+.metrics { margin-bottom: 14px; }
 .events { margin-top: 12px; }
 .decide { display: flex; flex-direction: column; gap: 10px; border-top: 1px solid var(--line); padding-top: 14px; }
 .decide-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }

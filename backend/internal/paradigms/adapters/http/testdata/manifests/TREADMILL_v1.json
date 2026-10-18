@@ -33,6 +33,39 @@
       "default": 40
     },
     {
+      "key": "exhaustion_dwell_s",
+      "scope": "ANALYSIS",
+      "label": "Exhaustion time on the grid",
+      "help": "Continuous time on the shock grid that defines exhaustion: the subject no longer returns to the belt.",
+      "unit": "s",
+      "valueType": "number",
+      "min": 1,
+      "max": 60,
+      "default": 5
+    },
+    {
+      "key": "min_shock_dwell_s",
+      "scope": "ANALYSIS",
+      "label": "Minimum grid contact",
+      "help": "A stay on the shock grid counts as a shock only when it lasts at least this long; shorter contacts are ignored.",
+      "unit": "s",
+      "valueType": "number",
+      "min": 0,
+      "max": 5,
+      "default": 0.2
+    },
+    {
+      "key": "max_sample_gap_s",
+      "scope": "ANALYSIS",
+      "label": "Maximum tracking gap",
+      "help": "Longest tracking dropout that is bridged; movement across a longer gap is excluded. Increase only for low-frame-rate videos.",
+      "unit": "s",
+      "valueType": "number",
+      "min": 0.01,
+      "max": 5,
+      "default": 0.5
+    },
+    {
       "key": "accelerating",
       "scope": "SESSION",
       "label": "Accelerating protocol",
@@ -80,7 +113,7 @@
       "key": "max_trial_duration_s",
       "scope": "SESSION",
       "label": "Cut-off time",
-      "help": "The trial ends at this time even if the animal is still running.",
+      "help": "The trial ends at this time even if the subject is still running.",
       "unit": "s",
       "valueType": "number",
       "min": 60,
@@ -88,33 +121,25 @@
       "default": 1800
     }
   ],
-  "zones": [],
-  "inputEvents": [
+  "zones": [
     {
-      "type": "exhaustion",
-      "label": "Exhaustion",
-      "kind": "POINT",
-      "labels": [],
-      "single": true,
-      "definition": "The animal meets the exhaustion criterion."
-    },
-    {
-      "type": "shock",
-      "label": "Shock",
-      "kind": "POINT",
-      "labels": [],
-      "single": false,
-      "definition": "A shock or contact with the rear grid."
+      "key": "shock_grid",
+      "label": "Shock grid",
+      "role": "SHOCK_GRID",
+      "geometry": "Polygon drawn on the side view over the shock grid at the back of the lane.",
+      "calibrated": true,
+      "required": true
     }
   ],
+  "inputEvents": [],
   "events": [
     {
       "type": "exhaustion",
       "label": "Exhaustion",
       "kind": "POINT",
       "labels": [],
-      "single": false,
-      "definition": "Scored exhaustion, passed through unchanged."
+      "single": true,
+      "definition": "A stay on the grid is a run of contiguous counted intervals whose earlier sample lies in the shock grid zone. Exhaustion is placed at the start of the first stay that lasts at least exhaustion_dwell_s."
     },
     {
       "type": "shock",
@@ -122,21 +147,24 @@
       "kind": "POINT",
       "labels": [],
       "single": false,
-      "definition": "Scored shock, passed through unchanged."
+      "definition": "A stay on the grid is a run of contiguous counted intervals whose earlier sample lies in the shock grid zone. A shock is placed at the start of every stay that lasts at least min_shock_dwell_s."
     }
   ],
   "metrics": [
     {
       "key": "latency_to_exhaustion_s",
       "label": "Time to exhaustion",
-      "description": "Time until the animal meets the exhaustion criterion; longer times indicate greater endurance.",
+      "description": "Time until the subject meets the exhaustion criterion; longer times indicate greater endurance.",
       "unit": "s",
       "valueType": "number",
-      "definition": "Time of exhaustion, if it occurs by the cut-off time.",
+      "definition": "Coordinates are in centimeters in the calibration's side view of the lane: x along the lane from the shock grid end (x = 0) to the front (x = lane_length_cm), y vertical. Samples after max_trial_duration_s are ignored. A counted interval is a pair of consecutive tracked samples separated by 0 \u003c dt \u003c= max_sample_gap_s. Time of the exhaustion event, if it occurs by the cut-off time.",
       "formula": "exhaustion time",
-      "missingWhen": "Missing (NOT_SCORED) when exhaustion was not scored, (EVENT_NOT_OBSERVED) when the whole trial was recorded without exhaustion, and (INCOMPLETE_RECORDING) otherwise.",
+      "missingWhen": "Missing (NO_VALID_INTERVALS) when there are no counted intervals, (EVENT_NOT_OBSERVED) when the recording covers max_trial_duration_s without exhaustion, and (INCOMPLETE_RECORDING) when a shorter recording ends without exhaustion.",
       "inputs": [
-        "exhaustion event",
+        "samples",
+        "max_sample_gap_s",
+        "shock_grid zone",
+        "exhaustion_dwell_s",
         "max_trial_duration_s",
         "recording duration"
       ],
@@ -150,11 +178,14 @@
       "description": "Time spent running, until exhaustion or the cut-off time.",
       "unit": "s",
       "valueType": "number",
-      "definition": "Time of exhaustion, or max_trial_duration_s when the whole trial was recorded without exhaustion.",
-      "formula": "min(exhaustion time, max_trial_duration_s)",
-      "missingWhen": "Missing (NOT_SCORED) when the event was not scored, or (INCOMPLETE_RECORDING) when it was not observed and the recording is shorter than max_trial_duration_s.",
+      "definition": "The run ends at the exhaustion event or, without exhaustion, at the end of the recording, censored at max_trial_duration_s.",
+      "formula": "exhaustion time, else min(recording duration, max_trial_duration_s)",
+      "missingWhen": "Missing (NO_VALID_INTERVALS) when there are no counted intervals.",
       "inputs": [
-        "exhaustion event",
+        "samples",
+        "max_sample_gap_s",
+        "shock_grid zone",
+        "exhaustion_dwell_s",
         "max_trial_duration_s",
         "recording duration"
       ],
@@ -170,9 +201,12 @@
       "valueType": "number",
       "definition": "Integral of belt speed over the running time; the speed rises linearly from the start speed to the end speed over acceleration_duration_s and then remains constant.",
       "formula": "integral of speed(t) dt over [0, run_time_s]",
-      "missingWhen": "Missing (NOT_SCORED) when the event was not scored, or (INCOMPLETE_RECORDING) when it was not observed and the recording is shorter than max_trial_duration_s.",
+      "missingWhen": "Missing (NO_VALID_INTERVALS) when there are no counted intervals.",
       "inputs": [
-        "exhaustion event",
+        "samples",
+        "max_sample_gap_s",
+        "shock_grid zone",
+        "exhaustion_dwell_s",
         "max_trial_duration_s",
         "recording duration",
         "accelerating",
@@ -190,14 +224,17 @@
       "description": "Number of shocks or rear-grid contacts during the run; more shocks suggest fatigue or low motivation.",
       "unit": "count",
       "valueType": "integer",
-      "definition": "Shocks occurring strictly before the end of the run.",
+      "definition": "Shock events strictly before the end of the run.",
       "formula": "count(shock time \u003c run end)",
-      "missingWhen": "Missing (NOT_SCORED) when shocks were not scored; otherwise missing for the same reason as run_time_s.",
+      "missingWhen": "Missing (NO_VALID_INTERVALS) when there are no counted intervals.",
       "inputs": [
-        "exhaustion event",
+        "samples",
+        "max_sample_gap_s",
+        "shock_grid zone",
+        "exhaustion_dwell_s",
         "max_trial_duration_s",
         "recording duration",
-        "shock events"
+        "min_shock_dwell_s"
       ],
       "min": 0,
       "max": 1000000,
@@ -206,10 +243,22 @@
   ],
   "qc": [
     {
-      "key": "max_event_time_uncertainty_s",
+      "key": "min_tracking_confidence",
+      "operator": "\u003e=",
+      "value": 0.7,
+      "unit": "ratio"
+    },
+    {
+      "key": "max_lost_frame_ratio",
       "operator": "\u003c=",
-      "value": 0.5,
-      "unit": "s"
+      "value": 0.1,
+      "unit": "ratio"
+    },
+    {
+      "key": "max_calibration_error_cm",
+      "operator": "\u003c=",
+      "value": 2,
+      "unit": "cm"
     }
   ]
 }

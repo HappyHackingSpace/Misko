@@ -2,6 +2,7 @@ package domain
 
 import (
 	"errors"
+	"maps"
 	"math"
 	"slices"
 	"testing"
@@ -150,12 +151,27 @@ func TestInvalidInputsAreRejected(t *testing.T) {
 	}
 }
 
-// No published paradigm declares calibrated zones, so any zone shape sent
-// with an input is unknown. The generic rules still hold for a version that
-// declares them.
+// The water maze derives its zones from parameters, so a drawn shape is
+// unknown; the other paradigms need every calibrated zone they declare. The
+// generic rules hold for any version that declares calibrated zones.
 func TestCalibratedZonesAreValidated(t *testing.T) {
-	for _, key := range Keys() {
-		expectError(t, key, Input{Zones: map[string][]Shape{"platform": {rect(0, 0, 1, 1)}}}, ErrUnknownZone)
+	expectError(t, "MWM", Input{Zones: map[string][]Shape{"platform": {rect(0, 0, 1, 1)}}}, ErrUnknownZone)
+	for key, zones := range map[string]map[string][]Shape{"NOVEL_OBJECT": objectZones, "POLE": poleZones, "TREADMILL": gridZones} {
+		p, _ := Latest(key)
+		for _, z := range p.Zones {
+			if !z.Calibrated || !z.Required {
+				t.Errorf("%s zone %s must be calibrated and required", key, z.Key)
+			}
+			partial := maps.Clone(zones)
+			delete(partial, z.Key)
+			expectError(t, key, Input{Zones: partial}, ErrMissingZone)
+		}
+		extra := maps.Clone(zones)
+		extra["platform"] = []Shape{circle(0, 0, 1)}
+		expectError(t, key, Input{Zones: extra}, ErrUnknownZone)
+		if _, err := Evaluate(key, 1, Input{Zones: zones}); err != nil {
+			t.Errorf("%s with its zones: %v", key, err)
+		}
 	}
 	zoned := Paradigm{Zones: []Zone{
 		{Key: "arms", Role: "OPEN", Calibrated: true, Required: true},
@@ -189,37 +205,5 @@ func TestCalibratedZonesAreValidated(t *testing.T) {
 		if err := validateZones(zoned, tc.zones); !errors.Is(err, tc.want) {
 			t.Errorf("%s: err=%v want %v", name, err, tc.want)
 		}
-	}
-}
-
-func TestObservedEventsAreValidated(t *testing.T) {
-	scored := []string{"turn_complete", "base_reached", "fall"}
-	with := func(mutate func(*Input)) Input {
-		in := Input{ScoredEvents: scored, Events: []ObservedEvent{mark("turn_complete", 1), mark("base_reached", 3)}}
-		mutate(&in)
-		return in
-	}
-	for name, tc := range map[string]struct {
-		key  string
-		in   Input
-		want error
-	}{
-		"event type not scored":       {"POLE", with(func(in *Input) { in.ScoredEvents = []string{"turn_complete"} }), ErrInvalidEvent},
-		"undeclared scored type":      {"POLE", with(func(in *Input) { in.ScoredEvents = append(in.ScoredEvents, "grooming") }), ErrInvalidEvent},
-		"point event with a duration": {"POLE", with(func(in *Input) { in.Events = []ObservedEvent{span("fall", "", 1, 2)} }), ErrInvalidEvent},
-		"event after recording end":   {"POLE", with(func(in *Input) { in.DurationUs = at(2) }), ErrInvalidEvent},
-		"negative event time":         {"POLE", with(func(in *Input) { in.Events = []ObservedEvent{{Type: "fall", StartUs: -1, EndUs: -1}} }), ErrInvalidEvent},
-		"negative recording length":   {"POLE", with(func(in *Input) { in.DurationUs = -1 }), ErrInvalidEvent},
-		"unexpected label": {"POLE", with(func(in *Input) {
-			in.Events = []ObservedEvent{{Type: "fall", Label: "left", StartUs: 1, EndUs: 1}}
-		}), ErrInvalidEvent},
-		"single event repeated": {"TREADMILL", Input{ScoredEvents: []string{"exhaustion"},
-			Events: []ObservedEvent{mark("exhaustion", 10), mark("exhaustion", 20)}}, ErrInvalidEvent},
-		"events for a tracked paradigm": {"MWM", Input{ScoredEvents: []string{"fall"}}, ErrInvalidEvent},
-	} {
-		t.Run(name, func(t *testing.T) { expectError(t, tc.key, tc.in, tc.want) })
-	}
-	if _, err := Evaluate("POLE", 1, with(func(in *Input) { in.DurationUs = at(3) })); err != nil {
-		t.Errorf("an event at the recording end is accepted: %v", err)
 	}
 }

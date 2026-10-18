@@ -15,16 +15,17 @@ bozukluğu geri çeviriyor mu? Paneldeki her şey bu soruyu izler:
 
 1. **Etken maddeler** ve **Hastalık modelleri**, laboratuvarın verdiği maddeleri
    ve oluşturduğu bozuklukları listeler; her birinin menüde kendi sayfası vardır.
-2. **Denekler** hayvanlardır; vücut ağırlıklarıyla birlikte tutulur.
+2. **Denekler** deneklerdir; vücut ağırlıklarıyla birlikte tutulur.
 3. **Ortamlar** arenalardır; her biri sabit kamerası için bir kez kalibre edilir.
 4. Bir **deney**, gruplar (her birinin rolü, hastalık modeli ve aldığı uygulama),
    zaman noktaları, protokoller ve ölçütler olarak tasarlanır ve başlatılır.
-5. Hayvanlar gruplara **atanır**, her gün **dozlanır** ve **test oturumlarında**
+5. Denekler gruplara **atanır**, her gün **dozlanır** ve **test oturumlarında**
    filme alınır.
-6. Her hayvan oturum videosunda ölçülür: takip edilen paradigmalarda bir analiz
-   işçisi hayvanı izler, gözlemci puanlamalı paradigmalarda bir kişi puanlar.
-   Her sonucu bir kişi **inceler** ve yalnızca kabul edilen sonuçlar **rapora**
+6. Her denek oturum videosunda otomatik olarak ölçülür: her paradigmada bir
+   analiz işçisi deneği izler. Her sonucu bir kişi **inceler** ve yalnızca kabul edilen sonuçlar **rapora**
    girer.
+7. **Paradigma testi**, bir paradigmayı herhangi bir çalışmanın dışında tek bir
+   videoda dener; örneğin bir kamerayı ya da analiz eşiklerini sınamak için.
 
 Panel varsayılan olarak Türkçedir. Üst çubuktaki dil seçiciyle İngilizceye
 geçebilirsiniz; seçiminiz hatırlanır.
@@ -48,7 +49,7 @@ reddedeceği düğmeleri gizler.
 |---|---|
 | `SUPERADMIN`, `LAB_MANAGER` | Kullanıcılar ve laboratuvar ayarları dahil her şey. |
 | `RESEARCHER` | Kullanıcılar ve laboratuvar ayarları dışında her şey: etken maddeler, hastalık modelleri, denekler, ortamlar, çalışma tasarımı, oturum planlama, dozlama, oturum yürütme, sonuç onayı. |
-| `TECHNICIAN` | Laboratuvar günü: doz ve ağırlık kaydı, oturumu başlatma ve tamamlama, deneme kaydı, video yükleme, bir hayvanı bir videoda kalibre etme, gözlemci puanlamalı testleri puanlama, sonuç onayı. Oturum planlayamaz, iptal edemez ve çalışmayı değiştiremez. |
+| `TECHNICIAN` | Laboratuvar günü: doz ve ağırlık kaydı, oturumu başlatma ve tamamlama, deneme kaydı, video yükleme, bir deneği bir videoda kalibre etme, paradigma testi yürütme, sonuç onayı. Oturum planlayamaz, iptal edemez ve çalışmayı değiştiremez. |
 | `VIEWER` | Her şeyi okur, hiçbir şeyi değiştirmez. |
 
 **Kullanıcılar** ekranında kullanıcı oluştururken şifreyi boş bırakıp sistemin
@@ -101,20 +102,20 @@ bulamazsa ilgili sayfaya bağlantı verir.
 
 ## Denekler ve ağırlıklar
 
-**Denekler**'i açın. Her hayvanın bir kodu (harf, rakam, `.`, `_`, `/`, `-`),
+**Denekler**'i açın. Her deneğin bir kodu (harf, rakam, `.`, `_`, `/`, `-`),
 türü (fare veya sıçan) ve cinsiyeti vardır.
 
 1. **Yeni denek**'e tıklayın, kodu yazın, tür ve cinsiyeti seçin ve kaydedin.
-2. Hayvanları bulmak için arama kutusunu, tür ve cinsiyet filtrelerini kullanın.
+2. Denekleri bulmak için arama kutusunu, tür ve cinsiyet filtrelerini kullanın.
    Henüz hiçbir gruba ait olmayanları görmek için **Yalnızca gruba
    atanmamışlar**'ı işaretleyin.
-3. Hayvanın sayfasını açmak için koduna tıklayın. Sayfa, çalışmasını ve grubunu
+3. Deneğin sayfasını açmak için koduna tıklayın. Sayfa, çalışmasını ve grubunu
    (ya da atanmadığını) ve en yenisi üstte olmak üzere vücut ağırlıklarını,
    bir önceki tartıma göre farkla gösterir.
-4. Bir hayvanı tartmak için sayfasında gramı ve zamanı yazıp **Ağırlığı
+4. Bir deneği tartmak için sayfasında gramı ve zamanı yazıp **Ağırlığı
    kaydet**'e tıklayın. Ağırlıklar sonradan düzenlenmez.
 
-Kodlar benzersizdir. Bir gruptaki veya ağırlığı olan hayvan silinemez.
+Kodlar benzersizdir. Bir gruptaki veya ağırlığı olan denek silinemez.
 
 ## Ortamlar ve kalibrasyon
 
@@ -136,8 +137,15 @@ tıklayın:
 kalibre edilir ve o arenada çekilen her video bunu kullanır. Kalibrasyon,
 kamera piksellerinin düzenek üzerinde santimetreye nasıl karşılık geldiğini ve
 çizilen bölgeler tanımlayan bir paradigmada bu bölgelerin nerede olduğunu
-Mişko'ya söyler. Gözlemci puanlamalı paradigmalar (direk, koşu bandı, yeni
-nesne) kalibrasyon gerektirmez.
+Mişko'ya söyler. Her paradigma kalibre edilir ve kalibratör paradigmaya göre
+kısa bir rehber gösterir: kameranın nereye konacağı ve neyin çizileceği.
+
+| Paradigma | Kamera | Düzenek çerçevesi | Bölgeler |
+|---|---|---|---|
+| Morris su labirenti | Tankın üstünde | Tankın merkezi, x doğuya, y kuzeye | çizilmez |
+| Yeni nesne | Arenanın üstünde | Zeminin başlangıç köşesi, x genişlik, y derinlik boyunca | **Yeni nesne** ve **tanıdık nesne**: her nesnenin çevresinde, ondan yaklaşık 2 cm geniş bir daire |
+| Direk | Direğin yanında | x direğe uzaklık, y tabandan yükseklik (taban 0, tepe direk uzunluğu) | **Direk** (deneğin tırmandığı yer) ve **taban** (dibindeki zemin), çokgen |
+| Koşu bandı | Kulvarın yanında | x kulvar boyunca şok ızgarası ucundan (0) öne, y banttan yukarı | Kulvarın arkasındaki **şok ızgarası**, çokgen |
 
 1. Ortamın sayfasında **Bu revizyonu kalibre et**'e tıklayın. Görsel
    kalibratör açılır.
@@ -149,25 +157,35 @@ nesne) kalibrasyon gerektirmez.
    su labirentinde su yüzeyi).
 4. **Uyum noktaları** aracıyla her uyum noktasına karede tıklayın, sonra
    sürükleyerek ayarlayın. Vurgulanan satır, bir sonraki tıklamanın
-   yerleştireceği noktadır; başka bir nokta seçmek için satırına tıklayın. Su
-   labirentinde ve yeni nesne kutusunda **Düzenek noktalarını kullan** gerçek
-   konumları ortamın ölçülerinden doldurur, siz yalnızca sırayla tıklarsınız:
+   yerleştireceği noktadır; başka bir nokta seçmek için satırına tıklayın.
+   **Düzenek noktalarını kullan** gerçek konumları ortamın ölçülerinden
+   doldurur, siz yalnızca sırayla tıklarsınız:
    - su labirenti: tank duvarının kuzey, doğu, güney ve batı noktaları, tankın
      merkezinden ölçülür (x doğuya, y kuzeye doğru artar).
    - yeni nesne kutusu: tabanın dört iç köşesi, (0, 0) başlangıç köşesinden
      genişlik ve derinlik boyunca.
+   - direk: direğin tabanı (yükseklik 0) ve tepesi (direk uzunluğu). İkisi aynı
+     dikey doğru üzerinde olduğundan direkten uzakta düzenek üzerinde iki
+     işaret daha gerekir (örneğin arka panelde): direğe uzaklıklarını ve
+     tabandan yüksekliklerini ölçüp yazın. Uyum noktaları tek bir doğru
+     üzerindeyse kalibratör bunu söyler.
+   - koşu bandı: kulvar duvarının ızgara ucundaki (0) ve öndeki (kulvar
+     uzunluğu) köşeleri, bant üzerinde ve duvarın üstünde. Üst noktaları
+     doldurmak için **Kulvar duvarı yüksekliği**'ni yazın.
 
    Hazır nokta yoksa tıkladığınız her noktanın cm cinsinden gerçek konumunu,
    istediğiniz bir çerçevede (örneğin düzeneğin merkezine göre) yazın.
 5. **Kontrol noktaları** aracıyla uyum noktalarından farklı yerlere en az üç
-   kontrol noktası koyun (hazır noktalar kenarların ortalarını ya da tankın
-   çapraz duvar noktalarını kullanır).
+   kontrol noktası koyun (hazır noktalar kenarların ortalarını, tankın çapraz
+   duvar noktalarını, iki düzenek işaretiyle birlikte direğin ortasını ya da
+   kulvarın ortasını kullanır).
 6. **Kırpma** aracıyla bu arenanın çevresine bir dikdörtgen sürükleyin.
    Noktalar ve bölgeler bunun içinde kalmalıdır. **Tüm kare** onu sıfırlar.
-7. Paradigmanın çizilen bölgeleri varsa (güncel katalogda böyle bir paradigma
-   yok, ama kalibratör bunları destekler) **Bölgeler** aracını açın. Her
-   bölge **Zorunlu** ya da **İsteğe bağlı** olarak listelenir. Bir bölgenin
-   yanındaki **Çokgen çiz** ya da **Daire çiz**'e tıklayıp onu karede çizin:
+7. Paradigmanın çizilen bölgeleri varsa (yeni nesne, direk, koşu bandı)
+   **Bölgeler** aracını açın. Her bölge **Zorunlu** ya da **İsteğe bağlı**
+   olarak listelenir. Bir bölgenin yanındaki **Daire çiz** ya da **Çokgen
+   çiz**'e tıklayıp onu karede çizin (nesne bölgeleri önce daire olmak üzere
+   ikisini de sunar; direk, taban ve şok ızgarası bölgeleri çokgendir):
    - çokgen: her köşeye tıklayın, kapatmak için ilk köşeye yeniden tıklayın (ya
      da **Çokgeni kapat**); **Son köşeyi geri al** son köşeyi kaldırır;
    - daire: merkeze basıp kenara kadar sürükleyin.
@@ -177,7 +195,9 @@ nesne) kalibrasyon gerektirmez.
    ya da merkezine tıklamak oraya yapışır, böylece komşu bölgeler kenarlarını
    tam olarak paylaşır. Biten bir şekli tutamaçlarını sürükleyerek ayarlayın ya
    da **Yeniden çiz** ve **Sil**'i kullanın. **Çizimi bitir** o anki bölgeyi
-   bitirir.
+   bitirir. Yeni nesnede **Yer değiştir: Yeni nesne ve Tanıdık nesne** çizilen
+   iki bölgenin yerini değiştirir; örneğin yeni nesnesi öbür tarafta duran bir deneğin
+   kalibrasyonunda (dengeleme).
 8. Her değer **Değerleri elle gir** altında elle de yazılabilir. Karenin
    altındaki liste neyin eksik olduğunu söyler.
 9. **Kalibrasyonu kaydet**'e tıklayın. Panel uyum ve kontrol hatalarını,
@@ -195,13 +215,13 @@ tıklayın. Yeni revizyonun kendi kalibrasyonu gerekir.
 ## Bir çalışmayı tasarlama
 
 **Deneyler**'i açıp **Yeni deney**'e tıklayın. Kodu, başlığı, hipotezi,
-hayvanların nasıl rastgele dağıtıldığını ve çalışmanın kör olup olmadığını
+deneklerin nasıl rastgele dağıtıldığını ve çalışmanın kör olup olmadığını
 doldurup kaydedin. Deney **Gruplar ve rejimler** sekmesinde açılır. Yeni bir
 çalışma **Taslak**'tır; başlayana kadar tasarımı değiştirilebilir.
 
 **Gruplar ve rejimler.**
 
-1. **Grup ekle**'ye tıklayın. Bir kod (G1, G2), ad, rol ve hedef hayvan sayısı
+1. **Grup ekle**'ye tıklayın. Bir kod (G1, G2), ad, rol ve hedef denek sayısı
    verin. Sağlıklı kontrol dışındaki her rol bir hastalık modeli ister.
 2. Grubun kartında **Kalem ekle**'ye tıklayarak grubun ne aldığını belirtin:
    amaç (indüksiyon, taşıyıcı veya tedavi), madde, doz ve birim (örneğin
@@ -216,7 +236,7 @@ bir taşıyıcı kalemi vardır; sham grubunun taşıyıcısı vardır, indüksi
 **Zaman noktaları ve protokoller.** **Zaman noktaları ve protokoller**
 sekmesinde:
 
-1. Hayvanların test edildiği her an için **Zaman noktası ekle**'ye tıklayın;
+1. Deneklerin test edildiği her an için **Zaman noktası ekle**'ye tıklayın;
    bir ad (Baseline, 7. gün) ve çalışma günü verin (0. günden önce eksi).
 2. **Yeni protokol**'e tıklayın, ad verin ve her test için bir adım ekleyin:
    paradigma, deneme türü ve deneme sayısı. Oturum ayarları olan paradigmalar
@@ -239,27 +259,27 @@ okunur gösterilir. Yeni protokol sürümleri hâlâ eklenebilir.
 
 ## Atama ve dışlama
 
-**Hayvanlar** sekmesinde:
+**Denekler** sekmesinde:
 
-1. **Hayvan ata**'ya tıklayın. Çekmece hiçbir gruba ait olmayan hayvanları
+1. **Denek ata**'ya tıklayın. Çekmece hiçbir gruba ait olmayan denekleri
    listeler.
-2. Arayın ve hayvanları işaretleyin.
+2. Arayın ve denekleri işaretleyin.
 3. **Tek grup**'u seçip grubu belirleyin ya da sistemin onları hedeflerine kadar
    gruplara yayması için **Rastgele dağıt**'ı seçin (isterseniz yalnızca bazı
    gruplara). Bir kafes eklenebilir.
 4. **Ata** veya **Rastgele dağıt**'a tıklayın.
 
-Üstteki grup kartları her grubun ne kadar dolu olduğunu gösterir. Bir hayvan tam
-olarak bir gruba aittir ve çalışma başladıktan sonra grubu değişmez. Bir hayvan
+Üstteki grup kartları her grubun ne kadar dolu olduğunu gösterir. Bir denek tam
+olarak bir gruba aittir ve çalışma başladıktan sonra grubu değişmez. Bir denek
 ölürse ya da çalışmadan çıkması gerekirse **Dışla**'ya tıklayın, nedeni seçin
 (öldü, insani son nokta, indüksiyon başarısız, teknik sorun, diğer) ve bir not
-ekleyin. Dışlanan hayvanlar nedenleriyle listede kalır ve istatistiklere
+ekleyin. Dışlanan denekler nedenleriyle listede kalır ve istatistiklere
 girmez.
 
 ## Günlük dozlama
 
-**Dozlama** sekmesi bir günün verilecek dozlarını grup ve hayvana göre, her
-hayvanın son ağırlığıyla birlikte gösterir. Başka bir güne geçmek için okları
+**Dozlama** sekmesi bir günün verilecek dozlarını grup ve deneğe göre, her
+deneğin son ağırlığıyla birlikte gösterir. Başka bir güne geçmek için okları
 veya tarih seçiciyi, geri dönmek için **Bugün**'ü kullanın. Bir doz bugün
 **Bekliyor**, kaydedilince **Verildi**, geçmiş bir günde **Eksik** ve gelecek
 bir günde **Planlandı** olarak görünür.
@@ -269,20 +289,20 @@ bir günde **Planlandı** olarak görünür.
 2. Kilogram başına doz son yedi günden bir ağırlık ister. Yoksa pencere önce
    ağırlığı sorar, kaydeder ve dozu onunla kaydeder. Liste, planlanan mg/kg
    dozun yanında mg cinsinden dozu gösterir.
-3. Planda olmayan bir doz için **Plan dışı doz**'a tıklayıp hayvanı, amacı,
+3. Planda olmayan bir doz için **Plan dışı doz**'a tıklayıp deneği, amacı,
    maddeyi, miktarı, birimi ve yolu seçin.
 
-**İndüksiyon sonuçları.** İndüksiyon uygulanan hayvanlar **İndüksiyon
+**İndüksiyon sonuçları.** İndüksiyon uygulanan denekler **İndüksiyon
 sonuçları** altında listelenir. **Sonucu kaydet**'e tıklayın, doğrulandı veya
 doğrulanmadı seçip kaydedin. Bir sonuç bir kez kaydedilir.
 
-Alttaki **Doz geçmişi** kaydedilen her dozu listeler ve hayvana ve amaca göre
+Alttaki **Doz geçmişi** kaydedilen her dozu listeler ve deneğe ve amaca göre
 filtrelenebilir.
 
 ## Test oturumlarını planlama ve yürütme
 
 Bir test oturumu; bir zaman noktası, bir protokol adımı ve **tek bir videodur**.
-Bir veya daha fazla hayvan içerir, her biri kendi arenasındadır (örneğin tek
+Bir veya daha fazla denek içerir, her biri kendi arenasındadır (örneğin tek
 kameranın çektiği üç yeni nesne kutusu).
 
 **Planlama** (araştırmacı ve üstü), deneyin **Testler** sekmesinde:
@@ -290,13 +310,13 @@ kameranın çektiği üç yeni nesne kutusu).
 1. **Oturum planla**'ya tıklayın.
 2. Zaman noktasını seçin; protokol, sürüm ve adım önceden seçilidir.
 3. Zaman varsayılan olarak 0. gün artı zaman noktasının çalışma günüdür.
-4. İlk hayvanı ve arenasını seçin, ardından her ek hayvan için **Hayvan
+4. İlk deneği ve arenasını seçin, ardından her ek denek için **Denek
    ekle**'ye tıklayın. Yalnızca dışlanmamış ve aynı zaman noktası ile adımda
-   zaten planlanmamış hayvanlar, ve yalnızca adımın paradigmasına ait arenalar
+   zaten planlanmamış denekler, ve yalnızca adımın paradigmasına ait arenalar
    sunulur.
 5. **Planla**'ya tıklayın.
 
-Oturum planlıyken sayfasındaki **Hayvanları düzenle** hayvan ekler veya
+Oturum planlıyken sayfasındaki **Denekleri düzenle** denek ekler veya
 çıkarır. **Oturumu iptal et** bir neden ister ve bu neden oturumda saklanır.
 
 **İş listesi.** **Testler** menüsü, oturumları çalışmalar arasında dört görünümde
@@ -306,25 +326,25 @@ Görünüm ve filtreler adreste tutulur.
 
 **Yürütme** (teknisyen ve üstü), oturumun sayfasında:
 
-1. **Başlat**'a tıklayın. Dışlanmış bir hayvanı olan oturum, o hayvan
+1. **Başlat**'a tıklayın. Dışlanmış bir deneği olan oturum, o denek
    çıkarılmadan başlamaz.
-2. Her hayvan için kartındaki **Deneme kaydet**'e tıklayın, tekrar numarasını
+2. Her denek için kartındaki **Deneme kaydet**'e tıklayın, tekrar numarasını
    ve zamanları kontrol edip kaydedin. Kart yapılan denemeleri planlanan sayıyla
    karşılaştırır.
 3. Oturum videosunu **Video yükle** ile yükleyin. Video yüklendikten sonra
    doğrulanır ve kullanılan video olarak gösterilir. **Videoyu değiştir** bir
    onaydan sonra yenisini yükler; önceki videolar **Önceki videolar** altında
    listelenir.
-4. Her hayvanın kartı, görüntüdeki kendi bölümünün hangi kalibrasyonu
+4. Her deneğin kartı, görüntüdeki kendi bölümünün hangi kalibrasyonu
    kullandığını gösterir: normalde **Arena varsayılanı**. Kamera veya bir arena
-   kaydıysa o hayvanda **Bu videoda kalibre et**'e tıklayın. Aynı kalibratör,
+   kaydıysa o denekte **Bu videoda kalibre et**'e tıklayın. Aynı kalibratör,
    arenanın noktaları ve bölgeleriyle başlayarak oturumun kendi videosunun bir
    karesinde açılır: noktaları ve bölgeleri bu videodaki yerlerine taşıyıp
    kaydedin. Kullandığınız kare kalibrasyonla birlikte saklanır. Bu kalibrasyon
-   yalnızca bu videodaki bu hayvan için geçerlidir; diğer hayvanlar arena
-   varsayılanını korur. Reddedilirse hayvan arena varsayılanına dönmez, yeni
+   yalnızca bu videodaki bu denek için geçerlidir; diğer denekler arena
+   varsayılanını korur. Reddedilirse denek arena varsayılanına dönmez, yeni
    bir kalibrasyon bekler.
-5. Her hayvanın en az bir denemesi olduğunda **Tamamla**'ya tıklayın; o zamana
+5. Her deneğin en az bir denemesi olduğunda **Tamamla**'ya tıklayın; o zamana
    kadar düğme pasif kalır ve sayfa nedenini söyler.
 
 Sayfanın altındaki yorumlar, laboratuvarın olağan dışı her şeyi not etmesini
@@ -333,52 +353,16 @@ laboratuvar yöneticileri herhangi bir yorumu silebilir.
 
 ## Analiz ve sonuç onayı
 
-Bir hayvanın nasıl ölçüldüğü paradigmaya bağlıdır:
+Her paradigma otomatik olarak analiz edilir: bir analiz işçisi deneği videoda
+izler ve Mişko olayları (her nesnenin keşfi, direkte dönüş, tabana ulaşma ve
+düşme, koşu bandında şok ve tükenme) bu izden ve kalibre edilen bölgelerden
+çıkarır. Bir kişi yalnızca sonucu inceler.
 
-| Paradigma | Nasıl ölçülür |
-|---|---|
-| Morris su labirenti | **Takip edilir**: bir analiz işçisi hayvanı videoda izler. |
-| Direk, koşu bandı, yeni nesne | **Gözlemci puanlar**: bir kişi olayları videoda işaretler. |
-
-**Takip edilen paradigmalar.** Süren bir oturumun videosu doğrulandığında ve
-hayvanın kalibrasyonu geçerli olduğunda analiz işçisi her hayvanı kendi
-arenasında ölçer. Oturum sayfasının **Analiz** bölümü her hayvanın durumunu
+Süren bir oturumun videosu doğrulandığında ve
+deneğin kalibrasyonu geçerli olduğunda analiz işçisi her deneği kendi
+arenasında ölçer. Oturum sayfasının **Analiz** bölümü her deneğin durumunu
 gösterir; **Yeniden analiz et** yeni bir çalıştırma kuyruğa ekler (örneğin yeni
 bir kalibrasyondan sonra).
-
-**Gözlemci puanlamalı bir testi puanlama.** Teknisyenler ve üstündeki roller her
-hayvanı oturumun doğrulanmış videosunda puanlar:
-
-1. Önce oturum videosunu yükleyin; puanlama onun üzerinde yapılır.
-2. Hayvanın kartında, **Gözlemci puanlaması** altında **Videoyu puanla**'ya
-   tıklayın. Puanlama oynatıcısı açılır.
-3. Videoyu oynatın ya da adım adım ilerleyin. **Boşluk** oynatır ve duraklatır,
-   **sol ve sağ oklar** bir kare ilerletir (**Shift** ile bir saniye), hız
-   listesi oynatmayı 0,25x'e kadar yavaşlatır.
-4. Her olayı gerçekleştiği anda kendi düğmesiyle ya da üzerindeki rakamla (1'den
-   9'a, sonra 0) puanlayın:
-   - bir an olayı (direkte dönüş, tabana ulaşma ya da düşme, koşu bandında
-     şok ya da tükenme) o anki zamanda işaretlenir;
-   - bir aralık olayı (yeni nesne keşfi) bir basışla başlar, sonrakiyle biter.
-     Her etiketin kendi düğmesi vardır, örneğin **yeni** ve **tanıdık** nesnenin
-     keşfi.
-
-   Yalnızca bir kez olabilen bir olay (düşme) yeniden puanlanırsa yeni zamana
-   taşınır.
-5. Puanlanan olaylar bir zaman çizelgesinde ve bir listede görünür. Bir olaya
-   gitmek için ona tıklayın, zamanlarını ya da etiketini **Düzenle**'yle
-   değiştirin ya da **Sil**'le kaldırın.
-6. **Puanlanan olay türleri** altında izlediğiniz her olayı işaretleyin.
-   İşaretli olup hiç olmayan olay gözlenmedi sayılır (örneğin düşmesiz bir
-   direk denemesi); işaretsiz olan puanlanmadı olarak raporlanır.
-7. **Puanlamayı tamamla**'ya tıklayıp onaylayın. Mişko metrikleri olaylardan
-   hesaplar ve sonuç, analiz edilmiş her sonuç gibi onay kuyruğunda bekleyen
-   olarak görünür.
-
-Tamamlanmış bir puanlamayı düzeltmek için **Düzeltme için yeniden aç**'a
-tıklayın. Olayların bir kopyasıyla yeni bir sürüm açılır; yeniden
-tamamlandığında incelemecinin seçebileceği yeni bir çalıştırma eklenir. Önceki
-sürüm ve sonucu saklanır.
 
 Her sonuç sayılmadan önce bir kişi tarafından onaylanmalıdır. **Sonuç onayı**'nı
 açın:
@@ -386,21 +370,53 @@ açın:
 1. Liste, deneye ve duruma (bekleyen, kabul edilen, reddedilen, tümü) göre
    filtrelenmiş, onay bekleyen sonuçları gösterir. Filtreler adreste tutulur.
 2. Analiz edilmiş videoyu, kalite kontrollerini ve metrikleri açmak için bir
-   satıra tıklayın. Puanlanmış bir sonucun analiz edilmiş videosu ve
-   kalibrasyon kontrolü yoktur; metrikleri ve olayları gösterilir, video
-   puanlama oynatıcısında izlenir.
+   satıra tıklayın.
 3. **Kabul et**'e tıklayın ya da bir neden seçin (takip kaybedildi, yanlış
-   hayvan, video kusuru, protokol sapması, diğer), not ekleyip **Reddet**'e
+   denek, video kusuru, protokol sapması, diğer), not ekleyip **Reddet**'e
    tıklayın. Çekmece ardından bir sonraki bekleyen sonuca geçer.
-4. Bir hayvan yeniden analiz edildiyse kontroller **Bu hayvanın daha yeni bir
+4. Bir denek yeniden analiz edildiyse kontroller **Bu deneğin daha yeni bir
    çalıştırması var** der. Çalıştırma listesinden birini seçip **Bunun yerine bu
    çalıştırmayı incele**'ye tıklayın; sonuç o çalıştırmayla bekleyene döner.
 5. **Temiz satırları seç**, tüm metrikleri ölçülmüş, daha yeni çalıştırması
    olmayan ve dışlanmamış her bekleyen sonucu işaretler; **Seçilenleri kabul
    et** hepsini birlikte kabul eder.
 
-**Kör** bir çalışmada onay ekranı yalnızca hayvanı, arenayı ve oturumu gösterir;
+**Kör** bir çalışmada onay ekranı yalnızca deneği, arenayı ve oturumu gösterir;
 grubu, dozu veya maddeyi asla göstermez.
+
+## Paradigma testi
+
+Ana menüdeki **Paradigma testi**, bir paradigmayı herhangi bir deneyin dışında
+tek bir videoda, tek bir ortamda denemenizi sağlar: grup, sonuç onayı ve rapor
+yoktur; bir testin sonucu hiçbir zaman bir deneye taşınmaz. Bir çalışmadan önce
+yeni bir kamera konumunu, bir ortamı ya da analiz eşiklerini sınamak için
+kullanın. Testleri herkes okuyabilir; test başlatmak ve yürütmek `trial:run`
+yetkisi ister (`VIEWER` dışındaki her rol).
+
+1. **Yeni test**'e tıklayın, bir ad verin, paradigmayı ve denenecek ortam
+   revizyonunu seçin, gerekirse not ekleyip **Testi oluştur**'a tıklayın. Test
+   sayfası açılır.
+2. **Video yükle**'ye tıklayıp kaydı seçin. Dosya doğrudan depolamaya gider ve
+   doğrulanır; ardından oynatıcıda görünür. **Videoyu değiştir** başka bir video
+   yükler; önceki analizler kullandıkları videoyu korur.
+3. **Kalibrasyon** kartı hangi kalibrasyonun uygulandığını söyler: ortamınki ya
+   da bu videoda yapılan testin kendi kalibrasyonu. Ortam kalibre edilmemişse ya
+   da kamera oynadıysa **Bu videoda kalibre et**'e tıklayıp noktaları ve
+   bölgeleri ortam sayfasındaki gibi yerleştirin. Bu kalibrasyon yalnızca bu
+   teste ve bu videoya aittir; ortam hiç değişmez.
+4. Video doğrulanıp bir kalibrasyon uygulandığında analiz kendiliğinden başlar.
+   **Analizler** kartı her analizi en yenisi üstte listeler: durumu (sırada,
+   sürüyor, başarılı, nedeniyle birlikte başarısız), izleme kalitesi, panelin
+   dilinde ölçütler ve **Çizimli video ve olaylar** altında işçinin çizdiği video
+   ile olaylar; bir olaya tıklamak onu oynatır. Bir analiz sıradayken ya da
+   sürerken sayfa kendini yeniler.
+5. **Yeniden analiz et**, paradigmanın analiz eşiklerini ortamın değerleriyle
+   doldurulmuş olarak açar. Denemek istediğinizi değiştirip **Analiz et**'e
+   tıklayın: aynı videonun yeni bir analizi yalnızca değişen değerlerle sıraya
+   girer, öncekiler kalır. **Karşılaştır**, başarılı iki analizi her ölçütün
+   farkıyla yan yana gösterir.
+6. **Sil**, onay istedikten sonra testi listeden kaldırır; analizleri saklı
+   kalır.
 
 ## Sonuçlar ve raporlar
 
@@ -414,11 +430,11 @@ kendi zaman noktasında gösterir:
 - karşılaştırmalar sözle: model geçerliliği, yöntem duyarlılığı, kurtarma
   yüzdesiyle etkinlik, doz yanıtı ve zaman seyri.
 
-Yalnızca dışlanmamış hayvanların kabul edilen sonuçları sayılır. Üstteki bir
+Yalnızca dışlanmamış deneklerin kabul edilen sonuçları sayılır. Üstteki bir
 şerit, sayıların **geçici** (bazı sonuçlar hâlâ bekliyor, onaylamak için bir
 bağlantıyla), **ara rapor** (hepsi incelendi, çalışma sürüyor) veya **son
 rapor** (çalışma tamamlandı) olup olmadığını söyler. **Dışa aktar** raporu CSV
-veya Excel olarak, hayvan başına ya da grup başına bir satırla kaydeder. Kör
+veya Excel olarak, denek başına ya da grup başına bir satırla kaydeder. Kör
 bir çalışmanın raporu paylaşılmadan önce bir uyarı taşır.
 
 Bir çalışmayı bitirmek için, planlanan her oturum tamamlandığında veya iptal

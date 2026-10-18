@@ -3,7 +3,8 @@ info:
   title: Misko API
   version: 0.2.0
   description: >-
-    Health, authentication, user management and the laboratory singleton.
+    Health, authentication, user management, the laboratory, studies, tests,
+    the analysis service (jobs and workers) and paradigm trials.
     Every error response carries a stable `code` and an English `error` message.
     401 means missing, invalid, expired or revoked credentials; 403 means the
     current role lacks the permission. Roles are read from the database on every
@@ -1909,114 +1910,6 @@ paths:
               schema: {$ref: '#/components/schemas/SubjectCalibrationStatus'}
         '401': {$ref: '#/components/responses/Problem'}
         '404': {$ref: '#/components/responses/Problem'}
-  /api/tests/{id}/subjects/{testSubjectId}/scoring:
-    parameters:
-      - $ref: '#/components/parameters/ID'
-      - {name: testSubjectId, in: path, required: true, schema: {type: string, format: uuid}}
-    get:
-      operationId: getScoring
-      summary: The observer scoring of one animal of a test (*:read)
-      description: >-
-        For observer-scored paradigms (POLE, TREADMILL, NOVEL_OBJECT). Returns the paradigm's input event
-        definitions (label and definition in the request language), the test's current video clip (null without a
-        verified video) and the newest scoring sheet with its events (null before the first event). Event times are
-        microseconds from the clip start of the current video. A tracked paradigm answers scoring.notObserverScored.
-      responses:
-        '200': {description: Scoring, content: {application/json: {schema: {$ref: '#/components/schemas/Scoring'}}}}
-        '401': {$ref: '#/components/responses/Problem'}
-        '404': {$ref: '#/components/responses/Problem'}
-        '409': {$ref: '#/components/responses/Problem'}
-  /api/tests/{id}/subjects/{testSubjectId}/scoring/events:
-    parameters:
-      - $ref: '#/components/parameters/ID'
-      - {name: testSubjectId, in: path, required: true, schema: {type: string, format: uuid}}
-    post:
-      operationId: addScoredEvent
-      summary: Mark an event on the draft scoring sheet, starting the first sheet when there is none (test:run)
-      description: >-
-        Needs a test in progress or completed, a running experiment, an animal that is not excluded and a verified
-        current video. The event must be an input event of the paradigm, a point (endUs omitted or equal to startUs)
-        or an interval (endUs after startUs), carry one of its labels when it has labels, lie within the clip
-        (0 <= startUs, endUs <= clip length) and, for single events, not be scored twice.
-      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ScoredEventInput'}}}}
-      responses:
-        '201': {description: Scored, content: {application/json: {schema: {$ref: '#/components/schemas/ScoredEvent'}}}}
-        '400': {$ref: '#/components/responses/Problem'}
-        '401': {$ref: '#/components/responses/Problem'}
-        '403': {$ref: '#/components/responses/Problem'}
-        '404': {$ref: '#/components/responses/Problem'}
-        '409': {$ref: '#/components/responses/Problem'}
-  /api/tests/{id}/subjects/{testSubjectId}/scoring/events/{eventId}:
-    parameters:
-      - $ref: '#/components/parameters/ID'
-      - {name: testSubjectId, in: path, required: true, schema: {type: string, format: uuid}}
-      - {name: eventId, in: path, required: true, schema: {type: string, format: uuid}}
-    patch:
-      operationId: changeScoredEvent
-      summary: Replace an event of the draft scoring sheet with the full event sent (test:run)
-      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ScoredEventInput'}}}}
-      responses:
-        '200': {description: Changed, content: {application/json: {schema: {$ref: '#/components/schemas/ScoredEvent'}}}}
-        '400': {$ref: '#/components/responses/Problem'}
-        '401': {$ref: '#/components/responses/Problem'}
-        '403': {$ref: '#/components/responses/Problem'}
-        '404': {$ref: '#/components/responses/Problem'}
-        '409': {$ref: '#/components/responses/Problem'}
-    delete:
-      operationId: removeScoredEvent
-      summary: Remove an event of the draft scoring sheet (test:run)
-      responses:
-        '204': {description: Removed}
-        '401': {$ref: '#/components/responses/Problem'}
-        '403': {$ref: '#/components/responses/Problem'}
-        '404': {$ref: '#/components/responses/Problem'}
-        '409': {$ref: '#/components/responses/Problem'}
-  /api/tests/{id}/subjects/{testSubjectId}/scoring/complete:
-    parameters:
-      - $ref: '#/components/parameters/ID'
-      - {name: testSubjectId, in: path, required: true, schema: {type: string, format: uuid}}
-    post:
-      operationId: completeScoring
-      summary: Complete the draft scoring sheet; the engine computes the metrics into a SCORED analysis run (test:run)
-      description: >-
-        scoredEventTypes lists the event types that were scored (default every input event of the paradigm; an
-        unscored type yields missing metrics, NOT_SCORED). durationUs is the recorded trial length (default the clip
-        length of the current video; unknown when the clip has no end). The run pins the current video and the
-        arena and session parameters, succeeds at once and, when the animal has no result yet, opens it PENDING in
-        the review queue (/api/analysis/results). Completing without a sheet scores an animal without events.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: false
-              properties:
-                scoredEventTypes: {type: array, maxItems: 20, items: {type: string}}
-                durationUs: {type: integer, minimum: 1}
-      responses:
-        '200': {description: Completed, content: {application/json: {schema: {$ref: '#/components/schemas/ScoringCompletion'}}}}
-        '400': {$ref: '#/components/responses/Problem'}
-        '401': {$ref: '#/components/responses/Problem'}
-        '403': {$ref: '#/components/responses/Problem'}
-        '404': {$ref: '#/components/responses/Problem'}
-        '409': {$ref: '#/components/responses/Problem'}
-        '422': {$ref: '#/components/responses/Problem'}
-  /api/tests/{id}/subjects/{testSubjectId}/scoring/reopen:
-    parameters:
-      - $ref: '#/components/parameters/ID'
-      - {name: testSubjectId, in: path, required: true, schema: {type: string, format: uuid}}
-    post:
-      operationId: reopenScoring
-      summary: Start the next sheet version after a completed one, with a copy of its events (test:run)
-      description: The completed sheet, its SCORED run and the reviewed result stay; completing the new version adds another run the reviewer can choose.
-      requestBody: {required: true, content: {application/json: {schema: {type: object, additionalProperties: false}}}}
-      responses:
-        '201': {description: Reopened, content: {application/json: {schema: {$ref: '#/components/schemas/Scoring'}}}}
-        '401': {$ref: '#/components/responses/Problem'}
-        '403': {$ref: '#/components/responses/Problem'}
-        '404': {$ref: '#/components/responses/Problem'}
-        '409': {$ref: '#/components/responses/Problem'}
   /api/analysis/workers:
     get:
       operationId: listAnalysisWorkers
@@ -2032,7 +1925,7 @@ paths:
     post:
       operationId: registerAnalysisWorker
       summary: Register an analysis worker; the token is returned once (lab:configure)
-      description: Capabilities must name tracked paradigm versions, whose metrics the engine computes from a trajectory and, for calibrated zones, the shapes of the run's pinned calibration; observer-scored paradigms and versions outside the catalog return worker.unknownCapability.
+      description: Capabilities must name tracked paradigm versions, whose metrics the engine computes from a trajectory and, for calibrated zones, the shapes of the run's pinned calibration; versions outside the catalog return worker.unknownCapability.
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/AnalysisWorkerInput'}}}}
       responses:
         '201':
@@ -2076,14 +1969,15 @@ paths:
       - {name: testSubjectId, in: path, required: true, schema: {type: string, format: uuid}}
     post:
       operationId: reanalyzeTestSubject
-      summary: Queue a manual run of one animal of a test with the current inputs; earlier runs and the reviewed result are kept (test:run)
+      summary: Submit a manual analysis job of one animal of a test with the current inputs; earlier jobs and the reviewed result are kept (test:run)
       description: >-
-        The run uses the test's current video and the effective calibration of the animal's arena (its own
-        override for this video, else the arena default). Returns analysis.notReady until the current video is
-        verified, the test is not cancelled, the experiment is running or completed, the animal is not excluded,
-        a VALID calibration applies when the paradigm requires one and an enabled worker supports the paradigm
-        version. Returns analysis.runPending while an earlier run of the same animal is still queued or running,
-        so a repeated request cannot flood the workers.
+        The experiment side submits a job to the analysis service with the test's current video and the
+        effective calibration of the animal's arena (its own override for this video, else the arena default),
+        and links it to the animal. Returns analysis.notReady until the current video is verified, the test is
+        not cancelled, the experiment is running or completed, the animal is not excluded and a VALID
+        calibration with every required zone applies when the paradigm requires one. The job waits in the
+        queue until a worker with the capability claims it. Returns analysis.runPending while an earlier job of
+        the same animal is still queued or running, so a repeated request cannot flood the workers.
       requestBody: {required: true, content: {application/json: {schema: {type: object, additionalProperties: false}}}}
       responses:
         '201': {description: Queued, content: {application/json: {schema: {$ref: '#/components/schemas/AnalysisRun'}}}}
@@ -2097,7 +1991,7 @@ paths:
       - $ref: '#/components/parameters/ID'
     get:
       operationId: listAnalysisRuns
-      summary: Analysis runs of a test, newest first, optionally of one of its animals (*:read)
+      summary: Analysis jobs of the animals of a test, newest first, optionally of one animal (*:read)
       parameters:
         - {name: testSubjectId, in: query, schema: {type: string, format: uuid}}
       responses:
@@ -2107,51 +2001,62 @@ paths:
             application/json:
               schema: {type: object, required: [data], properties: {data: {type: array, items: {$ref: '#/components/schemas/AnalysisRun'}}}}
         '401': {$ref: '#/components/responses/Problem'}
-  /api/analysis-runs/{runId}:
+  /api/analysis/jobs/{jobId}:
     parameters:
-      - {name: runId, in: path, required: true, schema: {type: string, format: uuid}}
+      - {name: jobId, in: path, required: true, schema: {type: string, format: uuid}}
     get:
-      operationId: getAnalysisRun
-      summary: A run with its published result once it succeeded (*:read)
+      operationId: getAnalysisJob
+      summary: A job of the analysis service with what it published (*:read)
+      description: Used by both the experiment screens and paradigm trials. result is null until the job succeeded, except for a job QC failed, whose result carries only qc.
       responses:
-        '200':
-          description: Run
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: '#/components/schemas/AnalysisRun'
-                  - type: object
-                    required: [result]
-                    properties:
-                      result: {oneOf: [{$ref: '#/components/schemas/AnalysisResult'}, {type: 'null'}]}
+        '200': {description: Job, content: {application/json: {schema: {$ref: '#/components/schemas/AnalysisJobDetail'}}}}
         '401': {$ref: '#/components/responses/Problem'}
         '404': {$ref: '#/components/responses/Problem'}
-  /api/analysis-runs/{runId}/video-pair:
+  /api/analysis/jobs/{jobId}/video-pair:
     parameters:
-      - {name: runId, in: path, required: true, schema: {type: string, format: uuid}}
+      - {name: jobId, in: path, required: true, schema: {type: string, format: uuid}}
     get:
       operationId: getAnalysisVideoPair
-      summary: Signed reads of the pinned original generation and this run's analyzed video (*:read)
+      summary: Signed reads of the pinned original generation and this job's analysed video (*:read)
       responses:
-        '200':
-          description: Video pair
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [originalUrl, analyzedUrl, expiresAt, sourceVideoId, sourceGeneration, analyzedVideoId, analyzedGeneration, sourceOffsetUs, outputOffsetUs, timeMappingVersion]
-                properties:
-                  originalUrl: {type: string, format: uri}
-                  analyzedUrl: {type: string, format: uri}
-                  expiresAt: {type: string, format: date-time}
-                  sourceVideoId: {type: string, format: uuid}
-                  sourceGeneration: {type: string, pattern: '^[0-9]+$'}
-                  analyzedVideoId: {type: string, format: uuid}
-                  analyzedGeneration: {type: string, pattern: '^[0-9]+$'}
-                  sourceOffsetUs: {type: integer, format: int64, description: Original video time of analyzed time zero (the clip start)}
-                  outputOffsetUs: {type: integer, format: int64, description: Analyzed video time of analyzed time zero}
-                  timeMappingVersion: {type: string}
+        '200': {description: Video pair, content: {application/json: {schema: {$ref: '#/components/schemas/AnalysisVideoPair'}}}}
+        '401': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+        '503': {$ref: '#/components/responses/Problem'}
+  /api/analysis/jobs/{jobId}/outputs/{kind}/read-url:
+    parameters:
+      - {name: jobId, in: path, required: true, schema: {type: string, format: uuid}}
+      - {name: kind, in: path, required: true, schema: {type: string, enum: [ANALYZED_VIDEO, TRAJECTORY, THUMBNAIL]}}
+    get:
+      operationId: getAnalysisOutputURL
+      summary: Signed read of one published output of a succeeded job, such as the trajectory for drawing the track (*:read)
+      responses:
+        '200': {description: Signed read, content: {application/json: {schema: {$ref: '#/components/schemas/ReadLink'}}}}
+        '401': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+        '503': {$ref: '#/components/responses/Problem'}
+  /api/analysis-runs/{jobId}:
+    parameters:
+      - {name: jobId, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      operationId: getAnalysisRun
+      deprecated: true
+      summary: Old name of GET /api/analysis/jobs/{jobId}, kept while the panel moves (*:read)
+      responses:
+        '200': {description: Job, content: {application/json: {schema: {$ref: '#/components/schemas/AnalysisJobDetail'}}}}
+        '401': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+  /api/analysis-runs/{jobId}/video-pair:
+    parameters:
+      - {name: jobId, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      operationId: getAnalysisRunVideoPair
+      deprecated: true
+      summary: Old name of GET /api/analysis/jobs/{jobId}/video-pair (*:read)
+      responses:
+        '200': {description: Video pair, content: {application/json: {schema: {$ref: '#/components/schemas/AnalysisVideoPair'}}}}
         '401': {$ref: '#/components/responses/Problem'}
         '404': {$ref: '#/components/responses/Problem'}
         '409': {$ref: '#/components/responses/Problem'}
@@ -2267,13 +2172,13 @@ paths:
       - {name: testSubjectId, in: path, required: true, schema: {type: string, format: uuid}}
     post:
       operationId: chooseAnalysisRun
-      summary: Put another succeeded run of the same animal under review; the result returns to PENDING (test:run)
-      description: A run of another animal or one that has not succeeded returns analysis.runNotChosen. Choosing the current run reopens it.
+      summary: Put another succeeded job of the same animal under review; the result returns to PENDING (test:run)
+      description: The job is named jobId, or runId as the panel sends it. A job linked to no animal of a test (such as a paradigm trial's) returns analysis.runNotFound; a job of another animal or one that has not succeeded returns analysis.runNotChosen. Choosing the current job reopens it.
       requestBody:
         required: true
         content:
           application/json:
-            schema: {type: object, additionalProperties: false, required: [runId], properties: {runId: {type: string, format: uuid}}}
+            schema: {type: object, additionalProperties: false, properties: {jobId: {type: string, format: uuid}, runId: {type: string, format: uuid, description: Old name of jobId}}}
       responses:
         '200': {description: Back to review, content: {application/json: {schema: {$ref: '#/components/schemas/AnalysisReviewItem'}}}}
         '400': {$ref: '#/components/responses/Problem'}
@@ -2281,13 +2186,197 @@ paths:
         '403': {$ref: '#/components/responses/Problem'}
         '404': {$ref: '#/components/responses/Problem'}
         '409': {$ref: '#/components/responses/Problem'}
+  /api/trials:
+    post:
+      operationId: createTrial
+      summary: Start a paradigm trial of a paradigm version in an arena of that version (trial:run)
+      description: >-
+        A paradigm trial tries the automatic analysis on one video outside any experiment: no groups, no review,
+        no report. The arena must run the named paradigm version (400 trial.paradigmMismatch).
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/TrialInput'}}}}
+      responses:
+        '201': {description: Created, content: {application/json: {schema: {$ref: '#/components/schemas/Trial'}}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+    get:
+      operationId: listTrials
+      summary: Paradigm trials, newest first, with their arena and newest analysis job (*:read)
+      parameters:
+        - {name: search, in: query, schema: {type: string, maxLength: 120}, description: Part of the name, ignoring case}
+        - {name: paradigmKey, in: query, schema: {type: string}}
+        - {name: page, in: query, schema: {type: integer, minimum: 1, default: 1}}
+        - {name: pageSize, in: query, schema: {type: integer, minimum: 1, maximum: 200, default: 50}}
+      responses:
+        '200':
+          description: Trials
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, total, page, pageSize]
+                properties:
+                  data: {type: array, items: {$ref: '#/components/schemas/TrialSummary'}}
+                  total: {type: integer}
+                  page: {type: integer}
+                  pageSize: {type: integer}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+  /api/trials/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      operationId: getTrial
+      summary: A trial with its arena, video, calibration in use and every analysis, newest first (*:read)
+      responses:
+        '200': {description: Trial, content: {application/json: {schema: {$ref: '#/components/schemas/TrialDetail'}}}}
+        '401': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+    delete:
+      operationId: deleteTrial
+      summary: Hide a trial; its analysis jobs never change and stay readable (trial:run)
+      responses:
+        '204': {description: Deleted}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+  /api/trials/{id}/video:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    post:
+      operationId: startTrialUpload
+      summary: Declare the trial's video and get a signed request that starts a resumable upload straight to storage (trial:run)
+      description: The new video becomes the trial's current one; earlier analyses keep the video they analysed. The clip is the part to analyse.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [fileName, contentType, sizeBytes, crc32c]
+              properties:
+                fileName: {type: string, minLength: 1, maxLength: 255}
+                contentType: {type: string, enum: [video/mp4, video/quicktime, video/webm]}
+                sizeBytes: {type: integer, format: int64, minimum: 1}
+                crc32c: {type: string, description: Base64 big-endian CRC32C}
+                clipStartUs: {type: integer, format: int64, minimum: 0}
+                clipEndUs: {type: [integer, 'null'], format: int64}
+      responses:
+        '201':
+          description: Upload started
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [trial, video, upload]
+                properties:
+                  trial: {$ref: '#/components/schemas/Trial'}
+                  video: {$ref: '#/components/schemas/TrialVideo'}
+                  upload: {type: object, required: [method, url, headers, expiresAt], properties: {method: {type: string}, url: {type: string}, headers: {type: object, additionalProperties: {type: string}}, expiresAt: {type: string, format: date-time}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+        '503': {$ref: '#/components/responses/Problem'}
+  /api/trials/{id}/video/finalize:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    post:
+      operationId: finalizeTrialUpload
+      summary: Verify the stored video and, once verified, submit the automatic analysis when the trial is ready (trial:run)
+      description: >-
+        A trial whose paradigm needs a calibration is ready once its own calibration on this video, or else its
+        arena's default, is VALID with every required zone; a trial calibrated later is analysed by the next
+        scheduler tick. Only one automatic analysis is submitted per video.
+      requestBody: {required: true, content: {application/json: {schema: {type: object, additionalProperties: false}}}}
+      responses:
+        '200': {description: Trial, content: {application/json: {schema: {$ref: '#/components/schemas/TrialDetail'}}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+        '503': {$ref: '#/components/responses/Problem'}
+  /api/trials/{id}/video/read-url:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      operationId: getTrialVideoURL
+      summary: Signed read of the trial's verified video, for calibrating on it and playback (*:read)
+      responses:
+        '200': {description: Signed read, content: {application/json: {schema: {$ref: '#/components/schemas/ReadLink'}}}}
+        '401': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+        '503': {$ref: '#/components/responses/Problem'}
+  /api/trials/{id}/analyses:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    post:
+      operationId: analyseTrial
+      summary: Analyse the trial's current video again, with changed ANALYSIS thresholds; earlier analyses are kept for comparison (trial:run)
+      description: overrides may name only ANALYSIS parameters of the paradigm version, within range (400 trial.invalidOverrides). 409 trial.notReady while the video or the calibration is missing.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {type: object, additionalProperties: false, properties: {overrides: {type: object, additionalProperties: {type: number}}}}
+      responses:
+        '201': {description: Submitted, content: {application/json: {schema: {$ref: '#/components/schemas/TrialAnalysis'}}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/trials/{id}/calibrations:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      operationId: listTrialCalibrations
+      summary: The trial's own calibrations over its videos, oldest first (*:read)
+      responses:
+        '200':
+          description: Calibrations
+          content:
+            application/json:
+              schema: {type: object, required: [data], properties: {data: {type: array, items: {$ref: '#/components/schemas/Calibration'}}}}
+        '401': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+    post:
+      operationId: createTrialCalibration
+      summary: Calibrate the trial's arena on the trial's current, verified video (trial:run)
+      description: The calibration belongs to the trial and its current video and never changes the environment. 409 calibration.trialNoVideo or calibration.videoNotVerified without a verified video. Like an override, the trial's calibrations form one chain across its videos.
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CalibrationInput'}}}}
+      responses:
+        '201': {description: Stored, content: {application/json: {schema: {$ref: '#/components/schemas/Calibration'}}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/trials/{id}/calibration-status:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      operationId: getTrialCalibrationStatus
+      summary: Whether the trial's current video can be analysed and with which calibration (source TRIAL or ENVIRONMENT) (*:read)
+      responses:
+        '200': {description: Status, content: {application/json: {schema: {$ref: '#/components/schemas/CalibrationStatus'}}}}
+        '401': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
   /api/worker/claim:
     post:
-      operationId: claimAnalysisRun
-      summary: Lease the oldest available queued run this worker can analyze (worker token)
+      operationId: claimAnalysisJob
+      summary: Lease the oldest available queued job this worker can analyze (worker token)
       description: >-
-        A run analyses one animal of a test. The video may be shared by up to three arenas; the calibration's
-        crop is this animal's arena in the frame. The job never names the animal's group or treatment.
+        A job analyses one video with one paradigm version, its parameters and, when the paradigm needs one, a
+        snapshot of a calibration whose crop is the arena's region of the frame. The requester is an animal of a
+        test or a paradigm trial; the job never names the animal's group or treatment. The routes keep the name
+        "runs": a run id is a job id.
       security: [{worker: []}]
       requestBody: {required: true, content: {application/json: {schema: {type: object, additionalProperties: false}}}}
       responses:
@@ -2297,33 +2386,25 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [run, testSubject, outputPrefix, trajectorySchema, contract, calibration]
+                required: [run, job, requester, testSubject, outputPrefix, trajectorySchema, contract, calibration]
                 properties:
-                  run: {$ref: '#/components/schemas/AnalysisRun'}
+                  run: {$ref: '#/components/schemas/AnalysisJob'}
+                  job: {$ref: '#/components/schemas/AnalysisJob'}
+                  requester: {$ref: '#/components/schemas/AnalysisRequester'}
                   testSubject:
-                    type: object
-                    required: [id, environmentRevisionId]
-                    properties:
-                      id: {type: string, format: uuid}
-                      environmentRevisionId: {type: string, format: uuid, description: The arena the animal is filmed in}
-                  outputPrefix: {type: string, description: 'runs/{runId}/attempts/{attempt}/'}
-                  trajectorySchema: {type: string, enum: [misko.trajectory.v1], description: The trajectory format the result must upload}
-                  contract: {$ref: '#/components/schemas/AnalysisContract'}
-                  calibration:
-                    description: The run's pinned calibration, or null for paradigms without one
+                    description: The animal of a TEST_SUBJECT job, for logs; null for a paradigm trial
                     oneOf:
                       - type: 'null'
-                      - type: object
-                        required: [id, frameWidth, frameHeight, crop, measurementPlane, transform, zones]
-                        properties:
-                          id: {type: string, format: uuid}
-                          frameWidth: {type: integer}
-                          frameHeight: {type: integer}
-                          crop: {$ref: '#/components/schemas/CalibrationCrop'}
-                          measurementPlane: {type: string, enum: [ARENA_FLOOR, WATER_SURFACE, APPARATUS_TOP]}
-                          transform: {type: array, minItems: 9, maxItems: 9, items: {type: number}, description: Row-major homography from full-frame pixels (top-left corner at 0,0) to arena centimeters}
-                          zones: {type: array, items: {$ref: '#/components/schemas/CalibrationZone'}, description: 'The paradigm''s calibrated zone shapes in full-frame pixels (tracking limits, overlay) and centimetres (the engine computes zone metrics with them); empty for paradigms whose zones come from parameters'}
-        '204': {description: No run is available}
+                      - {type: object, required: [id], properties: {id: {type: string, format: uuid}}}
+                  outputPrefix: {type: string, description: 'jobs/{jobId}/attempts/{attempt}/'}
+                  trajectorySchema: {type: string, enum: [misko.trajectory.v1], description: The trajectory format the result must upload; its runId is the job id}
+                  contract: {$ref: '#/components/schemas/AnalysisContract'}
+                  calibration:
+                    description: The job's calibration snapshot, or null for paradigms without one
+                    oneOf:
+                      - type: 'null'
+                      - {$ref: '#/components/schemas/AnalysisCalibration'}
+        '204': {description: No job is available}
         '400': {$ref: '#/components/responses/Problem'}
         '401': {$ref: '#/components/responses/Problem'}
         '503': {$ref: '#/components/responses/Problem'}
@@ -2336,7 +2417,7 @@ paths:
       security: [{worker: []}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/AnalysisAttempt'}}}}
       responses:
-        '200': {description: Extended, content: {application/json: {schema: {$ref: '#/components/schemas/AnalysisRun'}}}}
+        '200': {description: Extended, content: {application/json: {schema: {$ref: '#/components/schemas/AnalysisJob'}}}}
         '400': {$ref: '#/components/responses/Problem'}
         '401': {$ref: '#/components/responses/Problem'}
         '404': {$ref: '#/components/responses/Problem'}
@@ -2400,7 +2481,7 @@ paths:
       security: [{worker: []}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/AnalysisResultInput'}}}}
       responses:
-        '200': {description: Published, content: {application/json: {schema: {$ref: '#/components/schemas/AnalysisRun'}}}}
+        '200': {description: Published, content: {application/json: {schema: {$ref: '#/components/schemas/AnalysisJob'}}}}
         '400': {$ref: '#/components/responses/Problem'}
         '401': {$ref: '#/components/responses/Problem'}
         '404': {$ref: '#/components/responses/Problem'}
@@ -2427,7 +2508,7 @@ paths:
                 reason: {type: string, minLength: 1, maxLength: 2000}
                 retryable: {type: boolean}
       responses:
-        '200': {description: Recorded, content: {application/json: {schema: {$ref: '#/components/schemas/AnalysisRun'}}}}
+        '200': {description: Recorded, content: {application/json: {schema: {$ref: '#/components/schemas/AnalysisJob'}}}}
         '400': {$ref: '#/components/responses/Problem'}
         '401': {$ref: '#/components/responses/Problem'}
         '404': {$ref: '#/components/responses/Problem'}
@@ -3173,7 +3254,7 @@ components:
         type: {type: string}
         label: {type: string, description: In the response language}
         kind: {type: string, enum: [INTERVAL, POINT]}
-        labels: {type: array, items: {type: string}, description: Allowed labels; empty when the event takes no label}
+        labels: {type: array, items: {type: string}, description: 'Labels every event of the type carries (NOVEL_OBJECT exploration: novel, familiar); empty when the event takes no label'}
         single: {type: boolean, description: The event may occur at most once per trial}
         definition: {type: string}
     ParadigmManifest:
@@ -3204,7 +3285,7 @@ components:
               required: {type: boolean}
         inputEvents:
           type: array
-          description: Scored observations the metric engine consumes
+          description: Always empty; every paradigm derives its events from the tracked trajectory and calibrated zones. Kept so published manifests never change.
           items: {$ref: '#/components/schemas/ParadigmEvent'}
         events:
           type: array
@@ -3550,7 +3631,7 @@ components:
         frameHeight: {type: integer, minimum: 1, maximum: 16384}
         crop: {$ref: '#/components/schemas/CalibrationCrop'}
         referenceFrameUs: {type: integer, format: int64, minimum: 0, description: Ignored; an environment has no video}
-        measurementPlane: {type: string, enum: [ARENA_FLOOR, WATER_SURFACE, APPARATUS_TOP]}
+        measurementPlane: {type: string, enum: [ARENA_FLOOR, WATER_SURFACE, APPARATUS_TOP, APPARATUS_SIDE]}
         fitPoints: {type: array, minItems: 4, maxItems: 100, items: {$ref: '#/components/schemas/CalibrationPoint'}, description: Inside the crop, no three on a line, inside the environment revision}
         checkPoints: {type: array, minItems: 3, maxItems: 100, items: {$ref: '#/components/schemas/CalibrationPoint'}, description: Independent of the FIT points (at least 1 pixel away)}
         supersedesId: {type: string, format: uuid, description: The latest calibration of the revision; required for corrections}
@@ -3558,13 +3639,13 @@ components:
           type: array
           maxItems: 1000
           items: {$ref: '#/components/schemas/CalibrationZoneInput'}
-          description: 'Shapes of the paradigm''s calibrated zones in full-frame pixels, required for paradigms with calibrated zones (none of the current catalog declares any): keys must be calibrated zones of the paradigm version (400 calibration.unknownZone), every required one needs a shape (calibration.missingZone), shapes are a circle with a positive radius or a polygon of 3 to 100 vertices, at most 100 per key (calibration.invalidZone), inside the frame (calibration.zoneOutsideFrame). They are converted to centimetres with the fitted transform and stored with the calibration.'
+          description: 'Shapes of the paradigm''s calibrated zones in full-frame pixels, required for paradigms with calibrated zones (NOVEL_OBJECT, POLE and TREADMILL): keys must be calibrated zones of the paradigm version (400 calibration.unknownZone), every required one needs a shape (calibration.missingZone), shapes are a circle with a positive radius or a polygon of 3 to 100 vertices, at most 100 per key (calibration.invalidZone), inside the frame (calibration.zoneOutsideFrame). They are converted to centimetres with the fitted transform and stored with the calibration.'
     CalibrationStatus:
       type: object
       required: [status, source, drift, calibration]
       properties:
-        status: {type: string, enum: [NOT_REQUIRED, WAITING_FOR_VIDEO, WAITING_FOR_CALIBRATION, CALIBRATED], description: 'WAITING_FOR_VIDEO (test subjects only) while the test has no current verified video; WAITING_FOR_CALIBRATION until a VALID calibration applies that has a shape for every required calibrated zone of the paradigm'}
-        source: {type: [string, 'null'], enum: [ENVIRONMENT, OVERRIDE, null], description: Which calibration decides. OVERRIDE with WAITING_FOR_CALIBRATION means the animal's override on the current video was rejected. Null when nothing was calibrated}
+        status: {type: string, enum: [NOT_REQUIRED, WAITING_FOR_VIDEO, WAITING_FOR_CALIBRATION, CALIBRATED], description: 'WAITING_FOR_VIDEO (test subjects and trials) while there is no current verified video; WAITING_FOR_CALIBRATION until a VALID calibration applies that has a shape for every required calibrated zone of the paradigm'}
+        source: {type: [string, 'null'], enum: [ENVIRONMENT, OVERRIDE, TRIAL, null], description: Which calibration decides. OVERRIDE (or TRIAL) with WAITING_FOR_CALIBRATION means the animal's override (or the trial's calibration) on the current video was rejected. Null when nothing was calibrated}
         drift: {type: [string, 'null'], enum: [UNCHECKED, null], description: Whether camera or arena movement was checked. No check exists yet, so a calibration in use is UNCHECKED; null while waiting}
         calibration: {oneOf: [{$ref: '#/components/schemas/Calibration'}, {type: 'null'}]}
     SubjectCalibrationStatus:
@@ -3587,7 +3668,7 @@ components:
         frameHeight: {type: integer, minimum: 1, maximum: 16384}
         crop: {$ref: '#/components/schemas/CalibrationCrop'}
         referenceFrameUs: {type: integer, format: int64, minimum: 0, description: Video time of the frame the points were read from}
-        measurementPlane: {type: string, enum: [ARENA_FLOOR, WATER_SURFACE, APPARATUS_TOP]}
+        measurementPlane: {type: string, enum: [ARENA_FLOOR, WATER_SURFACE, APPARATUS_TOP, APPARATUS_SIDE]}
         fitPoints: {type: array, minItems: 4, maxItems: 100, items: {$ref: '#/components/schemas/CalibrationPoint'}, description: Inside the crop, no three on a line; inside the environment when the paradigm derives its zones from parameters}
         checkPoints: {type: array, minItems: 3, maxItems: 100, items: {$ref: '#/components/schemas/CalibrationPoint'}, description: Independent of the FIT points (at least 1 pixel away)}
         supersedesId: {type: string, format: uuid, description: The latest override of the animal over all videos of the test; required for corrections}
@@ -3595,7 +3676,7 @@ components:
           type: array
           maxItems: 1000
           items: {$ref: '#/components/schemas/CalibrationZoneInput'}
-          description: 'Shapes of the paradigm''s calibrated zones in full-frame pixels, required for paradigms with calibrated zones (none of the current catalog declares any): keys must be calibrated zones of the paradigm version (400 calibration.unknownZone), every required one needs a shape (calibration.missingZone), shapes are a circle with a positive radius or a polygon of 3 to 100 vertices, at most 100 per key (calibration.invalidZone), inside the frame (calibration.zoneOutsideFrame). They are converted to centimetres with the fitted transform and stored with the calibration.'
+          description: 'Shapes of the paradigm''s calibrated zones in full-frame pixels, required for paradigms with calibrated zones (NOVEL_OBJECT, POLE and TREADMILL): keys must be calibrated zones of the paradigm version (400 calibration.unknownZone), every required one needs a shape (calibration.missingZone), shapes are a circle with a positive radius or a polygon of 3 to 100 vertices, at most 100 per key (calibration.invalidZone), inside the frame (calibration.zoneOutsideFrame). They are converted to centimetres with the fitted transform and stored with the calibration.'
     ZoneVertex:
       type: object
       additionalProperties: false
@@ -3641,13 +3722,15 @@ components:
         centimeters: {$ref: '#/components/schemas/ZoneShape'}
     Calibration:
       type: object
-      required: [id, scope, testSubjectId, recordingId, environmentRevisionId, supersedesId, cameraId, frameWidth, frameHeight, crop, referenceFrameUs, measurementPlane, fitPoints, checkPoints, transform, zones, fitRmsErrorCm, checkRmsErrorCm, checkMaxErrorCm, toleranceCm, algorithmVersion, status, rejectionReason, createdBy, createdAt]
-      description: Immutable; analysis runs reference a fixed calibration
+      required: [id, scope, testSubjectId, recordingId, trialId, videoAssetId, environmentRevisionId, supersedesId, cameraId, frameWidth, frameHeight, crop, referenceFrameUs, measurementPlane, fitPoints, checkPoints, transform, zones, fitRmsErrorCm, checkRmsErrorCm, checkMaxErrorCm, toleranceCm, algorithmVersion, status, rejectionReason, createdBy, createdAt]
+      description: Immutable; an analysis job copies the calibration it uses
       properties:
         id: {type: string, format: uuid}
-        scope: {type: string, enum: [ENVIRONMENT, OVERRIDE], description: ENVIRONMENT is the default of a revision, OVERRIDE a manual calibration of one animal of a test on one video}
+        scope: {type: string, enum: [ENVIRONMENT, OVERRIDE, TRIAL], description: 'ENVIRONMENT is the default of a revision, OVERRIDE a manual calibration of one animal of a test on one video, TRIAL a calibration of a paradigm trial on its own video (never the environment''s)'}
         testSubjectId: {type: [string, 'null'], format: uuid, description: Null for an environment calibration}
-        recordingId: {type: [string, 'null'], format: uuid, description: The video an override was read from; null for an environment calibration}
+        recordingId: {type: [string, 'null'], format: uuid, description: The video an override was read from; null otherwise}
+        trialId: {type: [string, 'null'], format: uuid, description: The paradigm trial a TRIAL calibration belongs to}
+        videoAssetId: {type: [string, 'null'], format: uuid, description: The trial video a TRIAL calibration was read from}
         environmentRevisionId: {type: string, format: uuid}
         supersedesId: {type: [string, 'null'], format: uuid}
         cameraId: {type: string}
@@ -3655,7 +3738,7 @@ components:
         frameHeight: {type: integer}
         crop: {$ref: '#/components/schemas/CalibrationCrop'}
         referenceFrameUs: {type: [integer, 'null'], format: int64, description: Null for an environment calibration}
-        measurementPlane: {type: string, enum: [ARENA_FLOOR, WATER_SURFACE, APPARATUS_TOP]}
+        measurementPlane: {type: string, enum: [ARENA_FLOOR, WATER_SURFACE, APPARATUS_TOP, APPARATUS_SIDE]}
         fitPoints: {type: array, items: {$ref: '#/components/schemas/CalibrationPoint'}}
         checkPoints: {type: array, items: {$ref: '#/components/schemas/CalibrationPoint'}}
         transform: {type: array, minItems: 9, maxItems: 9, items: {type: number}, description: Row-major 3x3 homography from pixels to centimeters, normalized so the last entry is 1}
@@ -3694,105 +3777,13 @@ components:
         capabilities: {type: array, items: {$ref: '#/components/schemas/AnalysisCapability'}}
         disabledAt: {type: [string, 'null'], format: date-time}
         createdAt: {type: string, format: date-time}
-    ScoredEventInput:
-      type: object
-      additionalProperties: false
-      required: [type, startUs]
-      properties:
-        type: {type: string, description: An input event type of the paradigm}
-        label: {type: string, description: Required for events with labels (novel, familiar), absent otherwise}
-        startUs: {type: integer, minimum: 0, description: Microseconds from the clip start of the current video}
-        endUs: {type: integer, description: Omitted or equal to startUs for a point event; after startUs for an interval}
-    ScoredEvent:
-      type: object
-      required: [id, type, kind, label, startUs, endUs, scoredBy, createdAt, updatedAt]
-      properties:
-        id: {type: string, format: uuid}
-        type: {type: string}
-        kind: {type: string, enum: [POINT, INTERVAL]}
-        label: {type: [string, 'null']}
-        startUs: {type: integer}
-        endUs: {type: integer}
-        scoredBy: {type: string, format: uuid}
-        createdAt: {type: string, format: date-time}
-        updatedAt: {type: string, format: date-time}
-    ScoringSheet:
-      type: object
-      required: [id, version, status, scoredEventTypes, durationUs, recordingId, runId, createdBy, createdAt, completedBy, completedAt]
-      properties:
-        id: {type: string, format: uuid}
-        version: {type: integer, minimum: 1}
-        status: {type: string, enum: [DRAFT, COMPLETED]}
-        scoredEventTypes: {type: [array, 'null'], items: {type: string}, description: Fixed at completion}
-        durationUs: {type: [integer, 'null'], description: Recording length fixed at completion; null when unknown}
-        recordingId: {type: [string, 'null'], format: uuid, description: The video scored, pinned at completion}
-        runId: {type: [string, 'null'], format: uuid, description: The SCORED analysis run computed at completion}
-        createdBy: {type: string, format: uuid}
-        createdAt: {type: string, format: date-time}
-        completedBy: {type: [string, 'null'], format: uuid}
-        completedAt: {type: [string, 'null'], format: date-time}
-    Scoring:
-      type: object
-      required: [experimentId, testId, testSubjectId, paradigm, inputEvents, video, sheet, events]
-      properties:
-        experimentId: {type: string, format: uuid}
-        testId: {type: string, format: uuid}
-        testSubjectId: {type: string, format: uuid}
-        paradigm:
-          type: object
-          required: [key, version]
-          properties: {key: {type: string}, version: {type: integer}}
-        inputEvents:
-          type: array
-          items:
-            type: object
-            required: [type, kind, labels, single, label, definition]
-            properties:
-              type: {type: string}
-              kind: {type: string, enum: [POINT, INTERVAL]}
-              labels: {type: array, items: {type: string}}
-              single: {type: boolean, description: Scored at most once}
-              label: {type: string}
-              definition: {type: string}
-        video:
-          type: [object, 'null']
-          required: [recordingId, clipStartUs, clipEndUs]
-          properties:
-            recordingId: {type: string, format: uuid}
-            clipStartUs: {type: integer, description: Microseconds from the start of the video file; event time 0}
-            clipEndUs: {type: [integer, 'null']}
-        sheet:
-          oneOf:
-            - {type: 'null'}
-            - {$ref: '#/components/schemas/ScoringSheet'}
-        events: {type: array, items: {$ref: '#/components/schemas/ScoredEvent'}}
-    ScoringCompletion:
-      allOf:
-        - {$ref: '#/components/schemas/Scoring'}
-        - type: object
-          required: [run]
-          properties:
-            run:
-              type: object
-              required: [id, metrics]
-              properties:
-                id: {type: string, format: uuid}
-                metrics:
-                  type: array
-                  items:
-                    type: object
-                    required: [key, unit, value, missingReason]
-                    properties:
-                      key: {type: string}
-                      unit: {type: string}
-                      value: {type: [number, 'null']}
-                      missingReason: {type: [string, 'null']}
     AnalysisRun:
       type: object
-      required: [id, experimentId, testId, testSubjectId, recordingId, sourceVideoId, sourceGeneration, sourceCrc32c, clipStartUs, clipEndUs, calibrationId, paradigmKey, paradigmVersion, metricEngineVersion, resultSchemaVersion, parameters, trigger, method, scoredBy, status, attempt, maxAttempts, workerId, leaseExpiresAt, modelVersion, failureReason, createdBy, createdAt, finishedAt]
-      description: One animal of a test analysed in the test's video. Inputs are pinned at creation and never change; reanalysis is a new run
+      required: [id, jobId, experimentId, testId, testSubjectId, recordingId, sourceVideoId, sourceGeneration, sourceCrc32c, clipStartUs, clipEndUs, calibrationId, paradigmKey, paradigmVersion, metricEngineVersion, resultSchemaVersion, parameters, trigger, status, attempt, maxAttempts, workerId, leaseExpiresAt, modelVersion, failureReason, createdBy, createdAt, finishedAt]
+      description: An analysis of one animal of a test, a job of the analysis service linked to the animal; id is the job id. The job's inputs never change; reanalysis is a new job
       properties:
-        id: {type: string, format: uuid}
+        id: {type: string, format: uuid, description: The job id}
+        jobId: {type: string, format: uuid}
         experimentId: {type: string, format: uuid}
         testId: {type: string, format: uuid}
         testSubjectId: {type: string, format: uuid, description: The animal of the test this run analyses}
@@ -3809,8 +3800,6 @@ components:
         resultSchemaVersion: {type: integer}
         parameters: {type: object, additionalProperties: {type: number}, description: The arena's parameters merged with the step's session parameters}
         trigger: {type: string, enum: [AUTOMATIC, MANUAL]}
-        method: {type: string, enum: [AUTOMATED, SCORED], description: 'AUTOMATED: a worker tracked the video. SCORED: a person scored it (no worker, model version, calibration or video pair; never reanalysed by a worker).'}
-        scoredBy: {type: [string, 'null'], format: uuid, description: The user who scored a SCORED run}
         status: {type: string, enum: [QUEUED, RUNNING, SUCCEEDED, FAILED]}
         attempt: {type: integer, minimum: 0, description: Number of claims; the current attempt is the fencing token}
         maxAttempts: {type: integer}
@@ -3821,11 +3810,198 @@ components:
         createdBy: {type: [string, 'null'], format: uuid, description: Null for automatic runs}
         createdAt: {type: string, format: date-time}
         finishedAt: {type: [string, 'null'], format: date-time}
+    AnalysisRequester:
+      type: object
+      required: [kind, id]
+      description: Who asked for a job, as an opaque reference the service never reads
+      properties:
+        kind: {type: string, enum: [TRIAL, TEST_SUBJECT]}
+        id: {type: string, format: uuid}
+    AnalysisCalibration:
+      type: object
+      required: [id, frameWidth, frameHeight, crop, measurementPlane, transform, zones]
+      description: The calibration snapshot a job analyses with; id names the calibration it was copied from
+      properties:
+        id: {type: string, format: uuid}
+        frameWidth: {type: integer}
+        frameHeight: {type: integer}
+        crop: {$ref: '#/components/schemas/CalibrationCrop'}
+        measurementPlane: {type: string, enum: [ARENA_FLOOR, WATER_SURFACE, APPARATUS_TOP, APPARATUS_SIDE]}
+        transform: {type: array, minItems: 9, maxItems: 9, items: {type: number}, description: Row-major homography from full-frame pixels (top-left corner at 0,0) to arena centimeters}
+        zones: {type: array, items: {$ref: '#/components/schemas/CalibrationZone'}, description: 'The calibrated zone shapes in full-frame pixels (tracking limits, overlay) and centimetres (the engine computes zone metrics with them)'}
+    AnalysisJob:
+      type: object
+      required: [id, requester, paradigmKey, paradigmVersion, metricEngineVersion, resultSchemaVersion, parameters, sourceVideoId, sourceGeneration, sourceCrc32c, clipStartUs, clipEndUs, calibrationId, calibration, trigger, status, attempt, maxAttempts, workerId, leaseExpiresAt, modelVersion, failureReason, createdBy, createdAt, finishedAt]
+      description: A job of the analysis service, an immutable input snapshot and its execution state; reanalysis is a new job
+      properties:
+        id: {type: string, format: uuid}
+        requester: {$ref: '#/components/schemas/AnalysisRequester'}
+        paradigmKey: {type: string}
+        paradigmVersion: {type: integer}
+        metricEngineVersion: {type: integer}
+        resultSchemaVersion: {type: integer}
+        parameters: {type: object, additionalProperties: {type: number}, description: The resolved apparatus, analysis and session values}
+        sourceVideoId: {type: string, format: uuid}
+        sourceGeneration: {type: string, pattern: '^[0-9]+$', description: GCS generation of the analysed original}
+        sourceCrc32c: {type: string, description: Base64 big-endian CRC32C}
+        clipStartUs: {type: integer, format: int64}
+        clipEndUs: {type: [integer, 'null'], format: int64}
+        calibrationId: {type: [string, 'null'], format: uuid}
+        calibration: {oneOf: [{type: 'null'}, {$ref: '#/components/schemas/AnalysisCalibration'}]}
+        trigger: {type: string, enum: [AUTOMATIC, MANUAL]}
+        status: {type: string, enum: [QUEUED, RUNNING, SUCCEEDED, FAILED]}
+        attempt: {type: integer, minimum: 0, description: Number of claims; the current attempt is the fencing token}
+        maxAttempts: {type: integer}
+        workerId: {type: [string, 'null'], format: uuid}
+        leaseExpiresAt: {type: [string, 'null'], format: date-time}
+        modelVersion: {type: [string, 'null']}
+        failureReason: {type: [string, 'null'], description: 'The worker reason, QC_FAILED with the rule, or LEASE_EXPIRED'}
+        createdBy: {type: [string, 'null'], format: uuid}
+        createdAt: {type: string, format: date-time}
+        finishedAt: {type: [string, 'null'], format: date-time}
+    AnalysisJobDetail:
+      allOf:
+        - $ref: '#/components/schemas/AnalysisJob'
+        - type: object
+          required: [result]
+          properties:
+            result: {oneOf: [{$ref: '#/components/schemas/AnalysisResult'}, {type: 'null'}]}
+    AnalysisQC:
+      type: object
+      required: [samples, tracked, inferred, lostRatio, inferredRatio, meanConfidence, passed]
+      description: Tracking quality of the trajectory the job measured
+      properties:
+        samples: {type: integer}
+        tracked: {type: integer}
+        inferred: {type: integer}
+        lostRatio: {type: number}
+        inferredRatio: {type: number}
+        meanConfidence: {type: number}
+        passed: {type: boolean}
+    AnalysisVideoPair:
+      type: object
+      required: [originalUrl, analyzedUrl, expiresAt, sourceVideoId, sourceGeneration, analyzedGeneration, sourceOffsetUs, outputOffsetUs, timeMappingVersion]
+      properties:
+        originalUrl: {type: string, format: uri}
+        analyzedUrl: {type: string, format: uri}
+        expiresAt: {type: string, format: date-time}
+        sourceVideoId: {type: string, format: uuid}
+        sourceGeneration: {type: string, pattern: '^[0-9]+$'}
+        analyzedGeneration: {type: string, pattern: '^[0-9]+$'}
+        sourceOffsetUs: {type: integer, format: int64, description: Original video time of analysed time zero (the clip start)}
+        outputOffsetUs: {type: integer, format: int64, description: Analysed video time of analysed time zero}
+        timeMappingVersion: {type: string}
+    ReadLink:
+      type: object
+      required: [url, expiresAt]
+      properties:
+        url: {type: string, format: uri}
+        expiresAt: {type: string, format: date-time}
+    TrialInput:
+      type: object
+      additionalProperties: false
+      required: [name, paradigmKey, paradigmVersion, environmentRevisionId]
+      properties:
+        name: {type: string, minLength: 1, maxLength: 120}
+        paradigmKey: {type: string}
+        paradigmVersion: {type: integer, minimum: 1}
+        environmentRevisionId: {type: string, format: uuid, description: An arena of the same paradigm version}
+        notes: {type: string, maxLength: 2000}
+    Trial:
+      type: object
+      required: [id, name, paradigmKey, paradigmVersion, environmentRevisionId, videoId, clipStartUs, clipEndUs, notes, createdBy, createdAt, updatedAt]
+      properties:
+        id: {type: string, format: uuid}
+        name: {type: string}
+        paradigmKey: {type: string}
+        paradigmVersion: {type: integer}
+        environmentRevisionId: {type: string, format: uuid}
+        videoId: {type: [string, 'null'], format: uuid, description: The current video; a replacement upload takes its place}
+        clipStartUs: {type: integer, format: int64}
+        clipEndUs: {type: [integer, 'null'], format: int64}
+        notes: {type: [string, 'null']}
+        createdBy: {type: string, format: uuid}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+    TrialArena:
+      type: object
+      required: [environmentRevisionId, environmentId, environmentName, revision]
+      properties:
+        environmentRevisionId: {type: string, format: uuid}
+        environmentId: {type: string, format: uuid}
+        environmentName: {type: string}
+        revision: {type: integer}
+        parameters: {type: object, additionalProperties: {type: number}, description: The arena's apparatus and analysis values (trial page only)}
+    TrialJob:
+      type: object
+      required: [id, status, paradigmKey, paradigmVersion, parameters, sourceVideoId, calibrationId, attempt, maxAttempts, modelVersion, failureReason, createdAt, finishedAt]
+      properties:
+        id: {type: string, format: uuid}
+        status: {type: string, enum: [QUEUED, RUNNING, SUCCEEDED, FAILED]}
+        paradigmKey: {type: string}
+        paradigmVersion: {type: integer}
+        parameters: {type: object, additionalProperties: {type: number}}
+        sourceVideoId: {type: string, format: uuid}
+        calibrationId: {type: [string, 'null'], format: uuid}
+        attempt: {type: integer}
+        maxAttempts: {type: integer}
+        modelVersion: {type: [string, 'null']}
+        failureReason: {type: [string, 'null']}
+        createdAt: {type: string, format: date-time}
+        finishedAt: {type: [string, 'null'], format: date-time}
+    TrialSummary:
+      allOf:
+        - $ref: '#/components/schemas/Trial'
+        - type: object
+          required: [arena, latestJob]
+          properties:
+            arena: {$ref: '#/components/schemas/TrialArena'}
+            latestJob: {oneOf: [{type: 'null'}, {$ref: '#/components/schemas/TrialJob'}]}
+    TrialVideo:
+      type: object
+      required: [id, fileName, contentType, sizeBytes, status, rejectionReason, createdAt, verifiedAt]
+      properties:
+        id: {type: string, format: uuid}
+        fileName: {type: [string, 'null']}
+        contentType: {type: string}
+        sizeBytes: {type: integer, format: int64}
+        status: {type: string, enum: [PENDING, VERIFIED, REJECTED]}
+        rejectionReason: {type: [string, 'null']}
+        createdAt: {type: string, format: date-time}
+        verifiedAt: {type: [string, 'null'], format: date-time}
+    TrialAnalysis:
+      type: object
+      required: [jobId, trigger, videoId, calibrationId, overrides, createdBy, createdAt, job, metrics, qc]
+      description: One analysis of a trial; events, the overlay video and the track are read from the job's routes
+      properties:
+        jobId: {type: string, format: uuid}
+        trigger: {type: string, enum: [AUTOMATIC, MANUAL]}
+        videoId: {type: string, format: uuid}
+        calibrationId: {type: [string, 'null'], format: uuid}
+        overrides: {type: object, additionalProperties: {type: number}, description: The ANALYSIS values changed for this analysis}
+        createdBy: {type: [string, 'null'], format: uuid}
+        createdAt: {type: string, format: date-time}
+        job: {$ref: '#/components/schemas/TrialJob'}
+        metrics:
+          type: array
+          items: {type: object, required: [key, unit, value, missingReason], properties: {key: {type: string}, unit: {type: string}, value: {type: [number, 'null']}, missingReason: {type: [string, 'null']}}}
+        qc: {oneOf: [{type: 'null'}, {$ref: '#/components/schemas/AnalysisQC'}]}
+    TrialDetail:
+      allOf:
+        - $ref: '#/components/schemas/Trial'
+        - type: object
+          required: [arena, video, calibrationId, analyses]
+          properties:
+            arena: {$ref: '#/components/schemas/TrialArena'}
+            video: {oneOf: [{type: 'null'}, {$ref: '#/components/schemas/TrialVideo'}]}
+            calibrationId: {type: [string, 'null'], format: uuid, description: The valid calibration the trial would be analysed with now, its own on this video else the arena default}
+            analyses: {type: array, items: {$ref: '#/components/schemas/TrialAnalysis'}, description: Newest first}
     AnalysisContract:
       type: object
-      required: [metrics, events, missingReasons, qc]
+      required: [requiredZones, metrics, events, missingReasons, qc]
       description: What the metric engine will compute from the trajectory; workers send no metrics or events
       properties:
+        requiredZones: {type: array, items: {type: string}, description: Calibrated zones the claimed calibration carries a shape for (empty for the water maze, whose zones derive from parameters)}
         qc:
           type: array
           items: {type: object, required: [key, operator, value], properties: {key: {type: string}, operator: {type: string, enum: ['>=', '<=']}, value: {type: number}}}
@@ -3843,7 +4019,7 @@ components:
         events:
           type: array
           items: {type: object, required: [type, kind], properties: {type: {type: string}, kind: {type: string, enum: [INTERVAL, POINT]}}}
-        missingReasons: {type: array, items: {type: string}}
+        missingReasons: {type: array, items: {type: string, enum: [NO_VALID_INTERVALS, EVENT_NOT_OBSERVED, ZERO_DENOMINATOR, INCOMPLETE_RECORDING, BELOW_EXPLORATION_CRITERION]}}
     AnalysisAttempt:
       type: object
       additionalProperties: false
@@ -3891,7 +4067,7 @@ components:
             timeMappingVersion: {type: string, minLength: 1, maxLength: 60}
     AnalysisResult:
       type: object
-      required: [metrics, events, artifacts, pair]
+      required: [metrics, events, artifacts, pair, qc]
       properties:
         metrics:
           type: array
@@ -3907,14 +4083,14 @@ components:
           type: array
           items:
             type: object
-            required: [type, kind, startUs, endUs, confidence, trialId]
+            required: [type, label, kind, startUs, endUs, confidence]
             properties:
               type: {type: string}
+              label: {type: [string, 'null'], description: 'One of the event type''s labels (the novel or the familiar object for exploration); null for types without labels'}
               kind: {type: string, enum: [INTERVAL, POINT]}
               startUs: {type: integer, format: int64}
               endUs: {type: integer, format: int64}
               confidence: {type: number}
-              trialId: {type: [string, 'null'], format: uuid}
         artifacts:
           type: array
           items:
@@ -3928,14 +4104,16 @@ components:
               contentType: {type: string}
         pair:
           type: [object, 'null']
-          required: [sourceVideoId, sourceGeneration, analyzedVideoId, sourceOffsetUs, outputOffsetUs, timeMappingVersion]
+          required: [analyzedObjectName, sourceOffsetUs, outputOffsetUs, timeMappingVersion]
           properties:
-            sourceVideoId: {type: string, format: uuid}
-            sourceGeneration: {type: string, pattern: '^[0-9]+$'}
-            analyzedVideoId: {type: string, format: uuid}
+            analyzedObjectName: {type: string}
             sourceOffsetUs: {type: integer, format: int64}
             outputOffsetUs: {type: integer, format: int64}
             timeMappingVersion: {type: string}
+        qc:
+          oneOf:
+            - type: 'null'
+            - $ref: '#/components/schemas/AnalysisQC'
     RejectionReason: {type: string, enum: [TRACKING_LOST, WRONG_ANIMAL, VIDEO_DEFECT, PROTOCOL_DEVIATION, OTHER]}
     AnalysisReviewItem:
       type: object
@@ -3972,13 +4150,11 @@ components:
         scheduledAt: {type: string, format: date-time}
         run:
           type: object
-          required: [id, trigger, method, scoredBy, modelVersion, metricEngineVersion, calibrationId, recordingId, finishedAt, metrics]
+          required: [id, trigger, modelVersion, metricEngineVersion, calibrationId, recordingId, finishedAt, metrics]
           description: The run under review; its analysed video is at /api/analysis-runs/{id}/video-pair
           properties:
             id: {type: string, format: uuid}
             trigger: {type: string, enum: [AUTOMATIC, MANUAL]}
-            method: {type: string, enum: [AUTOMATED, SCORED]}
-            scoredBy: {type: [string, 'null'], format: uuid}
             modelVersion: {type: [string, 'null']}
             metricEngineVersion: {type: integer}
             calibrationId: {type: [string, 'null'], format: uuid}
