@@ -14,6 +14,37 @@ DROP FUNCTION misko.check_scored_run_finished();
 DROP TRIGGER analysis_runs_method_fixed ON misko.analysis_runs;
 DROP FUNCTION misko.check_analysis_run_method();
 
+-- Scored runs cannot satisfy the automated-only rules below. They and what
+-- hangs off them are removed; a subject whose result pointed to one loses that
+-- result and is analysed automatically again. The immutability triggers are
+-- off only for this cleanup, inside this migration's transaction.
+CREATE TEMPORARY TABLE scored_runs ON COMMIT DROP AS
+    SELECT id FROM misko.analysis_runs WHERE method = 'SCORED';
+
+ALTER TABLE misko.subject_results DISABLE TRIGGER subject_results_no_delete;
+ALTER TABLE misko.analysis_events DISABLE TRIGGER analysis_events_immutable;
+ALTER TABLE misko.metric_results DISABLE TRIGGER metric_results_immutable;
+ALTER TABLE misko.analysis_video_pairs DISABLE TRIGGER analysis_video_pairs_immutable;
+ALTER TABLE misko.analysis_artifacts DISABLE TRIGGER analysis_artifacts_immutable;
+ALTER TABLE misko.analysis_output_uploads DISABLE TRIGGER analysis_output_uploads_immutable;
+ALTER TABLE misko.analysis_runs DISABLE TRIGGER analysis_runs_change;
+
+DELETE FROM misko.subject_results WHERE run_id IN (SELECT id FROM scored_runs);
+DELETE FROM misko.analysis_events WHERE run_id IN (SELECT id FROM scored_runs);
+DELETE FROM misko.metric_results WHERE run_id IN (SELECT id FROM scored_runs);
+DELETE FROM misko.analysis_video_pairs WHERE run_id IN (SELECT id FROM scored_runs);
+DELETE FROM misko.analysis_artifacts WHERE run_id IN (SELECT id FROM scored_runs);
+DELETE FROM misko.analysis_output_uploads WHERE run_id IN (SELECT id FROM scored_runs);
+DELETE FROM misko.analysis_runs WHERE id IN (SELECT id FROM scored_runs);
+
+ALTER TABLE misko.subject_results ENABLE TRIGGER subject_results_no_delete;
+ALTER TABLE misko.analysis_events ENABLE TRIGGER analysis_events_immutable;
+ALTER TABLE misko.metric_results ENABLE TRIGGER metric_results_immutable;
+ALTER TABLE misko.analysis_video_pairs ENABLE TRIGGER analysis_video_pairs_immutable;
+ALTER TABLE misko.analysis_artifacts ENABLE TRIGGER analysis_artifacts_immutable;
+ALTER TABLE misko.analysis_output_uploads ENABLE TRIGGER analysis_output_uploads_immutable;
+ALTER TABLE misko.analysis_runs ENABLE TRIGGER analysis_runs_change;
+
 ALTER TABLE misko.analysis_runs DROP CONSTRAINT analysis_runs_state_check;
 ALTER TABLE misko.analysis_runs DROP COLUMN method, DROP COLUMN scored_by;
 ALTER TABLE misko.analysis_runs ADD CONSTRAINT analysis_runs_state_check CHECK (
