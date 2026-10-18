@@ -24,6 +24,8 @@ disease model? Everything in the panel follows that question:
 6. Every animal is measured automatically on the session video: an analysis
    worker tracks it in every paradigm. A person **reviews** each result, and only accepted results enter the
    **report**.
+7. **Paradigm trials** try a paradigm on a single video outside any study,
+   for example to check a camera or the analysis thresholds.
 
 The panel is in Turkish by default. Use the language switch in the top bar to
 change it to English; your choice is remembered.
@@ -47,7 +49,7 @@ hides buttons the API would refuse.
 |---|---|
 | `SUPERADMIN`, `LAB_MANAGER` | Everything, including users and lab settings. |
 | `RESEARCHER` | Everything except users and lab settings: substances, disease models, subjects, environments, study design, planning sessions, dosing, running sessions, review. |
-| `TECHNICIAN` | The lab day: record doses and weights, start and complete sessions, record trials, upload videos, calibrate an animal on a video, review results. Cannot plan or cancel sessions or change a study. |
+| `TECHNICIAN` | The lab day: record doses and weights, start and complete sessions, record trials, upload videos, calibrate an animal on a video, run paradigm trials, review results. Cannot plan or cancel sessions or change a study. |
 | `VIEWER` | Reads everything, changes nothing. |
 
 When you create a user on the **Users** screen you may leave the password blank
@@ -369,6 +371,40 @@ review**:
 
 In a **blinded** study the review screen shows only the animal, the arena and
 the session, never the group, dose or substance.
+
+## Paradigm trials
+
+**Paradigm trials** in the main menu try a paradigm on one video in one
+arena, outside any experiment: there are no groups, no review and no report,
+and a trial's result never moves into an experiment. Use it to check a new
+camera position, an arena or the analysis thresholds before a study. Everyone
+can read trials; starting and running one needs the `trial:run` permission
+(every role except `VIEWER`).
+
+1. Click **New trial**, give it a name, choose the paradigm and the
+   environment revision to try it in, add notes if useful and click **Create
+   trial**. The trial page opens.
+2. Click **Upload video** and choose the recording. The file goes straight to
+   storage and is verified; the player then shows it. **Replace video** uploads
+   another one; earlier analyses keep the video they used.
+3. The **Calibration** card says which calibration applies: the
+   environment's, or the trial's own made on this video. If the environment is
+   not calibrated or the camera moved, click **Calibrate on this video** and
+   place the points and zones as on the environment page. This calibration
+   belongs to the trial and this video only; the environment never changes.
+4. Once the video is verified and a calibration applies, the analysis starts by
+   itself. The **Analyses** card lists every analysis, newest first, with its
+   state (queued, running, succeeded, failed with the reason), the tracking
+   quality, the metrics in the panel's language and, under **Overlay video
+   and events**, the video the worker drew and the events; clicking an event
+   plays it. The page refreshes itself while an analysis is queued or running.
+5. **Analyse again** opens the paradigm's analysis thresholds, filled with the
+   environment's values. Change what you want to try and click **Analyse**: a
+   new analysis of the same video is queued with only the changed values, and
+   the earlier ones stay. **Compare** shows two succeeded analyses side by side
+   with the difference of every metric.
+6. **Delete** removes the trial from the list after a confirmation; its
+   analyses stay stored.
 
 ## Results and reports
 

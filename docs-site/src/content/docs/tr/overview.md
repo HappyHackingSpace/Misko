@@ -37,6 +37,10 @@ laboratuvarları için.
 - **Sonuç**: bir deneğin bir testteki analizi. Her sonuç sayılmadan önce bir
   kişi tarafından kabul veya reddedilir. Sonuçlar veridir, geçti/kaldı verdikti
   değil.
+- **Paradigma testi**: bir paradigmanın herhangi bir deneyin dışında tek bir
+  videoda, tek bir ortamda denenmesi; gerekirse kendi kalibrasyonuyla ve
+  değiştirilmiş eşiklerle istendiği kadar analizle. Grubu, sonuç onayı ve
+  raporu yoktur.
 - **Rapor**: sonlanım noktası başına grup istatistikleri ve grup rollerinden
   çıkan karşılaştırmalar (model geçerliliği, test duyarlılığı, kurtarma
   yüzdesiyle etkinlik, doz yanıtı).
