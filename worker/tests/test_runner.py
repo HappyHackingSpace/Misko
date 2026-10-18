@@ -225,7 +225,7 @@ def test_failures_are_reported_with_their_retry_policy(tmp_path: Path, walk: byt
     assert expired.failures == [{"attempt": 1, "reason": "SOURCE_DOWNLOAD_FAILED: HTTP 403", "retryable": True}]
 
 
-@pytest.mark.parametrize(("key", "version"), [("NOVEL_OBJECT", 1), ("POLE", 1), ("TREADMILL", 1), ("MWM", 2), (None, None)])
+@pytest.mark.parametrize(("key", "version"), [("ROTAROD", 1), ("NOVEL_OBJECT", 2), ("POLE", 2), ("TREADMILL", 2), ("MWM", 2), (None, None)])
 def test_unsupported_paradigms_fail_without_downloading(tmp_path: Path, walk: bytes, key, version) -> None:
     job = synthetic.job()
     job["run"]["paradigmKey"], job["run"]["paradigmVersion"] = key, version

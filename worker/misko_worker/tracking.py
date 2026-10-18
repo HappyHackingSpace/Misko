@@ -13,7 +13,9 @@ standard deviation over the sampled frames), so rippling or glinting pixels need
 a larger difference while calm water keeps a low threshold; detection only
 looks at pixels near the apparatus (a mask from the paradigm layout); and among
 several blobs the one near the previous position wins over a larger one far
-away, so a reflection does not pull the track across the tank. Pixel coordinates are
+away, so a reflection does not pull the track across the tank. A treadmill
+belt uses the same noise-aware threshold: its moving texture is noise that a
+pixel the belt covers always shows. Pixel coordinates are
 continuous, with the top-left corner of the frame at (0, 0); a pixel's center is
 at (column + 0.5, row + 0.5), the convention calibration points use.
 """

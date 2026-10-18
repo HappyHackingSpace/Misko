@@ -216,7 +216,6 @@ def test_unsupported_paradigms_are_refused_before_decoding(tmp_path: Path) -> No
     garbage = tmp_path / "garbage.mp4"
     garbage.write_bytes(b"not a video" * 200)
     job = synthetic.job()
-    # Observer-scored paradigms never reach a worker.
-    job["run"]["paradigmKey"] = "NOVEL_OBJECT"
-    with pytest.raises(NonRetryable, match="UNSUPPORTED_PARADIGM: NOVEL_OBJECT v1"):
+    job["run"]["paradigmKey"] = "ROTAROD"
+    with pytest.raises(NonRetryable, match="UNSUPPORTED_PARADIGM: ROTAROD v1"):
         analyze(garbage, job, tmp_path / "o.mp4")
