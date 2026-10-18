@@ -74,35 +74,35 @@ Bir hesaplamayı, aralığı ya da varsayılanı değiştirmek yeni bir paradigm
 sürümü yayımlar. İfadeler ve yardım metinleri yeni sürüm gerektirmeden
 iyileştirilebilir.
 
-## Takip edilen ve gözlemci puanlamalı paradigmalar
+## Her paradigmanın otomatik analizi
 
-Dört paradigmanın her biri girdilerini iki yoldan biriyle alır. Metrikleri her
-iki durumda da `backend/internal/paradigms/domain` içindeki metrik motoru
-hesaplar; böylece bir ölçümün, girdisini ne üretmiş olursa olsun tek bir tanımı
-vardır.
+Her paradigma videodan otomatik olarak analiz edilir; bir kişi yalnızca sonucu
+inceler. İşçi deneğin ağırlık merkezini kalibrasyonun santimetre çerçevesinde
+izler ve `backend/internal/paradigms/domain` içindeki metrik motoru her olayı bu
+örneklerden ve bölgelerden çıkarır. Olaylara asla işçi karar vermez; böylece
+bir ölçümün, deneği neyin izlediğinden bağımsız olarak tek bir tanımı vardır.
 
-| Paradigma | Yöntem | Girdi | Bölgeler |
+| Paradigma | Kamera ve dünya çerçevesi | Bölgeler | Çıkarılan olaylar |
 |---|---|---|---|
-| `MWM` | Takip edilir (`AUTOMATED` çalıştırma) | tank merkezli cm cinsinden yörünge | parametrelerden (platform, hedef çeyrek, duvar kenarı bölgesi) |
-| `POLE` | Gözlemci puanlar (`SCORED` çalıştırma) | `turn_complete`, `base_reached`, `fall` (anlar, her biri bir kez) | yok |
-| `TREADMILL` | Gözlemci puanlar | `exhaustion` (an, bir kez), `shock` (anlar) | yok |
-| `NOVEL_OBJECT` | Gözlemci puanlar | `exploration` (`novel` ya da `familiar` etiketli aralıklar) | yok |
+| `MWM` | tankın üstünde; tank merkezli cm, x doğu, y kuzey | parametrelerden (platform, hedef çeyrek, duvar kenarı bölgesi) | yörüngenin bölge girişleri |
+| `NOVEL_OBJECT` | arenanın üstünde; zeminin başlangıç köşesi, x genişlik, y derinlik boyunca | kalibre edilen `novel_object`, `familiar_object` (her nesnenin çevresinde, ondan yaklaşık 2 cm taşan bir daire ya da çokgen) | ağırlık merkezi o bölgede en az `min_bout_s` kaldığı sürece `novel` ya da `familiar` etiketli `exploration` aralıkları |
+| `POLE` | direğin yanında; x yatay, y tabandan yükseklik (taban 0, tepe `pole_length_cm`) | kalibre edilen `pole`, `base` (çokgen) | `turn_complete`, `base_reached`, `fall` (anlar) |
+| `TREADMILL` | kulvarın yanında; x kulvar boyunca şok ızgarası ucundan (0) öne (`lane_length_cm`), y dikey | kalibre edilen `shock_grid` (çokgen) | `shock` (anlar), `exhaustion` (an) |
 
-- **Takip edilen paradigmaları** bir işçi analiz eder. Testin videosu
-  doğrulandığında, deneğin kalibrasyonu geçerli olduğunda ve etkin bir işçinin
-  yetenekleri arasında paradigma sürümü bulunduğunda jobs süreci denek başına
-  bir `AUTOMATED` çalıştırma kuyruğa ekler. İşçi, kalibrasyonun santimetre
-  çerçevesinde bir yörünge yükler; API ondan asla metrik kabul etmez.
-- **Gözlemci puanlamalı paradigmalar** asla işçi çalıştırması almaz ve bir işçi
-  bunları yetenek olarak kaydedemez. Bir kişi girdi olaylarını testin güncel
-  videosunda işaretler; puanlama sayfasının tamamlanması motoru çalıştırır ve
-  puanlayanı kaydeden, işçisi, kalibrasyonu ve video çifti olmayan bir `SCORED`
-  çalıştırma saklar. Olay zamanları klip başlangıcından itibaren
-  mikrosaniyedir. Puanlandı olarak işaretlenip hiç gerçekleşmeyen bir olay türü
-  gözlenmedi sayılır; puanlanmamış bir olay türünün metrikleri sıfır değil,
-  eksik olur.
+Testin videosu doğrulandığında, deneğin kalibrasyonu her zorunlu bölgesiyle
+geçerli olduğunda ve etkin bir işçinin yetenekleri arasında paradigma sürümü
+bulunduğunda jobs süreci denek başına bir `AUTOMATED` çalıştırma kuyruğa ekler.
+İşçi, kalibrasyonun santimetre çerçevesinde bir yörünge yükler; API ondan asla
+metrik ya da olay kabul etmez. Her kural eşiği (`min_bout_s`,
+`turn_descent_cm`, `fall_speed_cm_s`, `exhaustion_dwell_s`,
+`min_shock_dwell_s`, `max_sample_gap_s`) standart bir varsayılanı olan ve
+laboratuvarın ortam başına ayarlayabildiği bir analiz parametresidir.
 
-Her iki çalıştırma türü de aynı denek başına sonucu besler; bu sonuç insan
+Yeni nesne testinin bilinen sınırı: keşif, burnun yönüyle değil, gövde
+merkezinin bir nesne bölgesinin içinde olmasıyla yaklaşık olarak ölçülür; bu
+yüzden nesnenin üzerinde oturmak da keşif sayılır.
+
+Her çalıştırma denek başına sonucu besler; bu sonuç insan
 onayı için `PENDING` olarak açılır ve yalnızca kabul edilen sonuçlar rapora
 girer.
 
@@ -115,10 +115,13 @@ Bölgeler iki yerden birinden gelir:
   dünya noktaları bu bölgelerin tanımlandığı çerçeveyi kullanmalıdır:
   **tank merkezli** çerçeve ((0, 0) tankın merkezi, x doğu, y kuzey; duvar
   noktaları r = tank çapı / 2 olmak üzere (r, 0), (0, r), (-r, 0) ve (0, -r)).
-- **Kalibre edilen.** Bir paradigma kalibre edilen bölgeler tanımlayabilir;
-  güncel katalogdaki hiçbir paradigma bunu kullanmaz, ama destek korunur. Bu
+- **Kalibre edilen.** Yeni nesne, direk ve koşu bandı paradigmaları kalibre
+  edilen bölgeler tanımlar (nesneler, direk ve tabanı, şok ızgarası). Bu
   bölgeler kalibrasyonla birlikte kamera karesi üzerine daire ya da çokgen
-  olarak çizilir ve bir anahtarın birden çok şekli olabilir. Şekiller çizildiği gibi piksel olarak
+  olarak çizilir ve bir anahtarın birden çok şekli olabilir. Bir deneğin test
+  videosundaki geçersiz kılma kalibrasyonu bunları taşıyabilir, örneğin yeni
+  nesne öbür taraftaysa; kalibratörün yer değiştirme düğmesi iki nesne
+  bölgesini değiştirir. Şekiller çizildiği gibi piksel olarak
   saklanır ve kalibrasyonun uydurulan dönüşümüyle santimetreye çevrilir; karenin
   içinde kalmaları gerekir ve kalibrasyon kaydedildikten sonra asla değişmezler
   (`014_calibration_zones.sql` migrasyonu). Her zorunlu bölgesi olan geçerli bir
@@ -147,8 +150,8 @@ kalitesiyle ilgilidir.
 ## Olay tipleri ve CV tespiti
 
 Bir koşu **olaylar** toplar; metrikler bu olaylardan türetilir (bkz.
-`docs/METRIC_ENGINE.md`). Aynı olay akışı bugün manuel girişle, ileride ise CV
-servisiyle üretilir, yani olay katmanı Mişko ile bilgisayarlı görü arasındaki
+`docs/METRIC_ENGINE.md`). Aynı olay akışı izlenen yörüngeden ve bölgelerden
+çıkarılır, yani olay katmanı Mişko ile bilgisayarlı görü arasındaki
 kontrattır.
 
 Her olay tipi, CV servisinin onu trajectory ve bölgelerden nasıl türettiğini
@@ -309,9 +312,7 @@ uyguladığı kurallar paradigma sürümünün kurallarıdır (`trajectoryQC`):
 bunların payını yörüngenin tanılama bilgisine (`worker.inferredRatio`) yazar ve
 bir paradigma sürümü bunu `max_inferred_ratio` ile sınırlayabilir; yayımlanmış
 hiçbir sürüm henüz bu kuralı koymuyor. Bir kuralı çiğneyen çalıştırma
-`QC_FAILED` nedeniyle başarısız olur ve hiçbir şey yayımlamaz. Puanlanmış
-çalıştırmaların yörüngesi yoktur, bu yüzden bu takip kuralları onlara
-uygulanmaz; onun yerine inceleyen kişi puanlanan olayları kontrol eder.
+`QC_FAILED` nedeniyle başarısız olur ve hiçbir şey yayımlamaz.
 
 ## Sonuç şekli
 

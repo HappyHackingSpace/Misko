@@ -45,7 +45,7 @@ watch(tabs, (list) => {
   if (list.length && !list.some((entry) => entry.key === tab.value)) tab.value = list[0].key;
 });
 
-// Scored observations reappear among the derived events; each type is listed once.
+// Input events may reappear among the derived events; each type is listed once.
 const allEvents = computed(() => {
   const seen = new Set();
   return [...(manifest.value?.inputEvents || []), ...(manifest.value?.events || [])].filter(
