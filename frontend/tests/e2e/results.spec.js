@@ -27,7 +27,7 @@ test("the Results tab shows provisional numbers and exports them", async ({ page
   // One row per animal as CSV.
   const download = page.waitForEvent("download");
   await page.getByTestId("report-export").click();
-  await page.locator(".n-dropdown-option").filter({ hasText: "CSV, one row per animal" }).click();
+  await page.locator(".n-dropdown-option").filter({ hasText: "CSV, one row per subject" }).click();
   const file = await download;
   expect(file.suggestedFilename()).toMatch(/^E2E-.*\.csv$/);
   const csv = await readFile(await file.path(), "utf8");

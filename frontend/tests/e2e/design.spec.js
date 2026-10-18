@@ -176,8 +176,8 @@ test("a study is designed, started and filled with animals", async ({ page, requ
   await fill(page, "animals-search", prefix);
   const allocated = page.getByTestId("allocations-table").locator("tbody tr");
   await expect(allocated).toHaveCount(4);
-  await expect(page.getByTestId("fill-G1")).toContainText("2 of 2 animals");
-  await expect(page.getByTestId("fill-G2")).toContainText("2 of 2 animals");
+  await expect(page.getByTestId("fill-G1")).toContainText("2 of 2 subjects");
+  await expect(page.getByTestId("fill-G2")).toContainText("2 of 2 subjects");
 
   // Excluding keeps the animal on the list with its reason.
   const first = allocated.filter({ hasText: codes[0] });

@@ -62,10 +62,10 @@ export default {
   },
   errors: {
     scoring: {
-      testSubjectNotFound: "This animal is not part of the test",
+      testSubjectNotFound: "This subject is not part of the test",
       eventNotFound: "The event no longer exists; reload the scoring",
       noVideo: "The test has no verified video to score",
-      notScorable: "Scoring needs a running or completed test, a running study and an animal that is not excluded",
+      notScorable: "Scoring needs a running or completed test, a running study and a subject that is not excluded",
       notObserverScored: "This test is analysed from the video, not scored by an observer",
       unknownEventType: "This event type is not part of the test",
       invalidEventTime: "A point needs one time and an interval an end after its start",

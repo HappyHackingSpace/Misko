@@ -20,7 +20,7 @@ var gapParameter = Parameter{
 	Label: Text{"Maximum tracking gap", "İzleme boşluğu toleransı"},
 	Help: Text{
 		"Longest tracking dropout that is bridged; movement across a longer gap is excluded. Increase only for low-frame-rate videos.",
-		"Hayvan bundan daha uzun süre kaybolursa, aradaki hareket hesaba katılmaz. Yalnızca düşük kare hızlı videolarda artırın.",
+		"Denek bundan daha uzun süre kaybolursa, aradaki hareket hesaba katılmaz. Yalnızca düşük kare hızlı videolarda artırın.",
 	},
 }
 

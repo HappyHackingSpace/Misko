@@ -637,7 +637,7 @@ export default {
       sexMale: "Male",
       sexUnknown: "Unknown",
       title: "Subjects (Mice)",
-      subtitle: "Laboratory animals, with species and sex.",
+      subtitle: "Laboratory subjects, with species and sex.",
       code: "Code",
       sex: "Sex",
       male: "Male",

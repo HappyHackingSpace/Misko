@@ -62,10 +62,10 @@ export default {
   },
   errors: {
     scoring: {
-      testSubjectNotFound: "Bu hayvan testte yok",
+      testSubjectNotFound: "Bu denek testte yok",
       eventNotFound: "Olay artık yok; puanlamayı yeniden yükleyin",
       noVideo: "Testin puanlanacak doğrulanmış videosu yok",
-      notScorable: "Puanlama için test sürmeli ya da tamamlanmış, çalışma sürmeli ve hayvan hariç tutulmamış olmalı",
+      notScorable: "Puanlama için test sürmeli ya da tamamlanmış, çalışma sürmeli ve denek hariç tutulmamış olmalı",
       notObserverScored: "Bu test gözlemci tarafından değil videodan analiz edilir",
       unknownEventType: "Bu olay türü testte yok",
       invalidEventTime: "Nokta olayın tek zamanı, aralığın başlangıçtan sonra bitişi olmalı",

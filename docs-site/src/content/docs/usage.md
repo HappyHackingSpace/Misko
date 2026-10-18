@@ -105,7 +105,7 @@ Open **Subjects**. Each animal has a code (letters, digits, `.`, `_`, `/`,
 
 1. Click **New subject**, type the code, choose species and sex, and save.
 2. Use the search box and the species and sex filters to find animals. Tick
-   **Only animals not in a group** to see animals that belong to no group yet.
+   **Only subjects not in a group** to see animals that belong to no group yet.
 3. Click a code to open the animal's page. It shows its study and group (or that
    it is unallocated) and its body weights, newest first, with the change from
    the weighing before.
@@ -234,9 +234,9 @@ versions are still possible.
 
 ## Allocation and exclusion
 
-On the **Animals** tab:
+On the **Subjects** tab:
 
-1. Click **Allocate animals**. The drawer lists animals that belong to no group.
+1. Click **Allocate subjects**. The drawer lists animals that belong to no group.
 2. Search and tick the animals.
 3. Either choose **One group** and the group, or **Randomise** to let the
    system spread them over the groups up to their targets (optionally only over
@@ -282,12 +282,12 @@ filmed by one camera).
 1. Click **Plan a session**.
 2. Choose the timepoint; the protocol, version and step are preselected.
 3. The time defaults to day 0 plus the timepoint's study day.
-4. Choose the first animal and its arena, then **Add animal** for each further
+4. Choose the first animal and its arena, then **Add subject** for each further
    animal. Only animals that are not excluded and not already planned at the
    same timepoint and step are offered, and only arenas of the step's paradigm.
 5. Click **Plan**.
 
-While a session is planned, **Edit animals** on its page adds or removes
+While a session is planned, **Edit subjects** on its page adds or removes
 animals. **Cancel session** asks for a reason, which is kept on the session.
 
 **The worklist.** The **Tests** menu lists sessions across studies in four
