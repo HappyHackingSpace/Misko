@@ -19,7 +19,7 @@ const (
 )
 
 var (
-	ErrInvalidTrajectory = errors.New("the trajectory must be misko.trajectory.v1 JSON for this run, attempt and recording duration, with equal-length sample arrays, strictly increasing times within the recording, confidences from 0 to 1, coordinates for tracked samples and inferred samples only among tracked ones")
+	ErrInvalidTrajectory = errors.New("the trajectory must be misko.trajectory.v1 JSON for this job, attempt and recording duration, with equal-length sample arrays, strictly increasing times within the recording, confidences from 0 to 1, coordinates for tracked samples and inferred samples only among tracked ones")
 	ErrMissingTrajectory = errors.New("a result needs exactly one TRAJECTORY artifact stored as application/json")
 )
 
@@ -61,8 +61,9 @@ type trajectoryFile struct {
 	} `json:"samples"`
 }
 
-// ParseTrajectory reads a stored trajectory of the run's current attempt.
-func ParseTrajectory(data []byte, r Run, durationUs int64) (Track, error) {
+// ParseTrajectory reads a stored trajectory of the job's current attempt.
+// The file names the job as runId, the name workers have always written.
+func ParseTrajectory(data []byte, r Job, durationUs int64) (Track, error) {
 	var f trajectoryFile
 	if err := json.Unmarshal(data, &f); err != nil {
 		return Track{}, fmt.Errorf("%w: %v", ErrInvalidTrajectory, err)
@@ -71,7 +72,7 @@ func ParseTrajectory(data []byte, r Run, durationUs int64) (Track, error) {
 	n := len(s.TUs)
 	switch {
 	case f.Schema != TrajectorySchema, f.RunID != r.ID, f.Attempt != r.Attempt:
-		return Track{}, fmt.Errorf("%w: schema, run or attempt", ErrInvalidTrajectory)
+		return Track{}, fmt.Errorf("%w: schema, job or attempt", ErrInvalidTrajectory)
 	case f.DurationUs != durationUs:
 		return Track{}, fmt.Errorf("%w: duration %d, recording %d", ErrInvalidTrajectory, f.DurationUs, durationUs)
 	case n > maxSamples, len(s.X) != n, len(s.Y) != n, len(s.Tracked) != n, len(s.Confidence) != n, s.Inferred != nil && len(s.Inferred) != n:

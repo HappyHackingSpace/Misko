@@ -1,5 +1,5 @@
-// Package postgres implements analysis persistence with sqlc-generated queries.
-// The runs table is the job queue: claims use FOR UPDATE SKIP LOCKED.
+// Package postgres implements analysis persistence with sqlc-generated
+// queries. The jobs table is the queue: claims use FOR UPDATE SKIP LOCKED.
 package postgres
 
 import (
@@ -7,36 +7,31 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
+	"time"
+
 	"github.com/HappyHackingSpace/Misko/backend/internal/analysis/adapters/postgres/sqlcgen"
 	"github.com/HappyHackingSpace/Misko/backend/internal/analysis/application"
 	"github.com/HappyHackingSpace/Misko/backend/internal/analysis/domain"
 	"github.com/HappyHackingSpace/Misko/backend/internal/platform/pgtx"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"maps"
-	"strconv"
-	"time"
 )
 
 // constraintErrors maps named constraints and trigger rules to the error a
 // violation means, so the API answers with a code instead of a 500.
 var constraintErrors = map[string]error{
-	"analysis_workers_name_key":            application.ErrWorkerNameTaken,
-	"analysis_runs_transition":             domain.ErrStaleAttempt,
-	"analysis_runs_attempts_check":         domain.ErrStaleAttempt,
-	"analysis_outputs_fenced":              domain.ErrStaleAttempt,
-	"analysis_output_uploads_pkey":         application.ErrInvalidOutput,
-	"analysis_runs_test_subject_fkey":      application.ErrTestSubjectNotFound,
-	"analysis_runs_test_fkey":              application.ErrTestSubjectNotFound,
-	"analysis_runs_recording_fkey":         application.ErrNotReady,
-	"analysis_runs_source_fkey":            application.ErrNotReady,
-	"analysis_runs_paradigm_fkey":          application.ErrNotReady,
-	"analysis_runs_calibration_scope":      application.ErrNotReady,
-	"subject_results_succeeded":            application.ErrRunNotSucceeded,
-	"subject_results_run_fkey":             domain.ErrRunNotChosen,
-	"subject_results_rejection_check":      domain.ErrInvalidRejection,
-	"subject_results_note_check":           domain.ErrInvalidNote,
-	"subject_results_test_subject_id_fkey": application.ErrTestSubjectNotFound,
+	"analysis_workers_name_key":           application.ErrWorkerNameTaken,
+	"analysis_jobs_transition":            domain.ErrStaleAttempt,
+	"analysis_jobs_attempts_check":        domain.ErrStaleAttempt,
+	"analysis_job_outputs_fenced":         domain.ErrStaleAttempt,
+	"analysis_job_uploads_pkey":           application.ErrInvalidOutput,
+	"analysis_jobs_source_asset_id_fkey":  application.ErrSourceNotFound,
+	"analysis_jobs_calibration_check":     domain.ErrInvalidCalibration,
+	"analysis_jobs_clip_check":            domain.ErrInvalidRequest,
+	"analysis_jobs_requester_kind_check":  domain.ErrInvalidRequest,
+	"analysis_jobs_paradigm_key_check":    domain.ErrInvalidRequest,
+	"analysis_jobs_idempotency_key_check": domain.ErrInvalidRequest,
 }
 
 type Store struct {
@@ -70,8 +65,7 @@ func (s *Store) CreateWorker(ctx context.Context, w domain.Worker, tokenHash []b
 				return translate(err, nil, "add capability")
 			}
 		}
-		out = domain.Worker{ID: row.ID, Name: row.Name, ModelVersion: row.ModelVersion, DisabledAt: utc(row.DisabledAt), CreatedBy: row.CreatedBy,
-			CreatedAt: row.CreatedAt.UTC(), Capabilities: append([]domain.Capability{}, w.Capabilities...)}
+		out = toWorker(sqlcgen.ListWorkersRow(row), append([]domain.Capability{}, w.Capabilities...))
 		return nil
 	})
 	return out, err
@@ -92,8 +86,7 @@ func (s *Store) Workers(ctx context.Context) ([]domain.Worker, error) {
 	}
 	out := make([]domain.Worker, 0, len(rows))
 	for _, r := range rows {
-		out = append(out, domain.Worker{ID: r.ID, Name: r.Name, ModelVersion: r.ModelVersion, DisabledAt: utc(r.DisabledAt), CreatedBy: r.CreatedBy,
-			CreatedAt: r.CreatedAt.UTC(), Capabilities: byWorker[r.ID]})
+		out = append(out, toWorker(r, byWorker[r.ID]))
 	}
 	return out, nil
 }
@@ -110,8 +103,7 @@ func (s *Store) DisableWorker(ctx context.Context, id string, at time.Time) (dom
 	if err != nil {
 		return domain.Worker{}, err
 	}
-	return domain.Worker{ID: row.ID, Name: row.Name, ModelVersion: row.ModelVersion, DisabledAt: utc(row.DisabledAt), CreatedBy: row.CreatedBy,
-		CreatedAt: row.CreatedAt.UTC(), Capabilities: caps}, nil
+	return toWorker(sqlcgen.ListWorkersRow(row), caps), nil
 }
 
 func (s *Store) WorkerByToken(ctx context.Context, tokenHash []byte) (domain.Worker, error) {
@@ -123,7 +115,12 @@ func (s *Store) WorkerByToken(ctx context.Context, tokenHash []byte) (domain.Wor
 	if err != nil {
 		return domain.Worker{}, err
 	}
-	return domain.Worker{ID: row.ID, Name: row.Name, ModelVersion: row.ModelVersion, CreatedBy: row.CreatedBy, CreatedAt: row.CreatedAt.UTC(), Capabilities: caps}, nil
+	return toWorker(sqlcgen.ListWorkersRow(row), caps), nil
+}
+
+func toWorker(r sqlcgen.ListWorkersRow, caps []domain.Capability) domain.Worker {
+	return domain.Worker{ID: r.ID, Name: r.Name, ModelVersion: r.ModelVersion, DisabledAt: utc(r.DisabledAt), CreatedBy: r.CreatedBy,
+		CreatedAt: r.CreatedAt.UTC(), Capabilities: caps}
 }
 
 func (s *Store) capabilities(ctx context.Context, workerID string) ([]domain.Capability, error) {
@@ -158,235 +155,124 @@ func capabilityKeys(capabilities []domain.Capability) []string {
 	return keys
 }
 
-func (s *Store) ReadyTestSubjects(ctx context.Context, capabilities, calibrated []domain.Capability) ([]application.Candidate, error) {
-	rows, err := s.queries.ReadyTestSubjects(ctx, sqlcgen.ReadyTestSubjectsParams{Capabilities: capabilityKeys(capabilities), Calibrated: capabilityKeys(calibrated)})
+// CreateJob inserts the job or, when its idempotency key is taken, returns
+// the job that holds it.
+func (s *Store) CreateJob(ctx context.Context, j domain.Job) (domain.Job, error) {
+	params, err := jobParams(j)
 	if err != nil {
-		return nil, fmt.Errorf("ready test subjects: %w", err)
+		return domain.Job{}, err
 	}
-	out := make([]application.Candidate, 0, len(rows))
-	for _, r := range rows {
-		// A row whose parameters cannot be read is returned as invalid so the
-		// scheduler skips it and still enqueues the others.
-		params, invalid := parameters(r.Parameters, r.Session)
-		out = append(out, application.Candidate{
-			ExperimentID: r.ExperimentID, TestID: r.TestID, TestSubjectID: r.TestSubjectID, RecordingID: r.RecordingID, SourceAssetID: r.SourceAssetID,
-			SourceGeneration: r.SourceGeneration, SourceCRC32C: uint32(r.SourceCrc32c), ClipStartUs: r.ClipStartUs, ClipEndUs: r.ClipEndUs,
-			CalibrationID: r.CalibrationID, ZoneKeys: r.ZoneKeys, ParadigmKey: r.ParadigmKey, ParadigmVersion: int(r.ParadigmVersion), Parameters: params,
-			// The query returns eligible candidates only.
-			VideoVerified: true, ExperimentStatus: "RUNNING", Invalid: invalid,
-		})
+	rows, err := s.queries.CreateJob(ctx, params)
+	if err != nil {
+		return domain.Job{}, translate(err, nil, "create job")
 	}
-	return out, nil
+	if len(rows) == 1 {
+		return toJob(rows[0])
+	}
+	if j.IdempotencyKey == "" {
+		return domain.Job{}, errors.New("create job: nothing was inserted")
+	}
+	row, err := s.queries.JobByIdempotencyKey(ctx, &j.IdempotencyKey)
+	if err != nil {
+		return domain.Job{}, fmt.Errorf("read job by idempotency key: %w", err)
+	}
+	return toJob(row)
 }
 
-func (s *Store) Candidate(ctx context.Context, testSubjectID string) (application.Candidate, error) {
-	if !pgtx.ValidUUID(testSubjectID) {
-		return application.Candidate{}, application.ErrTestSubjectNotFound
-	}
-	r, err := s.queries.GetCandidate(ctx, testSubjectID)
+func jobParams(j domain.Job) (sqlcgen.CreateJobParams, error) {
+	params, err := json.Marshal(nonNil(j.Parameters))
 	if err != nil {
-		return application.Candidate{}, translate(err, application.ErrTestSubjectNotFound, "get candidate")
+		return sqlcgen.CreateJobParams{}, fmt.Errorf("encode parameters: %w", err)
 	}
-	params, invalid := parameters(r.Parameters, r.Session)
-	return application.Candidate{
-		ExperimentID: r.ExperimentID, TestID: r.TestID, TestSubjectID: r.TestSubjectID, RecordingID: r.RecordingID, SourceAssetID: r.SourceAssetID,
-		SourceGeneration: r.SourceGeneration, SourceCRC32C: uint32(r.SourceCrc32c), ClipStartUs: r.ClipStartUs, ClipEndUs: r.ClipEndUs,
-		CalibrationID: r.CalibrationID, ZoneKeys: r.ZoneKeys, ParadigmKey: r.ParadigmKey, ParadigmVersion: int(r.ParadigmVersion), Parameters: params,
-		VideoVerified: r.VideoStatus == "VERIFIED", TestCancelled: r.TestStatus == "CANCELLED", ExperimentStatus: r.ExperimentStatus, Excluded: r.Excluded,
-		Invalid: invalid,
-	}, nil
+	p := sqlcgen.CreateJobParams{
+		RequesterKind: string(j.Requester.Kind), RequesterID: j.Requester.ID, IdempotencyKey: optional(j.IdempotencyKey),
+		ParadigmKey: j.ParadigmKey, ParadigmVersion: int32(j.ParadigmVersion), MetricEngineVersion: int32(j.MetricEngineVersion),
+		ResultSchemaVersion: int32(j.ResultSchemaVersion), Parameters: params, SourceAssetID: j.Source.AssetID,
+		SourceGeneration: j.Source.Generation, SourceCrc32c: int64(j.Source.CRC32C), ClipStartUs: j.Source.ClipStartUs, ClipEndUs: j.Source.ClipEndUs,
+		Trigger: string(j.Trigger), MaxAttempts: int32(j.MaxAttempts), AvailableAt: j.AvailableAt, CreatedBy: optional(j.CreatedBy),
+	}
+	if c := j.Calibration; c != nil {
+		zones, err := encodeZones(c.Zones)
+		if err != nil {
+			return sqlcgen.CreateJobParams{}, err
+		}
+		p.CalibrationID, p.CalibrationPlane, p.CalibrationZones = &c.ID, &c.Plane, zones
+		p.CalibrationFrameWidth, p.CalibrationFrameHeight = int32p(c.FrameWidth), int32p(c.FrameHeight)
+		p.CalibrationCropX, p.CalibrationCropY = int32p(c.Crop.X), int32p(c.Crop.Y)
+		p.CalibrationCropWidth, p.CalibrationCropHeight = int32p(c.Crop.Width), int32p(c.Crop.Height)
+		p.CalibrationTransform = append([]float64(nil), c.Transform[:]...)
+	}
+	return p, nil
 }
 
-func (s *Store) CreateAutomaticRun(ctx context.Context, r domain.Run) (bool, error) {
-	params, err := json.Marshal(nonNil(r.Parameters))
+func (s *Store) LockExpiredJobs(ctx context.Context, now time.Time) ([]domain.Job, error) {
+	rows, err := s.queries.LockExpiredJobs(ctx, now)
 	if err != nil {
-		return false, fmt.Errorf("encode parameters: %w", err)
+		return nil, fmt.Errorf("lock expired jobs: %w", err)
 	}
-	n, err := s.queries.CreateAutomaticRun(ctx, sqlcgen.CreateAutomaticRunParams{
-		ExperimentID: r.ExperimentID, TestID: r.TestID, TestSubjectID: r.TestSubjectID, RecordingID: r.RecordingID, SourceAssetID: r.SourceAssetID,
-		SourceGeneration: r.SourceGeneration, SourceCrc32c: int64(r.SourceCRC32C), ClipStartUs: r.ClipStartUs, ClipEndUs: r.ClipEndUs,
-		CalibrationID: optional(r.CalibrationID), ParadigmKey: r.ParadigmKey, ParadigmVersion: int32(r.ParadigmVersion),
-		MetricEngineVersion: int32(r.MetricEngineVersion), ResultSchemaVersion: int32(r.ResultSchemaVersion), Parameters: params,
-		MaxAttempts: int32(r.MaxAttempts), AvailableAt: r.AvailableAt,
-	})
-	if err != nil {
-		return false, translate(err, nil, "create automatic run")
-	}
-	return n == 1, nil
+	return toJobs(rows)
 }
 
-func (s *Store) LockTestSubject(ctx context.Context, testSubjectID string) error {
-	if err := s.queries.LockTestSubjectRuns(ctx, testSubjectID); err != nil {
-		return fmt.Errorf("lock test subject runs: %w", err)
-	}
-	return nil
-}
-
-func (s *Store) PendingRun(ctx context.Context, testSubjectID string) (bool, error) {
-	pending, err := s.queries.PendingRunExists(ctx, testSubjectID)
-	if err != nil {
-		return false, fmt.Errorf("check pending run: %w", err)
-	}
-	return pending, nil
-}
-
-func (s *Store) CreateRun(ctx context.Context, r domain.Run) (domain.Run, error) {
-	params, err := json.Marshal(nonNil(r.Parameters))
-	if err != nil {
-		return domain.Run{}, fmt.Errorf("encode parameters: %w", err)
-	}
-	row, err := s.queries.CreateManualRun(ctx, sqlcgen.CreateManualRunParams{
-		ExperimentID: r.ExperimentID, TestID: r.TestID, TestSubjectID: r.TestSubjectID, RecordingID: r.RecordingID, SourceAssetID: r.SourceAssetID,
-		SourceGeneration: r.SourceGeneration, SourceCrc32c: int64(r.SourceCRC32C), ClipStartUs: r.ClipStartUs, ClipEndUs: r.ClipEndUs,
-		CalibrationID: optional(r.CalibrationID), ParadigmKey: r.ParadigmKey, ParadigmVersion: int32(r.ParadigmVersion),
-		MetricEngineVersion: int32(r.MetricEngineVersion), ResultSchemaVersion: int32(r.ResultSchemaVersion), Parameters: params,
-		MaxAttempts: int32(r.MaxAttempts), AvailableAt: r.AvailableAt, CreatedBy: optional(r.CreatedBy),
-	})
-	if err != nil {
-		return domain.Run{}, translate(err, nil, "create run")
-	}
-	return toRun(row)
-}
-
-func (s *Store) LockExpiredRuns(ctx context.Context, now time.Time) ([]domain.Run, error) {
-	rows, err := s.queries.LockExpiredRuns(ctx, now)
-	if err != nil {
-		return nil, fmt.Errorf("lock expired runs: %w", err)
-	}
-	return toRuns(rows)
-}
-
-func (s *Store) ClaimNext(ctx context.Context, capabilities []domain.Capability, now time.Time) (domain.Run, error) {
+func (s *Store) ClaimNext(ctx context.Context, capabilities []domain.Capability, now time.Time) (domain.Job, error) {
 	row, err := s.queries.ClaimNext(ctx, sqlcgen.ClaimNextParams{Now: now, Capabilities: capabilityKeys(capabilities)})
 	if err != nil {
-		return domain.Run{}, translate(err, application.ErrNoRun, "claim run")
+		return domain.Job{}, translate(err, application.ErrNoJob, "claim job")
 	}
-	return toRun(row)
+	return toJob(row)
 }
 
-func (s *Store) UpdateRun(ctx context.Context, r domain.Run) (domain.Run, error) {
-	row, err := s.queries.UpdateRun(ctx, sqlcgen.UpdateRunParams{
-		ID: r.ID, Status: string(r.Status), Attempt: int32(r.Attempt), WorkerID: optional(r.WorkerID), LeaseExpiresAt: r.LeaseExpiresAt,
-		AvailableAt: r.AvailableAt, ModelVersion: optional(r.ModelVersion), FailureReason: optional(r.FailureReason), FinishedAt: r.FinishedAt,
+func (s *Store) UpdateJob(ctx context.Context, j domain.Job) (domain.Job, error) {
+	row, err := s.queries.UpdateJob(ctx, sqlcgen.UpdateJobParams{
+		ID: j.ID, Status: string(j.Status), Attempt: int32(j.Attempt), WorkerID: optional(j.WorkerID), LeaseExpiresAt: j.LeaseExpiresAt,
+		AvailableAt: j.AvailableAt, ModelVersion: optional(j.ModelVersion), FailureReason: optional(j.FailureReason), FinishedAt: j.FinishedAt,
 	})
 	if err != nil {
-		return domain.Run{}, translate(err, application.ErrRunNotFound, "update run")
+		return domain.Job{}, translate(err, application.ErrJobNotFound, "update job")
 	}
-	return toRun(row)
+	return toJob(row)
 }
 
-func (s *Store) Run(ctx context.Context, id string) (domain.Run, error) {
+func (s *Store) Job(ctx context.Context, id string) (domain.Job, error) {
 	if !pgtx.ValidUUID(id) {
-		return domain.Run{}, application.ErrRunNotFound
+		return domain.Job{}, application.ErrJobNotFound
 	}
-	row, err := s.queries.GetRun(ctx, id)
+	row, err := s.queries.GetJob(ctx, id)
 	if err != nil {
-		return domain.Run{}, translate(err, application.ErrRunNotFound, "get run")
+		return domain.Job{}, translate(err, application.ErrJobNotFound, "get job")
 	}
-	return toRun(row)
+	return toJob(row)
 }
 
-func (s *Store) LockRun(ctx context.Context, id string) (domain.Run, error) {
+func (s *Store) LockJob(ctx context.Context, id string) (domain.Job, error) {
 	if !pgtx.ValidUUID(id) {
-		return domain.Run{}, application.ErrRunNotFound
+		return domain.Job{}, application.ErrJobNotFound
 	}
-	row, err := s.queries.LockRun(ctx, id)
+	row, err := s.queries.LockJob(ctx, id)
 	if err != nil {
-		return domain.Run{}, translate(err, application.ErrRunNotFound, "lock run")
+		return domain.Job{}, translate(err, application.ErrJobNotFound, "lock job")
 	}
-	return toRun(row)
+	return toJob(row)
 }
 
-func (s *Store) Runs(ctx context.Context, testID, testSubjectID string) ([]domain.Run, error) {
-	if !pgtx.ValidUUID(testID) || (testSubjectID != "" && !pgtx.ValidUUID(testSubjectID)) {
-		return []domain.Run{}, nil
-	}
-	rows, err := s.queries.ListRuns(ctx, sqlcgen.ListRunsParams{TestID: testID, TestSubjectID: optional(testSubjectID)})
+func (s *Store) Jobs(ctx context.Context, ids []string) ([]domain.Job, error) {
+	rows, err := s.queries.ListJobs(ctx, validUUIDs(ids))
 	if err != nil {
-		return nil, fmt.Errorf("list runs: %w", err)
+		return nil, fmt.Errorf("list jobs: %w", err)
 	}
-	return toRuns(rows)
+	return toJobs(rows)
 }
 
-func (s *Store) SubjectRuns(ctx context.Context, testSubjectID string) ([]domain.Run, error) {
-	if !pgtx.ValidUUID(testSubjectID) {
-		return []domain.Run{}, nil
-	}
-	rows, err := s.queries.ListSubjectRuns(ctx, testSubjectID)
+func (s *Store) JobsByRequester(ctx context.Context, kind domain.RequesterKind, ids []string) ([]domain.Job, error) {
+	rows, err := s.queries.ListJobsByRequester(ctx, sqlcgen.ListJobsByRequesterParams{RequesterKind: string(kind), RequesterIds: validUUIDs(ids)})
 	if err != nil {
-		return nil, fmt.Errorf("list subject runs: %w", err)
+		return nil, fmt.Errorf("list jobs by requester: %w", err)
 	}
-	return toRuns(rows)
-}
-
-func (s *Store) Arena(ctx context.Context, testSubjectID string) (string, error) {
-	id, err := s.queries.TestSubjectArena(ctx, testSubjectID)
-	if err != nil {
-		return "", translate(err, application.ErrTestSubjectNotFound, "test subject arena")
-	}
-	return id, nil
-}
-
-func (s *Store) Calibration(ctx context.Context, id string) (domain.CalibrationRef, error) {
-	row, err := s.queries.GetCalibration(ctx, id)
-	if err != nil {
-		return domain.CalibrationRef{}, fmt.Errorf("calibration: %w", err)
-	}
-	if len(row.Transform) != 9 {
-		return domain.CalibrationRef{}, fmt.Errorf("calibration %s: transform has %d entries", id, len(row.Transform))
-	}
-	ref := domain.CalibrationRef{
-		ID: row.ID, FrameWidth: int(row.FrameWidth), FrameHeight: int(row.FrameHeight), CropX: int(row.CropX), CropY: int(row.CropY),
-		CropWidth: int(row.CropWidth), CropHeight: int(row.CropHeight), Plane: row.MeasurementPlane,
-	}
-	copy(ref.Transform[:], row.Transform)
-	zones, err := s.queries.CalibrationZones(ctx, id)
-	if err != nil {
-		return domain.CalibrationRef{}, fmt.Errorf("calibration zones: %w", err)
-	}
-	for _, z := range zones {
-		pixels, err := decodeShape(z.Kind, z.Pixels)
-		if err != nil {
-			return domain.CalibrationRef{}, err
-		}
-		centimeters, err := decodeShape(z.Kind, z.Centimeters)
-		if err != nil {
-			return domain.CalibrationRef{}, err
-		}
-		ref.Zones = append(ref.Zones, domain.Zone{Key: z.ZoneKey, Pixels: pixels, Centimeters: centimeters})
-	}
-	return ref, nil
-}
-
-// decodeShape reads a zone shape stored by the calibration context: a circle
-// as {"x", "y", "radius"}, a polygon as an array of {"x", "y"} vertices.
-func decodeShape(kind string, raw []byte) (domain.Shape, error) {
-	if kind == "CIRCLE" {
-		// Field names match the stored keys case-insensitively.
-		var c domain.Circle
-		if err := json.Unmarshal(raw, &c); err != nil {
-			return domain.Shape{}, fmt.Errorf("decode zone circle: %w", err)
-		}
-		return domain.Shape{Circle: &c}, nil
-	}
-	var out domain.Shape
-	if err := json.Unmarshal(raw, &out.Polygon); err != nil {
-		return domain.Shape{}, fmt.Errorf("decode zone polygon: %w", err)
-	}
-	return out, nil
-}
-
-func (s *Store) SourceObject(ctx context.Context, assetID string) (string, error) {
-	name, err := s.queries.SourceObject(ctx, assetID)
-	if err != nil {
-		return "", fmt.Errorf("source object: %w", err)
-	}
-	return name, nil
+	return toJobs(rows)
 }
 
 func (s *Store) CreateOutputUpload(ctx context.Context, u application.OutputUpload) error {
 	err := s.queries.CreateOutputUpload(ctx, sqlcgen.CreateOutputUploadParams{
-		RunID: u.RunID, Attempt: int32(u.Attempt), ObjectName: u.ObjectName, Kind: u.Kind, ContentType: u.ContentType,
+		JobID: u.JobID, Attempt: int32(u.Attempt), ObjectName: u.ObjectName, Kind: u.Kind, ContentType: u.ContentType,
 		SizeBytes: u.SizeBytes, Crc32c: int64(u.CRC32C),
 	})
 	if err != nil {
@@ -395,55 +281,42 @@ func (s *Store) CreateOutputUpload(ctx context.Context, u application.OutputUplo
 	return nil
 }
 
-func (s *Store) OutputUploads(ctx context.Context, runID string, attempt int) ([]application.OutputUpload, error) {
-	rows, err := s.queries.OutputUploads(ctx, sqlcgen.OutputUploadsParams{RunID: runID, Attempt: int32(attempt)})
+func (s *Store) OutputUploads(ctx context.Context, jobID string, attempt int) ([]application.OutputUpload, error) {
+	rows, err := s.queries.OutputUploads(ctx, sqlcgen.OutputUploadsParams{JobID: jobID, Attempt: int32(attempt)})
 	if err != nil {
 		return nil, fmt.Errorf("output uploads: %w", err)
 	}
 	out := make([]application.OutputUpload, 0, len(rows))
 	for _, r := range rows {
-		out = append(out, application.OutputUpload{RunID: r.RunID, Attempt: int(r.Attempt), ObjectName: r.ObjectName, Kind: r.Kind,
+		out = append(out, application.OutputUpload{JobID: r.JobID, Attempt: int(r.Attempt), ObjectName: r.ObjectName, Kind: r.Kind,
 			ContentType: r.ContentType, SizeBytes: r.SizeBytes, CRC32C: uint32(r.Crc32c)})
 	}
 	return out, nil
 }
 
-// Publish must run in the transaction that marks the run SUCCEEDED; a deferred
-// constraint rejects a success without its video pair.
-func (s *Store) Publish(ctx context.Context, run domain.Run, result domain.Result, outputs []application.VerifiedOutput) error {
-	attempt := int32(run.Attempt)
-	analyzed := ""
+// Publish must run in the transaction that marks the job SUCCEEDED; a
+// deferred constraint rejects a success without its video pair.
+func (s *Store) Publish(ctx context.Context, j domain.Job, result domain.Result, outputs []application.VerifiedOutput, quality domain.Quality) error {
+	attempt := int32(j.Attempt)
 	for _, o := range outputs {
-		var assetID *string
-		if o.Kind == domain.AnalyzedVideo {
-			generation := o.Generation
-			id, err := s.queries.CreateAnalyzedAsset(ctx, sqlcgen.CreateAnalyzedAssetParams{
-				Bucket: o.Bucket, ObjectName: o.ObjectName, ContentType: o.ContentType, SizeBytes: o.SizeBytes, Crc32c: int64(o.CRC32C),
-				Generation: &generation, VerifiedAt: run.FinishedAt, CreatedBy: run.WorkerID,
-			})
-			if err != nil {
-				return translate(err, nil, "create analyzed video")
-			}
-			analyzed, assetID = id, &id
-		}
-		err := s.queries.CreateArtifact(ctx, sqlcgen.CreateArtifactParams{
-			RunID: run.ID, Attempt: attempt, ObjectName: o.ObjectName, Kind: o.Kind, Bucket: o.Bucket, Generation: o.Generation,
-			SizeBytes: o.SizeBytes, Crc32c: int64(o.CRC32C), ContentType: o.ContentType, VideoAssetID: assetID,
+		err := s.queries.CreateOutput(ctx, sqlcgen.CreateOutputParams{
+			JobID: j.ID, Attempt: attempt, ObjectName: o.ObjectName, Kind: o.Kind, Bucket: o.Bucket, Generation: o.Generation,
+			SizeBytes: o.SizeBytes, Crc32c: int64(o.CRC32C), ContentType: o.ContentType,
 		})
 		if err != nil {
-			return translate(err, nil, "create artifact")
+			return translate(err, nil, "create output")
 		}
 	}
 	err := s.queries.CreatePair(ctx, sqlcgen.CreatePairParams{
-		RunID: run.ID, Attempt: attempt, SourceAssetID: run.SourceAssetID, SourceGeneration: run.SourceGeneration, AnalyzedAssetID: analyzed,
-		SourceOffsetUs: result.Pair.SourceOffsetUs, OutputOffsetUs: result.Pair.OutputOffsetUs, TimeMappingVersion: result.Pair.TimeMappingVersion,
+		JobID: j.ID, Attempt: attempt, AnalyzedObjectName: result.Pair.AnalyzedObjectName, SourceOffsetUs: result.Pair.SourceOffsetUs,
+		OutputOffsetUs: result.Pair.OutputOffsetUs, TimeMappingVersion: result.Pair.TimeMappingVersion,
 	})
 	if err != nil {
 		return translate(err, nil, "create video pair")
 	}
 	for _, m := range result.Metrics {
 		err := s.queries.CreateMetric(ctx, sqlcgen.CreateMetricParams{
-			RunID: run.ID, Attempt: attempt, MetricKey: m.Key, Unit: m.Unit, Value: m.Value, MissingReason: optional(m.MissingReason),
+			JobID: j.ID, Attempt: attempt, MetricKey: m.Key, Unit: m.Unit, Value: m.Value, MissingReason: optional(m.MissingReason),
 		})
 		if err != nil {
 			return translate(err, nil, "create metric")
@@ -451,143 +324,91 @@ func (s *Store) Publish(ctx context.Context, run domain.Run, result domain.Resul
 	}
 	for _, e := range result.Events {
 		err := s.queries.CreateEvent(ctx, sqlcgen.CreateEventParams{
-			RunID: run.ID, Attempt: attempt, TestSubjectID: run.TestSubjectID, EventType: e.Type, Label: optional(e.Label), Kind: e.Kind, StartUs: e.StartUs, EndUs: e.EndUs,
-			Confidence: float32(e.Confidence), TrialID: optional(e.TrialID),
+			JobID: j.ID, Attempt: attempt, EventType: e.Type, Label: optional(e.Label), Kind: e.Kind, StartUs: e.StartUs, EndUs: e.EndUs,
+			Confidence: float32(e.Confidence),
 		})
 		if err != nil {
 			return translate(err, nil, "create event")
 		}
 	}
+	return s.RecordQC(ctx, j, application.QC{Quality: quality, Passed: true})
+}
+
+func (s *Store) RecordQC(ctx context.Context, j domain.Job, qc application.QC) error {
+	err := s.queries.CreateQC(ctx, sqlcgen.CreateQCParams{
+		JobID: j.ID, Attempt: int32(j.Attempt), Samples: int32(qc.Samples), Tracked: int32(qc.Tracked), Inferred: int32(qc.Inferred),
+		LostRatio: qc.LostRatio, InferredRatio: qc.InferredRatio, MeanConfidence: qc.MeanConfidence, Passed: qc.Passed,
+	})
+	if err != nil {
+		return translate(err, nil, "record QC")
+	}
 	return nil
 }
 
-func (s *Store) Published(ctx context.Context, runID string) (application.Published, error) {
-	var out application.Published
-	metrics, err := s.queries.ListMetrics(ctx, runID)
+// Published reads every stored result of the jobs with one query per kind.
+func (s *Store) Published(ctx context.Context, jobIDs []string) (map[string]application.Published, error) {
+	ids := validUUIDs(jobIDs)
+	out := map[string]application.Published{}
+	entry := func(id string) application.Published { return out[id] }
+	metrics, err := s.queries.ListMetrics(ctx, ids)
 	if err != nil {
-		return out, fmt.Errorf("list metrics: %w", err)
+		return nil, fmt.Errorf("list metrics: %w", err)
 	}
 	for _, m := range metrics {
-		out.Metrics = append(out.Metrics, domain.MetricValue{Key: m.MetricKey, Unit: m.Unit, Value: m.Value, MissingReason: value(m.MissingReason)})
+		p := entry(m.JobID)
+		p.Metrics = append(p.Metrics, domain.MetricValue{Key: m.MetricKey, Unit: m.Unit, Value: m.Value, MissingReason: value(m.MissingReason)})
+		out[m.JobID] = p
 	}
-	events, err := s.queries.ListEvents(ctx, runID)
+	events, err := s.queries.ListEvents(ctx, ids)
 	if err != nil {
-		return out, fmt.Errorf("list events: %w", err)
+		return nil, fmt.Errorf("list events: %w", err)
 	}
 	for _, e := range events {
-		out.Events = append(out.Events, domain.Event{Type: e.EventType, Label: value(e.Label), Kind: e.Kind, StartUs: e.StartUs, EndUs: e.EndUs, Confidence: float64(e.Confidence), TrialID: value(e.TrialID)})
+		p := entry(e.JobID)
+		p.Events = append(p.Events, domain.Event{Type: e.EventType, Label: value(e.Label), Kind: e.Kind, StartUs: e.StartUs, EndUs: e.EndUs, Confidence: float64(e.Confidence)})
+		out[e.JobID] = p
 	}
-	artifacts, err := s.queries.ListArtifacts(ctx, runID)
+	if err := s.addOutputs(ctx, ids, out); err != nil {
+		return nil, err
+	}
+	qcs, err := s.queries.ListQC(ctx, ids)
 	if err != nil {
-		return out, fmt.Errorf("list artifacts: %w", err)
+		return nil, fmt.Errorf("list QC: %w", err)
 	}
-	for _, a := range artifacts {
-		out.Artifacts = append(out.Artifacts, application.VerifiedOutput{
-			OutputUpload: application.OutputUpload{RunID: a.RunID, Attempt: int(a.Attempt), ObjectName: a.ObjectName, Kind: a.Kind,
-				ContentType: a.ContentType, SizeBytes: a.SizeBytes, CRC32C: uint32(a.Crc32c)},
-			Bucket: a.Bucket, Generation: a.Generation,
-		})
+	for _, q := range qcs {
+		p := entry(q.JobID)
+		p.QC = &application.QC{Passed: q.Passed, Quality: domain.Quality{Samples: int(q.Samples), Tracked: int(q.Tracked), Inferred: int(q.Inferred),
+			LostRatio: q.LostRatio, InferredRatio: q.InferredRatio, MeanConfidence: q.MeanConfidence}}
+		out[q.JobID] = p
 	}
-	pair, err := s.queries.GetPair(ctx, runID)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return out, nil
-	}
-	if err != nil {
-		return out, fmt.Errorf("get pair: %w", err)
-	}
-	p := application.Pair{
-		SourceAssetID: pair.SourceAssetID, SourceGeneration: pair.SourceGeneration, SourceObjectName: pair.SourceObjectName,
-		AnalyzedAssetID: pair.AnalyzedAssetID, AnalyzedObjectName: pair.AnalyzedObjectName, SourceOffsetUs: pair.SourceOffsetUs,
-		OutputOffsetUs: pair.OutputOffsetUs, TimeMappingVersion: pair.TimeMappingVersion,
-	}
-	if pair.AnalyzedGeneration != nil {
-		p.AnalyzedGeneration = *pair.AnalyzedGeneration
-	}
-	out.Pair = &p
 	return out, nil
 }
 
-func (s *Store) OpenResult(ctx context.Context, r domain.SubjectResult) error {
-	if err := s.queries.OpenResult(ctx, sqlcgen.OpenResultParams{TestSubjectID: r.TestSubjectID, RunID: r.RunID}); err != nil {
-		return translate(err, nil, "open result")
+func (s *Store) addOutputs(ctx context.Context, ids []string, out map[string]application.Published) error {
+	outputs, err := s.queries.ListOutputs(ctx, ids)
+	if err != nil {
+		return fmt.Errorf("list outputs: %w", err)
+	}
+	for _, o := range outputs {
+		p := out[o.JobID]
+		p.Artifacts = append(p.Artifacts, application.VerifiedOutput{
+			OutputUpload: application.OutputUpload{JobID: o.JobID, Attempt: int(o.Attempt), ObjectName: o.ObjectName, Kind: o.Kind,
+				ContentType: o.ContentType, SizeBytes: o.SizeBytes, CRC32C: uint32(o.Crc32c)},
+			Bucket: o.Bucket, Generation: o.Generation,
+		})
+		out[o.JobID] = p
+	}
+	pairs, err := s.queries.ListPairs(ctx, ids)
+	if err != nil {
+		return fmt.Errorf("list pairs: %w", err)
+	}
+	for _, r := range pairs {
+		p := out[r.JobID]
+		p.Pair = &application.Pair{AnalyzedObjectName: r.AnalyzedObjectName, AnalyzedGeneration: r.AnalyzedGeneration, SourceOffsetUs: r.SourceOffsetUs,
+			OutputOffsetUs: r.OutputOffsetUs, TimeMappingVersion: r.TimeMappingVersion}
+		out[r.JobID] = p
 	}
 	return nil
-}
-
-func (s *Store) LockResult(ctx context.Context, testSubjectID string) (domain.SubjectResult, string, error) {
-	if !pgtx.ValidUUID(testSubjectID) {
-		return domain.SubjectResult{}, "", application.ErrResultNotFound
-	}
-	row, err := s.queries.LockResult(ctx, testSubjectID)
-	if err != nil {
-		return domain.SubjectResult{}, "", translate(err, application.ErrResultNotFound, "lock result")
-	}
-	return toResult(sqlcgen.MiskoSubjectResult{TestSubjectID: row.TestSubjectID, RunID: row.RunID, Status: row.Status, Reason: row.Reason, Note: row.Note,
-		ReviewedBy: row.ReviewedBy, ReviewedAt: row.ReviewedAt, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt}), row.ExperimentStatus, nil
-}
-
-func (s *Store) UpdateResult(ctx context.Context, r domain.SubjectResult) (domain.SubjectResult, error) {
-	row, err := s.queries.UpdateResult(ctx, sqlcgen.UpdateResultParams{
-		TestSubjectID: r.TestSubjectID, RunID: r.RunID, Status: string(r.Status), Reason: optional(r.Reason), Note: optional(r.Note),
-		ReviewedBy: optional(r.ReviewedBy), ReviewedAt: r.ReviewedAt,
-	})
-	if err != nil {
-		return domain.SubjectResult{}, translate(err, application.ErrResultNotFound, "update result")
-	}
-	return toResult(row), nil
-}
-
-func (s *Store) ReviewItems(ctx context.Context, f application.ReviewFilter) ([]application.ReviewItem, int, error) {
-	rows, err := s.queries.ReviewItems(ctx, sqlcgen.ReviewItemsParams{
-		ExperimentID: optional(f.ExperimentID), TestSubjectID: optional(f.TestSubjectID), Status: f.Status,
-		PageLimit: int32(f.Limit), PageOffset: int32(f.Offset),
-	})
-	if err != nil {
-		return nil, 0, fmt.Errorf("review items: %w", err)
-	}
-	out := make([]application.ReviewItem, 0, len(rows))
-	for _, r := range rows {
-		out = append(out, application.ReviewItem{
-			Result: toResult(sqlcgen.MiskoSubjectResult{TestSubjectID: r.TestSubjectID, RunID: r.RunID, Status: r.Status, Reason: r.Reason, Note: r.Note,
-				ReviewedBy: r.ReviewedBy, ReviewedAt: r.ReviewedAt, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt}),
-			TestID: r.TestID, ExperimentID: r.ExperimentID, ExperimentCode: r.ExperimentCode, ExperimentStatus: r.ExperimentStatus, Blinded: r.Blinded,
-			SubjectCode: r.SubjectCode, Excluded: r.Excluded, EnvironmentRevisionID: r.EnvironmentRevisionID, EnvironmentID: r.EnvironmentID,
-			EnvironmentName: r.EnvironmentName, EnvironmentRevision: int(r.EnvironmentRevision), TimepointID: r.TimepointID, TimepointName: r.TimepointName,
-			ParadigmKey: r.ParadigmKey, ParadigmVersion: int(r.ParadigmVersion), ScheduledAt: r.ScheduledAt.UTC(),
-			Run: application.ReviewRun{ID: r.RunID, Trigger: r.Trigger, ModelVersion: value(r.ModelVersion), CalibrationID: value(r.CalibrationID),
-				RecordingID: r.RecordingID, MetricEngineVersion: int(r.MetricEngineVersion), FinishedAt: utc(r.FinishedAt)},
-			LatestRunID: r.LatestRunID,
-			Group: &application.ReviewGroup{ID: r.GroupID, Code: r.GroupCode, Name: r.GroupName, Role: r.GroupRole, DiseaseModelName: value(r.DiseaseModelName),
-				SubstanceName: value(r.TreatmentSubstanceName), DoseMicro: r.TreatmentDoseMicro, Unit: value(r.TreatmentUnit)},
-		})
-	}
-	if f.TestSubjectID != "" {
-		return out, len(out), nil
-	}
-	total, err := s.queries.CountReviewItems(ctx, sqlcgen.CountReviewItemsParams{ExperimentID: optional(f.ExperimentID), Status: f.Status})
-	if err != nil {
-		return nil, 0, fmt.Errorf("count review items: %w", err)
-	}
-	return out, int(total), nil
-}
-
-func (s *Store) RunMetrics(ctx context.Context, runIDs []string) (map[string][]domain.MetricValue, error) {
-	rows, err := s.queries.RunMetrics(ctx, runIDs)
-	if err != nil {
-		return nil, fmt.Errorf("run metrics: %w", err)
-	}
-	out := map[string][]domain.MetricValue{}
-	for _, m := range rows {
-		out[m.RunID] = append(out[m.RunID], domain.MetricValue{Key: m.MetricKey, Unit: m.Unit, Value: m.Value, MissingReason: value(m.MissingReason)})
-	}
-	return out, nil
-}
-
-func toResult(r sqlcgen.MiskoSubjectResult) domain.SubjectResult {
-	return domain.SubjectResult{
-		TestSubjectID: r.TestSubjectID, RunID: r.RunID, Status: domain.ResultStatus(r.Status), Reason: value(r.Reason), Note: value(r.Note),
-		ReviewedBy: value(r.ReviewedBy), ReviewedAt: utc(r.ReviewedAt), CreatedAt: r.CreatedAt.UTC(), UpdatedAt: r.UpdatedAt.UTC(),
-	}
 }
 
 // translate maps a missing row to notFound and named constraint violations to
@@ -602,51 +423,74 @@ func translate(err, notFound error, operation string) error {
 	return fmt.Errorf("%s: %w", operation, err)
 }
 
-func toRuns(rows []sqlcgen.MiskoAnalysisRun) ([]domain.Run, error) {
-	out := make([]domain.Run, 0, len(rows))
+func toJobs(rows []sqlcgen.MiskoAnalysisJob) ([]domain.Job, error) {
+	out := make([]domain.Job, 0, len(rows))
 	for _, row := range rows {
-		r, err := toRun(row)
+		j, err := toJob(row)
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, r)
+		out = append(out, j)
 	}
 	return out, nil
 }
 
-func toRun(r sqlcgen.MiskoAnalysisRun) (domain.Run, error) {
+func toJob(r sqlcgen.MiskoAnalysisJob) (domain.Job, error) {
 	params := map[string]float64{}
 	if err := json.Unmarshal(r.Parameters, &params); err != nil {
-		return domain.Run{}, fmt.Errorf("decode run parameters: %w", err)
+		return domain.Job{}, fmt.Errorf("decode job parameters: %w", err)
 	}
-	return domain.Run{
+	calibration, err := toCalibration(r)
+	if err != nil {
+		return domain.Job{}, err
+	}
+	return domain.Job{
 		ID: r.ID,
-		Source: domain.Source{
-			ExperimentID: r.ExperimentID, TestID: r.TestID, TestSubjectID: r.TestSubjectID, RecordingID: r.RecordingID, SourceAssetID: r.SourceAssetID,
-			SourceGeneration: r.SourceGeneration, SourceCRC32C: uint32(r.SourceCrc32c), ClipStartUs: r.ClipStartUs, ClipEndUs: r.ClipEndUs,
-			CalibrationID: value(r.CalibrationID), ParadigmKey: r.ParadigmKey, ParadigmVersion: int(r.ParadigmVersion), Parameters: params,
+		Input: domain.Input{
+			Requester: domain.Requester{Kind: domain.RequesterKind(r.RequesterKind), ID: r.RequesterID}, IdempotencyKey: value(r.IdempotencyKey),
+			ParadigmKey: r.ParadigmKey, ParadigmVersion: int(r.ParadigmVersion), MetricEngineVersion: int(r.MetricEngineVersion),
+			ResultSchemaVersion: int(r.ResultSchemaVersion), Parameters: params,
+			Source: domain.Source{AssetID: r.SourceAssetID, Generation: r.SourceGeneration, CRC32C: uint32(r.SourceCrc32c), ClipStartUs: r.ClipStartUs,
+				ClipEndUs: r.ClipEndUs},
+			Calibration: calibration, Trigger: domain.Trigger(r.Trigger), CreatedBy: value(r.CreatedBy),
 		},
-		MetricEngineVersion: int(r.MetricEngineVersion), ResultSchemaVersion: int(r.ResultSchemaVersion), Trigger: domain.Trigger(r.Trigger),
 		Status: domain.Status(r.Status), Attempt: int(r.Attempt), MaxAttempts: int(r.MaxAttempts), WorkerID: value(r.WorkerID),
 		LeaseExpiresAt: utc(r.LeaseExpiresAt), AvailableAt: r.AvailableAt.UTC(), ModelVersion: value(r.ModelVersion),
-		FailureReason: value(r.FailureReason), CreatedBy: value(r.CreatedBy), CreatedAt: r.CreatedAt.UTC(), FinishedAt: utc(r.FinishedAt),
+		FailureReason: value(r.FailureReason), CreatedAt: r.CreatedAt.UTC(), FinishedAt: utc(r.FinishedAt),
 	}, nil
 }
 
-// parameters snapshots the step's session values and the arena's apparatus
-// and analysis values (its environment revision's parameters). The arena wins
-// on a shared key.
-func parameters(arena, session []byte) (map[string]float64, error) {
-	out := map[string]float64{}
-	if err := json.Unmarshal(session, &out); err != nil {
-		return nil, fmt.Errorf("decode session: %w", err)
+// toCalibration reads the snapshot columns; the table guarantees they are all
+// set or all NULL.
+func toCalibration(r sqlcgen.MiskoAnalysisJob) (*domain.Calibration, error) {
+	if r.CalibrationID == nil {
+		return nil, nil
 	}
-	environment := map[string]float64{}
-	if err := json.Unmarshal(arena, &environment); err != nil {
-		return nil, fmt.Errorf("decode arena parameters: %w", err)
+	if len(r.CalibrationTransform) != 9 || r.CalibrationFrameWidth == nil || r.CalibrationFrameHeight == nil || r.CalibrationCropX == nil ||
+		r.CalibrationCropY == nil || r.CalibrationCropWidth == nil || r.CalibrationCropHeight == nil {
+		return nil, fmt.Errorf("job %s: incomplete calibration snapshot", r.ID)
 	}
-	maps.Copy(out, environment)
-	return out, nil
+	zones, err := decodeZones(r.CalibrationZones)
+	if err != nil {
+		return nil, fmt.Errorf("job %s: %w", r.ID, err)
+	}
+	c := &domain.Calibration{
+		ID: *r.CalibrationID, FrameWidth: int(*r.CalibrationFrameWidth), FrameHeight: int(*r.CalibrationFrameHeight),
+		Crop:  domain.Rect{X: int(*r.CalibrationCropX), Y: int(*r.CalibrationCropY), Width: int(*r.CalibrationCropWidth), Height: int(*r.CalibrationCropHeight)},
+		Plane: value(r.CalibrationPlane), Zones: zones,
+	}
+	copy(c.Transform[:], r.CalibrationTransform)
+	return c, nil
+}
+
+func validUUIDs(ids []string) []string {
+	out := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if pgtx.ValidUUID(id) {
+			out = append(out, id)
+		}
+	}
+	return out
 }
 
 func nonNil(m map[string]float64) map[string]float64 {
@@ -662,6 +506,11 @@ func utc(t *time.Time) *time.Time {
 	}
 	u := t.UTC()
 	return &u
+}
+
+func int32p(v int) *int32 {
+	n := int32(v)
+	return &n
 }
 
 // optional stores an empty value as NULL.

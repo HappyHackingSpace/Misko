@@ -54,8 +54,8 @@ func TestWorkerTrajectoriesMatchTheEngineContract(t *testing.T) {
 	if err := json.Unmarshal(fixture.Trajectory, &header); err != nil {
 		t.Fatal(err)
 	}
-	run := domain.Run{ID: header.RunID, Attempt: header.Attempt}
-	measured, err := domain.ParseTrajectory(fixture.Trajectory, run, header.DurationUs)
+	job := domain.Job{ID: header.RunID, Attempt: header.Attempt}
+	measured, err := domain.ParseTrajectory(fixture.Trajectory, job, header.DurationUs)
 	if err != nil {
 		t.Fatalf("the API rejects the worker's trajectory: %v", err)
 	}

@@ -237,7 +237,7 @@ func TestStudyLifecycleRules(t *testing.T) {
 	d.reject("calibrations_scope", calibrate, arenaB, first, recording, 0, 0, user)
 	// An override names its video frame; the scope trigger runs first, so
 	// this one passes it and fails on the shape check.
-	d.reject("calibrations_override_check", calibrate, arenaA, first, recording, 0, nil, user)
+	d.reject("calibrations_owner_check", calibrate, arenaA, first, recording, 0, nil, user)
 
 	var effective int
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM misko.effective_calibrations
@@ -245,14 +245,25 @@ func TestStudyLifecycleRules(t *testing.T) {
 		t.Errorf("effective calibrations: %d %v", effective, err)
 	}
 
-	// Analysis runs one animal at a time with that animal's calibration.
-	run := `INSERT INTO misko.analysis_runs (experiment_id, test_id, test_subject_id, recording_id, source_asset_id, source_generation, source_crc32c,
-		clip_start_us, calibration_id, paradigm_key, paradigm_version, metric_engine_version, result_schema_version, parameters, trigger, status,
-		max_attempts, available_at) VALUES ($1, $2, $3, $4, $5, 1, 1, 0, $6, 'MWM', 1, 1, 1, '{}', 'AUTOMATIC', 'QUEUED', 3, now())`
-	queued := d.id(run+" RETURNING id", exp, test, first, recording, asset, calA)
-	d.reject("analysis_runs_calibration_scope", run, exp, test, second, recording, asset, calA)
-	d.reject("analysis_runs_automatic_key", run, exp, test, first, recording, asset, calA)
-	d.reject("subject_results_succeeded", `INSERT INTO misko.subject_results (test_subject_id, run_id) VALUES ($1, $2)`, first, queued)
+	// The analysis service queues a job per animal with that animal's
+	// calibration copied in; the experiment side links it to the animal.
+	job := `INSERT INTO misko.analysis_jobs (requester_kind, requester_id, idempotency_key, paradigm_key, paradigm_version, metric_engine_version,
+		result_schema_version, parameters, source_asset_id, source_generation, source_crc32c, clip_start_us, calibration_id, calibration_frame_width,
+		calibration_frame_height, calibration_crop_x, calibration_crop_y, calibration_crop_width, calibration_crop_height, calibration_plane,
+		calibration_transform, calibration_zones, trigger, status, max_attempts, available_at)
+		VALUES ('TEST_SUBJECT', $1, $2, 'MWM', 1, 1, 1, '{}', $3, 1, 1, 0, $4, 1920, 1080, 0, 0, 960, 1080, 'ARENA_FLOOR', '{1,0,0,0,1,0,0,0,1}', '[]',
+		'AUTOMATIC', 'QUEUED', 3, now())`
+	queued := d.id(job+" RETURNING id", first, "key-1", asset, calA)
+	d.reject("analysis_jobs_idempotency_key", job, first, "key-1", asset, calA)
+	d.reject("analysis_jobs_calibration_check", `INSERT INTO misko.analysis_jobs (requester_kind, requester_id, paradigm_key, paradigm_version,
+		metric_engine_version, result_schema_version, parameters, source_asset_id, source_generation, source_crc32c, clip_start_us, calibration_id,
+		trigger, status, max_attempts, available_at) VALUES ('TRIAL', $1, 'MWM', 1, 1, 1, '{}', $2, 1, 1, 0, $3, 'MANUAL', 'QUEUED', 3, now())`, first, asset, calA)
+	link := `INSERT INTO misko.test_subject_analyses (job_id, experiment_id, test_id, test_subject_id, recording_id, calibration_id, trigger)
+		VALUES ($1, $2, $3, $4, $5, $6, 'AUTOMATIC')`
+	d.reject("test_subject_analyses_requester", link, queued, exp, test, second, recording, calB)
+	d.exec(link, queued, exp, test, first, recording, calA)
+	d.reject("subject_results_succeeded", `INSERT INTO misko.subject_results (test_subject_id, job_id) VALUES ($1, $2)`, first, queued)
+	d.reject("analysis_job_outputs_fenced", `INSERT INTO misko.analysis_job_metrics (job_id, attempt, metric_key, unit, value) VALUES ($1, 1, 'x', 'cm', 1)`, queued)
 
 	var reported int
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM misko.report_test_subjects

@@ -75,6 +75,12 @@ type Store interface {
 	LockRecording(ctx context.Context, testID, recordingID string) (domain.Recording, error)
 	// FinishAsset stores a pending asset's verification result.
 	FinishAsset(ctx context.Context, a domain.Asset) (domain.Asset, error)
+	// CreateFolderAsset stores a pending original under folder, named after its own id.
+	CreateFolderAsset(ctx context.Context, folder string, asset domain.Asset) (domain.Asset, error)
+	// Asset returns ErrAssetNotFound for an unknown id.
+	Asset(ctx context.Context, id string) (domain.Asset, error)
+	// LockAsset reads an asset and locks it until the transaction ends.
+	LockAsset(ctx context.Context, id string) (domain.Asset, error)
 }
 
 type Settings struct {

@@ -100,7 +100,7 @@ func TestPoolWithoutCalibratedZonesOverHTTP(t *testing.T) {
 	run := claim["run"].(map[string]any)
 	claimed, ok := claim["calibration"].(map[string]any)["zones"].([]any)
 	required, _ := claim["contract"].(map[string]any)["requiredZones"].([]any)
-	if run["testSubjectId"] != subject || !ok || len(claimed) != 0 || len(required) != 0 {
+	if claim["testSubject"].(map[string]any)["id"] != subject || run["requester"].(map[string]any)["id"] != subject || !ok || len(claimed) != 0 || len(required) != 0 {
 		t.Fatalf("claimed zones: %v", claim)
 	}
 
