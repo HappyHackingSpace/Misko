@@ -72,33 +72,35 @@ interface ParadigmManifest {
 Changing a calculation, a range or a default publishes a new paradigm version.
 Wording and help texts can be improved without a new version.
 
-## Tracked and observer-scored paradigms
+## Automatic analysis of every paradigm
 
-Each of the four paradigms gets its inputs in one of two ways. The metric
-engine in `backend/internal/paradigms/domain` computes the metrics in both
-cases, so a measurement has one definition whatever produced its inputs.
+Every paradigm is analysed automatically from the video; a person only reviews
+the result. The worker tracks the animal's centroid in the calibration's
+centimetre frame, and the metric engine in `backend/internal/paradigms/domain`
+derives every event from those samples and the zones. The worker never decides
+events, so a measurement has one definition whatever tracked the animal.
 
-| Paradigm | Method | Input | Zones |
+| Paradigm | Camera and world frame | Zones | Derived events |
 |---|---|---|---|
-| `MWM` | Tracked (`AUTOMATED` run) | trajectory in tank-centred cm | from parameters (platform, target quadrant, wall zone) |
-| `POLE` | Observer scored (`SCORED` run) | `turn_complete`, `base_reached`, `fall` (points, each once) | none |
-| `TREADMILL` | Observer scored | `exhaustion` (point, once), `shock` (points) | none |
-| `NOVEL_OBJECT` | Observer scored | `exploration` (intervals labelled `novel` or `familiar`) | none |
+| `MWM` | above the tank; tank-centred cm, x east, y north | from parameters (platform, target quadrant, wall zone) | zone entries of the trajectory |
+| `NOVEL_OBJECT` | above the arena; origin corner of the floor, x along the width, y along the depth | calibrated `novel_object`, `familiar_object` (a circle or polygon around each object, about 2 cm beyond it) | `exploration` intervals labelled `novel` or `familiar` while the centroid stays in that zone for at least `min_bout_s` |
+| `POLE` | at the side of the pole; x horizontal, y the height above the base (base 0, top `pole_length_cm`) | calibrated `pole`, `base` (polygons) | `turn_complete`, `base_reached`, `fall` (points) |
+| `TREADMILL` | at the side of the lane; x along the lane from the shock grid end (0) to the front (`lane_length_cm`), y vertical | calibrated `shock_grid` (polygon) | `shock` (points), `exhaustion` (point) |
 
-- **Tracked paradigms** are analysed by a worker. The jobs process queues one
-  `AUTOMATED` run per animal once the test's video is verified, the animal's
-  calibration is valid and an enabled worker has the paradigm version as a
-  capability. The worker uploads a trajectory in the calibration's centimetre
-  frame; the API never accepts metrics from it.
-- **Observer-scored paradigms** never get worker runs, and a worker cannot
-  register them as capabilities. A person marks the input events on the test's
-  current video; completing the scoring sheet runs the engine and stores a
-  `SCORED` run with the scorer and no worker, calibration or video pair. Event
-  times are microseconds from the clip start. An event type that was ticked as
-  scored but never occurred counts as not observed; an event type that was not
-  scored makes its metrics missing, not zero.
+The jobs process queues one `AUTOMATED` run per animal once the test's video is
+verified, the animal's calibration is valid with every required zone and an
+enabled worker has the paradigm version as a capability. The worker uploads a
+trajectory in the calibration's centimetre frame; the API never accepts metrics
+or events from it. Every rule threshold (`min_bout_s`, `turn_descent_cm`,
+`fall_speed_cm_s`, `exhaustion_dwell_s`, `min_shock_dwell_s`,
+`max_sample_gap_s`) is an analysis parameter with a standard default that a lab
+can tune per environment.
 
-Both kinds of run feed the same per-animal result, which opens `PENDING` for
+Known limit of the novel object test: exploration is approximated by the body
+centre inside an object zone, not by the direction of the nose, so sitting on
+the object counts as exploration.
+
+Every run feeds the per-animal result, which opens `PENDING` for
 human review; only accepted results enter the report.
 
 ### Zone requirements
@@ -111,10 +113,12 @@ Zones come from one of two places:
   defined in: **tank-centred** ((0, 0) at the tank centre, x east, y north, so
   the wall points are (r, 0), (0, r), (-r, 0) and (0, -r) with
   r = tank diameter / 2).
-- **Calibrated.** A paradigm may declare calibrated zones; none of the current
-  catalog does, but the support stays. Such zones are drawn as circles or
-  polygons on the camera frame with the calibration, and a key may have
-  several shapes. Shapes are stored
+- **Calibrated.** The novel object, pole and treadmill paradigms declare
+  calibrated zones (the objects, the pole and its base, the shock grid). They
+  are drawn as circles or polygons on the camera frame with the calibration,
+  and a key may have several shapes. An animal's override on its test video
+  can move them, for example when the novel object stands on the other side;
+  the calibrator's swap action exchanges the two object zones. Shapes are stored
   as drawn in pixels and converted to centimetres with the calibration's fitted
   transform; they must lie inside the frame and never change after the
   calibration is saved (migration `014_calibration_zones.sql`). Until a valid
@@ -143,8 +147,8 @@ data quality, not behavior.
 ## Event types and CV detection
 
 A run collects **events**; metrics are derived from them. The same event stream
-is produced by manual entry today and by the CV service later, so the event layer
-is the contract between Mişko and computer vision.
+is derived from the tracked trajectory and the zones, so the event layer is the
+contract between Mişko and computer vision.
 
 Each event type declares a `detect` spec describing how the CV service derives it
 from the trajectory and zones:
@@ -303,8 +307,7 @@ Inferred samples never raise or lower the confidence mean. The worker records
 their share in the trajectory's diagnostics (`worker.inferredRatio`), and a
 paradigm version may cap it with `max_inferred_ratio`; no published version sets
 that rule yet. A run that breaks a rule fails with a `QC_FAILED` reason and publishes
-nothing. Scored runs have no trajectory, so these tracking rules do not apply
-to them; the reviewer checks the scored events instead.
+nothing.
 
 ## Result shape
 

@@ -21,9 +21,8 @@ bozukluğu geri çeviriyor mu? Paneldeki her şey bu soruyu izler:
    zaman noktaları, protokoller ve ölçütler olarak tasarlanır ve başlatılır.
 5. Denekler gruplara **atanır**, her gün **dozlanır** ve **test oturumlarında**
    filme alınır.
-6. Her denek oturum videosunda ölçülür: takip edilen paradigmalarda bir analiz
-   işçisi deneği izler, gözlemci puanlamalı paradigmalarda bir kişi puanlar.
-   Her sonucu bir kişi **inceler** ve yalnızca kabul edilen sonuçlar **rapora**
+6. Her denek oturum videosunda otomatik olarak ölçülür: her paradigmada bir
+   analiz işçisi deneği izler. Her sonucu bir kişi **inceler** ve yalnızca kabul edilen sonuçlar **rapora**
    girer.
 
 Panel varsayılan olarak Türkçedir. Üst çubuktaki dil seçiciyle İngilizceye
@@ -48,7 +47,7 @@ reddedeceği düğmeleri gizler.
 |---|---|
 | `SUPERADMIN`, `LAB_MANAGER` | Kullanıcılar ve laboratuvar ayarları dahil her şey. |
 | `RESEARCHER` | Kullanıcılar ve laboratuvar ayarları dışında her şey: etken maddeler, hastalık modelleri, denekler, ortamlar, çalışma tasarımı, oturum planlama, dozlama, oturum yürütme, sonuç onayı. |
-| `TECHNICIAN` | Laboratuvar günü: doz ve ağırlık kaydı, oturumu başlatma ve tamamlama, deneme kaydı, video yükleme, bir deneği bir videoda kalibre etme, gözlemci puanlamalı testleri puanlama, sonuç onayı. Oturum planlayamaz, iptal edemez ve çalışmayı değiştiremez. |
+| `TECHNICIAN` | Laboratuvar günü: doz ve ağırlık kaydı, oturumu başlatma ve tamamlama, deneme kaydı, video yükleme, bir deneği bir videoda kalibre etme, sonuç onayı. Oturum planlayamaz, iptal edemez ve çalışmayı değiştiremez. |
 | `VIEWER` | Her şeyi okur, hiçbir şeyi değiştirmez. |
 
 **Kullanıcılar** ekranında kullanıcı oluştururken şifreyi boş bırakıp sistemin
@@ -136,8 +135,15 @@ tıklayın:
 kalibre edilir ve o arenada çekilen her video bunu kullanır. Kalibrasyon,
 kamera piksellerinin düzenek üzerinde santimetreye nasıl karşılık geldiğini ve
 çizilen bölgeler tanımlayan bir paradigmada bu bölgelerin nerede olduğunu
-Mişko'ya söyler. Gözlemci puanlamalı paradigmalar (direk, koşu bandı, yeni
-nesne) kalibrasyon gerektirmez.
+Mişko'ya söyler. Her paradigma kalibre edilir ve kalibratör paradigmaya göre
+kısa bir rehber gösterir: kameranın nereye konacağı ve neyin çizileceği.
+
+| Paradigma | Kamera | Düzenek çerçevesi | Bölgeler |
+|---|---|---|---|
+| Morris su labirenti | Tankın üstünde | Tankın merkezi, x doğuya, y kuzeye | çizilmez |
+| Yeni nesne | Arenanın üstünde | Zeminin başlangıç köşesi, x genişlik, y derinlik boyunca | **Yeni nesne** ve **tanıdık nesne**: her nesnenin çevresinde, ondan yaklaşık 2 cm geniş bir daire |
+| Direk | Direğin yanında | x direğe uzaklık, y tabandan yükseklik (taban 0, tepe direk uzunluğu) | **Direk** (deneğin tırmandığı yer) ve **taban** (dibindeki zemin), çokgen |
+| Koşu bandı | Kulvarın yanında | x kulvar boyunca şok ızgarası ucundan (0) öne, y banttan yukarı | Kulvarın arkasındaki **şok ızgarası**, çokgen |
 
 1. Ortamın sayfasında **Bu revizyonu kalibre et**'e tıklayın. Görsel
    kalibratör açılır.
@@ -149,25 +155,35 @@ nesne) kalibrasyon gerektirmez.
    su labirentinde su yüzeyi).
 4. **Uyum noktaları** aracıyla her uyum noktasına karede tıklayın, sonra
    sürükleyerek ayarlayın. Vurgulanan satır, bir sonraki tıklamanın
-   yerleştireceği noktadır; başka bir nokta seçmek için satırına tıklayın. Su
-   labirentinde ve yeni nesne kutusunda **Düzenek noktalarını kullan** gerçek
-   konumları ortamın ölçülerinden doldurur, siz yalnızca sırayla tıklarsınız:
+   yerleştireceği noktadır; başka bir nokta seçmek için satırına tıklayın.
+   **Düzenek noktalarını kullan** gerçek konumları ortamın ölçülerinden
+   doldurur, siz yalnızca sırayla tıklarsınız:
    - su labirenti: tank duvarının kuzey, doğu, güney ve batı noktaları, tankın
      merkezinden ölçülür (x doğuya, y kuzeye doğru artar).
    - yeni nesne kutusu: tabanın dört iç köşesi, (0, 0) başlangıç köşesinden
      genişlik ve derinlik boyunca.
+   - direk: direğin tabanı (yükseklik 0) ve tepesi (direk uzunluğu). İkisi aynı
+     dikey doğru üzerinde olduğundan direkten uzakta düzenek üzerinde iki
+     işaret daha gerekir (örneğin arka panelde): direğe uzaklıklarını ve
+     tabandan yüksekliklerini ölçüp yazın. Uyum noktaları tek bir doğru
+     üzerindeyse kalibratör bunu söyler.
+   - koşu bandı: kulvar duvarının ızgara ucundaki (0) ve öndeki (kulvar
+     uzunluğu) köşeleri, bant üzerinde ve duvarın üstünde. Üst noktaları
+     doldurmak için **Kulvar duvarı yüksekliği**'ni yazın.
 
    Hazır nokta yoksa tıkladığınız her noktanın cm cinsinden gerçek konumunu,
    istediğiniz bir çerçevede (örneğin düzeneğin merkezine göre) yazın.
 5. **Kontrol noktaları** aracıyla uyum noktalarından farklı yerlere en az üç
-   kontrol noktası koyun (hazır noktalar kenarların ortalarını ya da tankın
-   çapraz duvar noktalarını kullanır).
+   kontrol noktası koyun (hazır noktalar kenarların ortalarını, tankın çapraz
+   duvar noktalarını, iki düzenek işaretiyle birlikte direğin ortasını ya da
+   kulvarın ortasını kullanır).
 6. **Kırpma** aracıyla bu arenanın çevresine bir dikdörtgen sürükleyin.
    Noktalar ve bölgeler bunun içinde kalmalıdır. **Tüm kare** onu sıfırlar.
-7. Paradigmanın çizilen bölgeleri varsa (güncel katalogda böyle bir paradigma
-   yok, ama kalibratör bunları destekler) **Bölgeler** aracını açın. Her
-   bölge **Zorunlu** ya da **İsteğe bağlı** olarak listelenir. Bir bölgenin
-   yanındaki **Çokgen çiz** ya da **Daire çiz**'e tıklayıp onu karede çizin:
+7. Paradigmanın çizilen bölgeleri varsa (yeni nesne, direk, koşu bandı)
+   **Bölgeler** aracını açın. Her bölge **Zorunlu** ya da **İsteğe bağlı**
+   olarak listelenir. Bir bölgenin yanındaki **Daire çiz** ya da **Çokgen
+   çiz**'e tıklayıp onu karede çizin (nesne bölgeleri önce daire olmak üzere
+   ikisini de sunar; direk, taban ve şok ızgarası bölgeleri çokgendir):
    - çokgen: her köşeye tıklayın, kapatmak için ilk köşeye yeniden tıklayın (ya
      da **Çokgeni kapat**); **Son köşeyi geri al** son köşeyi kaldırır;
    - daire: merkeze basıp kenara kadar sürükleyin.
@@ -177,7 +193,9 @@ nesne) kalibrasyon gerektirmez.
    ya da merkezine tıklamak oraya yapışır, böylece komşu bölgeler kenarlarını
    tam olarak paylaşır. Biten bir şekli tutamaçlarını sürükleyerek ayarlayın ya
    da **Yeniden çiz** ve **Sil**'i kullanın. **Çizimi bitir** o anki bölgeyi
-   bitirir.
+   bitirir. Yeni nesnede **Yer değiştir: Yeni nesne ve Tanıdık nesne** çizilen
+   iki bölgenin yerini değiştirir; örneğin yeni nesnesi öbür tarafta duran bir deneğin
+   kalibrasyonunda (dengeleme).
 8. Her değer **Değerleri elle gir** altında elle de yazılabilir. Karenin
    altındaki liste neyin eksik olduğunu söyler.
 9. **Kalibrasyonu kaydet**'e tıklayın. Panel uyum ve kontrol hatalarını,
@@ -333,52 +351,16 @@ laboratuvar yöneticileri herhangi bir yorumu silebilir.
 
 ## Analiz ve sonuç onayı
 
-Bir deneğin nasıl ölçüldüğü paradigmaya bağlıdır:
+Her paradigma otomatik olarak analiz edilir: bir analiz işçisi deneği videoda
+izler ve Mişko olayları (her nesnenin keşfi, direkte dönüş, tabana ulaşma ve
+düşme, koşu bandında şok ve tükenme) bu izden ve kalibre edilen bölgelerden
+çıkarır. Bir kişi yalnızca sonucu inceler.
 
-| Paradigma | Nasıl ölçülür |
-|---|---|
-| Morris su labirenti | **Takip edilir**: bir analiz işçisi deneği videoda izler. |
-| Direk, koşu bandı, yeni nesne | **Gözlemci puanlar**: bir kişi olayları videoda işaretler. |
-
-**Takip edilen paradigmalar.** Süren bir oturumun videosu doğrulandığında ve
+Süren bir oturumun videosu doğrulandığında ve
 deneğin kalibrasyonu geçerli olduğunda analiz işçisi her deneği kendi
 arenasında ölçer. Oturum sayfasının **Analiz** bölümü her deneğin durumunu
 gösterir; **Yeniden analiz et** yeni bir çalıştırma kuyruğa ekler (örneğin yeni
 bir kalibrasyondan sonra).
-
-**Gözlemci puanlamalı bir testi puanlama.** Teknisyenler ve üstündeki roller her
-deneği oturumun doğrulanmış videosunda puanlar:
-
-1. Önce oturum videosunu yükleyin; puanlama onun üzerinde yapılır.
-2. Deneğin kartında, **Gözlemci puanlaması** altında **Videoyu puanla**'ya
-   tıklayın. Puanlama oynatıcısı açılır.
-3. Videoyu oynatın ya da adım adım ilerleyin. **Boşluk** oynatır ve duraklatır,
-   **sol ve sağ oklar** bir kare ilerletir (**Shift** ile bir saniye), hız
-   listesi oynatmayı 0,25x'e kadar yavaşlatır.
-4. Her olayı gerçekleştiği anda kendi düğmesiyle ya da üzerindeki rakamla (1'den
-   9'a, sonra 0) puanlayın:
-   - bir an olayı (direkte dönüş, tabana ulaşma ya da düşme, koşu bandında
-     şok ya da tükenme) o anki zamanda işaretlenir;
-   - bir aralık olayı (yeni nesne keşfi) bir basışla başlar, sonrakiyle biter.
-     Her etiketin kendi düğmesi vardır, örneğin **yeni** ve **tanıdık** nesnenin
-     keşfi.
-
-   Yalnızca bir kez olabilen bir olay (düşme) yeniden puanlanırsa yeni zamana
-   taşınır.
-5. Puanlanan olaylar bir zaman çizelgesinde ve bir listede görünür. Bir olaya
-   gitmek için ona tıklayın, zamanlarını ya da etiketini **Düzenle**'yle
-   değiştirin ya da **Sil**'le kaldırın.
-6. **Puanlanan olay türleri** altında izlediğiniz her olayı işaretleyin.
-   İşaretli olup hiç olmayan olay gözlenmedi sayılır (örneğin düşmesiz bir
-   direk denemesi); işaretsiz olan puanlanmadı olarak raporlanır.
-7. **Puanlamayı tamamla**'ya tıklayıp onaylayın. Mişko metrikleri olaylardan
-   hesaplar ve sonuç, analiz edilmiş her sonuç gibi onay kuyruğunda bekleyen
-   olarak görünür.
-
-Tamamlanmış bir puanlamayı düzeltmek için **Düzeltme için yeniden aç**'a
-tıklayın. Olayların bir kopyasıyla yeni bir sürüm açılır; yeniden
-tamamlandığında incelemecinin seçebileceği yeni bir çalıştırma eklenir. Önceki
-sürüm ve sonucu saklanır.
 
 Her sonuç sayılmadan önce bir kişi tarafından onaylanmalıdır. **Sonuç onayı**'nı
 açın:
@@ -386,9 +368,7 @@ açın:
 1. Liste, deneye ve duruma (bekleyen, kabul edilen, reddedilen, tümü) göre
    filtrelenmiş, onay bekleyen sonuçları gösterir. Filtreler adreste tutulur.
 2. Analiz edilmiş videoyu, kalite kontrollerini ve metrikleri açmak için bir
-   satıra tıklayın. Puanlanmış bir sonucun analiz edilmiş videosu ve
-   kalibrasyon kontrolü yoktur; metrikleri ve olayları gösterilir, video
-   puanlama oynatıcısında izlenir.
+   satıra tıklayın.
 3. **Kabul et**'e tıklayın ya da bir neden seçin (takip kaybedildi, yanlış
    denek, video kusuru, protokol sapması, diğer), not ekleyip **Reddet**'e
    tıklayın. Çekmece ardından bir sonraki bekleyen sonuca geçer.
