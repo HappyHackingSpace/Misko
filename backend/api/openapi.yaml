@@ -3450,7 +3450,7 @@ components:
           type: array
           maxItems: 1000
           items: {$ref: '#/components/schemas/CalibrationZoneInput'}
-          description: 'Shapes of the paradigm''s calibrated zones in full-frame pixels, required for paradigms with calibrated zones (none of the current catalog declares any): keys must be calibrated zones of the paradigm version (400 calibration.unknownZone), every required one needs a shape (calibration.missingZone), shapes are a circle with a positive radius or a polygon of 3 to 100 vertices, at most 100 per key (calibration.invalidZone), inside the frame (calibration.zoneOutsideFrame). They are converted to centimetres with the fitted transform and stored with the calibration.'
+          description: 'Shapes of the paradigm''s calibrated zones in full-frame pixels, required for paradigms with calibrated zones (NOVEL_OBJECT, POLE and TREADMILL): keys must be calibrated zones of the paradigm version (400 calibration.unknownZone), every required one needs a shape (calibration.missingZone), shapes are a circle with a positive radius or a polygon of 3 to 100 vertices, at most 100 per key (calibration.invalidZone), inside the frame (calibration.zoneOutsideFrame). They are converted to centimetres with the fitted transform and stored with the calibration.'
     CalibrationStatus:
       type: object
       required: [status, source, drift, calibration]
@@ -3487,7 +3487,7 @@ components:
           type: array
           maxItems: 1000
           items: {$ref: '#/components/schemas/CalibrationZoneInput'}
-          description: 'Shapes of the paradigm''s calibrated zones in full-frame pixels, required for paradigms with calibrated zones (none of the current catalog declares any): keys must be calibrated zones of the paradigm version (400 calibration.unknownZone), every required one needs a shape (calibration.missingZone), shapes are a circle with a positive radius or a polygon of 3 to 100 vertices, at most 100 per key (calibration.invalidZone), inside the frame (calibration.zoneOutsideFrame). They are converted to centimetres with the fitted transform and stored with the calibration.'
+          description: 'Shapes of the paradigm''s calibrated zones in full-frame pixels, required for paradigms with calibrated zones (NOVEL_OBJECT, POLE and TREADMILL): keys must be calibrated zones of the paradigm version (400 calibration.unknownZone), every required one needs a shape (calibration.missingZone), shapes are a circle with a positive radius or a polygon of 3 to 100 vertices, at most 100 per key (calibration.invalidZone), inside the frame (calibration.zoneOutsideFrame). They are converted to centimetres with the fitted transform and stored with the calibration.'
     ZoneVertex:
       type: object
       additionalProperties: false
