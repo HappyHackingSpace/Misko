@@ -14,6 +14,8 @@ const Tests = () => import("./views/Tests.vue");
 const Subjects = () => import("./views/subjects/Subjects.vue");
 const SubjectDetail = () => import("./views/subjects/SubjectDetail.vue");
 const Reports = () => import("./views/Reports.vue");
+const Trials = () => import("./views/trials/Trials.vue");
+const TrialDetail = () => import("./views/trials/TrialDetail.vue");
 const Paradigms = () => import("./views/Paradigms.vue");
 const ParadigmDetail = () => import("./views/ParadigmDetail.vue");
 const Environments = () => import("./views/Environments.vue");
@@ -35,6 +37,10 @@ const routes = [
   { path: "/experiments/:id/edit", component: ExperimentForm, meta: { permission: "study:write", titleKey: "nav.experiments" } },
   { path: "/tests", component: Tests, meta: { titleKey: "nav.tests" } },
   { path: "/tests/:id", component: TestDetail, meta: { titleKey: "nav.tests" } },
+  // Paradigm trials are read by every role; starting and running one needs
+  // trial:run, checked on the page and by the API.
+  { path: "/trials", component: Trials, meta: { titleKey: "nav.trials" } },
+  { path: "/trials/:id", component: TrialDetail, meta: { titleKey: "nav.trials" } },
 
   // Subjects are created and edited in a drawer; the detail page shows weights and allocation.
   { path: "/subjects", component: Subjects, meta: { titleKey: "nav.subjects" } },
