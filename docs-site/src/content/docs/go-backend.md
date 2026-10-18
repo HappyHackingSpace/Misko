@@ -26,8 +26,7 @@ current release. Do not deploy it.
 | Tests as sessions with one or more animals in arenas, trials and comments | Implemented |
 | Video uploads to Google Cloud Storage, one current video per test | Implemented, live storage test pending |
 | Calibration per arena with per-animal overrides | Implemented |
-| Analysis runs per animal and human review of every result | Implemented; the worker tracks the water maze (`MWM`), tested on synthetic video only |
-| Observer scoring of pole, treadmill and novel object | Implemented |
+| Analysis runs per animal and human review of every result | Implemented for all four paradigms; the worker is tested on synthetic video only |
 | Study report with role-based comparisons, CSV export, dashboard | Implemented |
 | Vue panel on the new API | Scaffolded, not complete |
 
@@ -285,9 +284,10 @@ code and cannot be created, edited or deleted through the API.
 - `GET /api/paradigms` lists paradigms with their published versions. Four
   paradigms are published: `MWM`, `NOVEL_OBJECT`, `POLE` and `TREADMILL`, in
   two categories (`LEARNING_MEMORY` for `MWM` and `NOVEL_OBJECT`, `MOTOR` for
-  `POLE` and `TREADMILL`). `MWM` is tracked by an analysis worker once a worker
-  is registered for the paradigm version. The other three (`NOVEL_OBJECT`, `POLE`, `TREADMILL`) are scored by
-  an observer on the video (see [Observer scoring](#observer-scoring)).
+  `POLE` and `TREADMILL`). Every paradigm is analysed automatically: an
+  analysis worker tracks the subject on the video once a worker is registered
+  for the paradigm version, Misko derives every event and metric, and a person
+  only reviews the result. There is no observer scoring.
 - `GET /api/paradigms/{key}` returns the latest version, and
   `GET /api/paradigms/{key}/versions/{version}` returns one exact version. Each
   version lists its parameters, each with its scope (`APPARATUS` and `ANALYSIS`
@@ -297,14 +297,20 @@ code and cannot be created, edited or deleted through the API.
   missing. Names, labels and descriptions follow `?lang=` or
   `Accept-Language` (`en` or `tr`).
 
-Some paradigms need more than a tracked position:
+Every paradigm is measured from the tracked position of the subject and its
+zones:
 
-- Zones come from the apparatus parameters, such as the water maze platform.
-  A paradigm may also declare zones marked `calibrated`, drawn as circles or
-  polygons; none of the current catalog does.
-- `inputEvents` lists observations that are scored rather than tracked, such as
-  pole test turns, a treadmill exhaustion or novel object exploration. An event type that
-  was not scored produces missing metrics, not zeros.
+- The water maze derives its zones from the apparatus parameters (platform,
+  target quadrant, wall zone). The other paradigms declare zones marked
+  `calibrated`, drawn as circles or polygons with the calibration: the novel
+  and the familiar object (`novel_object`, `familiar_object`), the pole and its
+  base (`pole`, `base`) and the treadmill's shock grid (`shock_grid`).
+- `events` lists what Misko derives from the positions and the zones:
+  exploration bouts labelled `novel` or `familiar`, the pole turn, base and
+  fall, treadmill shocks and exhaustion, water maze platform visits. Every rule
+  threshold (minimum bout, turn descent, fall speed, time on the grid for a
+  shock or for exhaustion) is an `ANALYSIS` parameter with a standard default
+  that a lab can change per environment. `inputEvents` is always empty.
 
 Results always name the paradigm version, the metric engine version and the
 result schema version they were computed with. A metric that cannot be computed
@@ -426,14 +432,18 @@ to know how camera pixels map to centimeters in each arena.
 - Both kinds take the same points: at least 4 FIT points and at least 3 separate
   CHECK points, each with its pixel position and its real position in
   centimeters. The FIT points define the mapping and the CHECK points test it. If
-  a CHECK point is off by more than the paradigm allows (2 cm for the trajectory
-  paradigms), the calibration is stored as `REJECTED`.
-- A paradigm with `calibrated` zones (none of the current catalog has any)
-  also needs those zones drawn on the same frame. Send them as `zones` in
-  pixels, for example
-  `{"key": "zone_a", "polygon": [{"x": 300, "y": 480}, ...]}` or
-  `{"key": "zone_b", "circle": {"x": 960, "y": 540, "radius": 60}}`; a key may
-  have several shapes. Every required zone needs a
+  a CHECK point is off by more than the paradigm allows (2 cm), the calibration
+  is stored as `REJECTED`. The measurement plane is `ARENA_FLOOR`,
+  `WATER_SURFACE`, `APPARATUS_TOP`, or `APPARATUS_SIDE` for rigs filmed from the
+  side (the pole and the treadmill lane).
+- A paradigm with `calibrated` zones (novel object, pole, treadmill) also needs
+  those zones drawn on the same frame. Send them as `zones` in pixels, for
+  example `{"key": "base", "polygon": [{"x": 300, "y": 480}, ...]}` or
+  `{"key": "novel_object", "circle": {"x": 960, "y": 540, "radius": 60}}`; a
+  key may have several shapes. Without a required zone the calibration is
+  refused (`calibration.missingZone`). A per animal override on the test video
+  carries its own zones, for example when the novel object is on the other
+  side. Every required zone needs a
   shape and every shape must lie inside the frame. Misko converts them to
   centimeters with the calibration and returns each zone in both. The worker
   receives them with its job, and the metrics use the centimeter shapes. In the
@@ -444,8 +454,12 @@ to know how camera pixels map to centimeters in each arena.
 - World points must use the frame the paradigm's zones are defined in. For the
   water maze that frame is tank-centred: (0, 0) is the tank centre, x points
   east and y north, so the wall points are (r, 0), (0, r), (-r, 0) and (0, -r)
-  with r = tank diameter / 2. A paradigm with calibrated zones may use any
-  frame.
+  with r = tank diameter / 2. The novel object arena is seen from above with
+  the origin at a corner of the floor, x to the right and y down the image, and
+  its points lie within the arena. The pole is seen from the side with x
+  horizontal and y the height above the base (base at 0, top at the pole
+  length); the treadmill from the side with x along the lane from the shock
+  grid (0) to the front. Use at least four non-collinear points of the rig.
 - To fix a calibration, send a new one with `supersedesId` set to the latest
   calibration of the same arena or animal. Earlier calibrations are kept.
 - `GET /api/tests/{id}/calibration-status` lists every animal of a test:
@@ -456,16 +470,16 @@ to know how camera pixels map to centimeters in each arena.
 ### Video analysis
 
 Tracking runs in separate analysis workers that talk to the API. The worker in
-the `worker/` folder tracks recorded fixed-camera video of the tracked
-paradigm, `MWM` version 1. It has only been tested on synthetic video so far;
+the `worker/` folder tracks the subject's centroid in recorded fixed-camera
+video of every paradigm at version 1. It has only been tested on synthetic video so far;
 do not use its results for research until it has been checked against a
 manually annotated recording.
 
 - A lab manager registers a worker with `POST /api/analysis/workers`, giving its
   name, model version and the paradigm versions it supports. Register the
-  bundled worker with model version `misko-tracker-bgsub 2.0.0` and `MWM` at
-  version 1 (see [Installation](../installation/#analysis-worker)).
-  Observer-scored paradigms are refused with `worker.unknownCapability`. The
+  bundled worker with the paradigms it supports at version 1 (see
+  [Installation](../installation/#analysis-worker)). Versions outside the
+  catalog are refused with `worker.unknownCapability`. The
   response shows the worker's token only once; store it in the worker's secret
   configuration.
   `POST /api/analysis/workers/{id}/disable` revokes it. Start the worker with
@@ -474,8 +488,7 @@ manually annotated recording.
 - Every `JOB_INTERVAL` (10 seconds by default) the `jobs` process queues one run
   per animal of a test, when the experiment is running or completed, the animal
   is not excluded, the test's video is verified, the animal's calibration is
-  valid (when the paradigm needs one) and a worker supports the paradigm.
-  Observer-scored paradigms never get such runs.
+  valid with every required zone and a worker supports the paradigm.
 - The worker finds the animal inside its arena's crop in every frame, converts
   its position to centimeters, and uploads the positions (the trajectory) and an
   annotated video. It never learns the animal's group or treatment. Misko
@@ -485,9 +498,6 @@ manually annotated recording.
   A worker may mark samples as inferred (the optional `inferred` flag), for
   example while the animal is hidden: they count as tracked, but not in the
   confidence mean. The bundled worker sends none.
-- Every run has a `method`: `AUTOMATED` for a worker run, `SCORED` for a run
-  computed from an observer's scoring (with `scoredBy` and no worker,
-  calibration or video pair).
 - A run records exactly what was analyzed: the video version, the clip, the
   calibration, the paradigm version and the parameters. To analyze an animal
   again, a technician (or a role above) calls
@@ -497,35 +507,10 @@ manually annotated recording.
   returns short-lived links to the original and analyzed video with the offsets
   needed to play them in sync.
 
-### Observer scoring
-
-Pole, treadmill and novel object tests are scored by a person on the
-test's current video. Technicians and the roles above them can score; everyone
-signed in can read.
-
-- `GET /api/tests/{id}/subjects/{testSubjectId}/scoring` returns the paradigm's
-  input events (type, `POINT` or `INTERVAL`, labels such as `novel` and
-  `familiar`, whether it is scored once), the current video's clip and the
-  newest scoring sheet with its events.
-- `POST .../scoring/events` with `{type, label?, startUs, endUs?}` adds an event
-  to the draft sheet (the first event starts version 1). Times are microseconds
-  from the clip start. `PATCH .../events/{eventId}` replaces an event and
-  `DELETE` removes it.
-- `POST .../scoring/complete` with `{scoredEventTypes?, durationUs?}` fixes which
-  event types were watched for (default all) and the recording length (default
-  the clip). The engine computes the metrics and a `SUCCEEDED` run with method
-  `SCORED` is stored; its result opens `PENDING` in the review queue like any
-  other.
-- `POST .../scoring/reopen` starts the next sheet version with a copy of the
-  events; completing it adds another run the reviewer can choose. Completed
-  sheets never change.
-- Scoring needs a test in progress or completed, a running experiment, an
-  animal that is not excluded and a verified video.
-
 ### Review
 
 Every result is approved by a person before it counts. The first successful run
-of an animal, automated or scored, opens its result as `PENDING`.
+of an animal opens its result as `PENDING`.
 
 - `GET /api/analysis/results` is the review queue (`status`, `experimentId`).
   In a blinded experiment it shows no group, disease, substance or dose.

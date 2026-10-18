@@ -21,8 +21,7 @@ Yürütme:    Denek -> Atama (ömür boyu tek grup) -> Uygulamalar,
             Test (oturum: zaman noktası x protokol adımı, tek video)
               -> Test denekleri (denek + arena) -> Denemeler
                                                  -> Kalibrasyon (arena veya düzeltme, bölgelerle)
-                                                 -> Puanlama sayfaları (gözlemci puanlamalı paradigmalar)
-                                                 -> Analiz çalıştırmaları (AUTOMATED veya SCORED)
+                                                 -> Analiz çalıştırmaları (worker takip eder, Mişko türetir)
                                                     -> Onaylanmış sonuç
 
 Rapor:      denek başına kabul edilmiş sonuçlar -> gruplar -> rol tabanlı karşılaştırmalar
@@ -52,7 +51,7 @@ değil.
   `DIET`, `STRESS`, `OTHER`) ve serbest metin olarak nasıl doğrulandığı. Her
   model indüklenir.
 - **Paradigma:** düzenlenebilir bir veritabanı satırı değil, **kodda tanımlı**
-  bilimsel bir test türüdür: parametreler, bölgeler, puanlanan olaylar ve metrik
+  bilimsel bir test türüdür: parametreler, bölgeler, türetilen olaylar ve metrik
   tanımları, hiç değişmeyen yayınlanmış sürümler halinde. Kayıt defteri: `MWM`,
   `NOVEL_OBJECT`, `POLE`, `TREADMILL`.
 - **Ortam:** tek bir paradigmanın tek bir fiziksel düzeneği; örneğin belirli bir
@@ -144,25 +143,17 @@ altında en fazla üç arena.
 - **Kalibrasyon:** pikselleri santimetreye çevirir. Varsayılan olarak her arena
   (ortam revizyonu) düzenek kurulurken bir kez kalibre edilir; kırpma alanı
   arenanın kamera karesindeki bölgesidir. Kamera veya arena kaydıysa güncel
-  videoda tek bir test deneğine elle bir **düzeltme** uygulanır. Bir paradigma
-  parametrelerden türetilmeyen bölgeler tanımlayabilir; bu **kalibre edilen
-  bölgeler** kalibrasyonla birlikte taşınır, kare üzerinde piksel olarak
-  çizilir ve santimetre olarak da saklanır (güncel katalogdaki hiçbir paradigma
-  bunu kullanmaz). Bir kalibrasyon ve bölgeleri asla değişmez. Gözlemci
-  puanlamalı paradigmalar kalibrasyon gerektirmez.
-- **Puanlama sayfası:** gözlemci puanlamalı bir paradigmada (`POLE`, `TREADMILL`,
-  `NOVEL_OBJECT`) bir kişinin güncel videoda bir test deneği için
-  işaretlediği olaylar, klip başlangıcından itibaren mikrosaniye cinsinden. Bir
-  sayfa puanlanırken `DRAFT`, puanlanan olay türleri ve kayıt uzunluğu
-  sabitlendiğinde `COMPLETED` olur; yeniden açmak bir sonraki sürümü başlatır ve
-  tamamlanmış sayfalar asla değişmez.
-- **Analiz çalıştırması:** test deneği başına bir tane. Bir worker deneği
-  arenasının kırpma alanında izleyip yörüngeyi yüklediğinde `method` alanı
-  `AUTOMATED` olur (`MWM`); tamamlanmış bir puanlama sayfasından
-  hesaplandığında ise puanlayanla birlikte, worker, kalibrasyon ve video çifti
-  olmadan `SCORED` olur. Her iki durumda da Mişko her metriği ve olayı kendisi
-  hesaplar. Girdiler sabitlenir; yeniden analiz ya da yeniden puanlama yeni bir
-  çalıştırmadır ve eski çalıştırmalar kalır.
+  videoda tek bir test deneğine elle bir **düzeltme** uygulanır. Parametrelerden
+  türetilmeyen bölgeler (yeni ve tanıdık nesne, direk ve tabanı, koşu bandının
+  şok ızgarası) **kalibre edilen bölgelerdir**: kalibrasyonla birlikte taşınır,
+  kare üzerinde piksel olarak çizilir ve santimetre olarak da saklanır. Yandan
+  görünüşler (direk, koşu bandı) `APPARATUS_SIDE` düzlemini kullanır. Bir
+  kalibrasyon ve bölgeleri asla değişmez. Her paradigma kalibrasyon gerektirir.
+- **Analiz çalıştırması:** test deneği başına bir tane. Bir worker deneğin
+  ağırlık merkezini arenasının kırpma alanında izler ve yörüngeyi yükler; Mişko
+  her olayı ve metriği örneklerden ve bölgelerden kendisi türetir. Gözlemci
+  puanlaması yoktur: bir kişi yalnızca sonucu inceler. Girdiler sabitlenir;
+  yeniden analiz yeni bir çalıştırmadır ve eski çalıştırmalar kalır.
 - **Onaylanmış sonuç:** her sonucu bir kişi onaylar. Bir deneğin ilk başarılı
   çalıştırması `PENDING` bir sonuç açar; inceleyen kişi kabul eder ya da bir
   gerekçeyle reddeder. Kör bir çalışmada inceleyen kişi grubu, hastalığı, maddeyi
