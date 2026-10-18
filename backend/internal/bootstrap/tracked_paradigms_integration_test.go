@@ -125,7 +125,7 @@ func analyseTracked(t *testing.T, code string, c trackedCase) trackedResult {
 	}
 	slices.Sort(claimedKeys)
 	wantKeys := slices.Sorted(slices.Values(c.requiredZones))
-	if run["testSubjectId"] != subject || run["paradigmKey"] != c.paradigm || !slices.Equal(claimedKeys, wantKeys) || !slices.Equal(requiredKeys, c.requiredZones) {
+	if claim["testSubject"].(map[string]any)["id"] != subject || run["requester"].(map[string]any)["id"] != subject || run["paradigmKey"] != c.paradigm || !slices.Equal(claimedKeys, wantKeys) || !slices.Equal(requiredKeys, c.requiredZones) {
 		t.Fatalf("claim zones %v required %v: %v", claimedKeys, requiredKeys, claim)
 	}
 

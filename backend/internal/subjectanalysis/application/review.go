@@ -8,7 +8,7 @@ import (
 	"time"
 
 	access "github.com/HappyHackingSpace/Misko/backend/internal/access/domain"
-	"github.com/HappyHackingSpace/Misko/backend/internal/analysis/domain"
+	"github.com/HappyHackingSpace/Misko/backend/internal/subjectanalysis/domain"
 )
 
 var (
@@ -40,7 +40,8 @@ type ReviewGroup struct {
 	Unit                 string
 }
 
-// ReviewRun describes the run under review.
+// ReviewRun describes the job under review: the link's facts from this
+// module and the job's from the analysis service.
 type ReviewRun struct {
 	ID, Trigger, ModelVersion, CalibrationID, RecordingID string
 	MetricEngineVersion                                   int
@@ -48,8 +49,8 @@ type ReviewRun struct {
 }
 
 // ReviewItem is one animal's result as the review screen shows it: animal,
-// arena and test, the run under review with its metrics, whether a newer
-// succeeded run exists, and the group unless the experiment is blinded.
+// arena and test, the job under review with its metrics, whether a newer
+// succeeded job exists, and the group unless the experiment is blinded.
 type ReviewItem struct {
 	Result                                                domain.SubjectResult
 	TestID, ExperimentID, ExperimentCode                  string
@@ -65,12 +66,12 @@ type ReviewItem struct {
 	ScheduledAt                                           time.Time
 	Run                                                   ReviewRun
 	LatestRunID                                           string
-	Metrics                                               []domain.MetricValue
+	Metrics                                               []domain.Metric
 	Group                                                 *ReviewGroup
 }
 
-// NewerRunAvailable reports a succeeded run newer than the one under review.
-func (i ReviewItem) NewerRunAvailable() bool { return i.LatestRunID != i.Result.RunID }
+// NewerRunAvailable reports a succeeded job newer than the one under review.
+func (i ReviewItem) NewerRunAvailable() bool { return i.LatestRunID != i.Result.JobID }
 
 type ReviewQuery struct {
 	ExperimentID, Status string
@@ -88,15 +89,9 @@ func (s *Service) Results(ctx context.Context, actor access.Actor, q ReviewQuery
 	if err := actor.Require(access.Read); err != nil {
 		return ReviewPage{}, err
 	}
-	status := q.Status
-	switch status {
-	case "":
-		status = string(domain.ResultPending)
-	case "ALL":
-		status = ""
-	case string(domain.ResultPending), string(domain.ResultAccepted), string(domain.ResultRejected):
-	default:
-		return ReviewPage{}, ErrInvalidQuery
+	status, err := reviewStatus(q.Status)
+	if err != nil {
+		return ReviewPage{}, err
 	}
 	if (q.ExperimentID != "" && !uuidPattern.MatchString(q.ExperimentID)) || q.Page < 0 || q.Page > 1<<20 || q.PageSize < 0 {
 		return ReviewPage{}, ErrInvalidQuery
@@ -109,13 +104,25 @@ func (s *Service) Results(ctx context.Context, actor access.Actor, q ReviewQuery
 	if err != nil {
 		return ReviewPage{}, err
 	}
-	if items, err = s.withMetrics(ctx, items); err != nil {
+	if items, err = s.complete(ctx, items); err != nil {
 		return ReviewPage{}, err
 	}
 	return ReviewPage{Items: items, Total: total, Page: page, PageSize: size}, nil
 }
 
-// ResultDetail is one animal's result with every succeeded run a reviewer can choose.
+func reviewStatus(raw string) (string, error) {
+	switch raw {
+	case "":
+		return string(domain.ResultPending), nil
+	case "ALL":
+		return "", nil
+	case string(domain.ResultPending), string(domain.ResultAccepted), string(domain.ResultRejected):
+		return raw, nil
+	}
+	return "", ErrInvalidQuery
+}
+
+// ResultDetail is one animal's result with every succeeded job a reviewer can choose.
 type ResultDetail struct {
 	Item ReviewItem
 	Runs []domain.Run
@@ -129,11 +136,11 @@ func (s *Service) Result(ctx context.Context, actor access.Actor, testSubjectID 
 	if err != nil {
 		return ResultDetail{}, err
 	}
-	runs, err := s.store.SubjectRuns(ctx, testSubjectID)
+	runs, err := s.runs(ctx, s.store, []string{testSubjectID})
 	if err != nil {
 		return ResultDetail{}, err
 	}
-	succeeded := slices.DeleteFunc(runs, func(r domain.Run) bool { return r.Status != domain.Succeeded })
+	succeeded := slices.DeleteFunc(runs, func(r domain.Run) bool { return r.Job.Status != domain.JobSucceeded })
 	return ResultDetail{Item: item, Runs: succeeded}, nil
 }
 
@@ -151,15 +158,19 @@ func (s *Service) Reject(ctx context.Context, actor access.Actor, testSubjectID,
 	})
 }
 
-// ChooseRun puts another succeeded run of the same animal under review and
+// ChooseRun puts another succeeded job of the same animal under review and
 // sends the result back to PENDING.
-func (s *Service) ChooseRun(ctx context.Context, actor access.Actor, testSubjectID, runID string) (ReviewItem, error) {
+func (s *Service) ChooseRun(ctx context.Context, actor access.Actor, testSubjectID, jobID string) (ReviewItem, error) {
 	return s.review(ctx, actor, testSubjectID, func(r domain.SubjectResult, tx Store, _ time.Time) (domain.SubjectResult, error) {
-		run, err := tx.Run(ctx, runID)
+		link, err := tx.Link(ctx, jobID)
 		if err != nil {
 			return domain.SubjectResult{}, err
 		}
-		return r.Choose(run)
+		runs, err := s.withJobs(ctx, []domain.Link{link})
+		if err != nil {
+			return domain.SubjectResult{}, err
+		}
+		return r.Choose(runs[0])
 	})
 }
 
@@ -173,12 +184,13 @@ func (s *Service) AcceptMany(ctx context.Context, actor access.Actor, testSubjec
 		return nil, ErrInvalidBulk
 	}
 	at := s.clock()
+	accept := func(r domain.SubjectResult, _ Store, at time.Time) (domain.SubjectResult, error) {
+		return r.Accept(actor.UserID, note, at)
+	}
 	err := s.store.Transaction(ctx, func(tx Store) error {
 		// Sorted ids lock in one order, so two bulk requests cannot deadlock.
 		for _, id := range ids {
-			if err := s.decide(ctx, tx, id, at, func(r domain.SubjectResult, _ Store, at time.Time) (domain.SubjectResult, error) {
-				return r.Accept(actor.UserID, note, at)
-			}); err != nil {
+			if err := s.decide(ctx, tx, id, at, accept); err != nil {
 				return err
 			}
 		}
@@ -240,31 +252,47 @@ func (s *Service) item(ctx context.Context, testSubjectID string) (ReviewItem, e
 	if len(items) == 0 {
 		return ReviewItem{}, ErrResultNotFound
 	}
-	items, err = s.withMetrics(ctx, items)
+	items, err = s.complete(ctx, items)
 	if err != nil {
 		return ReviewItem{}, err
 	}
 	return items[0], nil
 }
 
-// withMetrics adds the metrics of each run under review and withholds the
+// complete adds what the analysis service knows: the job under review, its
+// metrics and the newest succeeded job of each animal. It withholds the
 // group of animals in blinded experiments.
-func (s *Service) withMetrics(ctx context.Context, items []ReviewItem) ([]ReviewItem, error) {
-	ids := make([]string, 0, len(items))
-	for _, i := range items {
-		ids = append(ids, i.Result.RunID)
+func (s *Service) complete(ctx context.Context, items []ReviewItem) ([]ReviewItem, error) {
+	if len(items) == 0 {
+		return items, nil
 	}
-	metrics := map[string][]domain.MetricValue{}
-	if len(ids) > 0 {
-		var err error
-		if metrics, err = s.store.RunMetrics(ctx, ids); err != nil {
-			return nil, err
-		}
+	subjects := make([]string, 0, len(items))
+	reviewed := make([]string, 0, len(items))
+	for _, i := range items {
+		subjects, reviewed = append(subjects, i.Result.TestSubjectID), append(reviewed, i.Result.JobID)
+	}
+	runs, err := s.runs(ctx, s.store, subjects)
+	if err != nil {
+		return nil, err
+	}
+	metrics, err := s.analysis.Metrics(ctx, reviewed)
+	if err != nil {
+		return nil, err
+	}
+	bySubject := map[string][]domain.Run{}
+	jobs := map[string]domain.Job{}
+	for _, r := range runs {
+		bySubject[r.TestSubjectID] = append(bySubject[r.TestSubjectID], r)
+		jobs[r.JobID] = r.Job
 	}
 	for n := range items {
-		items[n].Metrics = metrics[items[n].Result.RunID]
-		if items[n].Blinded {
-			items[n].Group = nil
+		i := &items[n]
+		job := jobs[i.Result.JobID]
+		i.Run.ModelVersion, i.Run.MetricEngineVersion, i.Run.FinishedAt = job.ModelVersion, job.MetricEngineVersion, job.FinishedAt
+		i.LatestRunID = domain.Latest(bySubject[i.Result.TestSubjectID])
+		i.Metrics = metrics[i.Result.JobID]
+		if i.Blinded {
+			i.Group = nil
 		}
 	}
 	return items, nil

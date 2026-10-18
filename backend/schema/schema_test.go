@@ -139,36 +139,38 @@ func TestChangedMigrationIsRefused(t *testing.T) {
 	}
 }
 
-func TestPendingMigrationRunsAndBlocksReadiness(t *testing.T) {
+// installUpTo applies the first n migrations the way Migrate does and
+// records them, leaving the database n migrations into the history.
+func installUpTo(t *testing.T, pool *pgxpool.Pool, n int) []schema.Migration {
+	t.Helper()
 	ctx := context.Background()
-	pool := emptyDatabase(t)
-	if _, err := schema.Migrate(ctx, pool); err != nil {
-		t.Fatal(err)
-	}
-	// Simulate a database one release behind: undo the last two migrations
-	// (017 adds the side view plane, 016 drops observer scoring; replaying
-	// 015 restores what 016 dropped) and forget them.
 	migrations, err := schema.Migrations()
 	if err != nil {
 		t.Fatal(err)
 	}
-	n := len(migrations)
-	pending := []string{migrations[n-2].Name, migrations[n-1].Name}
-	if !slices.Equal(pending, []string{"016_drop_scoring.sql", "017_side_view_plane.sql"}) {
-		t.Fatalf("this test undoes 016 and 017, the latest migrations are %v", pending)
+	for _, m := range migrations[:n] {
+		if _, err := pool.Exec(ctx, m.SQL); err != nil {
+			t.Fatalf("apply %s: %v", m.Name, err)
+		}
 	}
-	if _, err := pool.Exec(ctx, `ALTER TABLE misko.calibrations DROP CONSTRAINT calibrations_measurement_plane_check;
-		ALTER TABLE misko.calibrations ADD CONSTRAINT calibrations_measurement_plane_check
-			CHECK (measurement_plane IN ('ARENA_FLOOR', 'WATER_SURFACE', 'APPARATUS_TOP'));
-		ALTER TABLE misko.analysis_events DROP COLUMN label;`); err != nil {
+	if _, err := pool.Exec(ctx, `CREATE TABLE misko.schema_migrations (version integer PRIMARY KEY, name text NOT NULL, checksum text NOT NULL,
+		applied_at timestamptz NOT NULL DEFAULT now())`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := pool.Exec(ctx, migrations[n-3].SQL); err != nil {
-		t.Fatalf("replay %s: %v", migrations[n-3].Name, err)
+	for _, m := range migrations[:n] {
+		if _, err := pool.Exec(ctx, "INSERT INTO misko.schema_migrations (version, name, checksum) VALUES ($1, $2, $3)", m.Version, m.Name, m.Checksum); err != nil {
+			t.Fatal(err)
+		}
 	}
-	if _, err := pool.Exec(ctx, "DELETE FROM misko.schema_migrations WHERE version >= $1", n-1); err != nil {
-		t.Fatal(err)
-	}
+	return migrations
+}
+
+func TestPendingMigrationRunsAndBlocksReadiness(t *testing.T) {
+	ctx := context.Background()
+	pool := emptyDatabase(t)
+	// A database one release behind: every migration but the last is applied.
+	migrations := installUpTo(t, pool, schema.Latest()-1)
+	pending := []string{migrations[len(migrations)-1].Name}
 	if healthpostgres.New(pool, schema.Latest()).Check(ctx) == nil {
 		t.Fatal("database behind the code marked ready")
 	}

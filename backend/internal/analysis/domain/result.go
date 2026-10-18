@@ -52,18 +52,6 @@ type Contract struct {
 	QC             []QCRule
 }
 
-// CalibrationRef is the pinned calibration a worker needs to map full-frame
-// pixels to arena centimeters.
-type CalibrationRef struct {
-	ID                                  string
-	FrameWidth, FrameHeight             int
-	CropX, CropY, CropWidth, CropHeight int
-	Plane                               string
-	Transform                           [9]float64
-	// Zones are the calibrated zone shapes drawn with the calibration.
-	Zones []Zone
-}
-
 type Vertex struct{ X, Y float64 }
 
 type Circle struct{ X, Y, Radius float64 }
@@ -134,7 +122,6 @@ type Event struct {
 	Type, Label, Kind string
 	StartUs, EndUs    int64
 	Confidence        float64
-	TrialID           string
 }
 
 type Result struct {
@@ -148,16 +135,16 @@ type Result struct {
 	Pair             PairInput
 }
 
-// Validate checks the shape of a submission against its run. Metrics and
+// Validate checks the shape of a submission against its job. Metrics and
 // events are added from the metric engine after the outputs are verified.
-func Validate(r Run, s Submission) (Result, error) {
+func Validate(r Job, s Submission) (Result, error) {
 	model, err := normalizeModel(s.ModelVersion)
 	if err != nil {
 		return Result{}, err
 	}
 	duration := s.RecordingDurationUs
-	if r.ClipEndUs != nil {
-		clip := *r.ClipEndUs - r.ClipStartUs
+	if r.Source.ClipEndUs != nil {
+		clip := *r.Source.ClipEndUs - r.Source.ClipStartUs
 		if duration != 0 && duration != clip {
 			return Result{}, ErrInvalidDuration
 		}
@@ -173,7 +160,7 @@ func Validate(r Run, s Submission) (Result, error) {
 	return Result{ModelVersion: model, DurationUs: duration, TrajectoryObject: trajectory, Artifacts: append([]ArtifactInput(nil), s.Artifacts...), Pair: s.Pair}, nil
 }
 
-func validateArtifacts(r Run, s Submission) (string, error) {
+func validateArtifacts(r Job, s Submission) (string, error) {
 	prefix, names, videos := r.OutputPrefix(), map[string]bool{}, 0
 	var trajectories []string
 	for _, a := range s.Artifacts {
@@ -199,7 +186,7 @@ func validateArtifacts(r Run, s Submission) (string, error) {
 		return "", ErrMissingTrajectory
 	}
 	version := strings.TrimSpace(s.Pair.TimeMappingVersion)
-	if s.Pair.SourceOffsetUs != r.ClipStartUs || s.Pair.OutputOffsetUs < 0 || version == "" || utf8.RuneCountInString(version) > 60 {
+	if s.Pair.SourceOffsetUs != r.Source.ClipStartUs || s.Pair.OutputOffsetUs < 0 || version == "" || utf8.RuneCountInString(version) > 60 {
 		return "", ErrInvalidPair
 	}
 	return trajectories[0], nil

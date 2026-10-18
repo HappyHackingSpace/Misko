@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"errors"
+	"regexp"
 	"strings"
 	"time"
 	"unicode"
@@ -24,7 +25,18 @@ var (
 	ErrInvalidObject      = errors.New("stored object has no generation")
 	ErrAlreadyFinalized   = errors.New("the upload was already finalized")
 	ErrTestNotStarted     = errors.New("a video needs the test in progress or completed")
+	ErrInvalidFolder      = errors.New("a folder is a lower-case module name and a UUID, such as trials/<id>")
 )
+
+var folderPattern = regexp.MustCompile(`^[a-z][a-z-]{0,30}/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
+
+// CheckFolder accepts the storage folder of a video that belongs to no test.
+func CheckFolder(folder string) error {
+	if !folderPattern.MatchString(folder) {
+		return ErrInvalidFolder
+	}
+	return nil
+}
 
 type Kind string
 

@@ -74,3 +74,20 @@ export async function upload(signed, file, { onProgress } = {}) {
     onProgress?.(Math.min(offset / file.size, 1));
   }
 }
+
+/**
+ * The whole browser side of a video upload: checksum, declare, upload and
+ * verify. `declare(body)` asks the API for a signed upload and resolves to its
+ * response, which carries `upload`; `verify(declared)` finalizes it. onStage
+ * receives "checksum", "upload" and "verify"; onProgress 0 to 1 while uploading.
+ * Resolves to what verify returned.
+ */
+export async function sendVideo(file, { declare, verify, onStage, onProgress }) {
+  onStage?.("checksum");
+  const body = { fileName: file.name, contentType: file.type || "video/mp4", sizeBytes: file.size, crc32c: await crc32c(file) };
+  const declared = await declare(body);
+  onStage?.("upload");
+  await upload(declared.upload, file, { onProgress });
+  onStage?.("verify");
+  return verify(declared);
+}

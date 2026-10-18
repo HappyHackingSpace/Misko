@@ -36,6 +36,9 @@ what the result was**, without managing raw video by hand.
 - **Result**: the analysis of one animal in one test. Every result is accepted
   or rejected by a person before it counts. Results are data, not a pass or fail
   verdict.
+- **Paradigm trial**: a paradigm tried on one video in one arena, outside any
+  experiment, with its own calibration if needed and as many analyses with
+  changed thresholds as wanted. It has no groups, review or report.
 - **Report**: per endpoint, the group statistics and the comparisons that follow
   from the group roles (model validity, assay sensitivity, efficacy with
   rescue %, dose response).

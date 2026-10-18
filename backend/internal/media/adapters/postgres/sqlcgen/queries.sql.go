@@ -61,6 +61,58 @@ func (q *Queries) CreateAsset(ctx context.Context, arg CreateAssetParams) (Misko
 	return i, err
 }
 
+const createFolderAsset = `-- name: CreateFolderAsset :one
+WITH new_asset AS (SELECT uuidv7() AS id)
+INSERT INTO misko.video_assets (id, kind, bucket, object_name, content_type, file_name, size_bytes, crc32c, created_by)
+SELECT n.id, 'ORIGINAL', $1::text, $2::text || '/originals/' || n.id::text,
+       $3::text, $4::text, $5::bigint, $6::bigint, $7::uuid
+FROM new_asset n
+RETURNING id, kind, bucket, object_name, content_type, file_name, size_bytes, crc32c, status, generation, rejection_reason, verified_at, created_by, created_at
+`
+
+type CreateFolderAssetParams struct {
+	Bucket      string
+	Folder      string
+	ContentType string
+	FileName    *string
+	SizeBytes   int64
+	Crc32c      int64
+	CreatedBy   string
+}
+
+// CreateFolderAsset stores a pending original that belongs to no test, under
+// the folder of the module that keeps it (for example a paradigm trial), named
+// after its own id.
+func (q *Queries) CreateFolderAsset(ctx context.Context, arg CreateFolderAssetParams) (MiskoVideoAsset, error) {
+	row := q.db.QueryRow(ctx, createFolderAsset,
+		arg.Bucket,
+		arg.Folder,
+		arg.ContentType,
+		arg.FileName,
+		arg.SizeBytes,
+		arg.Crc32c,
+		arg.CreatedBy,
+	)
+	var i MiskoVideoAsset
+	err := row.Scan(
+		&i.ID,
+		&i.Kind,
+		&i.Bucket,
+		&i.ObjectName,
+		&i.ContentType,
+		&i.FileName,
+		&i.SizeBytes,
+		&i.Crc32c,
+		&i.Status,
+		&i.Generation,
+		&i.RejectionReason,
+		&i.VerifiedAt,
+		&i.CreatedBy,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const createRecording = `-- name: CreateRecording :one
 INSERT INTO misko.test_recordings (experiment_id, test_id, video_asset_id, supersedes_id, clip_start_us, clip_end_us, created_by)
 VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -125,6 +177,32 @@ func (q *Queries) FinishAsset(ctx context.Context, arg FinishAssetParams) (Misko
 		arg.VerifiedAt,
 		arg.ID,
 	)
+	var i MiskoVideoAsset
+	err := row.Scan(
+		&i.ID,
+		&i.Kind,
+		&i.Bucket,
+		&i.ObjectName,
+		&i.ContentType,
+		&i.FileName,
+		&i.SizeBytes,
+		&i.Crc32c,
+		&i.Status,
+		&i.Generation,
+		&i.RejectionReason,
+		&i.VerifiedAt,
+		&i.CreatedBy,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const getAsset = `-- name: GetAsset :one
+SELECT id, kind, bucket, object_name, content_type, file_name, size_bytes, crc32c, status, generation, rejection_reason, verified_at, created_by, created_at FROM misko.video_assets WHERE id = $1
+`
+
+func (q *Queries) GetAsset(ctx context.Context, id string) (MiskoVideoAsset, error) {
+	row := q.db.QueryRow(ctx, getAsset, id)
 	var i MiskoVideoAsset
 	err := row.Scan(
 		&i.ID,
@@ -393,6 +471,32 @@ func (q *Queries) ListRecordings(ctx context.Context, testID string) ([]ListReco
 		return nil, err
 	}
 	return items, nil
+}
+
+const lockAsset = `-- name: LockAsset :one
+SELECT id, kind, bucket, object_name, content_type, file_name, size_bytes, crc32c, status, generation, rejection_reason, verified_at, created_by, created_at FROM misko.video_assets WHERE id = $1 FOR UPDATE
+`
+
+func (q *Queries) LockAsset(ctx context.Context, id string) (MiskoVideoAsset, error) {
+	row := q.db.QueryRow(ctx, lockAsset, id)
+	var i MiskoVideoAsset
+	err := row.Scan(
+		&i.ID,
+		&i.Kind,
+		&i.Bucket,
+		&i.ObjectName,
+		&i.ContentType,
+		&i.FileName,
+		&i.SizeBytes,
+		&i.Crc32c,
+		&i.Status,
+		&i.Generation,
+		&i.RejectionReason,
+		&i.VerifiedAt,
+		&i.CreatedBy,
+		&i.CreatedAt,
+	)
+	return i, err
 }
 
 const lockRecording = `-- name: LockRecording :one

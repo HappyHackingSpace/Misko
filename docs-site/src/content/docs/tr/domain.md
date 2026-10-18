@@ -21,8 +21,11 @@ Yürütme:    Denek -> Atama (ömür boyu tek grup) -> Uygulamalar,
             Test (oturum: zaman noktası x protokol adımı, tek video)
               -> Test denekleri (denek + arena) -> Denemeler
                                                  -> Kalibrasyon (arena veya düzeltme, bölgelerle)
-                                                 -> Analiz çalıştırmaları (worker takip eder, Mişko türetir)
+                                                 -> Analiz işleri (worker takip eder, Mişko türetir)
                                                     -> Onaylanmış sonuç
+
+Paradigma testleri: Paradigma testi (paradigma + arena + kendi videosu, kendi kalibrasyonu)
+              -> Analiz işleri, değiştirilmiş eşiklerle karşılaştırılır (onaylanmaz)
 
 Rapor:      denek başına kabul edilmiş sonuçlar -> gruplar -> rol tabanlı karşılaştırmalar
 ```
@@ -149,15 +152,38 @@ altında en fazla üç arena.
   kare üzerinde piksel olarak çizilir ve santimetre olarak da saklanır. Yandan
   görünüşler (direk, koşu bandı) `APPARATUS_SIDE` düzlemini kullanır. Bir
   kalibrasyon ve bölgeleri asla değişmez. Her paradigma kalibrasyon gerektirir.
-- **Analiz çalıştırması:** test deneği başına bir tane. Bir worker deneğin
-  ağırlık merkezini arenasının kırpma alanında izler ve yörüngeyi yükler; Mişko
-  her olayı ve metriği örneklerden ve bölgelerden kendisi türetir. Gözlemci
-  puanlaması yoktur: bir kişi yalnızca sonucu inceler. Girdiler sabitlenir;
-  yeniden analiz yeni bir çalıştırmadır ve eski çalıştırmalar kalır.
+  Bir kalibrasyon bir arenaya (varsayılan), bir test deneğine (düzeltme) veya
+  bir paradigma testine (kendi videosunda; arenanın varsayılanını asla
+  değiştirmez) aittir.
+- **Analiz işi:** analiz servisinin iş birimi: tek video, tek paradigma
+  sürümü, parametreleri ve kalibrasyonun bir kopyası; bir test deneği veya bir
+  paradigma testi tarafından istenir. Bir worker deneğin ağırlık merkezini
+  kalibrasyonun kırpma alanında izler ve yörüngeyi yükler; Mişko her olayı ve
+  metriği örneklerden ve bölgelerden kendisi türetir. Gözlemci puanlaması
+  yoktur: bir kişi yalnızca sonucu inceler. Girdiler asla değişmez; yeniden
+  analiz yeni bir iştir ve eski işler kalır.
+- **Bir deneğin analizi:** deney tarafı her işi analiz ettiği test deneğine
+  (kullandığı kayıt ve kalibrasyonla birlikte) bağlar. Denek doğrulanmış bir
+  videoya, gereken her bölgeyi içeren geçerli bir kalibrasyona sahip olduğunda
+  ve dışlanmadığında iş kendiliğinden gönderilir; bir kişi yenisini de
+  gönderebilir.
 - **Onaylanmış sonuç:** her sonucu bir kişi onaylar. Bir deneğin ilk başarılı
-  çalıştırması `PENDING` bir sonuç açar; inceleyen kişi kabul eder ya da bir
-  gerekçeyle reddeder. Kör bir çalışmada inceleyen kişi grubu, hastalığı, maddeyi
-  veya dozu görmez. İstatistiklere yalnızca kabul edilen sonuçlar girer.
+  işi `PENDING` bir sonuç açar; inceleyen kişi kabul eder, bir gerekçeyle
+  reddeder ya da deneğin başarılı başka bir işini seçer. Kör bir çalışmada
+  inceleyen kişi grubu, hastalığı, maddeyi veya dozu görmez. İstatistiklere
+  yalnızca kabul edilen sonuçlar girer.
+
+## Paradigma testi
+
+Bir **paradigma testi**, bir paradigma sürümünü herhangi bir deney dışında,
+tek arenada tek videoda dener: yeni bir düzeneği, bir kamera konumunu veya bir
+eşiği kontrol etmek için. Bir adı, arenası (ortam revizyonu) ve kendi videosu
+vardır; arenanın varsayılanına dokunmadan bu videoda kalibre edilebilir.
+Videosu doğrulanıp hazır olduğunda kendiliğinden, istendiğinde de
+değiştirilmiş ANALYSIS eşikleriyle yeniden analiz edilir; önceki işler
+karşılaştırma için kalır. Paradigma testinin grubu, onayı ve raporu yoktur ve
+işleri hiçbir zaman bir deneye taşınmaz. Silinen bir paradigma testi gizlenir
+ama saklanır, çünkü işleri asla değişmez.
 
 Davranışsal sonuç **veridir, verdikt değil**: bir testin geçti veya kaldı sonucu
 yoktur.
@@ -211,6 +237,7 @@ yok):
 | `apparatus:write` (ortamlar, arena kalibrasyonu) | ✅ | ✅ | ✅ | - | - |
 | `test:write` (test planlama) | ✅ | ✅ | ✅ | - | - |
 | `test:run` (test çalıştırma, videolar, dozlar, onay) | ✅ | ✅ | ✅ | ✅ | - |
+| `trial:run` (paradigma testleri) | ✅ | ✅ | ✅ | ✅ | - |
 | `*:read`          | ✅ | ✅ | ✅ | ✅ | ✅ |
 
 Her kullanım senaryosu bir store'a dokunmadan önce izni kendisi kontrol eder

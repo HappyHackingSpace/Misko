@@ -24,6 +24,8 @@ bozukluğu geri çeviriyor mu? Paneldeki her şey bu soruyu izler:
 6. Her denek oturum videosunda otomatik olarak ölçülür: her paradigmada bir
    analiz işçisi deneği izler. Her sonucu bir kişi **inceler** ve yalnızca kabul edilen sonuçlar **rapora**
    girer.
+7. **Paradigma testi**, bir paradigmayı herhangi bir çalışmanın dışında tek bir
+   videoda dener; örneğin bir kamerayı ya da analiz eşiklerini sınamak için.
 
 Panel varsayılan olarak Türkçedir. Üst çubuktaki dil seçiciyle İngilizceye
 geçebilirsiniz; seçiminiz hatırlanır.
@@ -47,7 +49,7 @@ reddedeceği düğmeleri gizler.
 |---|---|
 | `SUPERADMIN`, `LAB_MANAGER` | Kullanıcılar ve laboratuvar ayarları dahil her şey. |
 | `RESEARCHER` | Kullanıcılar ve laboratuvar ayarları dışında her şey: etken maddeler, hastalık modelleri, denekler, ortamlar, çalışma tasarımı, oturum planlama, dozlama, oturum yürütme, sonuç onayı. |
-| `TECHNICIAN` | Laboratuvar günü: doz ve ağırlık kaydı, oturumu başlatma ve tamamlama, deneme kaydı, video yükleme, bir deneği bir videoda kalibre etme, sonuç onayı. Oturum planlayamaz, iptal edemez ve çalışmayı değiştiremez. |
+| `TECHNICIAN` | Laboratuvar günü: doz ve ağırlık kaydı, oturumu başlatma ve tamamlama, deneme kaydı, video yükleme, bir deneği bir videoda kalibre etme, paradigma testi yürütme, sonuç onayı. Oturum planlayamaz, iptal edemez ve çalışmayı değiştiremez. |
 | `VIEWER` | Her şeyi okur, hiçbir şeyi değiştirmez. |
 
 **Kullanıcılar** ekranında kullanıcı oluştururken şifreyi boş bırakıp sistemin
@@ -381,6 +383,40 @@ açın:
 
 **Kör** bir çalışmada onay ekranı yalnızca deneği, arenayı ve oturumu gösterir;
 grubu, dozu veya maddeyi asla göstermez.
+
+## Paradigma testi
+
+Ana menüdeki **Paradigma testi**, bir paradigmayı herhangi bir deneyin dışında
+tek bir videoda, tek bir ortamda denemenizi sağlar: grup, sonuç onayı ve rapor
+yoktur; bir testin sonucu hiçbir zaman bir deneye taşınmaz. Bir çalışmadan önce
+yeni bir kamera konumunu, bir ortamı ya da analiz eşiklerini sınamak için
+kullanın. Testleri herkes okuyabilir; test başlatmak ve yürütmek `trial:run`
+yetkisi ister (`VIEWER` dışındaki her rol).
+
+1. **Yeni test**'e tıklayın, bir ad verin, paradigmayı ve denenecek ortam
+   revizyonunu seçin, gerekirse not ekleyip **Testi oluştur**'a tıklayın. Test
+   sayfası açılır.
+2. **Video yükle**'ye tıklayıp kaydı seçin. Dosya doğrudan depolamaya gider ve
+   doğrulanır; ardından oynatıcıda görünür. **Videoyu değiştir** başka bir video
+   yükler; önceki analizler kullandıkları videoyu korur.
+3. **Kalibrasyon** kartı hangi kalibrasyonun uygulandığını söyler: ortamınki ya
+   da bu videoda yapılan testin kendi kalibrasyonu. Ortam kalibre edilmemişse ya
+   da kamera oynadıysa **Bu videoda kalibre et**'e tıklayıp noktaları ve
+   bölgeleri ortam sayfasındaki gibi yerleştirin. Bu kalibrasyon yalnızca bu
+   teste ve bu videoya aittir; ortam hiç değişmez.
+4. Video doğrulanıp bir kalibrasyon uygulandığında analiz kendiliğinden başlar.
+   **Analizler** kartı her analizi en yenisi üstte listeler: durumu (sırada,
+   sürüyor, başarılı, nedeniyle birlikte başarısız), izleme kalitesi, panelin
+   dilinde ölçütler ve **Çizimli video ve olaylar** altında işçinin çizdiği video
+   ile olaylar; bir olaya tıklamak onu oynatır. Bir analiz sıradayken ya da
+   sürerken sayfa kendini yeniler.
+5. **Yeniden analiz et**, paradigmanın analiz eşiklerini ortamın değerleriyle
+   doldurulmuş olarak açar. Denemek istediğinizi değiştirip **Analiz et**'e
+   tıklayın: aynı videonun yeni bir analizi yalnızca değişen değerlerle sıraya
+   girer, öncekiler kalır. **Karşılaştır**, başarılı iki analizi her ölçütün
+   farkıyla yan yana gösterir.
+6. **Sil**, onay istedikten sonra testi listeden kaldırır; analizleri saklı
+   kalır.
 
 ## Sonuçlar ve raporlar
 

@@ -11,7 +11,7 @@ import (
 var (
 	ErrInvalidRejection = errors.New("a rejection needs one of TRACKING_LOST, WRONG_ANIMAL, VIDEO_DEFECT, PROTOCOL_DEVIATION or OTHER")
 	ErrInvalidNote      = errors.New("a review note must contain 1 to 2000 characters")
-	ErrRunNotChosen     = errors.New("only a succeeded run of the same animal in the same test can be chosen")
+	ErrRunNotChosen     = errors.New("only a succeeded analysis of the same animal in the same test can be chosen")
 )
 
 // ResultStatus is the human decision on one animal's result. Only ACCEPTED
@@ -29,11 +29,11 @@ func RejectionReasons() []string {
 	return []string{"TRACKING_LOST", "WRONG_ANIMAL", "VIDEO_DEFECT", "PROTOCOL_DEVIATION", "OTHER"}
 }
 
-// SubjectResult is the run that counts for one animal of a test and the
-// reviewer's decision on it. The first successful run opens it as PENDING.
+// SubjectResult is the job that counts for one animal of a test and the
+// reviewer's decision on it. The first successful job opens it as PENDING.
 type SubjectResult struct {
 	TestSubjectID string
-	RunID         string
+	JobID         string
 	Status        ResultStatus
 	Reason        string
 	Note          string
@@ -43,9 +43,9 @@ type SubjectResult struct {
 	UpdatedAt     time.Time
 }
 
-// OpenResult is the PENDING result a first successful run creates.
-func OpenResult(run Run) SubjectResult {
-	return SubjectResult{TestSubjectID: run.TestSubjectID, RunID: run.ID, Status: ResultPending}
+// OpenResult is the PENDING result a first successful job creates.
+func OpenResult(testSubjectID, jobID string) SubjectResult {
+	return SubjectResult{TestSubjectID: testSubjectID, JobID: jobID, Status: ResultPending}
 }
 
 // Accept records that the result counts. A decision may be revised while the
@@ -72,13 +72,13 @@ func (r SubjectResult) Reject(reviewer, reason, note string, at time.Time) (Subj
 	return r, nil
 }
 
-// Choose makes another succeeded run of the same animal the one under review
-// and sends the result back to PENDING. Choosing the current run reopens it.
+// Choose makes another succeeded job of the same animal the one under review
+// and sends the result back to PENDING. Choosing the current job reopens it.
 func (r SubjectResult) Choose(run Run) (SubjectResult, error) {
-	if run.TestSubjectID != r.TestSubjectID || run.Status != Succeeded {
+	if run.TestSubjectID != r.TestSubjectID || run.Job.Status != JobSucceeded {
 		return SubjectResult{}, ErrRunNotChosen
 	}
-	r.RunID, r.Status, r.Reason, r.Note, r.ReviewedBy, r.ReviewedAt = run.ID, ResultPending, "", "", "", nil
+	r.JobID, r.Status, r.Reason, r.Note, r.ReviewedBy, r.ReviewedAt = run.JobID, ResultPending, "", "", "", nil
 	return r, nil
 }
 

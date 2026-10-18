@@ -4,10 +4,7 @@ import (
 	"context"
 	"errors"
 	analysishttp "github.com/HappyHackingSpace/Misko/backend/internal/analysis/adapters/http"
-	calibrationcatalog "github.com/HappyHackingSpace/Misko/backend/internal/calibration/adapters/catalog"
 	calibrationhttp "github.com/HappyHackingSpace/Misko/backend/internal/calibration/adapters/http"
-	calibrationpostgres "github.com/HappyHackingSpace/Misko/backend/internal/calibration/adapters/postgres"
-	calibrationapp "github.com/HappyHackingSpace/Misko/backend/internal/calibration/application"
 	cataloghttp "github.com/HappyHackingSpace/Misko/backend/internal/catalog/adapters/http"
 	catalogpostgres "github.com/HappyHackingSpace/Misko/backend/internal/catalog/adapters/postgres"
 	catalogapp "github.com/HappyHackingSpace/Misko/backend/internal/catalog/application"
@@ -18,10 +15,7 @@ import (
 	dosinghttp "github.com/HappyHackingSpace/Misko/backend/internal/dosing/adapters/http"
 	dosingpostgres "github.com/HappyHackingSpace/Misko/backend/internal/dosing/adapters/postgres"
 	dosingapp "github.com/HappyHackingSpace/Misko/backend/internal/dosing/application"
-	environmentscatalog "github.com/HappyHackingSpace/Misko/backend/internal/environments/adapters/catalog"
 	environmentshttp "github.com/HappyHackingSpace/Misko/backend/internal/environments/adapters/http"
-	environmentspostgres "github.com/HappyHackingSpace/Misko/backend/internal/environments/adapters/postgres"
-	environmentsapp "github.com/HappyHackingSpace/Misko/backend/internal/environments/application"
 	experimentscatalog "github.com/HappyHackingSpace/Misko/backend/internal/experiments/adapters/catalog"
 	experimentshttp "github.com/HappyHackingSpace/Misko/backend/internal/experiments/adapters/http"
 	experimentspostgres "github.com/HappyHackingSpace/Misko/backend/internal/experiments/adapters/postgres"
@@ -40,7 +34,6 @@ import (
 	mediagcs "github.com/HappyHackingSpace/Misko/backend/internal/media/adapters/gcs"
 	mediahttp "github.com/HappyHackingSpace/Misko/backend/internal/media/adapters/http"
 	medialocalfs "github.com/HappyHackingSpace/Misko/backend/internal/media/adapters/localfs"
-	mediapostgres "github.com/HappyHackingSpace/Misko/backend/internal/media/adapters/postgres"
 	mediaapp "github.com/HappyHackingSpace/Misko/backend/internal/media/application"
 	paradigmshttp "github.com/HappyHackingSpace/Misko/backend/internal/paradigms/adapters/http"
 	paradigmsapp "github.com/HappyHackingSpace/Misko/backend/internal/paradigms/application"
@@ -54,12 +47,14 @@ import (
 	reportshttp "github.com/HappyHackingSpace/Misko/backend/internal/reports/adapters/http"
 	reportspostgres "github.com/HappyHackingSpace/Misko/backend/internal/reports/adapters/postgres"
 	reportsapp "github.com/HappyHackingSpace/Misko/backend/internal/reports/application"
+	subjectanalysishttp "github.com/HappyHackingSpace/Misko/backend/internal/subjectanalysis/adapters/http"
 	subjectshttp "github.com/HappyHackingSpace/Misko/backend/internal/subjects/adapters/http"
 	subjectspostgres "github.com/HappyHackingSpace/Misko/backend/internal/subjects/adapters/postgres"
 	subjectsapp "github.com/HappyHackingSpace/Misko/backend/internal/subjects/application"
 	testshttp "github.com/HappyHackingSpace/Misko/backend/internal/tests/adapters/http"
 	testspostgres "github.com/HappyHackingSpace/Misko/backend/internal/tests/adapters/postgres"
 	testsapp "github.com/HappyHackingSpace/Misko/backend/internal/tests/application"
+	trialshttp "github.com/HappyHackingSpace/Misko/backend/internal/trials/adapters/http"
 	"github.com/HappyHackingSpace/Misko/backend/schema"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"log/slog"
@@ -124,7 +119,8 @@ const reportExportLimit = 100_000
 type API struct {
 	Handler    http.Handler
 	BeginDrain func()
-	// AnalysisTick runs one analysis scheduler tick; cmd/jobs runs it periodically.
+	// AnalysisTick runs one scheduler tick (lease expiry, test subject and
+	// trial submissions, result opening); cmd/jobs runs it periodically.
 	AnalysisTick func(context.Context) error
 }
 
@@ -170,13 +166,10 @@ func NewAPI(pool *pgxpool.Pool, cfg config.Config, auth config.Auth, logger *slo
 	catalog := catalogapp.New(catalogpostgres.NewStore(pool))
 	experiments := experimentsapp.New(experimentspostgres.NewStore(pool), experimentscatalog.New(), time.Now, rand.IntN)
 	dosing := dosingapp.New(dosingpostgres.NewStore(pool), time.Now)
-	environments := environmentsapp.New(environmentspostgres.NewStore(pool), environmentscatalog.New())
 	protocols := protocolsapp.New(protocolspostgres.NewStore(pool), protocolscatalog.New())
 	// One user may create or edit at most 20 comments per minute on this instance.
 	tests := testsapp.New(testspostgres.NewStore(pool), ratelimit.New(20, time.Minute, time.Now), time.Now)
-	media := mediaapp.New(mediapostgres.NewStore(pool), o.objects, o.mediaSettings, time.Now)
-	calibration := calibrationapp.New(calibrationpostgres.NewStore(pool), calibrationcatalog.New(), time.Now)
-	analysis := newAnalysis(pool, o.objects, o.mediaSettings)
+	m := newModules(pool, o.objects, o.mediaSettings)
 	readiness := healthapp.New(healthpostgres.New(pool, schema.Latest()), cfg.ProbeTimeout)
 
 	mux := http.NewServeMux()
@@ -191,19 +184,21 @@ func NewAPI(pool *pgxpool.Pool, cfg config.Config, auth config.Auth, logger *slo
 	experimentshttp.Register(mux, experiments, authenticate, logger)
 	dosinghttp.Register(mux, dosing, authenticate, logger)
 	paradigmshttp.Register(mux, paradigmsapp.New(), authenticate, logger)
-	environmentshttp.Register(mux, environments, authenticate, logger)
+	environmentshttp.Register(mux, m.environments, authenticate, logger)
 	protocolshttp.Register(mux, protocols, authenticate, logger)
 	testshttp.Register(mux, tests, authenticate, logger)
-	mediahttp.Register(mux, media, authenticate, logger)
-	calibrationhttp.Register(mux, calibration, authenticate, logger)
-	analysishttp.Register(mux, analysis, authenticate, logger)
+	mediahttp.Register(mux, m.media, authenticate, logger)
+	calibrationhttp.Register(mux, m.calibration, authenticate, logger)
+	analysishttp.Register(mux, m.analysis, authenticate, logger)
+	subjectanalysishttp.Register(mux, m.subjectAnalysis, authenticate, logger)
+	trialshttp.Register(mux, m.trials, authenticate, logger)
 	reportshttp.Register(mux, reportsapp.New(reportspostgres.NewStore(pool), reportExportLimit), authenticate, logger)
 	dashboardhttp.Register(mux, dashboardapp.New(dashboardpostgres.NewStore(pool), dashboardcatalog.New()), authenticate, logger)
 	if o.storageHandler != nil {
 		mux.Handle(medialocalfs.Prefix+"/", o.storageHandler)
 	}
 	tick := func(ctx context.Context) error {
-		report, err := analysis.Tick(ctx)
+		report, err := m.tick(ctx)
 		logTick(ctx, logger, report, err)
 		return err
 	}
