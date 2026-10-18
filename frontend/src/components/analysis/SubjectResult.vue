@@ -92,7 +92,7 @@ onBeforeUnmount(() => clearTimeout(timer));
         <p v-if="waiting" class="muted" data-test="result-waiting">{{ waiting }}</p>
         <span class="spacer"></span>
         <NButton
-          v-if="auth.can('test:run') && latest?.method !== 'SCORED'"
+          v-if="auth.can('test:run')"
           size="small"
           secondary
           :loading="queueing"

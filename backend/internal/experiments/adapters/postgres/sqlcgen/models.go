@@ -65,6 +65,7 @@ type MiskoAnalysisEvent struct {
 	EndUs         int64
 	Confidence    float32
 	TrialID       *string
+	Label         *string
 }
 
 type MiskoAnalysisOutputUpload struct {
@@ -107,8 +108,6 @@ type MiskoAnalysisRun struct {
 	CreatedBy           *string
 	CreatedAt           time.Time
 	FinishedAt          *time.Time
-	Method              string
-	ScoredBy            *string
 }
 
 type MiskoAnalysisVideoPair struct {
@@ -420,37 +419,6 @@ type MiskoReportTestSubject struct {
 	EnvironmentRevision    int32
 	ResultStatus           *string
 	ResultRunID            *string
-}
-
-type MiskoScoredObservation struct {
-	ID            string
-	SheetID       string
-	TestSubjectID string
-	EventType     string
-	Kind          string
-	Label         *string
-	StartUs       int64
-	EndUs         int64
-	ScoredBy      string
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
-}
-
-type MiskoScoringSheet struct {
-	ID            string
-	ExperimentID  string
-	TestID        string
-	TestSubjectID string
-	Version       int32
-	Status        string
-	ScoredTypes   []string
-	DurationUs    *int64
-	RecordingID   *string
-	RunID         *string
-	CreatedBy     string
-	CreatedAt     time.Time
-	CompletedBy   *string
-	CompletedAt   *time.Time
 }
 
 type MiskoSubject struct {

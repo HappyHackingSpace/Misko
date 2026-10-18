@@ -6,7 +6,6 @@ import (
 	"context"
 	"crypto/rand"
 	"errors"
-	"fmt"
 	healthpostgres "github.com/HappyHackingSpace/Misko/backend/internal/health/adapters/postgres"
 	"github.com/HappyHackingSpace/Misko/backend/schema"
 	"github.com/jackc/pgx/v5"
@@ -146,27 +145,34 @@ func TestPendingMigrationRunsAndBlocksReadiness(t *testing.T) {
 	if _, err := schema.Migrate(ctx, pool); err != nil {
 		t.Fatal(err)
 	}
-	// Simulate a database one release behind: undo the last migration
-	// (observer scoring) and forget it.
-	latest := fmt.Sprintf("%03d_scoring.sql", schema.Latest())
-	if _, err := pool.Exec(ctx, fmt.Sprintf(`DROP TABLE misko.scored_observations;
-		DROP TABLE misko.scoring_sheets;
-		DROP FUNCTION misko.check_scored_observation_change();
-		DROP FUNCTION misko.check_scoring_sheet_change();
-		DROP TRIGGER analysis_runs_scored_finished ON misko.analysis_runs;
-		DROP FUNCTION misko.check_scored_run_finished();
-		DROP TRIGGER analysis_runs_method_fixed ON misko.analysis_runs;
-		DROP FUNCTION misko.check_analysis_run_method();
-		ALTER TABLE misko.analysis_runs DROP CONSTRAINT analysis_runs_state_check;
-		ALTER TABLE misko.analysis_runs DROP COLUMN method, DROP COLUMN scored_by;
-		ALTER TABLE misko.analysis_runs ADD CONSTRAINT analysis_runs_state_check CHECK (status IS NOT NULL);
-		DELETE FROM misko.schema_migrations WHERE version = %d`, schema.Latest())); err != nil {
+	// Simulate a database one release behind: undo the last two migrations
+	// (017 adds the side view plane, 016 drops observer scoring; replaying
+	// 015 restores what 016 dropped) and forget them.
+	migrations, err := schema.Migrations()
+	if err != nil {
+		t.Fatal(err)
+	}
+	n := len(migrations)
+	pending := []string{migrations[n-2].Name, migrations[n-1].Name}
+	if !slices.Equal(pending, []string{"016_drop_scoring.sql", "017_side_view_plane.sql"}) {
+		t.Fatalf("this test undoes 016 and 017, the latest migrations are %v", pending)
+	}
+	if _, err := pool.Exec(ctx, `ALTER TABLE misko.calibrations DROP CONSTRAINT calibrations_measurement_plane_check;
+		ALTER TABLE misko.calibrations ADD CONSTRAINT calibrations_measurement_plane_check
+			CHECK (measurement_plane IN ('ARENA_FLOOR', 'WATER_SURFACE', 'APPARATUS_TOP'));
+		ALTER TABLE misko.analysis_events DROP COLUMN label;`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, migrations[n-3].SQL); err != nil {
+		t.Fatalf("replay %s: %v", migrations[n-3].Name, err)
+	}
+	if _, err := pool.Exec(ctx, "DELETE FROM misko.schema_migrations WHERE version >= $1", n-1); err != nil {
 		t.Fatal(err)
 	}
 	if healthpostgres.New(pool, schema.Latest()).Check(ctx) == nil {
 		t.Fatal("database behind the code marked ready")
 	}
-	if applied, err := schema.Migrate(ctx, pool); err != nil || !slices.Equal(applied, []string{latest}) {
+	if applied, err := schema.Migrate(ctx, pool); err != nil || !slices.Equal(applied, pending) {
 		t.Fatalf("pending migration: %v %v", applied, err)
 	}
 	// A database ahead of the code (a rollback) still starts.

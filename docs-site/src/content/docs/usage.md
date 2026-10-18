@@ -21,9 +21,8 @@ disease model? Everything in the panel follows that question:
    what it receives), timepoints, protocols and endpoints, then started.
 5. Animals are **allocated** to groups, **dosed** every day and filmed in
    **test sessions**.
-6. Every animal is measured on the session video: an analysis worker tracks it
-   in tracked paradigms, and a person scores it in observer-scored ones. A
-   person **reviews** each result, and only accepted results enter the
+6. Every animal is measured automatically on the session video: an analysis
+   worker tracks it in every paradigm. A person **reviews** each result, and only accepted results enter the
    **report**.
 
 The panel is in Turkish by default. Use the language switch in the top bar to
@@ -48,7 +47,7 @@ hides buttons the API would refuse.
 |---|---|
 | `SUPERADMIN`, `LAB_MANAGER` | Everything, including users and lab settings. |
 | `RESEARCHER` | Everything except users and lab settings: substances, disease models, subjects, environments, study design, planning sessions, dosing, running sessions, review. |
-| `TECHNICIAN` | The lab day: record doses and weights, start and complete sessions, record trials, upload videos, calibrate an animal on a video, score observer-scored tests, review results. Cannot plan or cancel sessions or change a study. |
+| `TECHNICIAN` | The lab day: record doses and weights, start and complete sessions, record trials, upload videos, calibrate an animal on a video, review results. Cannot plan or cancel sessions or change a study. |
 | `VIEWER` | Reads everything, changes nothing. |
 
 When you create a user on the **Users** screen you may leave the password blank
@@ -133,8 +132,16 @@ environment**:
 **Default calibration.** A camera that does not move is calibrated once per
 arena, and every video filmed in that arena uses it. Calibration tells Mişko how
 camera pixels map to centimetres on the apparatus, and, for a paradigm that
-declares drawn zones, where those zones are. Observer-scored paradigms (pole,
-treadmill, novel object) need no calibration.
+declares drawn zones, where those zones are. Every paradigm is calibrated,
+and the calibrator shows a short guide for the paradigm: where the camera goes
+and what to draw.
+
+| Paradigm | Camera | Apparatus frame | Zones |
+|---|---|---|---|
+| Morris water maze | Above the tank | Centre of the tank, x east, y north | none drawn |
+| Novel object | Above the arena | Origin corner of the floor, x along the width, y along the depth | **Novel object** and **familiar object**: a circle around each object, about 2 cm wider than it |
+| Pole | At the side of the pole | x the distance from the pole, y the height above the base (base 0, top the pole length) | **Pole** (where the animal climbs) and **base** (the floor at its foot), polygons |
+| Treadmill | At the side of the lane | x along the lane from the shock grid end (0) to the front, y up from the belt | **Shock grid** at the back of the lane, a polygon |
 
 1. On the environment's page click **Calibrate this revision**. The visual
    calibrator opens.
@@ -147,25 +154,35 @@ treadmill, novel object) need no calibration.
    or water surface for the water maze).
 4. With the **Fit points** tool, click each fit point on the frame, then drag it
    to adjust. The highlighted row is the point the next click places; click a
-   row to choose another one. For the water maze and the novel object box,
-   **Use the apparatus points** fills in the real positions from the
-   environment's measurements, so you only click them in turn:
+   row to choose another one. **Use the apparatus points** fills in the real
+   positions from the environment's measurements, so you only click them in
+   turn:
    - water maze: the north, east, south and west points of the tank wall,
      measured from the tank centre (x grows east, y north).
    - novel object box: the four inside corners of the floor, from the origin
      corner (0, 0) along the width and the depth.
+   - pole: the base (height 0) and the top (the pole length) of the pole. Both
+     lie on one vertical line, so two more marks of the rig away from the pole
+     are needed (for example on the back panel): measure their distance from
+     the pole and their height above the base and type them. The calibrator
+     says so when the fit points lie on one line.
+   - treadmill: the corners of the lane wall, at the grid end (0) and the front
+     (the lane length), on the belt and at the top of the wall. Type the
+     **Lane wall height** to fill in the upper points.
 
    Without a preset, type the real position in cm of every point you click, in
    any frame you like (for example centred on the apparatus).
 5. With the **Check points** tool, place at least three check points at
    places other than the fit points (the presets use the middles of the sides,
-   or the diagonal wall points of the tank).
+   the diagonal wall points of the tank, the middle of the pole with two more
+   rig marks, or the middle of the lane).
 6. With the **Crop** tool, drag a rectangle around this arena. Points and zones
    must lie inside it. **Whole frame** resets it.
-7. If the paradigm has drawn zones (none of the current catalog does, but the
-   calibrator supports them), open the **Zones** tool. Every zone is listed as
-   **Required** or **Optional**. Click **Draw polygon** or **Draw circle** next
-   to a zone and draw it on the frame:
+7. If the paradigm has drawn zones (novel object, pole, treadmill), open the
+   **Zones** tool. Every zone is listed as **Required** or **Optional**. Click
+   **Draw circle** or **Draw polygon** next to a zone (the object zones offer
+   both, circle first; the pole, base and shock grid zones are polygons) and
+   draw it on the frame:
    - a polygon: click each corner, then click the first corner again (or
      **Close polygon**) to close it; **Undo last corner** removes the last one;
    - a circle: press at the centre and drag to the edge.
@@ -174,7 +191,10 @@ treadmill, novel object) need no calibration.
    zone. While drawing, a click on a corner or centre of a shape
    already drawn snaps to it, so neighbouring zones share their edges exactly.
    Drag the handles of a finished shape to adjust it, or use **Redraw** and
-   **Delete**. **Stop drawing** ends the current zone.
+   **Delete**. **Stop drawing** ends the current zone. For the novel object,
+   **Swap Novel object and Familiar object** exchanges the two drawn zones, for
+   example in one animal's calibration when its novel object stands on the
+   other side (counterbalancing).
 8. Every value can also be typed under **Enter numbers by hand**. The list
    under the frame says what is still missing.
 9. Click **Save the calibration**. The panel shows the fit and check errors,
@@ -321,50 +341,16 @@ can comment; you can edit your own, and lab managers can delete any.
 
 ## Analysis and result review
 
-How an animal is measured depends on the paradigm:
+Every paradigm is analysed automatically: an analysis worker follows the
+animal on the video, and Mişko derives the events (exploration of each object,
+the pole turn, arrival at the base and falls, treadmill shocks and exhaustion)
+from its track and the calibrated zones. A person only reviews the result.
 
-| Paradigm | How it is measured |
-|---|---|
-| Morris water maze | **Tracked**: an analysis worker follows the animal on the video. |
-| Pole, treadmill, novel object | **Observer scored**: a person marks the events on the video. |
-
-**Tracked paradigms.** When a running session's video is verified and the
+When a running session's video is verified and the
 animal's calibration is valid, the analysis worker measures each animal in its
 arena. The **Analysis** block of the session page shows the state of each
 animal, and **Analyse again** queues a new run (for example after a new
 calibration).
-
-**Scoring an observer-scored test.** Technicians and the roles above them score
-each animal on the session's verified video:
-
-1. Upload the session video first; scoring is done on it.
-2. On the animal's card, under **Observer scoring**, click **Score video**. The
-   scoring player opens.
-3. Play the video or step through it. **Space** plays and pauses, the **left
-   and right arrows** step one frame (with **Shift** one second), and the speed
-   list slows playback down to 0.25x.
-4. Score each event at the moment it happens with its button or the number
-   shown on it (1 to 9, then 0):
-   - a point event (a pole turn, arrival at the base or fall, a
-     treadmill shock or exhaustion) is marked at the current time;
-   - an interval event (novel object exploration) is started with one press
-     and stopped with the next. Each label has its own button, for example
-     exploration of the **novel** and of the **familiar** object.
-
-   An event that can happen only once (a fall) is moved to the new time if you
-   score it again.
-5. The scored events appear on a timeline and in a list. Click an event to jump
-   to it, **Edit** its times or label, or **Delete** it.
-6. Under **Scored event types**, tick every event you watched for. A ticked
-   event that never happened counts as not observed (for example a pole trial
-   without a fall); an unticked one is reported as not scored.
-7. Click **Complete scoring** and confirm. Mişko computes the metrics from the
-   events and the result appears in the review queue as pending, like any
-   analysed result.
-
-To correct a completed scoring, click **Reopen for corrections**. It opens a new
-version with a copy of the events; completing it again adds a new run the
-reviewer can choose. The earlier version and its result are kept.
 
 Every result must be approved by a person before it counts. Open **Result
 review**:
@@ -372,8 +358,6 @@ review**:
 1. The list shows results waiting for review, filtered by experiment and status
    (pending, accepted, rejected, all). The filters are kept in the address.
 2. Click a row to open the analysed video, the quality checks and the metrics.
-   A scored result has no analysed video or calibration check; its metrics and
-   events are shown, and the video is watched in the scoring player.
 3. Click **Accept**, or choose a reason (tracking lost, wrong animal, video
    defect, protocol deviation, other), add a note and click **Reject**. The
    drawer then moves to the next pending result.

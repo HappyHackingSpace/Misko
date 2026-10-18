@@ -86,7 +86,7 @@ func TestRegisteredWorkersGetATokenOnce(t *testing.T) {
 	}
 	for name, capability := range map[string]domain.Capability{
 		"outside the catalog":              {ParadigmKey: "MAZE", ParadigmVersion: 1},
-		"not computable from a trajectory": {ParadigmKey: "POLE", ParadigmVersion: 1},
+		"not computable from a trajectory": {ParadigmKey: "UNTRACKED", ParadigmVersion: 1},
 	} {
 		store := &fakeStore{}
 		_, err := newService(store, &fakeObjects{}).RegisterWorker(ctx, manager, WorkerInput{Name: "x", ModelVersion: "m", Capabilities: []domain.Capability{capability}})
@@ -119,12 +119,12 @@ func TestTickEnqueuesReadyAnimalsAndSkipsFailures(t *testing.T) {
 			ready("ready", "MWM", "cal-1"),
 			ready("uncalibrated", "MWM", ""),
 			ready("broken", "MWM", "cal-2"),
-			ready("observed", "POLE", "cal-9"),
+			ready("untracked", "UNTRACKED", "cal-9"),
 			ready("no worker", "ZONED", "cal-3"),
 			ready("after", "MWM", "cal-4"),
 		},
 		failCreate:   map[string]error{"broken": errors.New("insert failed")},
-		capabilities: []domain.Capability{{ParadigmKey: "MWM", ParadigmVersion: 1}, {ParadigmKey: "POLE", ParadigmVersion: 1}, {ParadigmKey: "MAZE", ParadigmVersion: 1}},
+		capabilities: []domain.Capability{{ParadigmKey: "MWM", ParadigmVersion: 1}, {ParadigmKey: "UNTRACKED", ParadigmVersion: 1}, {ParadigmKey: "MAZE", ParadigmVersion: 1}},
 		expired:      []domain.Run{expired},
 	}
 	report, err := newService(store, &fakeObjects{}).Tick(ctx)
@@ -132,7 +132,7 @@ func TestTickEnqueuesReadyAnimalsAndSkipsFailures(t *testing.T) {
 		t.Fatalf("tick: %+v %v", report, err)
 	}
 	// The store is asked only for capabilities the catalog knows a worker can
-	// analyse (never an observer scored paradigm), and told which need a calibration.
+	// analyse from a trajectory, and told which need a calibration.
 	if !slices.Equal(store.askedCapabilities, []domain.Capability{{ParadigmKey: "MWM", ParadigmVersion: 1}}) ||
 		!slices.Equal(store.askedCalibrated, []domain.Capability{{ParadigmKey: "MWM", ParadigmVersion: 1}}) {
 		t.Fatalf("asked: %v %v", store.askedCapabilities, store.askedCalibrated)
@@ -147,7 +147,7 @@ func TestTickEnqueuesReadyAnimalsAndSkipsFailures(t *testing.T) {
 	if !slices.Equal(subjects, []string{"ready", "broken", "after"}) {
 		t.Fatalf("enqueue attempts: %v", subjects)
 	}
-	if store.created[0].CalibrationID != "cal-1" || store.created[2].CalibrationID != "cal-4" || store.created[0].Method != domain.Automated {
+	if store.created[0].CalibrationID != "cal-1" || store.created[2].CalibrationID != "cal-4" {
 		t.Fatalf("pinned calibrations: %+v", store.created)
 	}
 	var skipped []string
@@ -155,7 +155,7 @@ func TestTickEnqueuesReadyAnimalsAndSkipsFailures(t *testing.T) {
 		skipped = append(skipped, e.Error())
 	}
 	joined := strings.Join(skipped, "|")
-	for _, want := range []string{"capability MAZE v1", "capability POLE v1", "test subject observed", "test subject uncalibrated", "test subject broken: insert failed", "test subject no worker"} {
+	for _, want := range []string{"capability MAZE v1", "capability UNTRACKED v1", "test subject untracked", "test subject uncalibrated", "test subject broken: insert failed", "test subject no worker"} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("skipped %q missing from %v", want, skipped)
 		}
@@ -397,9 +397,9 @@ func TestTrajectoriesFailingQualityFailTheRun(t *testing.T) {
 	}
 }
 
-// fakeCatalog knows MWM (tracked), POLE (observer scored) and ZONED, a
-// hypothetical tracked paradigm with calibrated zones: no published paradigm
-// declares any, but the generic support for them is kept.
+// fakeCatalog knows MWM (tracked), UNTRACKED (a hypothetical version whose
+// metrics no trajectory can produce: no published paradigm is one, but the
+// generic guard is kept) and ZONED, a tracked paradigm with calibrated zones.
 type fakeCatalog struct {
 	parameters map[string]float64
 	samples    []domain.Sample
@@ -408,7 +408,7 @@ type fakeCatalog struct {
 }
 
 func (*fakeCatalog) Contract(key string, version int) (domain.Contract, error) {
-	if (key != "MWM" && key != "POLE" && key != "ZONED") || version != 1 {
+	if (key != "MWM" && key != "UNTRACKED" && key != "ZONED") || version != 1 {
 		return domain.Contract{}, ErrUnknownCapability
 	}
 	var zones []string
@@ -416,7 +416,7 @@ func (*fakeCatalog) Contract(key string, version int) (domain.Contract, error) {
 		zones = []string{"center", "lanes"}
 	}
 	return domain.Contract{
-		MetricEngineVersion: 1, ResultSchemaVersion: 1, CalibrationRequired: key != "POLE", TrajectoryAnalyzable: key != "POLE", RequiredZones: zones, ObserverScored: key == "POLE",
+		MetricEngineVersion: 1, ResultSchemaVersion: 1, CalibrationRequired: key != "UNTRACKED", TrajectoryAnalyzable: key != "UNTRACKED", RequiredZones: zones,
 		Metrics: []domain.MetricSpec{{Key: "path_length_cm", Unit: "cm", Max: 1e6}},
 		Events:  []domain.EventSpec{{Type: "in_platform", Kind: "INTERVAL"}},
 		QC:      []domain.QCRule{{Key: "max_lost_frame_ratio", Operator: "<=", Value: 0.5}},

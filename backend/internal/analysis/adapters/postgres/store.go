@@ -451,7 +451,7 @@ func (s *Store) Publish(ctx context.Context, run domain.Run, result domain.Resul
 	}
 	for _, e := range result.Events {
 		err := s.queries.CreateEvent(ctx, sqlcgen.CreateEventParams{
-			RunID: run.ID, Attempt: attempt, TestSubjectID: run.TestSubjectID, EventType: e.Type, Kind: e.Kind, StartUs: e.StartUs, EndUs: e.EndUs,
+			RunID: run.ID, Attempt: attempt, TestSubjectID: run.TestSubjectID, EventType: e.Type, Label: optional(e.Label), Kind: e.Kind, StartUs: e.StartUs, EndUs: e.EndUs,
 			Confidence: float32(e.Confidence), TrialID: optional(e.TrialID),
 		})
 		if err != nil {
@@ -475,7 +475,7 @@ func (s *Store) Published(ctx context.Context, runID string) (application.Publis
 		return out, fmt.Errorf("list events: %w", err)
 	}
 	for _, e := range events {
-		out.Events = append(out.Events, domain.Event{Type: e.EventType, Kind: e.Kind, StartUs: e.StartUs, EndUs: e.EndUs, Confidence: float64(e.Confidence), TrialID: value(e.TrialID)})
+		out.Events = append(out.Events, domain.Event{Type: e.EventType, Label: value(e.Label), Kind: e.Kind, StartUs: e.StartUs, EndUs: e.EndUs, Confidence: float64(e.Confidence), TrialID: value(e.TrialID)})
 	}
 	artifacts, err := s.queries.ListArtifacts(ctx, runID)
 	if err != nil {
@@ -554,7 +554,7 @@ func (s *Store) ReviewItems(ctx context.Context, f application.ReviewFilter) ([]
 			SubjectCode: r.SubjectCode, Excluded: r.Excluded, EnvironmentRevisionID: r.EnvironmentRevisionID, EnvironmentID: r.EnvironmentID,
 			EnvironmentName: r.EnvironmentName, EnvironmentRevision: int(r.EnvironmentRevision), TimepointID: r.TimepointID, TimepointName: r.TimepointName,
 			ParadigmKey: r.ParadigmKey, ParadigmVersion: int(r.ParadigmVersion), ScheduledAt: r.ScheduledAt.UTC(),
-			Run: application.ReviewRun{ID: r.RunID, Trigger: r.Trigger, Method: r.Method, ScoredBy: value(r.ScoredBy), ModelVersion: value(r.ModelVersion), CalibrationID: value(r.CalibrationID),
+			Run: application.ReviewRun{ID: r.RunID, Trigger: r.Trigger, ModelVersion: value(r.ModelVersion), CalibrationID: value(r.CalibrationID),
 				RecordingID: r.RecordingID, MetricEngineVersion: int(r.MetricEngineVersion), FinishedAt: utc(r.FinishedAt)},
 			LatestRunID: r.LatestRunID,
 			Group: &application.ReviewGroup{ID: r.GroupID, Code: r.GroupCode, Name: r.GroupName, Role: r.GroupRole, DiseaseModelName: value(r.DiseaseModelName),
@@ -627,7 +627,6 @@ func toRun(r sqlcgen.MiskoAnalysisRun) (domain.Run, error) {
 			CalibrationID: value(r.CalibrationID), ParadigmKey: r.ParadigmKey, ParadigmVersion: int(r.ParadigmVersion), Parameters: params,
 		},
 		MetricEngineVersion: int(r.MetricEngineVersion), ResultSchemaVersion: int(r.ResultSchemaVersion), Trigger: domain.Trigger(r.Trigger),
-		Method: domain.Method(r.Method), ScoredBy: value(r.ScoredBy),
 		Status: domain.Status(r.Status), Attempt: int(r.Attempt), MaxAttempts: int(r.MaxAttempts), WorkerID: value(r.WorkerID),
 		LeaseExpiresAt: utc(r.LeaseExpiresAt), AvailableAt: r.AvailableAt.UTC(), ModelVersion: value(r.ModelVersion),
 		FailureReason: value(r.FailureReason), CreatedBy: value(r.CreatedBy), CreatedAt: r.CreatedAt.UTC(), FinishedAt: utc(r.FinishedAt),

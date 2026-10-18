@@ -21,12 +21,45 @@
       "key": "pole_length_cm",
       "scope": "APPARATUS",
       "label": "Pole length",
-      "help": "Length of the pole from the top, where the animal is placed, to the base.",
+      "help": "Length of the pole from the top, where the subject is placed, to the base.",
       "unit": "cm",
       "valueType": "number",
       "min": 30,
       "max": 100,
       "default": 50
+    },
+    {
+      "key": "turn_descent_cm",
+      "scope": "ANALYSIS",
+      "label": "Turn descent",
+      "help": "Net downward movement from the highest point on the pole that marks the completed turn.",
+      "unit": "cm",
+      "valueType": "number",
+      "min": 0.5,
+      "max": 20,
+      "default": 2
+    },
+    {
+      "key": "fall_speed_cm_s",
+      "scope": "ANALYSIS",
+      "label": "Fall speed",
+      "help": "Downward speed above which leaving the pole counts as a fall rather than a descent.",
+      "unit": "cm_s",
+      "valueType": "number",
+      "min": 10,
+      "max": 1000,
+      "default": 80
+    },
+    {
+      "key": "max_sample_gap_s",
+      "scope": "ANALYSIS",
+      "label": "Maximum tracking gap",
+      "help": "Longest tracking dropout that is bridged; movement across a longer gap is excluded. Increase only for low-frame-rate videos.",
+      "unit": "s",
+      "valueType": "number",
+      "min": 0.01,
+      "max": 5,
+      "default": 0.5
     },
     {
       "key": "max_trial_duration_s",
@@ -40,57 +73,49 @@
       "default": 60
     }
   ],
-  "zones": [],
-  "inputEvents": [
+  "zones": [
     {
-      "type": "turn_complete",
-      "label": "Turn completed",
-      "kind": "POINT",
-      "labels": [],
-      "single": true,
-      "definition": "The animal has turned to face downward."
+      "key": "pole",
+      "label": "Pole",
+      "role": "POLE",
+      "geometry": "Polygon drawn on the side view around the pole where the subject climbs, from the base to the top.",
+      "calibrated": true,
+      "required": true
     },
     {
-      "type": "base_reached",
-      "label": "Base reached",
-      "kind": "POINT",
-      "labels": [],
-      "single": true,
-      "definition": "All four paws have reached the base."
-    },
-    {
-      "type": "fall",
-      "label": "Fall",
-      "kind": "POINT",
-      "labels": [],
-      "single": true,
-      "definition": "The animal falls off the pole."
+      "key": "base",
+      "label": "Base",
+      "role": "BASE",
+      "geometry": "Polygon drawn on the side view over the floor area at the foot of the pole.",
+      "calibrated": true,
+      "required": true
     }
   ],
+  "inputEvents": [],
   "events": [
     {
       "type": "turn_complete",
       "label": "Turn completed",
       "kind": "POINT",
       "labels": [],
-      "single": false,
-      "definition": "Scored turn, passed through unchanged."
+      "single": true,
+      "definition": "A sample is on the pole when it lies in the pole zone and not in the base zone. The turn completes at the first tracked sample on the pole that is at least turn_descent_cm below the highest sample on the pole so far, before the base is reached or a fall."
     },
     {
       "type": "base_reached",
       "label": "Base reached",
       "kind": "POINT",
       "labels": [],
-      "single": false,
-      "definition": "Scored arrival at the base, passed through unchanged."
+      "single": true,
+      "definition": "The base is reached at the first tracked sample in the base zone after a sample on the pole, unless the subject fell first."
     },
     {
       "type": "fall",
       "label": "Fall",
       "kind": "POINT",
       "labels": [],
-      "single": false,
-      "definition": "Scored fall, passed through unchanged."
+      "single": true,
+      "definition": "A fall is a pair of consecutive tracked samples, at most max_sample_gap_s apart, from on the pole to the base or off the pole, with a downward speed above fall_speed_cm_s; it is placed at the later sample."
     }
   ],
   "metrics": [
@@ -100,11 +125,16 @@
       "description": "Time taken to turn head-downward; longer times suggest bradykinesia.",
       "unit": "s",
       "valueType": "number",
-      "definition": "Time of the turn_complete event, measured from the trial start.",
+      "definition": "Coordinates are in centimeters in the calibration's side view of the rig: x horizontal and y the height above the base (base at y = 0, top of the pole at y = pole_length_cm). Samples after max_trial_duration_s are ignored. A counted interval is a pair of consecutive tracked samples separated by 0 \u003c dt \u003c= max_sample_gap_s. Time of the turn_complete event, measured from the trial start.",
       "formula": "turn_complete time",
-      "missingWhen": "Missing (NOT_SCORED) when the event was not scored, or (EVENT_NOT_OBSERVED) when it did not occur.",
+      "missingWhen": "Missing (NO_VALID_INTERVALS) when there are no counted intervals, or (EVENT_NOT_OBSERVED) when the event did not occur by max_trial_duration_s.",
       "inputs": [
-        "turn_complete event"
+        "samples",
+        "max_sample_gap_s",
+        "max_trial_duration_s",
+        "pole zone",
+        "base zone",
+        "turn_descent_cm"
       ],
       "min": 0,
       "max": 120,
@@ -113,14 +143,19 @@
     {
       "key": "t_total_s",
       "label": "Total time (T-total)",
-      "description": "Time from the start of the trial until the animal reaches the base.",
+      "description": "Time from the start of the trial until the subject reaches the base.",
       "unit": "s",
       "valueType": "number",
       "definition": "Time of the base_reached event, measured from the trial start. The cut-off time is not imputed.",
       "formula": "base_reached time",
-      "missingWhen": "Missing (NOT_SCORED) when the event was not scored, or (EVENT_NOT_OBSERVED) when it did not occur.",
+      "missingWhen": "Missing (NO_VALID_INTERVALS) when there are no counted intervals, or (EVENT_NOT_OBSERVED) when the event did not occur by max_trial_duration_s.",
       "inputs": [
-        "base_reached event"
+        "samples",
+        "max_sample_gap_s",
+        "max_trial_duration_s",
+        "pole zone",
+        "base zone",
+        "fall_speed_cm_s"
       ],
       "min": 0,
       "max": 120,
@@ -136,8 +171,13 @@
       "formula": "t_total_s - t_turn_s",
       "missingWhen": "Missing, for the same reason as the first missing event.",
       "inputs": [
-        "turn_complete event",
-        "base_reached event"
+        "samples",
+        "max_sample_gap_s",
+        "max_trial_duration_s",
+        "pole zone",
+        "base zone",
+        "turn_descent_cm",
+        "fall_speed_cm_s"
       ],
       "min": 0,
       "max": 120,
@@ -153,8 +193,13 @@
       "formula": "pole_length_cm / descent_time_s",
       "missingWhen": "Missing (ZERO_DENOMINATOR) when the descent time is 0; otherwise missing for the same reason as descent_time_s.",
       "inputs": [
-        "turn_complete event",
-        "base_reached event",
+        "samples",
+        "max_sample_gap_s",
+        "max_trial_duration_s",
+        "pole zone",
+        "base zone",
+        "turn_descent_cm",
+        "fall_speed_cm_s",
         "pole_length_cm"
       ],
       "min": 0,
@@ -164,14 +209,19 @@
     {
       "key": "fall_detected",
       "label": "Fall detected",
-      "description": "Whether the animal fell off the pole.",
+      "description": "Whether the subject fell off the pole.",
       "unit": "boolean",
       "valueType": "integer",
-      "definition": "1 if a fall was recorded; 0 if falls were scored and none occurred.",
+      "definition": "1 if a fall event occurred by max_trial_duration_s, otherwise 0.",
       "formula": "fall observed",
-      "missingWhen": "Missing (NOT_SCORED) when falls were not scored.",
+      "missingWhen": "Missing (NO_VALID_INTERVALS) when there are no counted intervals.",
       "inputs": [
-        "fall event"
+        "samples",
+        "max_sample_gap_s",
+        "max_trial_duration_s",
+        "pole zone",
+        "base zone",
+        "fall_speed_cm_s"
       ],
       "min": 0,
       "max": 1,
@@ -180,10 +230,22 @@
   ],
   "qc": [
     {
-      "key": "max_event_time_uncertainty_s",
+      "key": "min_tracking_confidence",
+      "operator": "\u003e=",
+      "value": 0.7,
+      "unit": "ratio"
+    },
+    {
+      "key": "max_lost_frame_ratio",
       "operator": "\u003c=",
-      "value": 0.5,
-      "unit": "s"
+      "value": 0.1,
+      "unit": "ratio"
+    },
+    {
+      "key": "max_calibration_error_cm",
+      "operator": "\u003c=",
+      "value": 2,
+      "unit": "cm"
     }
   ]
 }

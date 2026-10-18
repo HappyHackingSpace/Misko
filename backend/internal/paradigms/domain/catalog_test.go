@@ -13,11 +13,15 @@ var fourKeys = []string{"MWM", "NOVEL_OBJECT", "POLE", "TREADMILL"}
 // minimalInputs are valid inputs that produce every metric of each paradigm.
 func minimalInputs() map[string]Input {
 	return map[string]Input{
-		"MWM":          {Samples: []Sample{sample(0, 0, 0), sample(0.5, 30, 30), sample(1, 30, 31), sample(1.5, 30, 30)}},
-		"NOVEL_OBJECT": {ScoredEvents: []string{"exploration"}, Events: []ObservedEvent{span("exploration", "novel", 1, 3), span("exploration", "familiar", 4, 5)}},
-		"POLE": {ScoredEvents: []string{"turn_complete", "base_reached", "fall"},
-			Events: []ObservedEvent{mark("turn_complete", 1), mark("base_reached", 4)}},
-		"TREADMILL": {ScoredEvents: []string{"exhaustion", "shock"}, Events: []ObservedEvent{mark("shock", 10), mark("exhaustion", 60)}},
+		"MWM": {Samples: []Sample{sample(0, 0, 0), sample(0.5, 30, 30), sample(1, 30, 31), sample(1.5, 30, 30)}},
+		// Novel [0, 1.5) and familiar [1.5, 2.5).
+		"NOVEL_OBJECT": {Zones: objectZones, Samples: samples(steady(0, 1, 0.5, 10, 10), steady(1.5, 2, 0.5, 40, 10), steady(2.5, 2.5, 1, 25, 10))},
+		// Turn at 1.5 s (2 cm below the 47 cm peak), base at 3.5 s.
+		"POLE": {Zones: poleZones, Samples: []Sample{sample(0, 0, 45), sample(0.5, 0, 47), sample(1, 0, 46), sample(1.5, 0, 45),
+			sample(2, 0, 35), sample(2.5, 0, 20), sample(3, 0, 8), sample(3.5, 0, 0.5)}},
+		// A shock at 10 s and exhaustion from 20 s on.
+		"TREADMILL": {Zones: gridZones, DurationUs: at(30), Samples: samples(steady(0, 9.5, 0.5, 20, 3), steady(10, 10, 1, 2, 3),
+			steady(10.5, 19.5, 0.5, 20, 3), steady(20, 26, 0.5, 2, 3), steady(26.5, 30, 0.5, 20, 3))},
 	}
 }
 
@@ -32,12 +36,12 @@ func TestCatalogReturnsCopies(t *testing.T) {
 	p.Parameters[0].Max = -1
 	p.TrialTypes[0].Key = "hacked"
 	p.Zones[0].Key = "hacked"
-	scored, err := Latest("NOVEL_OBJECT")
+	labelled, err := Latest("NOVEL_OBJECT")
 	if err != nil {
 		t.Fatal(err)
 	}
-	scored.InputEvents[0].Type = "hacked"
-	scored.InputEvents[0].Labels[0] = "hacked"
+	labelled.Events[0].Type = "hacked"
+	labelled.Events[0].Labels[0] = "hacked"
 	all := All()
 	all[0].Name.EN = "hacked"
 	all[0].Zones = nil
@@ -52,8 +56,8 @@ func TestCatalogReturnsCopies(t *testing.T) {
 		fresh.Parameters[0].Max == -1 || fresh.TrialTypes[0].Key == "hacked" || fresh.Zones[0].Key == "hacked" {
 		t.Fatal("caller mutated the registry")
 	}
-	if fresh, _ := Version("NOVEL_OBJECT", 1); fresh.InputEvents[0].Type == "hacked" || fresh.InputEvents[0].Labels[0] == "hacked" {
-		t.Fatal("caller mutated the observed events")
+	if fresh, _ := Version("NOVEL_OBJECT", 1); fresh.Events[0].Type == "hacked" || fresh.Events[0].Labels[0] == "hacked" {
+		t.Fatal("caller mutated the events")
 	}
 	if again := All(); again[0].Name.EN == "hacked" || len(again[0].Zones) == 0 {
 		t.Fatal("caller mutated All()")
@@ -111,12 +115,15 @@ func TestEveryContractMatchesItsEngine(t *testing.T) {
 					t.Errorf("zone %+v", z)
 				}
 			}
-			kinds := map[string]EventKind{}
-			for _, e := range append(slices.Clone(p.Events), p.InputEvents...) {
+			for _, e := range p.Events {
 				if e.Definition.EN == "" || (e.Kind != IntervalEvent && e.Kind != PointEvent) {
 					t.Errorf("event %+v", e)
 				}
-				kinds[e.Type] = e.Kind
+			}
+			// Every paradigm is analysed from a tracked trajectory.
+			if !slices.ContainsFunc(p.Metrics, func(m MetricDefinition) bool { return slices.Contains(m.Inputs, "samples") }) ||
+				!slices.Contains(p.QC, QCRule{Key: "max_calibration_error_cm", Operator: "<=", Value: 2, Unit: Centimeter}) {
+				t.Errorf("%s is not a tracked paradigm", p.Key)
 			}
 			in, ok := inputs[p.Key]
 			if !ok {
@@ -134,18 +141,27 @@ func TestEveryContractMatchesItsEngine(t *testing.T) {
 					t.Errorf("minimal input left %s missing (%s)", m.Key, m.Reason)
 				}
 			}
-			outputs := map[string]EventKind{}
+			outputs := map[string]EventDefinition{}
 			for _, e := range p.Events {
-				outputs[e.Type] = e.Kind
+				outputs[e.Type] = e
 			}
+			produced := map[string]int{}
 			for _, i := range r.Intervals {
-				if outputs[i.Type] != IntervalEvent {
-					t.Errorf("interval %s not declared", i.Type)
+				def := outputs[i.Type]
+				if def.Kind != IntervalEvent || (len(def.Labels) == 0) != (i.Label == "") || (i.Label != "" && !slices.Contains(def.Labels, i.Label)) {
+					t.Errorf("interval %+v not declared", i)
 				}
+				produced[i.Type]++
 			}
 			for _, pt := range r.Points {
-				if outputs[pt.Type] != PointEvent {
+				if outputs[pt.Type].Kind != PointEvent {
 					t.Errorf("point %s not declared", pt.Type)
+				}
+				produced[pt.Type]++
+			}
+			for _, e := range p.Events {
+				if e.Single && produced[e.Type] > 1 {
+					t.Errorf("single event %s produced %d times", e.Type, produced[e.Type])
 				}
 			}
 		})
@@ -167,6 +183,9 @@ func TestCatalogTextIsCompleteAndReadable(t *testing.T) {
 					}
 					if short && strings.Contains(value, "_") {
 						t.Errorf("%s: %s label looks like a key: %q", what, lang, value)
+					}
+					if lang == "tr" && strings.Contains(strings.ToLower(value), "hayvan") {
+						t.Errorf("%s: Turkish text calls the subject hayvan instead of denek: %q", what, value)
 					}
 					if strings.ContainsRune(value, '\u2014') {
 						t.Errorf("%s: %s text uses an em dash", what, lang)
@@ -197,7 +216,7 @@ func TestCatalogTextIsCompleteAndReadable(t *testing.T) {
 				check("zone "+z.Key, z.Label, true)
 				check("zone geometry "+z.Key, z.Geometry, false)
 			}
-			for _, e := range append(slices.Clone(p.Events), p.InputEvents...) {
+			for _, e := range p.Events {
 				check("event "+e.Type, e.Label, true)
 				check("event definition "+e.Type, e.Definition, false)
 			}

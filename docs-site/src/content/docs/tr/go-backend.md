@@ -26,8 +26,7 @@ Canlıya almayın.
 | Arenalarda bir veya birden çok denekle oturum olarak testler, denemeler ve yorumlar | Hazır |
 | Google Cloud Storage'a video yükleme, test başına tek güncel video | Hazır, gerçek depolama testi bekliyor |
 | Arena başına kalibrasyon ve denek başına düzeltme | Hazır |
-| Denek başına analiz çalıştırmaları ve her sonucun insan onayı | Hazır; worker su labirentini (`MWM`) izler, yalnızca sentetik videoyla test edildi |
-| Direk, koşu bandı ve yeni nesne için gözlemci puanlaması | Hazır |
+| Denek başına analiz çalıştırmaları ve her sonucun insan onayı | Dört paradigma için hazır; worker yalnızca sentetik videoyla test edildi |
 | Rol tabanlı karşılaştırmalarla çalışma raporu, CSV dışa aktarma, gösterge paneli | Hazır |
 | Yeni API üzerinde Vue paneli | İskeleti var, tamamlanmadı |
 
@@ -291,9 +290,10 @@ tanımlıdır; API üzerinden oluşturulamaz, düzenlenemez veya silinemez.
 - `GET /api/paradigms`, paradigmaları yayınlanmış sürümleriyle listeler. Dört
   paradigma yayınlanmıştır: `MWM`, `NOVEL_OBJECT`, `POLE` ve `TREADMILL`; iki
   kategoride toplanırlar (`MWM` ve `NOVEL_OBJECT` için `LEARNING_MEMORY`, `POLE`
-  ve `TREADMILL` için `MOTOR`). Paradigma sürümü için bir worker kaydedildiğinde
-  `MWM` bu analiz worker'ı tarafından takip edilir. Diğer üçü (`NOVEL_OBJECT`, `POLE`, `TREADMILL`) videoda bir gözlemci
-  tarafından puanlanır (aşağıdaki Gözlemci puanlaması bölümüne bakın).
+  ve `TREADMILL` için `MOTOR`). Her paradigma otomatik analiz edilir:
+  paradigma sürümü için bir worker kaydedildiğinde analiz worker'ı deneği
+  videoda takip eder, Mişko her olayı ve metriği türetir ve bir kişi yalnızca
+  sonucu inceler. Gözlemci puanlaması yoktur.
 - `GET /api/paradigms/{key}` en son sürümü, `GET /api/paradigms/{key}/versions/{version}`
   ise belirli bir sürümü döndürür. Her sürüm; parametrelerini kapsamı (ortamda
   `APPARATUS` ve `ANALYSIS`, protokol adımında `SESSION`), etiketi, yardım metni,
@@ -302,14 +302,20 @@ tanımlıdır; API üzerinden oluşturulamaz, düzenlenemez veya silinemez.
   olduğunda ne olacağını listeler. Adlar, etiketler ve açıklamalar `?lang=` ya da
   `Accept-Language` ile (`en` veya `tr`) seçilir.
 
-Bazı paradigmalar izlenen bir konumdan fazlasına ihtiyaç duyar:
+Her paradigma deneğin takip edilen konumundan ve bölgelerinden ölçülür:
 
-- Su labirenti platformu gibi bölgeler düzenek parametrelerinden gelir. Bir
-  paradigma daire ya da çokgen olarak çizilen `calibrated` işaretli bölgeler de
-  tanımlayabilir; güncel katalogdaki hiçbir paradigma bunu kullanmaz.
-- `inputEvents`, izlenmek yerine puanlanan gözlemleri listeler; örneğin direk
-  testinde dönüşler, koşu bandında tükenme veya yeni nesne keşfi. Puanlanmamış bir olay
-  türü sıfır değil, eksik metrik üretir.
+- Su labirenti bölgelerini düzenek parametrelerinden türetir (platform, hedef
+  çeyrek, duvar kenarı bölgesi). Diğer paradigmalar kalibrasyonla daire ya da
+  çokgen olarak çizilen `calibrated` işaretli bölgeler tanımlar: yeni ve
+  tanıdık nesne (`novel_object`, `familiar_object`), direk ve tabanı (`pole`,
+  `base`) ve koşu bandının şok ızgarası (`shock_grid`).
+- `events`, Mişko'nun konumlardan ve bölgelerden türettiklerini listeler:
+  `novel` ya da `familiar` etiketli keşif dönemleri, direkte dönüş, tabana
+  ulaşma ve düşme, koşu bandında şoklar ve tükenme, su labirentinde platform
+  ziyaretleri. Her kural eşiği (en kısa keşif dönemi, dönüş için iniş, düşme
+  hızı, şok ya da tükenme için ızgarada kalma süresi) standart varsayılanı olan
+  ve laboratuvarın ortam başına değiştirebileceği bir `ANALYSIS`
+  parametresidir. `inputEvents` her zaman boştur.
 
 Sonuçlar her zaman hesaplandıkları paradigma sürümünü, metrik motoru sürümünü ve
 sonuç şeması sürümünü belirtir. Hesaplanamayan bir metrik hiçbir zaman sıfır
@@ -435,14 +441,18 @@ gerekir.
 - İki tür de aynı noktaları alır: en az 4 FIT noktası ve en az 3 ayrı CHECK
   noktası; her biri piksel konumu ve santimetre cinsinden gerçek konumuyla. FIT
   noktaları dönüşümü belirler, CHECK noktaları onu sınar. Bir CHECK noktası
-  paradigmanın izin verdiğinden fazla saparsa (yörünge paradigmaları için 2 cm)
-  kalibrasyon `REJECTED` olarak kaydedilir.
-- `calibrated` bölgeleri olan bir paradigma (güncel katalogda böyle bir
-  paradigma yoktur) bu bölgelerin aynı kare üzerinde çizilmesini de ister.
-  Bunları piksel cinsinden `zones` olarak gönderin; örneğin
-  `{"key": "zone_a", "polygon": [{"x": 300, "y": 480}, ...]}` ya da
-  `{"key": "zone_b", "circle": {"x": 960, "y": 540, "radius": 60}}`. Bir
-  anahtarın birden çok şekli olabilir. Her zorunlu bölgenin bir
+  paradigmanın izin verdiğinden fazla saparsa (2 cm) kalibrasyon `REJECTED`
+  olarak kaydedilir. Ölçüm düzlemi `ARENA_FLOOR`, `WATER_SURFACE`,
+  `APPARATUS_TOP` ya da yandan çekilen düzenekler (direk ve koşu bandı
+  kulvarı) için `APPARATUS_SIDE` olur.
+- `calibrated` bölgeleri olan bir paradigma (yeni nesne, direk, koşu bandı) bu
+  bölgelerin aynı kare üzerinde çizilmesini de ister. Bunları piksel cinsinden
+  `zones` olarak gönderin; örneğin
+  `{"key": "base", "polygon": [{"x": 300, "y": 480}, ...]}` ya da
+  `{"key": "novel_object", "circle": {"x": 960, "y": 540, "radius": 60}}`. Bir
+  anahtarın birden çok şekli olabilir. Zorunlu bir bölge eksikse kalibrasyon
+  reddedilir (`calibration.missingZone`). Test videosundaki denek başına bir
+  düzeltme kendi bölgelerini taşır; örneğin yeni nesne diğer taraftaysa. Her zorunlu bölgenin bir
   şekli olmalı ve her şekil karenin içinde kalmalıdır. Misko bunları kalibrasyonla
   santimetreye çevirir ve her bölgeyi iki birimde de döndürür. Worker bölgeleri
   işiyle birlikte alır; metrikler santimetre şekilleriyle hesaplanır. Panelde
@@ -453,8 +463,12 @@ gerekir.
 - Dünya noktaları, paradigmanın bölgelerinin tanımlandığı çerçeveyi kullanmalıdır.
   Su labirentinde bu çerçeve tank merkezlidir: (0, 0) tankın merkezi, x doğuyu,
   y kuzeyi gösterir; duvar noktaları r = tank çapı / 2 olmak üzere (r, 0),
-  (0, r), (-r, 0) ve (0, -r) olur. Kalibre edilen bölgeleri olan bir paradigma
-  herhangi bir çerçeveyi kullanabilir.
+  (0, r), (-r, 0) ve (0, -r) olur. Yeni nesne arenası yukarıdan görülür;
+  başlangıç noktası zeminin bir köşesidir, x görüntüde sağa, y aşağıya doğrudur
+  ve noktalar arenanın içinde kalır. Direk yandan görülür; x yatay, y tabandan
+  yüksekliktir (taban 0, tepe direk uzunluğu). Koşu bandı da yandan görülür; x
+  kulvar boyunca şok ızgarasından (0) öne doğrudur. Düzeneğin doğrusal olmayan
+  en az dört noktasını kullanın.
 - Bir kalibrasyonu düzeltmek için, `supersedesId` alanına aynı arenanın ya da
   deneğin en son kalibrasyonunu yazarak yeni bir kalibrasyon gönderin. Önceki
   kalibrasyonlar saklanır.
@@ -466,16 +480,16 @@ gerekir.
 ### Video analizi
 
 Takip, API ile konuşan ayrı analiz worker'larında çalışır. `worker/`
-klasöründeki worker, takip edilen paradigmanın, `MWM` sürüm 1'in, sabit
-kameradan kaydedilmiş videosunu izler. Şimdiye kadar yalnızca
+klasöründeki worker, her paradigmanın sürüm 1'inde sabit kameradan kaydedilmiş
+videoda deneğin ağırlık merkezini izler. Şimdiye kadar yalnızca
 sentetik videoyla test edildi; elle işaretlenmiş bir kayda karşı doğrulanana
 kadar sonuçlarını araştırmada kullanmayın.
 
 - LAB_MANAGER bir worker'ı `POST /api/analysis/workers` ile kaydeder; adını, model
   sürümünü ve desteklediği paradigma sürümlerini verir. Paketle gelen worker'ı
-  `misko-tracker-bgsub 2.0.0` model sürümüyle ve `MWM` sürüm 1 ile
-  kaydedin (bkz. [Kurulum](../installation/)). Gözlemci
-  puanlamalı paradigmalar `worker.unknownCapability` ile reddedilir. Yanıt
+  desteklediği paradigmaların sürüm 1'iyle kaydedin (bkz.
+  [Kurulum](../installation/)). Katalog dışındaki sürümler
+  `worker.unknownCapability` ile reddedilir. Yanıt
   worker'ın token'ını yalnızca bir kez gösterir; bunu worker'ın gizli
   yapılandırmasında saklayın. `POST /api/analysis/workers/{id}/disable` token'ı iptal eder.
   Worker'ı `MISKO_WORKER_TOKEN` ayarlıyken başlatın, örneğin
@@ -483,9 +497,8 @@ kadar sonuçlarını araştırmada kullanmayın.
 - `jobs` süreci her `JOB_INTERVAL` aralığında (varsayılan 10 saniye) bir
   testteki her denek için bir çalıştırma kuyruğa alır: deney çalışıyor veya
   tamamlanmış, denek dışlanmamış, testin videosu doğrulanmış, deneğin
-  kalibrasyonu (paradigma gerektiriyorsa) geçerli ve paradigmayı destekleyen bir
-  worker varsa. Gözlemci puanlamalı paradigmalar asla böyle bir çalıştırma
-  almaz.
+  kalibrasyonu her zorunlu bölgesiyle geçerli ve paradigmayı destekleyen bir
+  worker varsa.
 - Worker deneği her karede arenasının kırpma alanında bulur, konumunu
   santimetreye çevirir ve konumları (yörüngeyi) ve işaretlenmiş bir videoyu
   yükler. Deneğin grubunu veya tedavisini hiç öğrenmez. Mişko her metriği ve
@@ -495,9 +508,6 @@ kadar sonuçlarını araştırmada kullanmayın.
   olarak işaretleyebilir (isteğe bağlı `inferred` alanı), örneğin denek
   gizliyken: takip edilmiş sayılırlar ama güven ortalamasına
   girmezler. Paketle gelen worker böyle örnek göndermez.
-- Her çalıştırmanın bir `method` alanı vardır: worker çalıştırması için
-  `AUTOMATED`, bir gözlemcinin puanlamasından hesaplanan çalıştırma için
-  `SCORED` (`scoredBy` ile; worker, kalibrasyon ve video çifti olmadan).
 - Bir çalıştırma neyin analiz edildiğini tam olarak kaydeder: video sürümü, klip,
   kalibrasyon, paradigma sürümü ve parametreler. Bir deneği yeniden analiz
   etmek için TECHNICIAN (veya üstü bir rol)
@@ -509,36 +519,10 @@ kadar sonuçlarını araştırmada kullanmayın.
   süreli bağlantıları, ikisini eş zamanlı oynatmak için gereken kaymalarla
   döndürür.
 
-### Gözlemci puanlaması
-
-Direk, koşu bandı ve yeni nesne testleri testin güncel videosunda bir
-kişi tarafından puanlanır. TECHNICIAN ve üstü roller puanlayabilir; giriş yapmış
-herkes okuyabilir.
-
-- `GET /api/tests/{id}/subjects/{testSubjectId}/scoring` paradigmanın girdi
-  olaylarını (tür, `POINT` ya da `INTERVAL`, `novel` ve `familiar` gibi
-  etiketler, bir kez puanlanıp puanlanmadığı), güncel videonun klibini ve en
-  yeni puanlama sayfasını olaylarıyla döndürür.
-- `POST .../scoring/events`, `{type, label?, startUs, endUs?}` ile taslak
-  sayfaya bir olay ekler (ilk olay sürüm 1'i başlatır). Zamanlar klip
-  başlangıcından itibaren mikrosaniyedir. `PATCH .../events/{eventId}` bir olayı
-  değiştirir, `DELETE` kaldırır.
-- `POST .../scoring/complete`, `{scoredEventTypes?, durationUs?}` ile hangi olay
-  türlerinin izlendiğini (varsayılan hepsi) ve kayıt uzunluğunu (varsayılan
-  klip) sabitler. Motor metrikleri hesaplar ve `SCORED` yöntemli `SUCCEEDED` bir
-  çalıştırma saklanır; sonucu diğerleri gibi onay kuyruğunda `PENDING` olarak
-  açılır.
-- `POST .../scoring/reopen`, olayların bir kopyasıyla bir sonraki sayfa
-  sürümünü başlatır; tamamlanması, inceleyenin seçebileceği başka bir
-  çalıştırma ekler. Tamamlanmış sayfalar asla değişmez.
-- Puanlama için test sürüyor ya da tamamlanmış, deney çalışıyor, denek
-  dışlanmamış ve video doğrulanmış olmalıdır.
-
 ### Onay
 
 Her sonuç sayılmadan önce bir kişi tarafından onaylanır. Bir deneğin ilk
-başarılı çalıştırması, otomatik ya da puanlanmış, sonucunu `PENDING` olarak
-açar.
+başarılı çalıştırması sonucunu `PENDING` olarak açar.
 
 - `GET /api/analysis/results` onay kuyruğudur (`status`, `experimentId`). Kör
   bir deneyde grup, hastalık, madde veya doz göstermez.

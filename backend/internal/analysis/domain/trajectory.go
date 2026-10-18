@@ -185,7 +185,8 @@ func holds(measured float64, operator string, limit float64) bool {
 // Interval and Point are events computed by the metric engine, in microseconds
 // from the recording start.
 type Interval struct {
-	Type           string
+	// Label is set when the paradigm's event type declares labels.
+	Type, Label    string
 	StartUs, EndUs int64
 }
 
@@ -207,13 +208,13 @@ type Computed struct {
 func (t Track) Events(c Computed) []Event {
 	out := make([]Event, 0, len(c.Intervals)+len(c.Points))
 	for _, i := range c.Intervals {
-		out = append(out, Event{Type: i.Type, Kind: "INTERVAL", StartUs: i.StartUs, EndUs: i.EndUs, Confidence: t.confidence(i.StartUs, i.EndUs)})
+		out = append(out, Event{Type: i.Type, Label: i.Label, Kind: "INTERVAL", StartUs: i.StartUs, EndUs: i.EndUs, Confidence: t.confidence(i.StartUs, i.EndUs)})
 	}
 	for _, p := range c.Points {
 		out = append(out, Event{Type: p.Type, Kind: "POINT", StartUs: p.AtUs, EndUs: p.AtUs, Confidence: t.confidence(p.AtUs, p.AtUs)})
 	}
 	slices.SortStableFunc(out, func(a, b Event) int {
-		return cmp.Or(cmp.Compare(a.StartUs, b.StartUs), strings.Compare(a.Type, b.Type))
+		return cmp.Or(cmp.Compare(a.StartUs, b.StartUs), strings.Compare(a.Type, b.Type), strings.Compare(a.Label, b.Label))
 	})
 	return out
 }

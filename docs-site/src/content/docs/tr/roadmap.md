@@ -127,7 +127,7 @@ düzenek `Environment`'tır; kalibrasyon Adım 5'te kalır.
 
 - Opsiyonel pose-estimation adapter'ı: DeepLabCut, SLEAP veya başka açık kaynak model.
 - Rearing, grooming, freezing, risk assessment ve head direction classifier'ları.
-- Gözlemci puanlamalı olayların otomatik tespiti (direk testinde dönüş ve düşme, yeni nesne keşfi).
+- Vücut merkezinin yetmediği yerlerde poza dayalı olay tespiti (burnu nesneye yönelik yeni nesne keşfi, baş yönünden direkte dönüş).
 - Single-animal iş akışları stabil olduktan sonra multi-animal desteği.
 
 ## Adım 10 - Canlı izleme ve kaynaklar
