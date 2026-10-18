@@ -1,4 +1,5 @@
-"""MWM, the one tracked paradigm, on a synthetic recording of the full apparatus.
+"""MWM on a synthetic recording of the full apparatus (the other paradigms are
+in test_zoned_paradigms.py).
 
 Tolerances (see tests/scenes.py; about 2 px/cm, 40 to 50 grey levels of
 contrast, ripples and moving reflections): mean error <= 0.8 cm, maximum <= 3 cm.
@@ -14,7 +15,7 @@ import av
 import numpy as np
 import pytest
 
-from misko_worker.paradigms import SUPPORTED, TankLayout, layout
+from misko_worker.paradigms import TankLayout, layout
 from misko_worker.pipeline import analyze, check_supported, trajectory_document
 from tests import scenes, synthetic
 
@@ -24,12 +25,11 @@ def observed_errors(analysis, truth):
     return [math.hypot(s.x_cm - by_time[s.t_us].x, s.y_cm - by_time[s.t_us].y) for s in analysis.samples if s.tracked and not s.inferred]
 
 
-def test_only_mwm_is_supported() -> None:
-    assert SUPPORTED == {("MWM", 1)}
+def test_mwm_has_a_tank_layout_and_unknown_paradigms_none() -> None:
     job = synthetic.job()
     check_supported(job)
     assert layout(job).key == "MWM"
-    job["run"]["paradigmKey"] = "NOVEL_OBJECT"
+    job["run"]["paradigmKey"] = "ROTAROD"
     with pytest.raises(ValueError):
         layout(job)
 
