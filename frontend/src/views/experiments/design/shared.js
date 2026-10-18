@@ -6,7 +6,8 @@ import { useRoute, useRouter } from "vue-router";
 import { paradigmCatalog } from "../../../api/protocols.js";
 
 export const ROLES = ["HEALTHY_CONTROL", "SHAM", "DISEASE_CONTROL", "POSITIVE_CONTROL", "TREATMENT"];
-export const PURPOSES = ["INDUCTION", "VEHICLE", "TREATMENT"];
+export const PURPOSES = ["INDUCTION", "VEHICLE", "TREATMENT", "CONTROL"];
+
 export const UNITS = ["mg/kg", "ug/kg", "mL/kg", "IU/kg", "mg", "ug", "g", "mL", "uL", "IU"];
 export const ROUTES = [
   "ORAL",
@@ -18,8 +19,12 @@ export const ROUTES = [
   "INTRACEREBROVENTRICULAR",
   "TOPICAL",
   "INHALATION",
+  "SHAM",
+  "NONE",
 ];
-export const FREQUENCIES = ["ONCE", "DAILY", "TWICE_DAILY", "WEEKLY", "EVERY_N_DAYS"];
+
+export const FREQUENCIES = ["ONCE", "DAILY", "TWICE_DAILY", "WEEKLY", "EVERY_N_DAYS", "NONE"];
+
 export const EXCLUSION_REASONS = ["DIED", "HUMANE_ENDPOINT", "INDUCTION_FAILED", "TECHNICAL", "OTHER"];
 export const ENDPOINT_KINDS = ["PRIMARY", "SECONDARY"];
 export const DIRECTIONS = ["HIGHER_IS_BETTER", "LOWER_IS_BETTER"];
