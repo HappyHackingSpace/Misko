@@ -276,7 +276,7 @@ func (h handler) claim(w http.ResponseWriter, r *http.Request, worker domain.Wor
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	contract := contractJSON{MissingReasons: job.Contract.MissingReasons, Metrics: []metricSpecJSON{}, Events: []eventSpecJSON{}, QC: []qcJSON{}}
+	contract := contractJSON{RequiredZones: append([]string{}, job.Contract.RequiredZones...), MissingReasons: job.Contract.MissingReasons, Metrics: []metricSpecJSON{}, Events: []eventSpecJSON{}, QC: []qcJSON{}}
 	for _, m := range job.Contract.Metrics {
 		contract.Metrics = append(contract.Metrics, metricSpecJSON{m.Key, m.Unit, m.Integer, m.Min, m.Max})
 	}
@@ -464,8 +464,6 @@ type runJSON struct {
 	ResultSchemaVersion int                `json:"resultSchemaVersion"`
 	Parameters          map[string]float64 `json:"parameters"`
 	Trigger             string             `json:"trigger"`
-	Method              string             `json:"method"`
-	ScoredBy            *string            `json:"scoredBy"`
 	Status              string             `json:"status"`
 	Attempt             int                `json:"attempt"`
 	MaxAttempts         int                `json:"maxAttempts"`
@@ -487,7 +485,7 @@ func toRun(r domain.Run) runJSON {
 		ID: r.ID, ExperimentID: r.ExperimentID, TestID: r.TestID, TestSubjectID: r.TestSubjectID, RecordingID: r.RecordingID, SourceVideoID: r.SourceAssetID,
 		SourceGeneration: itoa(r.SourceGeneration), SourceCRC32C: media.FormatCRC32C(r.SourceCRC32C), ClipStartUs: r.ClipStartUs, ClipEndUs: r.ClipEndUs,
 		CalibrationID: nullable(r.CalibrationID), ParadigmKey: r.ParadigmKey, ParadigmVersion: r.ParadigmVersion,
-		MetricEngineVersion: r.MetricEngineVersion, ResultSchemaVersion: r.ResultSchemaVersion, Parameters: params, Trigger: string(r.Trigger), Method: string(r.Method), ScoredBy: nullable(r.ScoredBy), Status: string(r.Status), Attempt: r.Attempt,
+		MetricEngineVersion: r.MetricEngineVersion, ResultSchemaVersion: r.ResultSchemaVersion, Parameters: params, Trigger: string(r.Trigger), Status: string(r.Status), Attempt: r.Attempt,
 		MaxAttempts: r.MaxAttempts, WorkerID: nullable(r.WorkerID), LeaseExpiresAt: r.LeaseExpiresAt, ModelVersion: nullable(r.ModelVersion),
 		FailureReason: nullable(r.FailureReason), CreatedBy: nullable(r.CreatedBy), CreatedAt: r.CreatedAt, FinishedAt: r.FinishedAt,
 	}
@@ -514,8 +512,6 @@ type reviewGroupJSON struct {
 type reviewRunJSON struct {
 	ID                  string       `json:"id"`
 	Trigger             string       `json:"trigger"`
-	Method              string       `json:"method"`
-	ScoredBy            *string      `json:"scoredBy"`
 	ModelVersion        *string      `json:"modelVersion"`
 	MetricEngineVersion int          `json:"metricEngineVersion"`
 	CalibrationID       *string      `json:"calibrationId"`
@@ -568,7 +564,7 @@ func toReview(i application.ReviewItem) reviewJSON {
 		SubjectCode: i.SubjectCode, Excluded: i.Excluded,
 		Arena:       arenaJSON{i.EnvironmentID, i.EnvironmentName, i.EnvironmentRevisionID, i.EnvironmentRevision},
 		TimepointID: i.TimepointID, TimepointName: i.TimepointName, ParadigmKey: i.ParadigmKey, ParadigmVersion: i.ParadigmVersion, ScheduledAt: i.ScheduledAt,
-		Run: reviewRunJSON{ID: i.Run.ID, Trigger: i.Run.Trigger, Method: i.Run.Method, ScoredBy: nullable(i.Run.ScoredBy), ModelVersion: nullable(i.Run.ModelVersion), MetricEngineVersion: i.Run.MetricEngineVersion,
+		Run: reviewRunJSON{ID: i.Run.ID, Trigger: i.Run.Trigger, ModelVersion: nullable(i.Run.ModelVersion), MetricEngineVersion: i.Run.MetricEngineVersion,
 			CalibrationID: nullable(i.Run.CalibrationID), RecordingID: i.Run.RecordingID, FinishedAt: i.Run.FinishedAt, Metrics: []metricJSON{}},
 		LatestRunID: i.LatestRunID, NewerRunAvailable: i.NewerRunAvailable(),
 	}
@@ -590,6 +586,7 @@ type metricJSON struct {
 
 type eventJSON struct {
 	Type       string  `json:"type"`
+	Label      *string `json:"label"`
 	Kind       string  `json:"kind"`
 	StartUs    int64   `json:"startUs"`
 	EndUs      int64   `json:"endUs"`
@@ -625,7 +622,7 @@ func toResult(p application.Published) *resultJSON {
 		out.Metrics = append(out.Metrics, metricJSON{m.Key, m.Unit, m.Value, nullable(m.MissingReason)})
 	}
 	for _, e := range p.Events {
-		out.Events = append(out.Events, eventJSON{e.Type, e.Kind, e.StartUs, e.EndUs, e.Confidence, nullable(e.TrialID)})
+		out.Events = append(out.Events, eventJSON{e.Type, nullable(e.Label), e.Kind, e.StartUs, e.EndUs, e.Confidence, nullable(e.TrialID)})
 	}
 	for _, a := range p.Artifacts {
 		out.Artifacts = append(out.Artifacts, artifactJSON{a.Kind, a.ObjectName, itoa(a.Generation), a.SizeBytes, a.ContentType})
@@ -664,6 +661,8 @@ type qcJSON struct {
 
 // contractJSON lists what the engine will compute; workers send trajectories, not metrics.
 type contractJSON struct {
+	// RequiredZones are the calibrated zones the claimed calibration carries.
+	RequiredZones  []string         `json:"requiredZones"`
 	Metrics        []metricSpecJSON `json:"metrics"`
 	Events         []eventSpecJSON  `json:"events"`
 	MissingReasons []string         `json:"missingReasons"`

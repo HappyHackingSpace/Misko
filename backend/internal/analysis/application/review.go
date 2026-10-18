@@ -43,10 +43,8 @@ type ReviewGroup struct {
 // ReviewRun describes the run under review.
 type ReviewRun struct {
 	ID, Trigger, ModelVersion, CalibrationID, RecordingID string
-	// Method is AUTOMATED or SCORED; ScoredBy names the scorer of a SCORED run.
-	Method, ScoredBy    string
-	MetricEngineVersion int
-	FinishedAt          *time.Time
+	MetricEngineVersion                                   int
+	FinishedAt                                            *time.Time
 }
 
 // ReviewItem is one animal's result as the review screen shows it: animal,

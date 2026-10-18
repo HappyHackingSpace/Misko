@@ -180,10 +180,12 @@ type manifestJSON struct {
 	ResultSchemaVersion int             `json:"resultSchemaVersion"`
 	Parameters          []parameterJSON `json:"parameters"`
 	Zones               []zoneJSON      `json:"zones"`
-	InputEvents         []eventJSON     `json:"inputEvents"`
-	Events              []eventJSON     `json:"events"`
-	Metrics             []metricJSON    `json:"metrics"`
-	QC                  []qcJSON        `json:"qc"`
+	// InputEvents is always empty: every paradigm derives its events from the
+	// tracked trajectory. It stays so published manifests never change.
+	InputEvents []eventJSON  `json:"inputEvents"`
+	Events      []eventJSON  `json:"events"`
+	Metrics     []metricJSON `json:"metrics"`
+	QC          []qcJSON     `json:"qc"`
 }
 
 func toManifest(m application.Manifest, lang string) manifestJSON {
@@ -192,7 +194,7 @@ func toManifest(m application.Manifest, lang string) manifestJSON {
 		Key: p.Key, Name: p.Name.In(lang), Description: p.Description.In(lang), Category: string(p.Category), Species: p.Species,
 		TrialTypes: []trialTypeJSON{}, Version: p.Version,
 		MetricEngineVersion: m.MetricEngineVersion, ResultSchemaVersion: m.ResultSchemaVersion,
-		Parameters: []parameterJSON{}, Zones: []zoneJSON{}, InputEvents: events(p.InputEvents, lang), Events: events(p.Events, lang),
+		Parameters: []parameterJSON{}, Zones: []zoneJSON{}, InputEvents: []eventJSON{}, Events: events(p.Events, lang),
 		Metrics: []metricJSON{}, QC: []qcJSON{},
 	}
 	for _, t := range p.TrialTypes {

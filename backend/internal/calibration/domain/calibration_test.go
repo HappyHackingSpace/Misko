@@ -125,6 +125,12 @@ func TestInvalidCalibrationsAreRefused(t *testing.T) {
 	if _, err := New(input(), tight, "tech", now); !errors.Is(err, ErrPointOutsideEnvironment) {
 		t.Fatalf("point beyond the tolerance of the edge: %v", err)
 	}
+	// Every measurement plane is accepted, including the side view of a pole or a treadmill lane.
+	for _, plane := range []Plane{ArenaFloor, WaterSurface, ApparatusTop, ApparatusSide} {
+		if c, err := New(with(func(in *Input) { in.Plane = plane }), arena(), "tech", now); err != nil || c.Plane != plane {
+			t.Errorf("plane %s: %+v %v", plane, c, err)
+		}
+	}
 	// Without environment bounds any world coordinates are accepted.
 	free := arena()
 	free.Bounds = nil

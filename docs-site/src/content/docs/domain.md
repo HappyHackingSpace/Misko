@@ -21,8 +21,7 @@ Execution:  Subject -> Allocation (one group, ever) -> Administrations,
             Test (session: timepoint x protocol step, one video)
               -> Test subjects (animal + arena) -> Trials
                                                 -> Calibration (arena or override, with zones)
-                                                -> Scoring sheets (observer-scored paradigms)
-                                                -> Analysis runs (AUTOMATED or SCORED)
+                                                -> Analysis runs (worker tracks, Mişko derives)
                                                    -> Reviewed result
 
 Report:     accepted results per animal -> groups -> role-based comparisons
@@ -51,7 +50,7 @@ Laboratory-wide reference data reused across studies.
   `STRESS`, `OTHER`) and, as free text, how it is confirmed. Every model is
   induced.
 - **Paradigm:** a scientific test type **defined in code**, not an editable
-  database row: parameters, zones, scored events and metric definitions, in
+  database row: parameters, zones, derived events and metric definitions, in
   published versions that never change. Registry: `MWM`, `NOVEL_OBJECT`,
   `POLE`, `TREADMILL`.
 - **Environment:** one physical apparatus of one paradigm, such as a particular
@@ -142,23 +141,17 @@ its own arena; usually one, sometimes up to three arenas under one camera.
   (environment revision) is calibrated once when the rig is set up, with its
   crop as the arena's region of the camera frame. When the camera or arena moved,
   a manual **override** applies to one test subject on the current video.
-  A paradigm may declare zones that are not derived from parameters; such
-  **calibrated zones** travel with the calibration, drawn on the frame in
-  pixels and stored in centimetres too (none of the current catalog does). A
-  calibration and its zones never change. Observer-scored paradigms need no
-  calibration.
-- **Scoring sheet:** for an observer-scored paradigm (`POLE`, `TREADMILL`,
-  `NOVEL_OBJECT`), the events a person marks for one test subject
-  on the current video, in microseconds from the clip start. A sheet is a
-  `DRAFT` while it is scored and `COMPLETED` once its scored event types and
-  recording length are fixed; reopening starts the next version and completed
-  sheets never change.
-- **Analysis run:** one per test subject. Its `method` is `AUTOMATED` when a
-  worker tracks the animal inside its arena's crop and uploads the trajectory
-  (`MWM`), or `SCORED` when it is computed from a completed scoring sheet,
-  with the scorer and no worker, calibration or video pair. Either way Mişko
-  computes every metric and event itself. Inputs are pinned, so reanalysis or
-  rescoring is a new run and old runs stay.
+  Zones that are not derived from parameters (the novel and the familiar
+  object, the pole and its base, the treadmill's shock grid) are **calibrated
+  zones**: they travel with the calibration, drawn on the frame in pixels and
+  stored in centimetres too. Side views (pole, treadmill) use the
+  `APPARATUS_SIDE` plane. A calibration and its zones never change. Every
+  paradigm needs a calibration.
+- **Analysis run:** one per test subject. A worker tracks the subject's
+  centroid inside its arena's crop and uploads the trajectory; Mişko derives
+  every event and metric itself from the samples and the zones. There is no
+  observer scoring: a person only reviews the result. Inputs are pinned, so
+  reanalysis is a new run and old runs stay.
 - **Reviewed result:** every result is approved by a person. The first
   successful run of an animal opens a `PENDING` result; a reviewer accepts it or
   rejects it with a reason. In a blinded study the reviewer does not see the

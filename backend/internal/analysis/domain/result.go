@@ -39,16 +39,13 @@ type Contract struct {
 	MetricEngineVersion int
 	ResultSchemaVersion int
 	CalibrationRequired bool
-	// TrajectoryAnalyzable is false when the metrics come from scored
-	// observations only, so a worker's trajectory cannot produce them.
-	// Calibrated zone shapes come from the pinned calibration.
+	// TrajectoryAnalyzable is true when the engine computes the metrics from a
+	// worker's trajectory; calibrated zone shapes come from the pinned
+	// calibration. Every published paradigm is analysable.
 	TrajectoryAnalyzable bool
 	// RequiredZones are the calibrated zones the pinned calibration must have
 	// a shape for before the paradigm can be analysed.
-	RequiredZones []string
-	// ObserverScored paradigms are scored by a person on the video; no worker
-	// ever analyses them.
-	ObserverScored bool
+	RequiredZones  []string
 	Metrics        []MetricSpec
 	Events         []EventSpec
 	MissingReasons []string
@@ -132,10 +129,12 @@ type MetricValue struct {
 }
 
 type Event struct {
-	Type, Kind     string
-	StartUs, EndUs int64
-	Confidence     float64
-	TrialID        string
+	// Label names what the event refers to when its type declares labels,
+	// such as the novel or the familiar object.
+	Type, Label, Kind string
+	StartUs, EndUs    int64
+	Confidence        float64
+	TrialID           string
 }
 
 type Result struct {

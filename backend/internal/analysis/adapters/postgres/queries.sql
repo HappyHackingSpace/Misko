@@ -205,14 +205,14 @@ INSERT INTO misko.metric_results (run_id, attempt, metric_key, unit, value, miss
 VALUES (@run_id, @attempt, @metric_key, @unit, sqlc.narg(value), sqlc.narg(missing_reason));
 
 -- name: CreateEvent :exec
-INSERT INTO misko.analysis_events (run_id, attempt, test_subject_id, event_type, kind, start_us, end_us, confidence, trial_id)
-VALUES (@run_id, @attempt, @test_subject_id, @event_type, @kind, @start_us, @end_us, @confidence, sqlc.narg(trial_id));
+INSERT INTO misko.analysis_events (run_id, attempt, test_subject_id, event_type, label, kind, start_us, end_us, confidence, trial_id)
+VALUES (@run_id, @attempt, @test_subject_id, @event_type, sqlc.narg(label), @kind, @start_us, @end_us, @confidence, sqlc.narg(trial_id));
 
 -- name: ListMetrics :many
 SELECT metric_key, unit, value, missing_reason FROM misko.metric_results WHERE run_id = @run_id ORDER BY metric_key;
 
 -- name: ListEvents :many
-SELECT event_type, kind, start_us, end_us, confidence, trial_id FROM misko.analysis_events WHERE run_id = @run_id ORDER BY start_us, event_type, end_us;
+SELECT event_type, label, kind, start_us, end_us, confidence, trial_id FROM misko.analysis_events WHERE run_id = @run_id ORDER BY start_us, event_type, label, end_us;
 
 -- name: ListArtifacts :many
 SELECT run_id, attempt, object_name, kind, bucket, generation, size_bytes, crc32c, content_type FROM misko.analysis_artifacts WHERE run_id = @run_id ORDER BY object_name;
@@ -269,7 +269,7 @@ SELECT sr.test_subject_id, sr.run_id, sr.status, sr.reason, sr.note, sr.reviewed
        tp.id AS timepoint_id, tp.name AS timepoint_name, t.paradigm_key, t.paradigm_version, t.scheduled_at,
        g.id AS group_id, g.code AS group_code, g.name AS group_name, g.role AS group_role, dm.name AS disease_model_name,
        sub.name AS treatment_substance_name, tr.dose_micro AS treatment_dose_micro, tr.unit AS treatment_unit,
-       r.trigger, r.method, r.scored_by, r.model_version, r.metric_engine_version, r.finished_at, r.calibration_id, r.recording_id,
+       r.trigger, r.model_version, r.metric_engine_version, r.finished_at, r.calibration_id, r.recording_id,
        latest.id AS latest_run_id
 FROM misko.subject_results sr
 JOIN misko.test_subjects ts ON ts.id = sr.test_subject_id
