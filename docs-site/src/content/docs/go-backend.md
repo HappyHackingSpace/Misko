@@ -26,7 +26,8 @@ current release. Do not deploy it.
 | Tests as sessions with one or more animals in arenas, trials and comments | Implemented |
 | Video uploads to Google Cloud Storage, one current video per test | Implemented, live storage test pending |
 | Calibration per arena with per-animal overrides | Implemented |
-| Analysis runs per animal and human review of every result | Implemented for all four paradigms; the worker is tested on synthetic video only |
+| Analysis service (jobs) for animals of tests and paradigm trials, human review of every animal's result | Implemented for all four paradigms; the worker is tested on synthetic video only |
+| Paradigm trials: a paradigm tried on one video outside any experiment | Implemented in the API; panel pages pending |
 | Study report with role-based comparisons, CSV export, dashboard | Implemented |
 | Vue panel on the new API | Scaffolded, not complete |
 
@@ -106,7 +107,7 @@ English (such as ş or ğ) take more than one byte each.
 |------|--------|
 | SUPERADMIN, LAB_MANAGER | Everything, including managing users, laboratory settings and analysis workers |
 | RESEARCHER | Design studies, maintain the catalog, subjects, apparatus and protocols, plan and run tests; read everything |
-| TECHNICIAN | Record weights, run tests, record doses and induction outcomes, calibrate one animal of a test, review analysis results; read everything |
+| TECHNICIAN | Record weights, run tests, record doses and induction outcomes, calibrate one animal of a test, review analysis results, run paradigm trials; read everything |
 | VIEWER | Read only |
 
 | Permission | Covers |
@@ -116,7 +117,8 @@ English (such as ş or ğ) take more than one byte each.
 | `subject:write` | Subjects |
 | `weight:write` | Body weights |
 | `test:write` | Planning tests: creating them, adding or removing animals, cancelling |
-| `test:run` | Running tests and trials, videos, per-animal calibration overrides, doses, induction outcomes, manual analysis runs, result review |
+| `test:run` | Running tests and trials, videos, per-animal calibration overrides, doses, induction outcomes, manual analysis of an animal, result review |
+| `trial:run` | Paradigm trials: creating them, uploading and calibrating their video, analysing them again, deleting them |
 | `*:read` | Reading everything |
 
 A role change takes effect on the user's next request. Deleting a user signs
@@ -475,6 +477,12 @@ video of every paradigm at version 1. It has only been tested on synthetic video
 do not use its results for research until it has been checked against a
 manually annotated recording.
 
+The analysis service analyses one video with one paradigm version, its
+parameters and a copy of the calibration. Each piece of work is a **job**: what
+it analyses never changes, so analysing again creates a new job and earlier
+jobs stay. Jobs are requested by an animal of a test (an experiment) or by a
+paradigm trial; the service itself knows nothing about experiments.
+
 - A lab manager registers a worker with `POST /api/analysis/workers`, giving its
   name, model version and the paradigm versions it supports. Register the
   bundled worker with the paradigms it supports at version 1 (see
@@ -485,42 +493,76 @@ manually annotated recording.
   `POST /api/analysis/workers/{id}/disable` revokes it. Start the worker with
   `MISKO_WORKER_TOKEN` set, for example
   `docker compose --profile worker up -d worker`.
-- Every `JOB_INTERVAL` (10 seconds by default) the `jobs` process queues one run
-  per animal of a test, when the experiment is running or completed, the animal
-  is not excluded, the test's video is verified, the animal's calibration is
-  valid with every required zone and a worker supports the paradigm.
-- The worker finds the animal inside its arena's crop in every frame, converts
-  its position to centimeters, and uploads the positions (the trajectory) and an
-  annotated video. It never learns the animal's group or treatment. Misko
-  computes every metric and event from the trajectory; a worker cannot send its
-  own numbers. If too many frames are lost or the tracking confidence is too
-  low, the run is `FAILED` with a `QC_FAILED` reason and nothing is published.
-  A worker may mark samples as inferred (the optional `inferred` flag), for
-  example while the animal is hidden: they count as tracked, but not in the
-  confidence mean. The bundled worker sends none.
-- A run records exactly what was analyzed: the video version, the clip, the
-  calibration, the paradigm version and the parameters. To analyze an animal
-  again, a technician (or a role above) calls
+- Every `JOB_INTERVAL` (10 seconds by default) the `jobs` process submits one
+  job per animal of a test, when the experiment is running or completed, the
+  animal is not excluded, the test's video is verified and the animal's
+  calibration is valid with every required zone. It also analyses paradigm
+  trials that became ready (below). A job waits in the queue until a worker
+  that supports its paradigm claims it.
+- The worker finds the animal inside the calibration's crop in every frame,
+  converts its position to centimeters, and uploads the positions (the
+  trajectory) and an annotated video. It never learns the animal's group or
+  treatment. Misko computes every metric and event from the trajectory; a
+  worker cannot send its own numbers. If too many frames are lost or the
+  tracking confidence is too low, the job is `FAILED` with a `QC_FAILED` reason;
+  the quality figures (lost and inferred ratios, mean confidence) are kept
+  with the job either way. A worker may mark samples as inferred (the optional
+  `inferred` flag), for example while the animal is hidden: they count as
+  tracked, but not in the confidence mean. The bundled worker sends none.
+- A job records exactly what was analysed: the video version, the clip, a copy
+  of the calibration with its zones, the paradigm version and the parameters.
+  To analyse an animal again, a technician (or a role above) calls
   `POST /api/analysis/test-subjects/{testSubjectId}/runs`. Earlier results stay.
-- `GET /api/tests/{id}/analysis-runs` and `GET /api/analysis-runs/{runId}` show
-  runs and their metrics and events. `GET /api/analysis-runs/{runId}/video-pair`
-  returns short-lived links to the original and analyzed video with the offsets
-  needed to play them in sync.
+- `GET /api/tests/{id}/analysis-runs` lists the jobs of a test's animals.
+  `GET /api/analysis/jobs/{jobId}` shows a job with its metrics, events and
+  quality, `GET /api/analysis/jobs/{jobId}/video-pair` returns short-lived links
+  to the original and analysed video with the offsets needed to play them in
+  sync, and `GET /api/analysis/jobs/{jobId}/outputs/TRAJECTORY/read-url` a link
+  to the trajectory for drawing the track. The older
+  `GET /api/analysis-runs/{jobId}` routes still answer.
+
+### Paradigm trials
+
+A paradigm trial tries a paradigm version on one video in one arena, outside
+any experiment: to check a new rig, a camera position or a threshold. It has no
+groups, no review and no report, and its results never move into an
+experiment. Technicians and the roles above them run trials (`trial:run`);
+everyone can read them.
+
+1. Create the trial: `POST /api/trials` with a name, the paradigm key and
+   version and an environment revision of that version.
+2. Upload its video: `POST /api/trials/{id}/video` returns a signed upload,
+   then `POST /api/trials/{id}/video/finalize` verifies it.
+3. If the arena has no calibration, or the camera moved, calibrate on the
+   trial's video: `POST /api/trials/{id}/calibrations` (same body as an arena
+   calibration, with the zones the paradigm needs). This never changes the
+   arena's calibration. `GET /api/trials/{id}/calibration-status` tells
+   whether the trial is ready.
+4. Once the video is verified and the calibration is ready, the trial is
+   analysed automatically (at once, or at the next tick after a later
+   calibration). `GET /api/trials/{id}` shows every analysis with its metrics
+   and quality.
+5. To try other thresholds, `POST /api/trials/{id}/analyses` with
+   `{"overrides": {"min_bout_s": 1.5}}` runs a new analysis of the same video
+   with those ANALYSIS values; only ANALYSIS parameters of the paradigm are
+   accepted. Earlier analyses stay for comparison.
+6. `DELETE /api/trials/{id}` hides the trial; its analyses stay readable by job.
 
 ### Review
 
-Every result is approved by a person before it counts. The first successful run
-of an animal opens its result as `PENDING`.
+Every result of an animal of a test is approved by a person before it counts.
+The first successful job of an animal opens its result as `PENDING`. Paradigm
+trials are never reviewed.
 
 - `GET /api/analysis/results` is the review queue (`status`, `experimentId`).
   In a blinded experiment it shows no group, disease, substance or dose.
 - Technicians and the roles above them accept a result with
   `POST /api/analysis/results/{testSubjectId}/accept` or reject it with
   `POST .../reject` and a `reason` (`TRACKING_LOST`, `WRONG_ANIMAL`,
-  `VIDEO_DEFECT`, `PROTOCOL_DEVIATION`, `OTHER`). `POST .../run` puts another
-  successful run under review, and `POST /api/analysis/results/bulk-accept`
-  accepts up to 100 at once.
-- A newer run never replaces a reviewed result by itself. Once the experiment is
+  `VIDEO_DEFECT`, `PROTOCOL_DEVIATION`, `OTHER`). `POST .../run` with a
+  `jobId` puts another successful job of the animal under review, and
+  `POST /api/analysis/results/bulk-accept` accepts up to 100 at once.
+- A newer job never replaces a reviewed result by itself. Once the experiment is
   completed, decisions cannot change.
 
 ### Study report and dashboard

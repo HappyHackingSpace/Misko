@@ -32,7 +32,7 @@ no data migration from earlier installations.
 
 - `cmd/api`: process entry, signals, exit status.
 - `cmd/bootstrap`: `migrate` installs the schema into an empty database or applies pending migrations; `setup` creates the laboratory and first administrator.
-- `cmd/jobs`: the analysis scheduler loop; it serves no HTTP.
+- `cmd/jobs`: the scheduler loop (lease expiry, automatic jobs of animals of tests and of paradigm trials); it serves no HTTP.
 - `internal/bootstrap`: composition root; constructor wiring of concrete adapters.
 - `internal/access/domain`: the shared RBAC kernel (roles, permission matrix, authenticated actor).
 - `internal/identity`: users, passwords, tokens and user administration.
@@ -45,9 +45,11 @@ no data migration from earlier installations.
 - `internal/environments`: physical apparatus (arenas) and their immutable measurement revisions.
 - `internal/protocols`: test protocols of an experiment with immutable versions of ordered paradigm steps.
 - `internal/tests`: tests (sessions), the animals in them (test subjects) with their arenas, trials per animal and comments.
-- `internal/media`: video assets and the videos of tests; `adapters/gcs` is the only package that imports the Cloud Storage client.
-- `internal/calibration`: pixel-to-centimeter calibrations, the default of an environment revision and manual overrides per animal of a test on its current video, and the status that gates analysis.
-- `internal/analysis`: analysis workers, runs per animal, leases, result validation, publication of metrics, events, artifacts and video pairs, and the review of results.
+- `internal/media`: video assets and the videos of tests, and an asset port for videos outside tests (paradigm trials) and source videos (analysis); `adapters/gcs` is the only package that imports the Cloud Storage client.
+- `internal/calibration`: pixel-to-centimeter calibrations owned by an environment revision (the default), a test subject (an override on its test's current video) or a paradigm trial (on its own video), and the status that gates analysis.
+- `internal/analysis`: the analysis service. Jobs (an immutable input snapshot and its execution state), workers and capabilities, leases and attempts, result validation, publication of outputs, metrics, events and QC. It knows nothing about experiments or trials.
+- `internal/subjectanalysis`: the experiment side of analysis: which job analyses which animal of a test (`test_subject_analyses`), the orchestrator that submits a job when an animal is ready, reanalysis and the review of results (`subject_results`).
+- `internal/trials`: paradigm trials: a paradigm version tried on one video in one arena outside any experiment, with its own uploads, calibration and analyses.
 - `internal/reports`: the read-only study report and its CSV export over the reporting views.
 - `internal/dashboard`: read-only counts and short lists for the start screen.
 - `internal/health`: readiness use case and probes.
@@ -56,16 +58,25 @@ no data migration from earlier installations.
 - `sqlc.yaml`, `internal/*/adapters/postgres/queries.sql`: SQL sources for the generated `sqlcgen` packages. Do not edit generated code; run `make generate`.
 - `tests/architecture`: source import checks with positive and negative policy fixtures.
 
-Domain packages allow pure standard-library dependencies and their own
-subpackages. Application packages add context/synchronization and their own
-domain. `internal/access/domain` is the only domain package other domains may
-import, so every use case authorizes against the same matrix. Adapters may use
-any domain or application package but never another domain's adapters: other
-HTTP adapters resolve the caller through `identityhttp.Authenticator`, a function
-wired in the composition root. Relationships between domains, such as an
-allocation's subject, are enforced with foreign keys rather than cross-domain
-imports. Environments, protocols and experiment endpoints check parameters and
-metrics through small `catalog` adapters that call `internal/paradigms/domain`.
+Every module (a bounded context) has its own domain, application and adapters
+and its own tables. Domain packages allow pure standard-library dependencies
+and their own subpackages. Application packages add context/synchronization and
+their own domain. `internal/access/domain` is the only domain package other
+modules may import, so every use case authorizes against the same matrix.
+Adapters import only their own module, the platform and the RBAC kernel; HTTP
+adapters resolve the caller through an `authenticate` function wired in the
+composition root. Modules call each other only through small interfaces the
+consumer declares in its application package (ports), implemented by adapters
+in `internal/bootstrap/ports.go` and `analysis.go`: the analysis service's port
+(`Submit`, `Get`, `Jobs`, `ByRequester`, `Results`), the media asset port, the
+calibration port (`Snapshot`, `TrialCalibration`) and the environment revision
+port. Relationships between modules, such as an allocation's subject, are
+enforced with foreign keys rather than imports. The paradigm catalog
+(`internal/paradigms/domain`) is a shared kernel read only by each module's
+small `adapters/catalog` package. The architecture test also states that
+`analysis` never imports the experiment side (`experiments`, `tests`,
+`protocols`, `dosing`, `subjects`, `subjectanalysis`, `reports`, `dashboard`) or
+`trials`, and that `trials` never imports the experiment side.
 `net/http`, `database/sql`, JWT, bcrypt, pgx and GCP packages cannot enter inner
 layers. The architecture test scans every Go file under `internal`, including
 inactive build tags.
@@ -84,6 +95,7 @@ The five roles and their permissions are static code, not database rows.
 | `apparatus:write` | Yes | Yes | Yes | No | No |
 | `test:write` | Yes | Yes | Yes | No | No |
 | `test:run` | Yes | Yes | Yes | Yes | No |
+| `trial:run` | Yes | Yes | Yes | Yes | No |
 | `*:read` | Yes | Yes | Yes | Yes | Yes |
 
 What each permission covers:
@@ -95,7 +107,8 @@ What each permission covers:
 | `subject:write` | Subjects |
 | `weight:write` | Body weights |
 | `test:write` | Planning tests: creating them, adding or removing animals, cancelling |
-| `test:run` | Running tests and trials, videos, per-animal calibration overrides, doses, induction outcomes, manual analysis runs and result review |
+| `test:run` | Running tests and trials, videos, per-animal calibration overrides, doses, induction outcomes, manual analysis of an animal and result review |
+| `trial:run` | Paradigm trials: creating, uploading their video, calibrating on it, analysing and deleting |
 | `*:read` | Reading everything |
 
 Route overview (`{e}` is `/api/experiments/{id}`):
@@ -133,9 +146,11 @@ Route overview (`{e}` is `/api/experiments/{id}`):
 | `POST /api/tests/{id}/subjects/{testSubjectId}/calibrations` (manual override for one animal on the current video) | `test:run` |
 | `GET /api/environments/{id}/revisions/{number}/calibrations` and `calibration-status` | `*:read` |
 | `POST /api/environments/{id}/revisions/{number}/calibrations` | `apparatus:write` |
-| `GET /api/analysis/capabilities`, `GET /api/tests/{id}/analysis-runs`, `GET /api/analysis-runs/{runId}` and `video-pair`, `GET /api/analysis/results`, `GET /api/analysis/results/{testSubjectId}` | `*:read` |
+| `GET /api/analysis/capabilities`, `GET /api/analysis/jobs/{jobId}`, its `video-pair` and `outputs/{kind}/read-url` (and the deprecated `GET /api/analysis-runs/{jobId}` and `video-pair`), `GET /api/tests/{id}/analysis-runs`, `GET /api/analysis/results`, `GET /api/analysis/results/{testSubjectId}` | `*:read` |
 | `POST /api/analysis/test-subjects/{testSubjectId}/runs`; `POST /api/analysis/results/{testSubjectId}/accept`, `reject`, `run`; `POST /api/analysis/results/bulk-accept` | `test:run` |
 | `GET, POST /api/analysis/workers`, `POST /api/analysis/workers/{id}/disable` | `lab:configure` |
+| `GET /api/trials`, `GET /api/trials/{id}`, `GET /api/trials/{id}/video/read-url`, `GET /api/trials/{id}/calibrations` and `calibration-status` | `*:read` |
+| `POST /api/trials`, `DELETE /api/trials/{id}`, `POST /api/trials/{id}/video`, `video/finalize`, `analyses`, `calibrations` | `trial:run` |
 | `POST /api/worker/claim`, `POST /api/worker/runs/{runId}/heartbeat`, `source-url`, `outputs`, `result`, `failure` | A worker token |
 | `GET {e}/report`, `GET {e}/report/export`, `GET /api/dashboard/summary` | `*:read` |
 
@@ -608,10 +623,13 @@ paradigm without that rule would report `NOT_REQUIRED`.
   region of the fixed camera frame, so arenas filmed together each have their
   own. An `OVERRIDE` is a manual calibration of one animal of a test (a test
   subject) on the test's current video, for example when the camera or arena
-  moved; it must use the animal's arena and a video of its test. There is one
-  chain per revision and one per test subject, spanning the test's videos: the
-  first override on a replacement video supersedes the latest one of the
-  previous video and may use another camera.
+  moved; it must use the animal's arena and a video of its test. A `TRIAL`
+  calibration belongs to a paradigm trial and its current video
+  (`POST /api/trials/{id}/calibrations`, `trial:run`); it never changes the
+  environment. There is one chain per revision, one per test subject spanning
+  the test's videos and one per trial spanning the trial's videos: the first
+  calibration on a replacement video supersedes the latest one of the previous
+  video and may use another camera.
 - An animal is analyzed with its own latest override on the current video when
   there is one, and a `REJECTED` one leaves it waiting instead of falling back to
   the arena default. Otherwise it uses the latest default of its arena, so a
@@ -626,21 +644,60 @@ paradigm without that rule would report `NOT_REQUIRED`.
   `OVERRIDE`), `drift` (`UNCHECKED`: nothing checks camera or arena movement
   yet, so a calibration taken from the environment is trusted as entered), the
   arena and the current recording.
-- Analysis runs reference the calibration id, so older runs keep their inputs
-  after a correction.
+- A trial is analysed with its own latest calibration on its current video when
+  there is one (a `REJECTED` one leaves it waiting), otherwise the latest
+  default of its arena (`misko.trial_effective_calibrations`).
+  `GET /api/trials/{id}/calibration-status` reports it with source `TRIAL` or
+  `ENVIRONMENT`.
+- An analysis job copies the calibration it uses (frame, crop, plane,
+  transform and zones in pixels and centimetres) and keeps its id, so older
+  jobs keep their inputs after a correction.
 
-## Analysis runs
+## The analysis service
 
-Computer vision runs outside the API in analysis workers. The API schedules runs,
-leases them to workers, verifies what they upload and publishes it; it never
-reads video bytes. Workers measure positions only: the Go metric engine computes
-every published metric and event from the stored trajectory. A test (one
-session) has one video and one or more animals (test subjects), each in its own
-arena; a run analyses one animal in that video with its arena's calibration,
-whose crop is the arena's region of the frame. The worker in
-[`worker/`](../worker/README.md), tested only on synthetic video so far,
-tracks the subject's centroid for every paradigm of the catalog and refuses a
-paradigm version it does not support with `UNSUPPORTED_PARADIGM`.
+Computer vision runs outside the API in analysis workers. The analysis service
+(`internal/analysis`) queues jobs, leases them to workers, verifies what they
+upload and publishes it; it never reads video bytes. Workers measure positions
+only: the Go metric engine computes every published metric and event from the
+stored trajectory. The worker in [`worker/`](../worker/README.md), tested only
+on synthetic video so far, tracks the subject's centroid for every paradigm of
+the catalog and refuses a paradigm version it does not support with
+`UNSUPPORTED_PARADIGM`.
+
+A job analyses "this video, with this paradigm version, these parameters and
+this calibration":
+
+- **Input snapshot** (never changes): the requester (`TRIAL` or `TEST_SUBJECT`
+  and its id, an opaque reference the service never joins), the paradigm key
+  and version with the metric engine and result schema versions, the resolved
+  parameters (apparatus, analysis and session values), the source video asset
+  with its GCS generation, CRC32C and clip, the trigger (`AUTOMATIC` or
+  `MANUAL`), an optional idempotency key and, when the paradigm needs one, a
+  copy of the calibration (frame size, crop, measurement plane, homography and
+  zones in pixels and centimetres) with the id it was copied from.
+- **Execution state**: status `QUEUED`, `RUNNING`, `SUCCEEDED` or `FAILED`,
+  attempts and the lease, the worker and model version, the outputs
+  (`analysis_job_uploads`, `analysis_job_outputs`, the video pair), the metric
+  results, the derived events and the QC of the trajectory
+  (`analysis_job_qc`: samples, tracked, inferred, lost and inferred ratios, mean
+  confidence and whether the rules passed).
+
+Other modules use the in-process port; they authorize their own users:
+
+- `Submit(request)` validates the request, reads the paradigm contract, the
+  source video through the media asset port (it must be `VERIFIED`) and, when
+  the paradigm needs one, the calibration through the calibration port (it
+  must be `VALID` with a shape for every required zone), and stores a `QUEUED`
+  job. A request with an idempotency key seen before returns the first job.
+  Refused inputs are `ErrInvalidRequest`, `ErrNotAnalysable`,
+  `ErrSourceNotVerified`, `ErrCalibrationRequired`, `ErrMissingZones` and
+  `ErrInvalidCalibration`; the requesters answer them as "not ready". A job
+  waits in the queue until a worker with the capability claims it.
+- `Get(id)`, `Jobs(ids)`, `ByRequester(kind, ids)` (newest first) and
+  `Results(ids)` (with metrics, events, outputs, pair and QC); at most 500 ids
+  per call.
+- A `Listener` hears about every success after it is stored; bootstrap tells
+  the experiment side about jobs of animals of tests.
 
 Workers are service identities, not users:
 
@@ -655,48 +712,32 @@ Workers are service identities, not users:
   enabled workers can analyze.
 - Worker routes under `/api/worker` accept only `Authorization: Worker TOKEN`.
   A user bearer token there returns 401 `worker.unauthenticated`, and a worker
-  token on a user route returns 401 `auth.unauthenticated`.
+  token on a user route returns 401 `auth.unauthenticated`. The routes keep the
+  name "runs": a run id is a job id.
 
-A run pins its inputs when it is created: test, test subject, the test's
-current recording, source video and its GCS generation and CRC32C, clip range,
-the effective calibration of the animal's arena (only for paradigms that require
-one), paradigm version with its metric engine and result schema versions, and
-the arena's parameters merged with the step's session parameters. The inputs
-never change; reanalysis is a new run.
+The worker protocol:
 
-- `cmd/jobs` ticks every `JOB_INTERVAL`. A tick first returns runs whose lease
-  expired to the queue, or fails them with `LEASE_EXPIRED` after the last
-  attempt, then creates one `AUTOMATIC` run for every animal of a test that is
-  not cancelled, in an experiment that is running or completed, not excluded,
-  whose test's current video is `VERIFIED`, with a valid calibration of its arena
-  (its own override for this video, else the arena default) when the paradigm
-  requires it, and whose paradigm version an enabled worker supports. The query
-  returns only candidates it can plan (at most 500, oldest video first), so
-  animals waiting for a calibration never starve newer ones; a candidate that
-  fails (for example arena parameters that are not numbers) is logged and
-  skipped while the others are enqueued. A partial unique index on test subject,
-  recording, source generation, paradigm version and calibration makes
-  concurrent ticks create each automatic run once; a new override of the animal
-  creates a new run, a corrected arena default does not.
-- `POST /api/analysis/test-subjects/{testSubjectId}/runs` (`test:run`) queues a
-  `MANUAL` run of one animal with the current inputs, or returns 409
-  `analysis.notReady`, and 409 `analysis.runPending` while a run of the animal
-  is queued or running. Earlier runs and their results stay unchanged.
-- `POST /api/worker/claim` leases the oldest available queued run the worker can
-  analyze (`FOR UPDATE SKIP LOCKED`), increments `attempt` and returns the run,
-  the test subject and its arena, its output prefix
-  `runs/{runId}/attempts/{attempt}/`, the trajectory schema
-  `misko.trajectory.v1`, the contract (the required zones, the metrics, event
-  types, missing reasons and QC rules the engine will apply) and the pinned
-  calibration (frame size, crop, plane, the pixel to centimeter homography and
-  its zones, each in pixels and centimetres, or null). With
+- `cmd/jobs` ticks every `JOB_INTERVAL`. The analysis service's part of a tick
+  returns jobs whose lease expired to the queue, or fails them with
+  `LEASE_EXPIRED` after the last attempt (`FOR UPDATE SKIP LOCKED`, so several
+  schedulers may run). The same tick runs the experiment side's orchestrator
+  and the trials' automatic analyses (below).
+- `POST /api/worker/claim` leases the oldest available queued job the worker can
+  analyze (`FOR UPDATE SKIP LOCKED`), increments `attempt` and returns `run` and
+  `job` (the same job: `run` is the name workers read), `requester`,
+  `testSubject` (`{id}` for a job of an animal of a test, for logs; null for a
+  trial), the output prefix `jobs/{jobId}/attempts/{attempt}/`, the trajectory
+  schema `misko.trajectory.v1`, the contract (the required zones, the metrics,
+  event types, missing reasons and QC rules the engine will apply) and the
+  job's calibration snapshot (frame size, crop, plane, the pixel to centimeter
+  homography and its zones, each in pixels and centimetres, or null). With
   nothing to do it returns 204. A lease lasts 5 minutes;
-  `.../runs/{runId}/heartbeat` extends it. A run has 3 attempts.
+  `.../runs/{jobId}/heartbeat` extends it. A job has 3 attempts.
 - The attempt is a fencing token. Heartbeat, `source-url`, `outputs`, `result`
   and `failure` take the attempt and return 409 `analysis.staleAttempt` unless the
-  caller holds the current lease. Database triggers accept result rows only for
-  the current attempt of a `RUNNING` run, move the status and attempt only
-  forward, and keep finished runs and published rows unchanged.
+  caller holds the current lease. Database triggers accept output rows only for
+  the current attempt of a `RUNNING` job, move the status and attempt only
+  forward, and keep the snapshot, finished jobs and published rows unchanged.
 - `.../source-url` signs a read of the pinned source generation. `.../outputs`
   records an output of the attempt (`ANALYZED_VIDEO` as MP4 or WebM, `TRAJECTORY`
   as `misko.trajectory.v1` JSON, `THUMBNAIL` as JPEG or PNG) with size and CRC32C,
@@ -708,66 +749,141 @@ never change; reanalysis is a new run.
   It then reads every output object's attributes from GCS and requires the
   declared size, CRC32C and content type (`analysis.outputNotVerified` otherwise).
 - It reads the verified trajectory generation (at most 64 MiB) and requires the
-  run id, attempt and recording duration, equal-length `tUs`, `xCm`, `yCm`,
-  `tracked` and `confidence` arrays, strictly increasing times within the
+  job id (as `runId`), attempt and recording duration, equal-length `tUs`, `xCm`,
+  `yCm`, `tracked` and `confidence` arrays, strictly increasing times within the
   recording, confidences from 0 to 1 and coordinates for tracked samples
   (`analysis.invalidTrajectory`). An optional `inferred` array of the same
   length marks tracked samples whose position the worker placed without seeing
-  it (the current worker never sets it); an inferred sample
-  must be tracked, and a trajectory without the array has none. QC rules the
-  trajectory can measure are applied: `max_lost_frame_ratio` against untracked
-  samples (inferred ones are tracked), `min_tracking_confidence` against the
-  mean confidence of observed samples (tracked and not inferred) and, when a
-  paradigm sets it, `max_inferred_ratio` against inferred samples; the inferred
-  ratio is part of the trajectory's quality summary (`Track.Quality`). A
-  failure marks the run `FAILED` with a `QC_FAILED` reason, without retry, and
-  publishes nothing.
+  it (the current worker never sets it); an inferred sample must be tracked. QC
+  rules the trajectory can measure are applied: `max_lost_frame_ratio` against
+  untracked samples (inferred ones are tracked), `min_tracking_confidence`
+  against the mean confidence of observed samples and, when a paradigm sets it,
+  `max_inferred_ratio` against inferred samples. A failure stores the QC, marks
+  the job `FAILED` with a `QC_FAILED` reason, without retry, and publishes
+  nothing else.
 - The Go metric engine then computes the metrics and events from the samples
-  with the run's pinned parameters and duration; an event's confidence is the
-  mean confidence of the tracked samples it covers. Metrics, events, artifacts,
-  the analyzed video asset and the pair are written with the `SUCCEEDED` status
-  in one transaction; a deferred trigger refuses success without the pair. The
-  first successful run of an animal also opens its result (`subject_results`) as
-  `PENDING`. Delivering the accepted result again returns the run.
-- `.../failure` records a reason. A retryable failure returns the run to the
-  queue while attempts remain; otherwise the run is `FAILED`.
+  with the job's parameters, the snapshot's zones and the duration; an event's
+  confidence is the mean confidence of the tracked samples it covers. Outputs,
+  metrics, events, the pair and the QC are written with the `SUCCEEDED` status in
+  one transaction; a deferred trigger refuses success without the pair and its
+  analysed video. Delivering the accepted result again returns the job (and
+  tells the listener again).
+- `.../failure` records a reason. A retryable failure returns the job to the
+  queue while attempts remain; otherwise the job is `FAILED`.
 
-Users read the results with `*:read`: `GET /api/tests/{id}/analysis-runs`
-(`?testSubjectId=` for one animal), `GET /api/analysis-runs/{runId}` (with the
-published result when it succeeded) and `GET /api/analysis-runs/{runId}/video-pair`,
-which signs reads of the pinned original generation and that run's own analyzed
-video, with the time offsets and mapping version for synchronized playback.
+Users read jobs with `*:read`: `GET /api/analysis/jobs/{jobId}` (the snapshot
+and the stored result: metrics, events, outputs, pair, QC),
+`GET /api/analysis/jobs/{jobId}/video-pair`, which signs reads of the pinned
+original generation and the job's own analysed video with the time offsets and
+mapping version for synchronized playback, and
+`GET /api/analysis/jobs/{jobId}/outputs/{kind}/read-url`, which signs a read of
+one output, such as the trajectory for drawing the track.
+`GET /api/analysis-runs/{jobId}` and its `video-pair` are deprecated names of
+the first two.
+
+## The experiment side of analysis
+
+`internal/subjectanalysis` owns `test_subject_analyses` (which job analyses
+which animal of a test, from which recording, with which effective calibration
+and why) and `subject_results` (the review). It reads the study tables to decide
+readiness and the jobs only through the port and the `test_subject_jobs` view.
+
+- The orchestrator (in every scheduler tick) submits one `AUTOMATIC` job for
+  every animal of a test that is not cancelled, in an experiment that is
+  running or completed, not excluded, whose test's current video is
+  `VERIFIED`, with a valid calibration of its arena (its own override for this
+  video, else the arena default) with every required zone when the paradigm
+  requires it. The parameters are the arena's merged with the step's session
+  values. The query returns only candidates it can plan (at most 500, oldest
+  video first), so animals waiting for a calibration never starve newer ones;
+  a candidate that fails is logged and skipped while the others are submitted.
+  The job's idempotency key and a partial unique index on the link (animal,
+  recording, calibration) make concurrent ticks submit each automatic job
+  once; a new override of the animal submits a new job, a corrected arena
+  default does not.
+- `POST /api/analysis/test-subjects/{testSubjectId}/runs` (`test:run`) submits
+  a `MANUAL` job of one animal with the current inputs, or returns 409
+  `analysis.notReady`, and 409 `analysis.runPending` while a job of the animal
+  is queued or running. `GET /api/tests/{id}/analysis-runs` (`*:read`,
+  `?testSubjectId=` for one animal) lists the linked jobs as runs (`id` is the
+  job id).
+- The first successful job of an animal opens its result as `PENDING`: the
+  analysis service's listener tells this module right after the success, and
+  the tick opens any result it missed.
 
 Every result is approved by a person before it counts:
 
 - `GET /api/analysis/results` (`*:read`) lists results for review, `PENDING` by
   default (`status=ACCEPTED|REJECTED|ALL`, `experimentId`, `page`, `pageSize` up
-  to 200), oldest first, with the animal, its arena, the test, the run under
-  review with its metrics and whether a newer succeeded run exists. In a
-  `blinded` experiment `group` is null: the reviewer sees no group, disease,
-  substance or dose. `GET /api/analysis/results/{testSubjectId}` adds every
-  succeeded run of the animal.
+  to 200), oldest first, with the animal, its arena, the test, the job under
+  review with its metrics (read through the port) and whether a newer succeeded
+  job exists. In a `blinded` experiment `group` is null: the reviewer sees no
+  group, disease, substance or dose. `GET /api/analysis/results/{testSubjectId}`
+  adds every succeeded job of the animal.
 - `POST .../{testSubjectId}/accept` (`test:run`, optional `note`) and
   `POST .../{testSubjectId}/reject` (`reason`: `TRACKING_LOST`, `WRONG_ANIMAL`,
   `VIDEO_DEFECT`, `PROTOCOL_DEVIATION`, `OTHER`, optional `note`) record the
   decision and the reviewer; a decision can be revised while the experiment
-  runs. `POST .../{testSubjectId}/run` with `runId` puts another succeeded run of
-  the same animal under review and sends the result back to `PENDING`.
-  `POST /api/analysis/results/bulk-accept` accepts 1 to 100 results at once, all
-  or none. A newer run never replaces the reviewed one by itself, and once the
-  experiment is completed every decision returns 409 `analysis.experimentClosed`.
+  runs. `POST .../{testSubjectId}/run` with `jobId` (or `runId`) puts another
+  succeeded job of the same animal under review and sends the result back to
+  `PENDING`; a job linked to no animal, such as a trial's, returns
+  `analysis.runNotFound`. `POST /api/analysis/results/bulk-accept` accepts 1 to
+  100 results at once, all or none. A newer job never replaces the reviewed one
+  by itself, and once the experiment is completed every decision returns 409
+  `analysis.experimentClosed`.
+- Reports and the dashboard read accepted metrics through the
+  `report_accepted_metrics` and `test_subject_jobs` views, which only reach
+  jobs linked to animals of tests: a paradigm trial never enters them.
 
-The integration tests cover concurrent schedulers and claims, starvation by
-candidates waiting for a calibration, skipped bad rows, per-animal calibration
-and overrides, lease expiry and a late attempt, missing and corrupt outputs,
-duplicate delivery, reanalysis next to earlier results, the review with
-blinding and the database triggers, with a fake object store. They do not prove
-real GCS behavior or any tracking accuracy.
+## Paradigm trials
+
+`internal/trials` lets a lab try a paradigm version on one video in one arena
+outside any experiment, to see what the analysis measures and how its ANALYSIS
+thresholds change the result. A trial has no groups, no review and no report.
+It owns `paradigm_trials` and `paradigm_trial_jobs` (which job analysed which
+trial video, with which calibration and which overrides).
+
+- `POST /api/trials` (`trial:run`) with `name`, `paradigmKey`,
+  `paradigmVersion`, `environmentRevisionId` and optional `notes`; the arena
+  must run that version (400 `trial.paradigmMismatch`). `GET /api/trials`
+  (`*:read`, `search` in the name, `paradigmKey`, `page`, `pageSize` up to 200)
+  lists trials newest first with their arena and newest job;
+  `GET /api/trials/{id}` returns the trial, its arena, its video, the
+  calibration it would be analysed with now and every analysis, newest first,
+  with the job's state, metrics and QC.
+- `POST /api/trials/{id}/video` (`trial:run`, `fileName`, `contentType`,
+  `sizeBytes`, `crc32c`, optional `clipStartUs`, `clipEndUs`) declares the
+  trial's video through the media asset port (stored under
+  `trials/{id}/originals/`) and signs its resumable upload; a replacement
+  takes the place of the current video and earlier analyses keep theirs.
+  `POST /api/trials/{id}/video/finalize` verifies the stored object and, once
+  verified, submits the automatic job when the trial is ready.
+  `GET /api/trials/{id}/video/read-url` signs a read for the calibrator.
+- A trial whose paradigm needs a calibration is ready once its own calibration
+  on its video, or else its arena's default, is valid with every required
+  zone. A trial calibrated after its upload gets its automatic job in the next
+  tick; each trial video gets one automatic job.
+- `POST /api/trials/{id}/analyses` (`trial:run`, optional `overrides`)
+  analyses the current video again with the arena's parameters and the given
+  ANALYSIS values; any other key or a value out of range returns 400
+  `trial.invalidOverrides`. Earlier jobs stay for comparison.
+- `DELETE /api/trials/{id}` (`trial:run`) hides the trial: its jobs never
+  change and stay readable through `GET /api/analysis/jobs/{jobId}`, so the
+  trial row is kept with `deleted_at`.
+
+The integration tests cover the job queue (idempotency, snapshot, claims,
+fencing, deferred publication, expired leases), the experiment flow through the
+port (orchestrator, review, reanalysis, report and dashboard), the arena
+calibration rule, a trial end to end (upload, calibration on the trial video,
+automatic job, result, a second analysis with a changed threshold, delete) and
+that a trial job never reaches review, reports or the dashboard, with a fake
+object store. They do not prove real GCS behavior or any tracking accuracy.
 
 ## Reports and exports
 
-The study report reads the design tables and the read-only views of
-`schema/012_reports.sql` (`report_test_subjects`, `report_accepted_metrics`);
+The study report reads the design tables and the read-only views
+`report_test_subjects` and `report_accepted_metrics` (`schema/012_reports.sql`,
+redefined over analysis jobs in `018_analysis_jobs.sql`);
 it never writes. Every role has `*:read`.
 
 - `GET /api/experiments/{id}/report` (`?endpointId=` for one endpoint) returns,
@@ -889,9 +1005,16 @@ databases, never edited), `016_drop_scoring` (drops the scoring tables, the
 `method` and `scored_by` run columns and their triggers, restores the
 automated-only `analysis_runs_state_check` and `check_analysis_published` of
 `011_analysis`, and adds a `label` to analysis events) and
-`017_side_view_plane` (the `APPARATUS_SIDE` measurement plane). The old API
+`017_side_view_plane` (the `APPARATUS_SIDE` measurement plane),
+`018_analysis_jobs` (analysis jobs with their snapshot and outputs, QC, the
+experiment-side links, `subject_results.job_id`, the `test_subject_jobs` view
+and the report views over jobs; every analysis run moves into a job with the
+same id, its pinned calibration copied into the snapshot, and the run tables
+are dropped) and `019_paradigm_trials` (paradigm trials and their job links,
+calibrations owned by a trial, `trial_effective_calibrations`). The old API
 reads the dropped run columns, so `016` gives a short error window between
-`migrate` and `up`.
+`migrate` and `up`; `018` does the same for the run tables (workers keep their
+leases because jobs keep the run ids).
 
 - A database installed with the old migrations is refused: its recorded
   checksums no longer match (`an applied migration was changed`), and a `misko`

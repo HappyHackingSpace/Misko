@@ -26,7 +26,8 @@ Canlıya almayın.
 | Arenalarda bir veya birden çok denekle oturum olarak testler, denemeler ve yorumlar | Hazır |
 | Google Cloud Storage'a video yükleme, test başına tek güncel video | Hazır, gerçek depolama testi bekliyor |
 | Arena başına kalibrasyon ve denek başına düzeltme | Hazır |
-| Denek başına analiz çalıştırmaları ve her sonucun insan onayı | Dört paradigma için hazır; worker yalnızca sentetik videoyla test edildi |
+| Test denekleri ve paradigma testleri için analiz servisi (işler), her denek sonucunun insan onayı | Dört paradigma için hazır; worker yalnızca sentetik videoyla test edildi |
+| Paradigma testleri: bir paradigmanın herhangi bir deney dışında tek videoda denenmesi | API'de hazır; panel sayfaları bekliyor |
 | Rol tabanlı karşılaştırmalarla çalışma raporu, CSV dışa aktarma, gösterge paneli | Hazır |
 | Yeni API üzerinde Vue paneli | İskeleti var, tamamlanmadı |
 
@@ -108,7 +109,7 @@ dışı harfler birden fazla bayt kaplar.
 |-----|-----------------|
 | SUPERADMIN, LAB_MANAGER | Kullanıcı, laboratuvar ayarları ve analiz worker'ları yönetimi dahil her şey |
 | RESEARCHER | Çalışma tasarlamak; kataloğu, denekleri, düzenekleri ve protokolleri yönetmek; test planlamak ve çalıştırmak; her şeyi okumak |
-| TECHNICIAN | Ağırlık kaydetmek, test çalıştırmak, doz ve indüksiyon sonucu kaydetmek, bir testteki tek deneği kalibre etmek, analiz sonuçlarını onaylamak; her şeyi okumak |
+| TECHNICIAN | Ağırlık kaydetmek, test çalıştırmak, doz ve indüksiyon sonucu kaydetmek, bir testteki tek deneği kalibre etmek, analiz sonuçlarını onaylamak, paradigma testi yapmak; her şeyi okumak |
 | VIEWER | Yalnızca okuma |
 
 | İzin | Kapsamı |
@@ -118,7 +119,8 @@ dışı harfler birden fazla bayt kaplar.
 | `subject:write` | Denekler |
 | `weight:write` | Vücut ağırlıkları |
 | `test:write` | Test planlamak: oluşturmak, denek eklemek veya çıkarmak, iptal etmek |
-| `test:run` | Test ve deneme çalıştırmak, videolar, denek başına kalibrasyon düzeltmesi, dozlar, indüksiyon sonuçları, elle analiz çalıştırması, sonuç onayı |
+| `test:run` | Test ve deneme çalıştırmak, videolar, denek başına kalibrasyon düzeltmesi, dozlar, indüksiyon sonuçları, bir deneğin elle analizi, sonuç onayı |
+| `trial:run` | Paradigma testleri: oluşturmak, videosunu yükleyip üzerinde kalibre etmek, yeniden analiz etmek, silmek |
 | `*:read` | Her şeyi okumak |
 
 Rol değişikliği kullanıcının bir sonraki isteğinde geçerli olur. Kullanıcı
@@ -485,6 +487,12 @@ videoda deneğin ağırlık merkezini izler. Şimdiye kadar yalnızca
 sentetik videoyla test edildi; elle işaretlenmiş bir kayda karşı doğrulanana
 kadar sonuçlarını araştırmada kullanmayın.
 
+Analiz servisi bir videoyu tek paradigma sürümü, parametreleri ve
+kalibrasyonun bir kopyasıyla analiz eder. Her iş birimi bir **analiz işidir**:
+neyi analiz ettiği asla değişmez, bu yüzden yeniden analiz yeni bir iş oluşturur
+ve önceki işler kalır. İşleri bir test deneği (bir deney) veya bir paradigma
+testi ister; servisin kendisi deneyler hakkında hiçbir şey bilmez.
+
 - LAB_MANAGER bir worker'ı `POST /api/analysis/workers` ile kaydeder; adını, model
   sürümünü ve desteklediği paradigma sürümlerini verir. Paketle gelen worker'ı
   desteklediği paradigmaların sürüm 1'iyle kaydedin (bkz.
@@ -495,34 +503,69 @@ kadar sonuçlarını araştırmada kullanmayın.
   Worker'ı `MISKO_WORKER_TOKEN` ayarlıyken başlatın, örneğin
   `docker compose --profile worker up -d worker`.
 - `jobs` süreci her `JOB_INTERVAL` aralığında (varsayılan 10 saniye) bir
-  testteki her denek için bir çalıştırma kuyruğa alır: deney çalışıyor veya
-  tamamlanmış, denek dışlanmamış, testin videosu doğrulanmış, deneğin
-  kalibrasyonu her zorunlu bölgesiyle geçerli ve paradigmayı destekleyen bir
-  worker varsa.
-- Worker deneği her karede arenasının kırpma alanında bulur, konumunu
+  testteki her denek için bir iş gönderir: deney çalışıyor veya tamamlanmış,
+  denek dışlanmamış, testin videosu doğrulanmış ve deneğin kalibrasyonu her
+  zorunlu bölgesiyle geçerliyse. Hazır hale gelen paradigma testlerini de
+  analiz eder (aşağıda). Bir iş, paradigmasını destekleyen bir worker onu
+  üstlenene kadar kuyrukta bekler.
+- Worker deneği her karede kalibrasyonun kırpma alanında bulur, konumunu
   santimetreye çevirir ve konumları (yörüngeyi) ve işaretlenmiş bir videoyu
   yükler. Deneğin grubunu veya tedavisini hiç öğrenmez. Mişko her metriği ve
   olayı yörüngeden hesaplar; worker kendi sayılarını gönderemez. Çok fazla kare
-  kaybedilirse veya takip güveni çok düşükse çalıştırma `QC_FAILED` gerekçesiyle
-  `FAILED` olur ve hiçbir şey yayınlanmaz. Bir worker örnekleri çıkarımlı
-  olarak işaretleyebilir (isteğe bağlı `inferred` alanı), örneğin denek
-  gizliyken: takip edilmiş sayılırlar ama güven ortalamasına
-  girmezler. Paketle gelen worker böyle örnek göndermez.
-- Bir çalıştırma neyin analiz edildiğini tam olarak kaydeder: video sürümü, klip,
-  kalibrasyon, paradigma sürümü ve parametreler. Bir deneği yeniden analiz
-  etmek için TECHNICIAN (veya üstü bir rol)
+  kaybedilirse veya takip güveni çok düşükse iş `QC_FAILED` gerekçesiyle
+  `FAILED` olur; kalite değerleri (kayıp ve çıkarımlı oranları, ortalama güven)
+  her durumda işle birlikte saklanır. Bir worker örnekleri çıkarımlı olarak
+  işaretleyebilir (isteğe bağlı `inferred` alanı), örneğin denek gizliyken:
+  takip edilmiş sayılırlar ama güven ortalamasına girmezler. Paketle gelen
+  worker böyle örnek göndermez.
+- Bir iş neyin analiz edildiğini tam olarak kaydeder: video sürümü, klip,
+  bölgeleriyle kalibrasyonun bir kopyası, paradigma sürümü ve parametreler. Bir
+  deneği yeniden analiz etmek için TECHNICIAN (veya üstü bir rol)
   `POST /api/analysis/test-subjects/{testSubjectId}/runs` çağırır. Önceki
   sonuçlar kalır.
-- `GET /api/tests/{id}/analysis-runs` ve `GET /api/analysis-runs/{runId}`
-  çalıştırmaları, metriklerini ve olaylarını gösterir.
-  `GET /api/analysis-runs/{runId}/video-pair`, orijinal ve analiz videosuna kısa
-  süreli bağlantıları, ikisini eş zamanlı oynatmak için gereken kaymalarla
-  döndürür.
+- `GET /api/tests/{id}/analysis-runs` bir testin deneklerinin işlerini
+  listeler. `GET /api/analysis/jobs/{jobId}` bir işi metrikleri, olayları ve
+  kalitesiyle gösterir; `GET /api/analysis/jobs/{jobId}/video-pair` orijinal
+  ve analiz videosuna kısa süreli bağlantıları, ikisini eş zamanlı oynatmak
+  için gereken kaymalarla döndürür;
+  `GET /api/analysis/jobs/{jobId}/outputs/TRAJECTORY/read-url` izi çizmek için
+  yörüngeye bir bağlantı verir. Eski `GET /api/analysis-runs/{jobId}` yolları
+  da yanıt vermeye devam eder.
+
+### Paradigma testleri
+
+Bir paradigma testi, bir paradigma sürümünü herhangi bir deney dışında, tek
+arenada tek videoda dener: yeni bir düzeneği, bir kamera konumunu veya bir
+eşiği kontrol etmek için. Grubu, onayı ve raporu yoktur; sonuçları hiçbir zaman
+bir deneye taşınmaz. TECHNICIAN ve üstü roller paradigma testi yapar
+(`trial:run`); herkes okuyabilir.
+
+1. Paradigma testini oluşturun: `POST /api/trials` ile bir ad, paradigma
+   anahtarı ve sürümü ve bu sürümden bir ortam revizyonu verin.
+2. Videosunu yükleyin: `POST /api/trials/{id}/video` imzalı bir yükleme
+   döndürür, ardından `POST /api/trials/{id}/video/finalize` onu doğrular.
+3. Arenanın kalibrasyonu yoksa veya kamera kaydıysa, paradigma testinin
+   videosunda kalibre edin: `POST /api/trials/{id}/calibrations` (arena
+   kalibrasyonuyla aynı gövde, paradigmanın gerektirdiği bölgelerle). Bu,
+   arenanın kalibrasyonunu asla değiştirmez.
+   `GET /api/trials/{id}/calibration-status` paradigma testinin hazır olup
+   olmadığını söyler.
+4. Video doğrulanıp kalibrasyon hazır olduğunda paradigma testi kendiliğinden
+   analiz edilir (hemen ya da kalibrasyon sonradan yapıldıysa bir sonraki
+   turda). `GET /api/trials/{id}` her analizi metrikleri ve kalitesiyle
+   gösterir.
+5. Başka eşikleri denemek için `POST /api/trials/{id}/analyses` ile
+   `{"overrides": {"min_bout_s": 1.5}}` gönderin; aynı video bu ANALYSIS
+   değerleriyle yeniden analiz edilir. Yalnızca paradigmanın ANALYSIS
+   parametreleri kabul edilir. Önceki analizler karşılaştırma için kalır.
+6. `DELETE /api/trials/{id}` paradigma testini gizler; analizleri iş üzerinden
+   okunabilir kalır.
 
 ### Onay
 
-Her sonuç sayılmadan önce bir kişi tarafından onaylanır. Bir deneğin ilk
-başarılı çalıştırması sonucunu `PENDING` olarak açar.
+Bir test deneğinin her sonucu sayılmadan önce bir kişi tarafından onaylanır.
+Bir deneğin ilk başarılı işi sonucunu `PENDING` olarak açar. Paradigma
+testleri onaya gelmez.
 
 - `GET /api/analysis/results` onay kuyruğudur (`status`, `experimentId`). Kör
   bir deneyde grup, hastalık, madde veya doz göstermez.
@@ -530,11 +573,11 @@ başarılı çalıştırması sonucunu `PENDING` olarak açar.
   `POST /api/analysis/results/{testSubjectId}/accept` ile kabul eder ya da
   `POST .../reject` ile bir `reason` (`TRACKING_LOST`, `WRONG_ANIMAL`,
   `VIDEO_DEFECT`, `PROTOCOL_DEVIATION`, `OTHER`) vererek reddeder.
-  `POST .../run` başka bir başarılı çalıştırmayı incelemeye alır;
-  `POST /api/analysis/results/bulk-accept` tek seferde en fazla 100 sonucu kabul
-  eder.
-- Daha yeni bir çalıştırma, incelenmiş bir sonucun yerini kendiliğinden almaz.
-  Deney tamamlandıktan sonra kararlar değiştirilemez.
+  `POST .../run` bir `jobId` ile deneğin başarılı başka bir işini incelemeye
+  alır; `POST /api/analysis/results/bulk-accept` tek seferde en fazla 100
+  sonucu kabul eder.
+- Daha yeni bir iş, incelenmiş bir sonucun yerini kendiliğinden almaz. Deney
+  tamamlandıktan sonra kararlar değiştirilemez.
 
 ### Çalışma raporu ve gösterge paneli
 
