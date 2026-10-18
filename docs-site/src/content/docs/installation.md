@@ -97,7 +97,7 @@ and Mişko computes the events and metrics; a person reviews the result. It has
 been tested on synthetic video only.
 
 1. Sign in as a lab manager or the administrator and register the worker with
-   model version `misko-tracker-bgsub 2.1.0` and the four paradigms at
+   model version `misko-tracker-bgsub 2.2.0` and the four paradigms at
    version 1 as capabilities (register only the paradigms your worker build
    supports; `worker/README.md` lists them).
 
@@ -109,7 +109,7 @@ been tested on synthetic video only.
      -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
      -d '{
     "name": "worker-1",
-    "modelVersion": "misko-tracker-bgsub 2.1.0",
+    "modelVersion": "misko-tracker-bgsub 2.2.0",
     "capabilities": [
       {"paradigmKey": "MWM", "paradigmVersion": 1},
       {"paradigmKey": "NOVEL_OBJECT", "paradigmVersion": 1},

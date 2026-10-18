@@ -38,11 +38,8 @@ def test_mwm_has_a_tank_layout_and_unknown_paradigms_none() -> None:
 def test_mwm_tracks_in_a_tank_centred_frame_through_ripples_and_reflections(tmp_path: Path, water: int, subject: int) -> None:
     scene, job = scenes.mwm()
     source = tmp_path / "mwm.mp4"
-    # The clip ends as the animal reaches the platform (5.5 s). An animal that
-    # then rests on it is absorbed by the median background over part of the
-    # frames, depending on the CPU's floating point; that is a known
-    # limitation tracked separately.
-    truth = synthetic.render(source, synthetic.regular(5.5), scenes.swim, scene=scene, floor_level=water, subject_level=subject,
+    # The subject reaches the platform at 5.5 s and rests on it until the end.
+    truth = synthetic.render(source, synthetic.regular(6.0), scenes.swim, scene=scene, floor_level=water, subject_level=subject,
                              radius_cm=3.5, noise=3.0)
     analysis = analyze(source, job, tmp_path / "overlay.mp4")
     assert analysis.polarity == ("dark" if subject < water else "light")
@@ -93,3 +90,21 @@ def test_mwm_layout_limits_detection_to_the_tank() -> None:
     assert mask[int(cy) - crop[1], int(cx) - crop[0]] and not mask[30 - crop[1], 70 - crop[0]]
     keys = [d.key for d in apparatus.drawings(calibration["transform"])]
     assert keys == ["tank", "wall_annulus", "target_quadrant", "platform"]
+
+
+def test_mwm_keeps_a_subject_resting_on_the_platform_for_a_quarter_of_the_clip(tmp_path: Path) -> None:
+    # An escape needs a stay on the platform (min_platform_dwell_s). Resting
+    # there for a quarter of the clip must not raise the noise threshold above
+    # the subject's contrast (45 grey levels here).
+    def escape(t: float) -> tuple[float, float, bool]:
+        x, y, _ = scenes.swim(min(t, 5.5))
+        return x, y, True
+
+    scene, job = scenes.mwm()
+    source = tmp_path / "escape.mp4"
+    truth = synthetic.render(source, synthetic.regular(7.5), escape, scene=scene, floor_level=150, subject_level=105,
+                             radius_cm=3.5, noise=3.0)
+    analysis = analyze(source, job, tmp_path / "overlay.mp4")
+    assert analysis.lost_ratio == 0, analysis.lost_ratio
+    err = observed_errors(analysis, truth)
+    assert np.mean(err) <= 0.8 and max(err) <= 3.0, (np.mean(err), max(err))

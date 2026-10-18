@@ -98,7 +98,7 @@ metrikleri hesaplar; bir kişi sonucu inceler. Yalnızca sentetik videoyla test
 edildi.
 
 1. Laboratuvar yöneticisi ya da yönetici olarak giriş yapın ve worker'ı
-   `misko-tracker-bgsub 2.1.0` model sürümüyle ve dört paradigmanın sürüm 1'ini
+   `misko-tracker-bgsub 2.2.0` model sürümüyle ve dört paradigmanın sürüm 1'ini
    yetenek olarak kaydedin (yalnızca worker sürümünüzün desteklediği
    paradigmaları kaydedin; `worker/README.md` bunları listeler).
 
@@ -110,7 +110,7 @@ edildi.
      -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
      -d '{
     "name": "worker-1",
-    "modelVersion": "misko-tracker-bgsub 2.1.0",
+    "modelVersion": "misko-tracker-bgsub 2.2.0",
     "capabilities": [
       {"paradigmKey": "MWM", "paradigmVersion": 1},
       {"paradigmKey": "NOVEL_OBJECT", "paradigmVersion": 1},

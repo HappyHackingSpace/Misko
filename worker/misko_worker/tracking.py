@@ -99,8 +99,13 @@ class Background:
         region = stack[:, y0 : y0 + height, x0 : x0 + width]
         threshold: np.ndarray | float = float(settings.threshold)
         if settings.noise_factor > 0:
-            median = np.median(region, axis=0)
-            sigma = 1.4826 * np.median(np.abs(region - median), axis=0)
+            # Robust per-pixel noise from differences between consecutive
+            # sampled frames: ripples change every transition, while a
+            # subject resting on one spot (an MWM animal on the platform)
+            # changes only its arrival and departure, so it cannot inflate
+            # the threshold the way a deviation from the median does.
+            steps = np.diff(region.astype(np.float32), axis=0)
+            sigma = 1.4826 * np.median(np.abs(steps), axis=0) / math.sqrt(2.0)
             threshold = settings.threshold + settings.noise_factor * sigma
         if settings.subject in ("dark", "light"):
             polarity = settings.subject

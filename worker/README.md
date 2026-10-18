@@ -160,7 +160,11 @@ of the table above:
   one spot is set by the background percentile: about half of the clip on
   water (median), about 70% on the treadmill (75th percentile), about 90% for
   NOVEL_OBJECT and POLE (90th percentile). The tests cover rests of 60% (beside
-  the novel object) and 56% (on the shock grid).
+  the novel object), 56% (on the shock grid) and a quarter of an MWM clip on
+  the platform. The per-pixel noise on water and on the belt comes from
+  differences between consecutive sampled frames, so a resting subject does not
+  raise the threshold over its own spot (before 2.2.0 an escape with a platform
+  stay was lost at about 45 grey levels of contrast).
 - NOVEL_OBJECT: exploration is the body centre inside an object zone, not the
   nose direction; climbing or sitting on an object counts. A subject that
   moves an object leaves a ghost in the background at its old place.
@@ -183,7 +187,7 @@ of the table above:
 ## Run
 
 Register the worker as a lab manager with model version
-`misko-tracker-bgsub 2.1.0` and four capabilities, each at version 1: `MWM`,
+`misko-tracker-bgsub 2.2.0` and four capabilities, each at version 1: `MWM`,
 `NOVEL_OBJECT`, `POLE` and `TREADMILL`. A worker registered with the earlier
 model version (`2.0.0`, MWM only) keeps claiming only MWM runs: register it
 again (or update its model version and capabilities) after upgrading the

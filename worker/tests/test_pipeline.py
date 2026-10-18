@@ -89,10 +89,10 @@ def test_positions_outside_the_tank_are_lost(tmp_path: Path) -> None:
 
 def test_low_contrast_lowers_confidence_but_keeps_the_timeline(tmp_path: Path) -> None:
     source = tmp_path / "faint.mp4"
-    truth = synthetic.render(source, synthetic.regular(6.0), subject_level=145)
+    truth = synthetic.render(source, synthetic.regular(6.0), subject_level=152)
     analysis = analyze(source, synthetic.job(), tmp_path / "overlay.mp4")
     assert len(analysis.samples) == len(truth) and analysis.lost_ratio == 0
-    # On water 50 grey levels count as full contrast; 40 gives about 0.65,
+    # On water 50 grey levels count as full contrast; 33 gives about 0.62,
     # below the paradigm's 0.7 QC rule.
     assert 0.3 < analysis.mean_confidence < 0.7
     assert np.mean(errors(analysis, truth)) <= 0.4
