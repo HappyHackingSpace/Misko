@@ -26,7 +26,7 @@ var (
 	ErrInvalidCamera           = errors.New("camera id must contain 1 to 120 printable characters")
 	ErrInvalidFrame            = errors.New("frame width and height must be between 1 and 16384 pixels")
 	ErrInvalidCrop             = errors.New("crop must be a non-empty rectangle inside the frame")
-	ErrInvalidPlane            = errors.New("measurement plane must be ARENA_FLOOR, WATER_SURFACE or APPARATUS_TOP")
+	ErrInvalidPlane            = errors.New("measurement plane must be ARENA_FLOOR, WATER_SURFACE, APPARATUS_TOP or APPARATUS_SIDE")
 	ErrInvalidReferenceFrame   = errors.New("reference frame time must not be negative")
 	ErrInsufficientFitPoints   = errors.New("a calibration needs 4 to 100 FIT points")
 	ErrInsufficientCheckPoints = errors.New("a calibration needs 3 to 100 independent CHECK points")
@@ -45,6 +45,9 @@ const (
 	ArenaFloor   Plane = "ARENA_FLOOR"
 	WaterSurface Plane = "WATER_SURFACE"
 	ApparatusTop Plane = "APPARATUS_TOP"
+	// ApparatusSide is a vertical plane of a rig filmed from the side, such as
+	// the pole or the treadmill lane.
+	ApparatusSide Plane = "APPARATUS_SIDE"
 )
 
 // Scope tells what a calibration applies to. The values match the source
@@ -153,7 +156,7 @@ func New(in Input, req Requirement, createdBy string, now time.Time) (Calibratio
 	case in.Crop.X < 0 || in.Crop.Y < 0 || in.Crop.Width < 1 || in.Crop.Height < 1 ||
 		in.Crop.X+in.Crop.Width > in.FrameWidth || in.Crop.Y+in.Crop.Height > in.FrameHeight:
 		return Calibration{}, ErrInvalidCrop
-	case in.Plane != ArenaFloor && in.Plane != WaterSurface && in.Plane != ApparatusTop:
+	case in.Plane != ArenaFloor && in.Plane != WaterSurface && in.Plane != ApparatusTop && in.Plane != ApparatusSide:
 		return Calibration{}, ErrInvalidPlane
 	case in.ReferenceFrameUs < 0:
 		return Calibration{}, ErrInvalidReferenceFrame

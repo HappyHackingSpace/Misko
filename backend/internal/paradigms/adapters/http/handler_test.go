@@ -103,19 +103,21 @@ func TestCatalogIsReadOnlyAndVersioned(t *testing.T) {
 		t.Fatalf("MWM contract: %v %v", zone, mwm["inputEvents"])
 	}
 	_, pole := call("GET", "/api/paradigms/POLE/versions/1", "viewer")
-	input := pole["inputEvents"].([]any)[0].(map[string]any)
-	if input["type"] != "turn_complete" || input["kind"] != "POINT" || input["labels"] == nil {
-		t.Fatalf("POLE contract: %v", input)
+	event := pole["events"].([]any)[0].(map[string]any)
+	poleInputs, _ := pole["inputEvents"].([]any)
+	if event["type"] != "turn_complete" || event["kind"] != "POINT" || event["single"] != true || event["labels"] == nil || poleInputs == nil || len(poleInputs) != 0 {
+		t.Fatalf("POLE contract: %v %v", event, pole["inputEvents"])
 	}
 	_, treadmill := call("GET", "/api/paradigms/TREADMILL", "viewer")
-	session := treadmill["parameters"].([]any)[1].(map[string]any)
-	zones, _ := treadmill["zones"].([]any)
-	if session["key"] != "accelerating" || session["scope"] != "SESSION" || session["valueType"] != "integer" || zones == nil || len(zones) != 0 {
-		t.Fatalf("TREADMILL contract: %v %v", session, treadmill["zones"])
+	analysis := treadmill["parameters"].([]any)[1].(map[string]any)
+	grid := treadmill["zones"].([]any)[0].(map[string]any)
+	if analysis["key"] != "exhaustion_dwell_s" || analysis["scope"] != "ANALYSIS" || analysis["default"] != float64(5) ||
+		grid["key"] != "shock_grid" || grid["calibrated"] != true || grid["required"] != true {
+		t.Fatalf("TREADMILL contract: %v %v", analysis, grid)
 	}
 	_, novel := call("GET", "/api/paradigms/NOVEL_OBJECT", "viewer")
-	exploration := novel["inputEvents"].([]any)[0].(map[string]any)
-	if labels := exploration["labels"].([]any); len(labels) != 2 || labels[0] != "novel" {
+	exploration := novel["events"].([]any)[0].(map[string]any)
+	if labels := exploration["labels"].([]any); exploration["type"] != "exploration" || len(labels) != 2 || labels[0] != "novel" || labels[1] != "familiar" {
 		t.Fatalf("NOVEL_OBJECT labels: %v", exploration)
 	}
 }

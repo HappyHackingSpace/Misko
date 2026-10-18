@@ -54,10 +54,6 @@ import (
 	reportshttp "github.com/HappyHackingSpace/Misko/backend/internal/reports/adapters/http"
 	reportspostgres "github.com/HappyHackingSpace/Misko/backend/internal/reports/adapters/postgres"
 	reportsapp "github.com/HappyHackingSpace/Misko/backend/internal/reports/application"
-	scoringcatalog "github.com/HappyHackingSpace/Misko/backend/internal/scoring/adapters/catalog"
-	scoringhttp "github.com/HappyHackingSpace/Misko/backend/internal/scoring/adapters/http"
-	scoringpostgres "github.com/HappyHackingSpace/Misko/backend/internal/scoring/adapters/postgres"
-	scoringapp "github.com/HappyHackingSpace/Misko/backend/internal/scoring/application"
 	subjectshttp "github.com/HappyHackingSpace/Misko/backend/internal/subjects/adapters/http"
 	subjectspostgres "github.com/HappyHackingSpace/Misko/backend/internal/subjects/adapters/postgres"
 	subjectsapp "github.com/HappyHackingSpace/Misko/backend/internal/subjects/application"
@@ -181,7 +177,6 @@ func NewAPI(pool *pgxpool.Pool, cfg config.Config, auth config.Auth, logger *slo
 	media := mediaapp.New(mediapostgres.NewStore(pool), o.objects, o.mediaSettings, time.Now)
 	calibration := calibrationapp.New(calibrationpostgres.NewStore(pool), calibrationcatalog.New(), time.Now)
 	analysis := newAnalysis(pool, o.objects, o.mediaSettings)
-	scoring := scoringapp.New(scoringpostgres.NewStore(pool), scoringcatalog.New(), time.Now)
 	readiness := healthapp.New(healthpostgres.New(pool, schema.Latest()), cfg.ProbeTimeout)
 
 	mux := http.NewServeMux()
@@ -202,7 +197,6 @@ func NewAPI(pool *pgxpool.Pool, cfg config.Config, auth config.Auth, logger *slo
 	mediahttp.Register(mux, media, authenticate, logger)
 	calibrationhttp.Register(mux, calibration, authenticate, logger)
 	analysishttp.Register(mux, analysis, authenticate, logger)
-	scoringhttp.Register(mux, scoring, authenticate, logger)
 	reportshttp.Register(mux, reportsapp.New(reportspostgres.NewStore(pool), reportExportLimit), authenticate, logger)
 	dashboardhttp.Register(mux, dashboardapp.New(dashboardpostgres.NewStore(pool), dashboardcatalog.New()), authenticate, logger)
 	if o.storageHandler != nil {

@@ -1909,114 +1909,6 @@ paths:
               schema: {$ref: '#/components/schemas/SubjectCalibrationStatus'}
         '401': {$ref: '#/components/responses/Problem'}
         '404': {$ref: '#/components/responses/Problem'}
-  /api/tests/{id}/subjects/{testSubjectId}/scoring:
-    parameters:
-      - $ref: '#/components/parameters/ID'
-      - {name: testSubjectId, in: path, required: true, schema: {type: string, format: uuid}}
-    get:
-      operationId: getScoring
-      summary: The observer scoring of one animal of a test (*:read)
-      description: >-
-        For observer-scored paradigms (POLE, TREADMILL, NOVEL_OBJECT). Returns the paradigm's input event
-        definitions (label and definition in the request language), the test's current video clip (null without a
-        verified video) and the newest scoring sheet with its events (null before the first event). Event times are
-        microseconds from the clip start of the current video. A tracked paradigm answers scoring.notObserverScored.
-      responses:
-        '200': {description: Scoring, content: {application/json: {schema: {$ref: '#/components/schemas/Scoring'}}}}
-        '401': {$ref: '#/components/responses/Problem'}
-        '404': {$ref: '#/components/responses/Problem'}
-        '409': {$ref: '#/components/responses/Problem'}
-  /api/tests/{id}/subjects/{testSubjectId}/scoring/events:
-    parameters:
-      - $ref: '#/components/parameters/ID'
-      - {name: testSubjectId, in: path, required: true, schema: {type: string, format: uuid}}
-    post:
-      operationId: addScoredEvent
-      summary: Mark an event on the draft scoring sheet, starting the first sheet when there is none (test:run)
-      description: >-
-        Needs a test in progress or completed, a running experiment, an animal that is not excluded and a verified
-        current video. The event must be an input event of the paradigm, a point (endUs omitted or equal to startUs)
-        or an interval (endUs after startUs), carry one of its labels when it has labels, lie within the clip
-        (0 <= startUs, endUs <= clip length) and, for single events, not be scored twice.
-      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ScoredEventInput'}}}}
-      responses:
-        '201': {description: Scored, content: {application/json: {schema: {$ref: '#/components/schemas/ScoredEvent'}}}}
-        '400': {$ref: '#/components/responses/Problem'}
-        '401': {$ref: '#/components/responses/Problem'}
-        '403': {$ref: '#/components/responses/Problem'}
-        '404': {$ref: '#/components/responses/Problem'}
-        '409': {$ref: '#/components/responses/Problem'}
-  /api/tests/{id}/subjects/{testSubjectId}/scoring/events/{eventId}:
-    parameters:
-      - $ref: '#/components/parameters/ID'
-      - {name: testSubjectId, in: path, required: true, schema: {type: string, format: uuid}}
-      - {name: eventId, in: path, required: true, schema: {type: string, format: uuid}}
-    patch:
-      operationId: changeScoredEvent
-      summary: Replace an event of the draft scoring sheet with the full event sent (test:run)
-      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ScoredEventInput'}}}}
-      responses:
-        '200': {description: Changed, content: {application/json: {schema: {$ref: '#/components/schemas/ScoredEvent'}}}}
-        '400': {$ref: '#/components/responses/Problem'}
-        '401': {$ref: '#/components/responses/Problem'}
-        '403': {$ref: '#/components/responses/Problem'}
-        '404': {$ref: '#/components/responses/Problem'}
-        '409': {$ref: '#/components/responses/Problem'}
-    delete:
-      operationId: removeScoredEvent
-      summary: Remove an event of the draft scoring sheet (test:run)
-      responses:
-        '204': {description: Removed}
-        '401': {$ref: '#/components/responses/Problem'}
-        '403': {$ref: '#/components/responses/Problem'}
-        '404': {$ref: '#/components/responses/Problem'}
-        '409': {$ref: '#/components/responses/Problem'}
-  /api/tests/{id}/subjects/{testSubjectId}/scoring/complete:
-    parameters:
-      - $ref: '#/components/parameters/ID'
-      - {name: testSubjectId, in: path, required: true, schema: {type: string, format: uuid}}
-    post:
-      operationId: completeScoring
-      summary: Complete the draft scoring sheet; the engine computes the metrics into a SCORED analysis run (test:run)
-      description: >-
-        scoredEventTypes lists the event types that were scored (default every input event of the paradigm; an
-        unscored type yields missing metrics, NOT_SCORED). durationUs is the recorded trial length (default the clip
-        length of the current video; unknown when the clip has no end). The run pins the current video and the
-        arena and session parameters, succeeds at once and, when the animal has no result yet, opens it PENDING in
-        the review queue (/api/analysis/results). Completing without a sheet scores an animal without events.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: false
-              properties:
-                scoredEventTypes: {type: array, maxItems: 20, items: {type: string}}
-                durationUs: {type: integer, minimum: 1}
-      responses:
-        '200': {description: Completed, content: {application/json: {schema: {$ref: '#/components/schemas/ScoringCompletion'}}}}
-        '400': {$ref: '#/components/responses/Problem'}
-        '401': {$ref: '#/components/responses/Problem'}
-        '403': {$ref: '#/components/responses/Problem'}
-        '404': {$ref: '#/components/responses/Problem'}
-        '409': {$ref: '#/components/responses/Problem'}
-        '422': {$ref: '#/components/responses/Problem'}
-  /api/tests/{id}/subjects/{testSubjectId}/scoring/reopen:
-    parameters:
-      - $ref: '#/components/parameters/ID'
-      - {name: testSubjectId, in: path, required: true, schema: {type: string, format: uuid}}
-    post:
-      operationId: reopenScoring
-      summary: Start the next sheet version after a completed one, with a copy of its events (test:run)
-      description: The completed sheet, its SCORED run and the reviewed result stay; completing the new version adds another run the reviewer can choose.
-      requestBody: {required: true, content: {application/json: {schema: {type: object, additionalProperties: false}}}}
-      responses:
-        '201': {description: Reopened, content: {application/json: {schema: {$ref: '#/components/schemas/Scoring'}}}}
-        '401': {$ref: '#/components/responses/Problem'}
-        '403': {$ref: '#/components/responses/Problem'}
-        '404': {$ref: '#/components/responses/Problem'}
-        '409': {$ref: '#/components/responses/Problem'}
   /api/analysis/workers:
     get:
       operationId: listAnalysisWorkers
@@ -2032,7 +1924,7 @@ paths:
     post:
       operationId: registerAnalysisWorker
       summary: Register an analysis worker; the token is returned once (lab:configure)
-      description: Capabilities must name tracked paradigm versions, whose metrics the engine computes from a trajectory and, for calibrated zones, the shapes of the run's pinned calibration; observer-scored paradigms and versions outside the catalog return worker.unknownCapability.
+      description: Capabilities must name tracked paradigm versions, whose metrics the engine computes from a trajectory and, for calibrated zones, the shapes of the run's pinned calibration; versions outside the catalog return worker.unknownCapability.
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/AnalysisWorkerInput'}}}}
       responses:
         '201':
@@ -2320,7 +2212,7 @@ paths:
                           frameWidth: {type: integer}
                           frameHeight: {type: integer}
                           crop: {$ref: '#/components/schemas/CalibrationCrop'}
-                          measurementPlane: {type: string, enum: [ARENA_FLOOR, WATER_SURFACE, APPARATUS_TOP]}
+                          measurementPlane: {type: string, enum: [ARENA_FLOOR, WATER_SURFACE, APPARATUS_TOP, APPARATUS_SIDE]}
                           transform: {type: array, minItems: 9, maxItems: 9, items: {type: number}, description: Row-major homography from full-frame pixels (top-left corner at 0,0) to arena centimeters}
                           zones: {type: array, items: {$ref: '#/components/schemas/CalibrationZone'}, description: 'The paradigm''s calibrated zone shapes in full-frame pixels (tracking limits, overlay) and centimetres (the engine computes zone metrics with them); empty for paradigms whose zones come from parameters'}
         '204': {description: No run is available}
@@ -3173,7 +3065,7 @@ components:
         type: {type: string}
         label: {type: string, description: In the response language}
         kind: {type: string, enum: [INTERVAL, POINT]}
-        labels: {type: array, items: {type: string}, description: Allowed labels; empty when the event takes no label}
+        labels: {type: array, items: {type: string}, description: 'Labels every event of the type carries (NOVEL_OBJECT exploration: novel, familiar); empty when the event takes no label'}
         single: {type: boolean, description: The event may occur at most once per trial}
         definition: {type: string}
     ParadigmManifest:
@@ -3204,7 +3096,7 @@ components:
               required: {type: boolean}
         inputEvents:
           type: array
-          description: Scored observations the metric engine consumes
+          description: Always empty; every paradigm derives its events from the tracked trajectory and calibrated zones. Kept so published manifests never change.
           items: {$ref: '#/components/schemas/ParadigmEvent'}
         events:
           type: array
@@ -3550,7 +3442,7 @@ components:
         frameHeight: {type: integer, minimum: 1, maximum: 16384}
         crop: {$ref: '#/components/schemas/CalibrationCrop'}
         referenceFrameUs: {type: integer, format: int64, minimum: 0, description: Ignored; an environment has no video}
-        measurementPlane: {type: string, enum: [ARENA_FLOOR, WATER_SURFACE, APPARATUS_TOP]}
+        measurementPlane: {type: string, enum: [ARENA_FLOOR, WATER_SURFACE, APPARATUS_TOP, APPARATUS_SIDE]}
         fitPoints: {type: array, minItems: 4, maxItems: 100, items: {$ref: '#/components/schemas/CalibrationPoint'}, description: Inside the crop, no three on a line, inside the environment revision}
         checkPoints: {type: array, minItems: 3, maxItems: 100, items: {$ref: '#/components/schemas/CalibrationPoint'}, description: Independent of the FIT points (at least 1 pixel away)}
         supersedesId: {type: string, format: uuid, description: The latest calibration of the revision; required for corrections}
@@ -3587,7 +3479,7 @@ components:
         frameHeight: {type: integer, minimum: 1, maximum: 16384}
         crop: {$ref: '#/components/schemas/CalibrationCrop'}
         referenceFrameUs: {type: integer, format: int64, minimum: 0, description: Video time of the frame the points were read from}
-        measurementPlane: {type: string, enum: [ARENA_FLOOR, WATER_SURFACE, APPARATUS_TOP]}
+        measurementPlane: {type: string, enum: [ARENA_FLOOR, WATER_SURFACE, APPARATUS_TOP, APPARATUS_SIDE]}
         fitPoints: {type: array, minItems: 4, maxItems: 100, items: {$ref: '#/components/schemas/CalibrationPoint'}, description: Inside the crop, no three on a line; inside the environment when the paradigm derives its zones from parameters}
         checkPoints: {type: array, minItems: 3, maxItems: 100, items: {$ref: '#/components/schemas/CalibrationPoint'}, description: Independent of the FIT points (at least 1 pixel away)}
         supersedesId: {type: string, format: uuid, description: The latest override of the animal over all videos of the test; required for corrections}
@@ -3655,7 +3547,7 @@ components:
         frameHeight: {type: integer}
         crop: {$ref: '#/components/schemas/CalibrationCrop'}
         referenceFrameUs: {type: [integer, 'null'], format: int64, description: Null for an environment calibration}
-        measurementPlane: {type: string, enum: [ARENA_FLOOR, WATER_SURFACE, APPARATUS_TOP]}
+        measurementPlane: {type: string, enum: [ARENA_FLOOR, WATER_SURFACE, APPARATUS_TOP, APPARATUS_SIDE]}
         fitPoints: {type: array, items: {$ref: '#/components/schemas/CalibrationPoint'}}
         checkPoints: {type: array, items: {$ref: '#/components/schemas/CalibrationPoint'}}
         transform: {type: array, minItems: 9, maxItems: 9, items: {type: number}, description: Row-major 3x3 homography from pixels to centimeters, normalized so the last entry is 1}
@@ -3694,102 +3586,9 @@ components:
         capabilities: {type: array, items: {$ref: '#/components/schemas/AnalysisCapability'}}
         disabledAt: {type: [string, 'null'], format: date-time}
         createdAt: {type: string, format: date-time}
-    ScoredEventInput:
-      type: object
-      additionalProperties: false
-      required: [type, startUs]
-      properties:
-        type: {type: string, description: An input event type of the paradigm}
-        label: {type: string, description: Required for events with labels (novel, familiar), absent otherwise}
-        startUs: {type: integer, minimum: 0, description: Microseconds from the clip start of the current video}
-        endUs: {type: integer, description: Omitted or equal to startUs for a point event; after startUs for an interval}
-    ScoredEvent:
-      type: object
-      required: [id, type, kind, label, startUs, endUs, scoredBy, createdAt, updatedAt]
-      properties:
-        id: {type: string, format: uuid}
-        type: {type: string}
-        kind: {type: string, enum: [POINT, INTERVAL]}
-        label: {type: [string, 'null']}
-        startUs: {type: integer}
-        endUs: {type: integer}
-        scoredBy: {type: string, format: uuid}
-        createdAt: {type: string, format: date-time}
-        updatedAt: {type: string, format: date-time}
-    ScoringSheet:
-      type: object
-      required: [id, version, status, scoredEventTypes, durationUs, recordingId, runId, createdBy, createdAt, completedBy, completedAt]
-      properties:
-        id: {type: string, format: uuid}
-        version: {type: integer, minimum: 1}
-        status: {type: string, enum: [DRAFT, COMPLETED]}
-        scoredEventTypes: {type: [array, 'null'], items: {type: string}, description: Fixed at completion}
-        durationUs: {type: [integer, 'null'], description: Recording length fixed at completion; null when unknown}
-        recordingId: {type: [string, 'null'], format: uuid, description: The video scored, pinned at completion}
-        runId: {type: [string, 'null'], format: uuid, description: The SCORED analysis run computed at completion}
-        createdBy: {type: string, format: uuid}
-        createdAt: {type: string, format: date-time}
-        completedBy: {type: [string, 'null'], format: uuid}
-        completedAt: {type: [string, 'null'], format: date-time}
-    Scoring:
-      type: object
-      required: [experimentId, testId, testSubjectId, paradigm, inputEvents, video, sheet, events]
-      properties:
-        experimentId: {type: string, format: uuid}
-        testId: {type: string, format: uuid}
-        testSubjectId: {type: string, format: uuid}
-        paradigm:
-          type: object
-          required: [key, version]
-          properties: {key: {type: string}, version: {type: integer}}
-        inputEvents:
-          type: array
-          items:
-            type: object
-            required: [type, kind, labels, single, label, definition]
-            properties:
-              type: {type: string}
-              kind: {type: string, enum: [POINT, INTERVAL]}
-              labels: {type: array, items: {type: string}}
-              single: {type: boolean, description: Scored at most once}
-              label: {type: string}
-              definition: {type: string}
-        video:
-          type: [object, 'null']
-          required: [recordingId, clipStartUs, clipEndUs]
-          properties:
-            recordingId: {type: string, format: uuid}
-            clipStartUs: {type: integer, description: Microseconds from the start of the video file; event time 0}
-            clipEndUs: {type: [integer, 'null']}
-        sheet:
-          oneOf:
-            - {type: 'null'}
-            - {$ref: '#/components/schemas/ScoringSheet'}
-        events: {type: array, items: {$ref: '#/components/schemas/ScoredEvent'}}
-    ScoringCompletion:
-      allOf:
-        - {$ref: '#/components/schemas/Scoring'}
-        - type: object
-          required: [run]
-          properties:
-            run:
-              type: object
-              required: [id, metrics]
-              properties:
-                id: {type: string, format: uuid}
-                metrics:
-                  type: array
-                  items:
-                    type: object
-                    required: [key, unit, value, missingReason]
-                    properties:
-                      key: {type: string}
-                      unit: {type: string}
-                      value: {type: [number, 'null']}
-                      missingReason: {type: [string, 'null']}
     AnalysisRun:
       type: object
-      required: [id, experimentId, testId, testSubjectId, recordingId, sourceVideoId, sourceGeneration, sourceCrc32c, clipStartUs, clipEndUs, calibrationId, paradigmKey, paradigmVersion, metricEngineVersion, resultSchemaVersion, parameters, trigger, method, scoredBy, status, attempt, maxAttempts, workerId, leaseExpiresAt, modelVersion, failureReason, createdBy, createdAt, finishedAt]
+      required: [id, experimentId, testId, testSubjectId, recordingId, sourceVideoId, sourceGeneration, sourceCrc32c, clipStartUs, clipEndUs, calibrationId, paradigmKey, paradigmVersion, metricEngineVersion, resultSchemaVersion, parameters, trigger, status, attempt, maxAttempts, workerId, leaseExpiresAt, modelVersion, failureReason, createdBy, createdAt, finishedAt]
       description: One animal of a test analysed in the test's video. Inputs are pinned at creation and never change; reanalysis is a new run
       properties:
         id: {type: string, format: uuid}
@@ -3809,8 +3608,6 @@ components:
         resultSchemaVersion: {type: integer}
         parameters: {type: object, additionalProperties: {type: number}, description: The arena's parameters merged with the step's session parameters}
         trigger: {type: string, enum: [AUTOMATIC, MANUAL]}
-        method: {type: string, enum: [AUTOMATED, SCORED], description: 'AUTOMATED: a worker tracked the video. SCORED: a person scored it (no worker, model version, calibration or video pair; never reanalysed by a worker).'}
-        scoredBy: {type: [string, 'null'], format: uuid, description: The user who scored a SCORED run}
         status: {type: string, enum: [QUEUED, RUNNING, SUCCEEDED, FAILED]}
         attempt: {type: integer, minimum: 0, description: Number of claims; the current attempt is the fencing token}
         maxAttempts: {type: integer}
@@ -3823,9 +3620,10 @@ components:
         finishedAt: {type: [string, 'null'], format: date-time}
     AnalysisContract:
       type: object
-      required: [metrics, events, missingReasons, qc]
+      required: [requiredZones, metrics, events, missingReasons, qc]
       description: What the metric engine will compute from the trajectory; workers send no metrics or events
       properties:
+        requiredZones: {type: array, items: {type: string}, description: Calibrated zones the claimed calibration carries a shape for (empty for the water maze, whose zones derive from parameters)}
         qc:
           type: array
           items: {type: object, required: [key, operator, value], properties: {key: {type: string}, operator: {type: string, enum: ['>=', '<=']}, value: {type: number}}}
@@ -3843,7 +3641,7 @@ components:
         events:
           type: array
           items: {type: object, required: [type, kind], properties: {type: {type: string}, kind: {type: string, enum: [INTERVAL, POINT]}}}
-        missingReasons: {type: array, items: {type: string}}
+        missingReasons: {type: array, items: {type: string, enum: [NO_VALID_INTERVALS, EVENT_NOT_OBSERVED, ZERO_DENOMINATOR, INCOMPLETE_RECORDING, BELOW_EXPLORATION_CRITERION]}}
     AnalysisAttempt:
       type: object
       additionalProperties: false
@@ -3907,9 +3705,10 @@ components:
           type: array
           items:
             type: object
-            required: [type, kind, startUs, endUs, confidence, trialId]
+            required: [type, label, kind, startUs, endUs, confidence, trialId]
             properties:
               type: {type: string}
+              label: {type: [string, 'null'], description: 'One of the event type''s labels (the novel or the familiar object for exploration); null for types without labels'}
               kind: {type: string, enum: [INTERVAL, POINT]}
               startUs: {type: integer, format: int64}
               endUs: {type: integer, format: int64}
@@ -3972,13 +3771,11 @@ components:
         scheduledAt: {type: string, format: date-time}
         run:
           type: object
-          required: [id, trigger, method, scoredBy, modelVersion, metricEngineVersion, calibrationId, recordingId, finishedAt, metrics]
+          required: [id, trigger, modelVersion, metricEngineVersion, calibrationId, recordingId, finishedAt, metrics]
           description: The run under review; its analysed video is at /api/analysis-runs/{id}/video-pair
           properties:
             id: {type: string, format: uuid}
             trigger: {type: string, enum: [AUTOMATIC, MANUAL]}
-            method: {type: string, enum: [AUTOMATED, SCORED]}
-            scoredBy: {type: [string, 'null'], format: uuid}
             modelVersion: {type: [string, 'null']}
             metricEngineVersion: {type: integer}
             calibrationId: {type: [string, 'null'], format: uuid}

@@ -15,7 +15,7 @@ conditions and per-recording calibration no longer exist.
 | [#125](https://github.com/HappyHackingSpace/Misko/issues/125) | Login, current user, own password change, user management, laboratory singleton, RBAC, idempotent setup |
 | [#126](https://github.com/HappyHackingSpace/Misko/issues/126), [#127](https://github.com/HappyHackingSpace/Misko/issues/127) | Rebuilt as: catalog (substances, disease models), subjects and weights, experiments with groups, regimens, timepoints, endpoints and allocations, dosing and induction outcomes |
 | [#128](https://github.com/HappyHackingSpace/Misko/issues/128) | Read-only versioned paradigm catalog and its first metric engine (since trimmed to the four paradigms below) |
-| [#129](https://github.com/HappyHackingSpace/Misko/issues/129) | The remaining paradigm contracts and metric engines, calibrated zones, scored events and pinned manifests |
+| [#129](https://github.com/HappyHackingSpace/Misko/issues/129) | The remaining paradigm contracts and metric engines, calibrated zones and pinned manifests (observer scoring was later removed: every paradigm is tracked) |
 | [#130](https://github.com/HappyHackingSpace/Misko/issues/130) | Environments with immutable measurement revisions and experiment test protocols with immutable versions |
 | [#131](https://github.com/HappyHackingSpace/Misko/issues/131) | Tests as sessions with one or more animals in arenas, their lifecycle, trials per animal and test comments |
 | [#132](https://github.com/HappyHackingSpace/Misko/issues/132) | Video assets in private Google Cloud Storage with one current verified video per test: signed resumable uploads, server-side verification, pinned read URLs (live GCS smoke test pending) |
@@ -48,7 +48,6 @@ no data migration from earlier installations.
 - `internal/media`: video assets and the videos of tests; `adapters/gcs` is the only package that imports the Cloud Storage client.
 - `internal/calibration`: pixel-to-centimeter calibrations, the default of an environment revision and manual overrides per animal of a test on its current video, and the status that gates analysis.
 - `internal/analysis`: analysis workers, runs per animal, leases, result validation, publication of metrics, events, artifacts and video pairs, and the review of results.
-- `internal/scoring`: observer scoring of pole, treadmill and novel object tests: scoring sheets per animal, scored events, and completion into a SCORED analysis run.
 - `internal/reports`: the read-only study report and its CSV export over the reporting views.
 - `internal/dashboard`: read-only counts and short lists for the start screen.
 - `internal/health`: readiness use case and probes.
@@ -137,8 +136,6 @@ Route overview (`{e}` is `/api/experiments/{id}`):
 | `GET /api/analysis/capabilities`, `GET /api/tests/{id}/analysis-runs`, `GET /api/analysis-runs/{runId}` and `video-pair`, `GET /api/analysis/results`, `GET /api/analysis/results/{testSubjectId}` | `*:read` |
 | `POST /api/analysis/test-subjects/{testSubjectId}/runs`; `POST /api/analysis/results/{testSubjectId}/accept`, `reject`, `run`; `POST /api/analysis/results/bulk-accept` | `test:run` |
 | `GET, POST /api/analysis/workers`, `POST /api/analysis/workers/{id}/disable` | `lab:configure` |
-| `GET /api/tests/{id}/subjects/{testSubjectId}/scoring` | `*:read` |
-| `POST .../scoring/events`, `PATCH, DELETE .../scoring/events/{eventId}`, `POST .../scoring/complete`, `POST .../scoring/reopen` | `test:run` |
 | `POST /api/worker/claim`, `POST /api/worker/runs/{runId}/heartbeat`, `source-url`, `outputs`, `result`, `failure` | A worker token |
 | `GET {e}/report`, `GET {e}/report/export`, `GET /api/dashboard/summary` | `*:read` |
 
@@ -332,59 +329,76 @@ change means a new published version, and callers only receive copies.
   and manifest carries all three.
 - `GET /api/paradigms/{key}/versions/{version}` is the manifest a worker
   consumes: parameters with units, ranges, defaults and value type, zones
-  (derived from parameters or calibrated per video), the scored input events the
-  engine consumes, the interval and point events it derives, metrics with
-  definition, formula, inputs, missing-data rule and tolerance, and QC rules.
+  (derived from parameters or calibrated per video), the interval and point
+  events it derives (with their labels and whether they occur at most once),
+  metrics with definition, formula, inputs, missing-data rule and tolerance, and
+  QC rules. `inputEvents` is always empty and only kept so published manifests
+  never change.
 
-The catalog has four paradigms, all at version 1, in two categories:
-`MWM` (Morris water maze, LEARNING_MEMORY) is tracked from video by a worker;
-`NOVEL_OBJECT` (LEARNING_MEMORY), `POLE` and `TREADMILL` (MOTOR) are scored by
-a person on the video. Units are `cm`, `cm_s`, `s`, `count`, `ratio` and
-`boolean`.
+The catalog has four paradigms, all at version 1, in two categories: `MWM`
+(Morris water maze) and `NOVEL_OBJECT` (LEARNING_MEMORY), `POLE` and
+`TREADMILL` (MOTOR). Every paradigm is analysed automatically: a worker tracks
+the subject's centroid in the calibration's centimetre frame, and the Go engine
+derives every event and metric from the samples and the zones; a person only
+reviews (accepts or rejects) the result. There is no observer scoring. Units
+are `cm`, `cm_s`, `s`, `count`, `ratio` and `boolean`.
 
-Every paradigm takes the same input: parameters, samples, calibrated zone
-shapes, scored observed events, the event types that were scored, and the
+Every paradigm takes the same input: parameters, samples (time in microseconds,
+x and y in centimetres, tracked or lost), calibrated zone shapes and the
 recorded duration. Calibrated zones are circles or polygons with at least three
-vertices, in the same centimeter coordinates as the samples; unknown, missing
-required or malformed zones are rejected. No paradigm of the current catalog
-declares calibrated zones, so every zone shape sent today is rejected as
-unknown, but the generic support (validation, storage with a calibration, the
-claim and the calibrator's drawing) stays for a future version that needs it.
-An observed event needs a declared and scored type, the declared point or
-interval shape, an allowed label, and must end within the recorded duration;
-single events occur at most once.
-
-MWM evaluates a trajectory of samples (time in microseconds, x and y in
-tank-centered centimeters with x east and y north, tracked or lost). Samples
-outside the tank count as lost. A counted interval is a pair of consecutive
+vertices, in the same centimetre coordinates as the samples, drawn once with
+the environment's calibration (a per subject override on the test video can
+change them, for example a novel object on the other side); a zone is the
+union of its shapes and includes its boundary. Unknown, missing required or
+malformed zones are rejected. A counted interval is a pair of consecutive
 tracked samples with 0 < dt <= `max_sample_gap_s`; time and zone membership
-come from the earlier sample, and an entry is a counted interval whose earlier
-sample is outside the zone and whose later sample is inside. The platform, the
-target quadrant and the wall annulus are derived from parameters and include
-their boundary.
+come from the earlier sample, and an occupancy run is a sequence of contiguous
+counted intervals whose earlier sample lies in a zone. Every rule threshold is
+an ANALYSIS parameter with a standard default, so a lab can tune it per
+environment.
 
-| Paradigm | Input | Metrics |
-|---|---|---|
-| `MWM` | Trajectory in tank-centered centimeters; platform, target quadrant and wall annulus derived from parameters | escape latency (start of the first platform dwell of at least `min_platform_dwell_s`), path length and mean swim speed up to the escape, target quadrant and thigmotaxis time ratios, platform crossings, time-weighted mean distance to the platform |
-| `POLE` | Scored single `turn_complete`, `base_reached` and `fall` points | time to turn, total time, descent time and speed, fall detected |
-| `TREADMILL` | Scored single `exhaustion` and repeated `shock` points; fixed or accelerating belt | latency to exhaustion, run time, run distance (integral of the belt speed), shocks strictly before the run ends |
-| `NOVEL_OBJECT` | Scored `exploration` intervals labeled `novel` or `familiar` | novel, familiar and total exploration (overlaps count once), discrimination index |
+| Paradigm | Frame and zones | Analysis parameters (default) | Derived events | Metrics |
+|---|---|---|---|---|
+| `MWM` | Tank-centred, x east, y north; samples outside the tank are lost. Platform, target quadrant and wall annulus derived from parameters | `wall_annulus_width_cm` (12), `min_platform_dwell_s` (1), `max_sample_gap_s` (0.5) | `in_platform` intervals, `platform_entry` points | escape latency (start of the first platform dwell of at least `min_platform_dwell_s`), path length and mean swim speed up to the escape, target quadrant and thigmotaxis time ratios, platform crossings, time-weighted mean distance to the platform |
+| `NOVEL_OBJECT` | Top view, origin at a corner of the arena floor, x right, y down the image (calibration points within the arena). Calibrated `novel_object` and `familiar_object`: the object plus the exploration distance (about 2 cm) | `min_bout_s` (0.3), `min_total_exploration_s` (0), `max_sample_gap_s` (0.5) | `exploration` intervals labelled `novel` or `familiar`: occupancy runs of an object zone lasting at least `min_bout_s` | novel, familiar and total exploration time (sum of the bouts), discrimination index |
+| `POLE` | Side view, x horizontal, y the height above the base (base y = 0, top y = `pole_length_cm`). Calibrated `pole` (where the subject climbs) and `base` (floor at the foot of the pole) | `turn_descent_cm` (2), `fall_speed_cm_s` (80), `max_sample_gap_s` (0.5); session `max_trial_duration_s` (60) | single `turn_complete`, `base_reached` and `fall` points | time to turn, total time, descent time and speed, fall detected |
+| `TREADMILL` | Side view, x along the lane from the shock grid end (x = 0) to the front (x = `lane_length_cm`), y vertical. Calibrated `shock_grid` | `exhaustion_dwell_s` (5), `min_shock_dwell_s` (0.2), `max_sample_gap_s` (0.5); session belt protocol and `max_trial_duration_s` (1800) | `shock` points, a single `exhaustion` point | latency to exhaustion, run time, run distance (integral of the belt speed), shocks strictly before the run ends |
 
-With no counted interval, every MWM metric is reported missing with reason
+Event rules, in the order the engine applies them:
+
+- `NOVEL_OBJECT`: exploration is approximated by the body centre inside the
+  zone, not by nose direction, so sitting on the object counts as exploration.
+  A lost frame or a gap longer than `max_sample_gap_s` ends a bout.
+- `POLE`: samples after `max_trial_duration_s` are ignored. A sample is on the
+  pole when it lies in `pole` and not in `base`. `turn_complete` is the first
+  tracked sample on the pole at least `turn_descent_cm` below the highest
+  sample on the pole so far. `fall` is a pair of consecutive tracked samples at
+  most `max_sample_gap_s` apart, from on the pole to the base or off the pole,
+  with a downward speed above `fall_speed_cm_s`, placed at the later sample.
+  `base_reached` is the first tracked sample in `base` after a sample on the
+  pole, unless the subject fell first; the search ends at the base or the fall.
+- `TREADMILL`: samples after `max_trial_duration_s` are ignored, so a stay is
+  cut at the cut-off. Every occupancy run of `shock_grid` lasting at least
+  `min_shock_dwell_s` is a `shock` at its start; the first lasting
+  `exhaustion_dwell_s` is the `exhaustion` at its start (a lost frame breaks
+  the stay). The run ends at exhaustion, or without it at the end of the
+  recording, censored at `max_trial_duration_s`.
+
+With no counted interval, every metric is reported missing with reason
 `NO_VALID_INTERVALS`, never as zero. Tracked samples need finite coordinates,
-timestamps must be non-negative and strictly increasing, and unknown or
-out-of-range parameters are rejected. MWM also emits `in_platform` intervals and
-`platform_entry` points for the event timeline. Tolerances are 1e-6 in the
-metric unit for times, distances and speeds, and 1e-9 for ratios, counts and
-booleans.
+timestamps must be non-negative and strictly increasing, the recorded duration
+must not be negative, and unknown or out-of-range parameters are rejected.
+Tolerances are 1e-6 in the metric unit for times, distances and speeds, and
+1e-9 for ratios, counts and booleans. QC rules are the same for every paradigm:
+tracking confidence at least 0.7, at most 10% lost frames and a calibration
+error of at most 2 cm.
 
 Missing metrics carry a reason instead of zero: `NO_VALID_INTERVALS`,
-`EVENT_NOT_OBSERVED` (for example no escape in a probe trial),
-`NOT_SCORED` (the event type was not scored), `ZERO_DENOMINATOR`,
-`INCOMPLETE_RECORDING` (no event and a recording shorter than the cut-off) and
-`BELOW_EXPLORATION_CRITERION`. Rules across parameters reject a platform outside
-the tank, a wall annulus as wide as the tank radius, and belt end speeds below
-start speeds.
+`EVENT_NOT_OBSERVED` (for example no escape in a probe trial, no turn or base
+by the cut-off), `ZERO_DENOMINATOR`, `INCOMPLETE_RECORDING` (no exhaustion and
+a recording shorter than the cut-off) and `BELOW_EXPLORATION_CRITERION`. Rules
+across parameters reject a platform outside the tank, a wall annulus as wide as
+the tank radius, and belt end speeds below start speeds.
 
 Every published manifest is pinned to a golden file in
 `internal/paradigms/adapters/http/testdata/manifests`, and the test fails when a
@@ -558,13 +572,14 @@ GCS_LIVE_BUCKET=BUCKET GCS_LIVE_ORIGIN=https://UI_ORIGIN go test -tags=gcslive -
 ## Calibration
 
 Physical metrics need a validated calibration. Paradigms whose QC contract has
-`max_calibration_error_cm` (the trajectory paradigms) require one, and every
-new paradigm that declares it gets the workflow below without further code;
-observation-only paradigms such as POLE report `NOT_REQUIRED`.
+`max_calibration_error_cm` require one; every published paradigm does. A
+paradigm without that rule would report `NOT_REQUIRED`.
 
 - `POST /api/tests/{id}/subjects/{testSubjectId}/calibrations` (`test:run`)
   takes the camera id, frame size, crop, the video time of the reference frame,
-  the measurement plane (`ARENA_FLOOR`, `WATER_SURFACE`, `APPARATUS_TOP`), 4 to
+  the measurement plane (`ARENA_FLOOR`, `WATER_SURFACE`, `APPARATUS_TOP`, or
+  `APPARATUS_SIDE` for rigs filmed from the side such as the pole and the
+  treadmill lane, migration `017_side_view_plane.sql`), 4 to
   100 FIT points and 3 to 100 CHECK points, each a full-frame pixel with plane
   coordinates in centimeters. It needs the test's current video verified
   (`calibration.noVideo`, `calibration.videoNotVerified`).
@@ -574,9 +589,10 @@ observation-only paradigms such as POLE report `NOT_REQUIRED`.
   repeated points) is rejected as `calibration.degenerateFit`. The algorithm
   version `homography-dlt-normalized-v1` is stored with the result.
 - Points must lie inside the crop, the crop inside the frame, CHECK points at
-  least 1 pixel away from every FIT point, and, for paradigms whose zones come
-  from parameters (MWM), plane coordinates inside the
-  environment revision's geometry plus the tolerance.
+  least 1 pixel away from every FIT point, and plane coordinates inside the
+  environment revision's geometry plus the tolerance where the paradigm fixes
+  it: the MWM tank and the NOVEL_OBJECT arena floor (0 to width, 0 to depth).
+  The side views of the pole and the treadmill choose their own frame.
 - The stored calibration is `VALID` when the largest CHECK error is within the
   paradigm's `max_calibration_error_cm`, otherwise `REJECTED` with
   `EXCESSIVE_CHECK_ERROR`. FIT error alone never validates a calibration.
@@ -623,16 +639,15 @@ session) has one video and one or more animals (test subjects), each in its own
 arena; a run analyses one animal in that video with its arena's calibration,
 whose crop is the arena's region of the frame. The worker in
 [`worker/`](../worker/README.md), tested only on synthetic video so far,
-tracks the one paradigm measured from a trajectory (MWM version 1); it refuses every other
-paradigm with `UNSUPPORTED_PARADIGM`.
+tracks the subject's centroid for every paradigm of the catalog and refuses a
+paradigm version it does not support with `UNSUPPORTED_PARADIGM`.
 
 Workers are service identities, not users:
 
 - `POST /api/analysis/workers` (`lab:configure`) registers a name, model version
   and capabilities (paradigm key and version from the catalog). A capability must
-  be computable from a trajectory alone: versions that need scored observations
-  or calibrated zone shapes return `worker.unknownCapability`, because catalog
-  presence is not analysis support. The response
+  be computable from a trajectory and the pinned calibration's zones; versions
+  outside the catalog return `worker.unknownCapability`. The response
   shows the token (`mw_...`) once; only its SHA-256 hash is stored.
   `GET /api/analysis/workers` lists workers and
   `POST /api/analysis/workers/{id}/disable` revokes a token; its running lease
@@ -671,9 +686,10 @@ never change; reanalysis is a new run.
   analyze (`FOR UPDATE SKIP LOCKED`), increments `attempt` and returns the run,
   the test subject and its arena, its output prefix
   `runs/{runId}/attempts/{attempt}/`, the trajectory schema
-  `misko.trajectory.v1`, the contract (the metrics, event types, missing reasons
-  and QC rules the engine will apply) and the pinned calibration (frame size, crop,
-  plane and the pixel to centimeter homography, or null). With
+  `misko.trajectory.v1`, the contract (the required zones, the metrics, event
+  types, missing reasons and QC rules the engine will apply) and the pinned
+  calibration (frame size, crop, plane, the pixel to centimeter homography and
+  its zones, each in pixels and centimetres, or null). With
   nothing to do it returns 204. A lease lasts 5 minutes;
   `.../runs/{runId}/heartbeat` extends it. A run has 3 attempts.
 - The attempt is a fencing token. Heartbeat, `source-url`, `outputs`, `result`
@@ -747,36 +763,6 @@ and overrides, lease expiry and a late attempt, missing and corrupt outputs,
 duplicate delivery, reanalysis next to earlier results, the review with
 blinding and the database triggers, with a fake object store. They do not prove
 real GCS behavior or any tracking accuracy.
-
-## Observer scoring
-
-POLE, TREADMILL and NOVEL_OBJECT are scored by a person on the
-test's current video instead of being tracked by a worker (a paradigm is
-observer scored when its engine consumes input events and it has no zones).
-The scheduler never queues worker runs for them and workers cannot register
-them as capabilities.
-
-- `GET /api/tests/{id}/subjects/{testSubjectId}/scoring` returns the paradigm's
-  input events (type, POINT or INTERVAL, labels such as novel/familiar, single,
-  label and definition in the request language), the current video clip and the
-  newest scoring sheet with its events.
-- Event times are microseconds from the clip start of the current video
-  (`0 <= startUs`, `endUs <= clip length`). `POST .../scoring/events` with
-  `{type, label?, startUs, endUs?}` adds an event to the draft sheet (the first
-  event starts sheet version 1); `PATCH .../events/{eventId}` replaces it with
-  the full event sent and `DELETE` removes it. Single events are scored once.
-- `POST .../scoring/complete` with `{scoredEventTypes?, durationUs?}` fixes the
-  scored types (default all) and the recording length (default the clip
-  length), runs the engine with the arena and session parameters and stores a
-  SUCCEEDED analysis run with `method: SCORED`, `scoredBy` and no worker,
-  calibration or video pair. Its result opens PENDING in the review queue
-  exactly like an analysed one and, once accepted, enters the reports.
-- `POST .../scoring/reopen` starts the next sheet version with a copy of the
-  events; completing it adds another run the reviewer can choose.
-- Scoring needs a test in progress or completed, a running experiment, an
-  animal that is not excluded and a verified current video. The database keeps
-  completed sheets and their events unchanged, keeps one draft per animal and
-  accepts a SCORED run only with its completed sheet in the same transaction.
 
 ## Reports and exports
 
@@ -896,6 +882,16 @@ either all pending migrations apply or none do.
 The schema was rebuilt from scratch for the study model: `001_foundation` to
 `012_reports` replace every earlier migration, and there is no legacy adoption
 any more.
+
+Later files: `013_user_last_login`, `014_calibration_zones` (zone shapes drawn
+with a calibration), `015_scoring` (observer scoring, applied in some
+databases, never edited), `016_drop_scoring` (drops the scoring tables, the
+`method` and `scored_by` run columns and their triggers, restores the
+automated-only `analysis_runs_state_check` and `check_analysis_published` of
+`011_analysis`, and adds a `label` to analysis events) and
+`017_side_view_plane` (the `APPARATUS_SIDE` measurement plane). The old API
+reads the dropped run columns, so `016` gives a short error window between
+`migrate` and `up`.
 
 - A database installed with the old migrations is refused: its recorded
   checksums no longer match (`an applied migration was changed`), and a `misko`

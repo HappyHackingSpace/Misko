@@ -30,8 +30,6 @@ var trajectoryQC = []QCRule{
 	{Key: "max_calibration_error_cm", Operator: "<=", Value: 2, Unit: Centimeter},
 }
 
-var scoringQC = []QCRule{{Key: "max_event_time_uncertainty_s", Operator: "<=", Value: 0.5, Unit: Second}}
-
 type zone struct {
 	key      string
 	contains func(x, y float64) bool
@@ -201,19 +199,42 @@ func metric(key string, label, description Text, unit Unit, max float64, inputs 
 	return m
 }
 
-func firstEvent(events []ObservedEvent, typ string) (ObservedEvent, bool) {
-	i := slices.IndexFunc(events, func(e ObservedEvent) bool { return e.Type == typ })
-	if i < 0 {
-		return ObservedEvent{}, false
-	}
-	return events[i], true
+// calibratedZone is a required zone whose shapes are drawn with the
+// calibration, in its centimetre frame.
+func calibratedZone(key, role string, label, geometry Text) Zone {
+	return Zone{Key: key, Role: role, Label: label, Geometry: geometry, Calibrated: true, Required: true}
 }
 
-func echoPoints(events []ObservedEvent, types ...string) []Point {
-	var out []Point
-	for _, e := range events {
-		if slices.Contains(types, e.Type) {
-			out = append(out, Point{Type: e.Type, AtUs: e.StartUs})
+// validOnly tracks every valid sample; calibrated paradigms have no bounds
+// beyond the camera frame.
+func validOnly(s Sample) bool { return s.Valid }
+
+// shapeZone evaluates a calibrated zone: the union of its drawn shapes.
+func shapeZone(e evaluation, key string) zone {
+	shapes := e.zones[key]
+	return zone{key: key, contains: func(x, y float64) bool { return inAny(shapes, x, y) }}
+}
+
+// censor drops samples after the cut-off: the trial is stopped there, so
+// nothing later is part of it.
+func censor(samples []Sample, cutoffUs int64) []Sample {
+	end := len(samples)
+	for end > 0 && samples[end-1].TUs > cutoffUs {
+		end--
+	}
+	return samples[:end]
+}
+
+func microseconds(s float64) int64 { return int64(math.Round(s * 1e6)) }
+
+// runs returns the occupancy runs of one zone as computed by walk, in time
+// order: each covers contiguous counted intervals whose earlier sample lies in
+// the zone.
+func (t track) runs(key string) []Interval {
+	var out []Interval
+	for _, i := range t.intervals {
+		if i.Type == "in_"+key {
+			out = append(out, i)
 		}
 	}
 	return out

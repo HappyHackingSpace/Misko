@@ -31,15 +31,6 @@ const (
 	Failed    Status = "FAILED"
 )
 
-// Method tells how a run's result was obtained: a worker tracked the video
-// (AUTOMATED) or a person scored it (SCORED, written by the scoring context).
-type Method string
-
-const (
-	Automated Method = "AUTOMATED"
-	Scored    Method = "SCORED"
-)
-
 type Trigger string
 
 const (
@@ -74,10 +65,7 @@ type Run struct {
 	MetricEngineVersion int
 	ResultSchemaVersion int
 	Trigger             Trigger
-	Method              Method
-	// ScoredBy is the person who scored a SCORED run.
-	ScoredBy string
-	Status   Status
+	Status              Status
 	// Attempt counts claims; the current attempt is the fencing token.
 	Attempt        int
 	MaxAttempts    int
@@ -93,7 +81,7 @@ type Run struct {
 
 func NewRun(source Source, trigger Trigger, createdBy string, now time.Time, maxAttempts, metricEngineVersion, resultSchemaVersion int) Run {
 	return Run{
-		Source: source, Trigger: trigger, Method: Automated, Status: Queued, MaxAttempts: maxAttempts, AvailableAt: now, CreatedBy: createdBy,
+		Source: source, Trigger: trigger, Status: Queued, MaxAttempts: maxAttempts, AvailableAt: now, CreatedBy: createdBy,
 		MetricEngineVersion: metricEngineVersion, ResultSchemaVersion: resultSchemaVersion,
 	}
 }

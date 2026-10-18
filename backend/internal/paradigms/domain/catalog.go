@@ -24,7 +24,6 @@ const (
 const (
 	ReasonNoValidIntervals    = "NO_VALID_INTERVALS"
 	ReasonNotObserved         = "EVENT_NOT_OBSERVED"
-	ReasonNotScored           = "NOT_SCORED"
 	ReasonZeroDenominator     = "ZERO_DENOMINATOR"
 	ReasonIncompleteRecording = "INCOMPLETE_RECORDING"
 	ReasonBelowCriterion      = "BELOW_EXPLORATION_CRITERION"
@@ -36,7 +35,7 @@ var (
 	ErrUnknownParameter    = errors.New("unknown parameter")
 	ErrParameterOutOfRange = errors.New("parameter is outside its allowed range")
 	ErrInvalidSample       = errors.New("samples need non-negative, strictly increasing timestamps and finite tracked coordinates")
-	ErrInvalidEvent        = errors.New("observed events must be scored, declared, correctly shaped, within the recording and not repeated when single")
+	ErrInvalidDuration     = errors.New("the recording duration must not be negative")
 	ErrMissingZone         = errors.New("a required calibrated zone is missing")
 	ErrUnknownZone         = errors.New("unknown calibrated zone")
 	ErrInvalidZone         = errors.New("a zone shape needs either a positive finite radius or at least three finite vertices")
@@ -96,7 +95,7 @@ const (
 	// ApparatusScope values are measured on the physical setup and must all be
 	// given when an environment is created from the paradigm.
 	ApparatusScope Scope = "APPARATUS"
-	// AnalysisScope values tune tracking and scoring. They belong to the
+	// AnalysisScope values tune tracking and event rules. They belong to the
 	// environment too, but have sensible defaults and are rarely changed.
 	AnalysisScope Scope = "ANALYSIS"
 	// SessionScope values describe how a trial is run and are set per
@@ -137,8 +136,10 @@ const (
 	PointEvent    EventKind = "POINT"
 )
 
-// EventDefinition describes an output event, or an observed input event.
-// Single input events may occur at most once; Labels, when set, are required.
+// EventDefinition describes an event the engine derives from samples and
+// zones. Single events occur at most once in a result; Labels, when set, name
+// what an event of the type refers to (for example the novel or the familiar
+// object) and every event of the type carries one of them.
 type EventDefinition struct {
 	Type       string
 	Kind       EventKind
@@ -180,18 +181,17 @@ type Paradigm struct {
 	Version           int
 	Parameters        []Parameter
 	Zones             []Zone
-	// InputEvents are observations the engine consumes; Events are what it derives.
-	InputEvents []EventDefinition
-	Events      []EventDefinition
-	Metrics     []MetricDefinition
-	QC          []QCRule
+	// Events are what the engine derives from samples and zones.
+	Events  []EventDefinition
+	Metrics []MetricDefinition
+	QC      []QCRule
 }
 
 func (p Paradigm) clone() Paradigm {
 	p.Species, p.TrialTypes = slices.Clone(p.Species), slices.Clone(p.TrialTypes)
 	p.Parameters = slices.Clone(p.Parameters)
 	p.Zones, p.QC = slices.Clone(p.Zones), slices.Clone(p.QC)
-	p.InputEvents, p.Events = cloneEvents(p.InputEvents), cloneEvents(p.Events)
+	p.Events = cloneEvents(p.Events)
 	p.Metrics = slices.Clone(p.Metrics)
 	for i := range p.Metrics {
 		p.Metrics[i].Inputs = slices.Clone(p.Metrics[i].Inputs)
@@ -245,23 +245,12 @@ type Shape struct {
 	Polygon []Vertex
 }
 
-// ObservedEvent is a scored observation in microseconds from the trial start.
-// Point events have EndUs equal to StartUs; intervals cover [StartUs, EndUs).
-type ObservedEvent struct {
-	Type, Label    string
-	StartUs, EndUs int64
-}
-
 type Input struct {
 	// Parameters override defaults; unknown keys are rejected.
 	Parameters map[string]float64
 	Samples    []Sample
 	// Zones holds calibrated zone shapes by zone key.
-	Zones  map[string][]Shape
-	Events []ObservedEvent
-	// ScoredEvents lists the event types that were scored. An unscored type
-	// yields missing metrics, not zero counts.
-	ScoredEvents []string
+	Zones map[string][]Shape
 	// DurationUs is the recorded trial length; 0 means unknown.
 	DurationUs int64
 }
@@ -274,9 +263,10 @@ type MetricValue struct {
 	Reason  string
 }
 
-// Interval is an event over [StartUs, EndUs) in microseconds from the trial start.
+// Interval is an event over [StartUs, EndUs) in microseconds from the trial
+// start. Label is set when the event type declares labels.
 type Interval struct {
-	Type           string
+	Type, Label    string
 	StartUs, EndUs int64
 }
 
@@ -307,8 +297,6 @@ type evaluation struct {
 	params     map[string]float64
 	samples    []Sample
 	zones      map[string][]Shape
-	events     []ObservedEvent
-	scored     map[string]bool
 	durationUs int64
 }
 
@@ -324,11 +312,9 @@ type computation struct {
 
 type definition struct {
 	paradigm Paradigm
-	// validate checks rules that span parameters; checkEvents checks ordering
-	// rules between observed events.
-	validate    func(params map[string]float64) error
-	checkEvents func(events []ObservedEvent) error
-	evaluate    func(e evaluation) computation
+	// validate checks rules that span parameters.
+	validate func(params map[string]float64) error
+	evaluate func(e evaluation) computation
 }
 
 // registry lists every published version of each paradigm, oldest first.
@@ -418,18 +404,10 @@ func Evaluate(key string, version int, in Input) (Result, error) {
 	if err := validateZones(d.paradigm, in.Zones); err != nil {
 		return Result{}, err
 	}
-	scored, err := validateEvents(d.paradigm, in)
-	if err != nil {
-		return Result{}, err
+	if in.DurationUs < 0 {
+		return Result{}, ErrInvalidDuration
 	}
-	events := slices.Clone(in.Events)
-	slices.SortStableFunc(events, func(a, b ObservedEvent) int { return cmp.Compare(a.StartUs, b.StartUs) })
-	if d.checkEvents != nil {
-		if err := d.checkEvents(events); err != nil {
-			return Result{}, err
-		}
-	}
-	c := d.evaluate(evaluation{params: maps.Clone(params), samples: in.Samples, zones: in.Zones, events: events, scored: scored, durationUs: in.DurationUs})
+	c := d.evaluate(evaluation{params: maps.Clone(params), samples: in.Samples, zones: in.Zones, durationUs: in.DurationUs})
 	result := Result{
 		Paradigm: key, ParadigmVersion: version, MetricEngineVersion: MetricEngineVersion, ResultSchemaVersion: ResultSchemaVersion,
 		Parameters: params, Intervals: c.intervals, Points: c.points,
@@ -446,7 +424,7 @@ func Evaluate(key string, version int, in Input) (Result, error) {
 		result.Metrics = append(result.Metrics, MetricValue{Key: m.Key, Unit: m.Unit, Missing: true, Reason: reason})
 	}
 	slices.SortFunc(result.Intervals, func(a, b Interval) int {
-		return cmp.Or(cmp.Compare(a.StartUs, b.StartUs), cmp.Compare(a.EndUs, b.EndUs), cmp.Compare(a.Type, b.Type))
+		return cmp.Or(cmp.Compare(a.StartUs, b.StartUs), cmp.Compare(a.EndUs, b.EndUs), cmp.Compare(a.Type, b.Type), cmp.Compare(a.Label, b.Label))
 	})
 	slices.SortFunc(result.Points, func(a, b Point) int { return cmp.Or(cmp.Compare(a.AtUs, b.AtUs), cmp.Compare(a.Type, b.Type)) })
 	return result, nil
@@ -500,42 +478,6 @@ func validateZones(p Paradigm, zones map[string][]Shape) error {
 		}
 	}
 	return nil
-}
-
-func validateEvents(p Paradigm, in Input) (map[string]bool, error) {
-	if in.DurationUs < 0 {
-		return nil, fmt.Errorf("%w: negative recording length", ErrInvalidEvent)
-	}
-	declared := func(typ string) int {
-		return slices.IndexFunc(p.InputEvents, func(e EventDefinition) bool { return e.Type == typ })
-	}
-	scored := map[string]bool{}
-	for _, typ := range in.ScoredEvents {
-		if declared(typ) < 0 {
-			return nil, fmt.Errorf("%w: undeclared type %s", ErrInvalidEvent, typ)
-		}
-		scored[typ] = true
-	}
-	counts := map[string]int{}
-	for _, e := range in.Events {
-		i := declared(e.Type)
-		if i < 0 || !scored[e.Type] {
-			return nil, fmt.Errorf("%w: %s is not a scored event type", ErrInvalidEvent, e.Type)
-		}
-		def := p.InputEvents[i]
-		counts[e.Type]++
-		switch {
-		case e.StartUs < 0,
-			def.Kind == PointEvent && e.EndUs != e.StartUs,
-			def.Kind == IntervalEvent && e.EndUs <= e.StartUs,
-			in.DurationUs > 0 && e.EndUs > in.DurationUs,
-			len(def.Labels) == 0 && e.Label != "",
-			len(def.Labels) > 0 && !slices.Contains(def.Labels, e.Label),
-			def.Single && counts[e.Type] > 1:
-			return nil, fmt.Errorf("%w: %s", ErrInvalidEvent, e.Type)
-		}
-	}
-	return scored, nil
 }
 
 func finite(v float64) bool { return !math.IsNaN(v) && !math.IsInf(v, 0) }
