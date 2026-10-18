@@ -18,9 +18,6 @@ DROP FUNCTION misko.check_analysis_run_method();
 -- hangs off them are removed; a subject whose result pointed to one loses that
 -- result and is analysed automatically again. The immutability triggers are
 -- off only for this cleanup, inside this migration's transaction.
-CREATE TEMPORARY TABLE scored_runs ON COMMIT DROP AS
-    SELECT id FROM misko.analysis_runs WHERE method = 'SCORED';
-
 ALTER TABLE misko.subject_results DISABLE TRIGGER subject_results_no_delete;
 ALTER TABLE misko.analysis_events DISABLE TRIGGER analysis_events_immutable;
 ALTER TABLE misko.metric_results DISABLE TRIGGER metric_results_immutable;
@@ -29,13 +26,13 @@ ALTER TABLE misko.analysis_artifacts DISABLE TRIGGER analysis_artifacts_immutabl
 ALTER TABLE misko.analysis_output_uploads DISABLE TRIGGER analysis_output_uploads_immutable;
 ALTER TABLE misko.analysis_runs DISABLE TRIGGER analysis_runs_change;
 
-DELETE FROM misko.subject_results WHERE run_id IN (SELECT id FROM scored_runs);
-DELETE FROM misko.analysis_events WHERE run_id IN (SELECT id FROM scored_runs);
-DELETE FROM misko.metric_results WHERE run_id IN (SELECT id FROM scored_runs);
-DELETE FROM misko.analysis_video_pairs WHERE run_id IN (SELECT id FROM scored_runs);
-DELETE FROM misko.analysis_artifacts WHERE run_id IN (SELECT id FROM scored_runs);
-DELETE FROM misko.analysis_output_uploads WHERE run_id IN (SELECT id FROM scored_runs);
-DELETE FROM misko.analysis_runs WHERE id IN (SELECT id FROM scored_runs);
+DELETE FROM misko.subject_results WHERE run_id IN (SELECT id FROM misko.analysis_runs WHERE method = 'SCORED');
+DELETE FROM misko.analysis_events WHERE run_id IN (SELECT id FROM misko.analysis_runs WHERE method = 'SCORED');
+DELETE FROM misko.metric_results WHERE run_id IN (SELECT id FROM misko.analysis_runs WHERE method = 'SCORED');
+DELETE FROM misko.analysis_video_pairs WHERE run_id IN (SELECT id FROM misko.analysis_runs WHERE method = 'SCORED');
+DELETE FROM misko.analysis_artifacts WHERE run_id IN (SELECT id FROM misko.analysis_runs WHERE method = 'SCORED');
+DELETE FROM misko.analysis_output_uploads WHERE run_id IN (SELECT id FROM misko.analysis_runs WHERE method = 'SCORED');
+DELETE FROM misko.analysis_runs WHERE method = 'SCORED';
 
 ALTER TABLE misko.subject_results ENABLE TRIGGER subject_results_no_delete;
 ALTER TABLE misko.analysis_events ENABLE TRIGGER analysis_events_immutable;
