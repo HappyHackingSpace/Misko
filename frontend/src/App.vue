@@ -227,7 +227,14 @@ const activeKey = computed(() => topLevelKeys.find((k) => route.path.startsWith(
   color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.1;
 }
 
-.sider-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 8px 0; }
+.sider-scroll { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 8px 0; scrollbar-gutter: auto; }
+/* Short viewports (100% zoom on a laptop): tighten vertical rhythm so the menu
+   fits without scrolling when possible; the scroll stays as a fallback. */
+@media (max-height: 940px) {
+  .sider-scroll :deep(.n-menu-item-content) { height: 38px; }
+  .section-label { margin-top: 10px; }
+  .section-label.first { margin-top: 12px; }
+}
 .section-label {
   margin: 14px 16px 6px; font-size: 11px; font-weight: 700;
   text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted);
