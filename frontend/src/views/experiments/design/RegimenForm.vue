@@ -118,7 +118,7 @@ async function save() {
 }
 
 const complete = computed(
-  () => form.value.purpose && form.value.substanceId && normalisedAmount.value && form.value.unit && form.value.route && form.value.frequency,
+  () => form.value.purpose && form.value.substanceId && normalisedAmount.value !== "" && form.value.unit && form.value.route && form.value.frequency,
 );
 </script>
 
