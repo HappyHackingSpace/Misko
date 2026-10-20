@@ -124,19 +124,15 @@ const activeKey = computed(() => topLevelKeys.find((k) => route.path.startsWith(
         >
           <div class="sider-inner">
             <RouterLink to="/dashboard" class="brand" :class="{ collapsed: railCollapsed }">
-              <!-- A running mouse reduced to four shapes: an ear and body sharing
-                   one fill so they read as one silhouette, a tail stroke, and an
-                   eye punched through in the badge's own background color. -->
-              <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true">
-                <rect width="32" height="32" rx="9" fill="var(--accent)" />
-                <path d="M22 19c3.4.5 6.1 3.1 6.7 6.5" stroke="var(--accent-fg)" stroke-width="1.8" fill="none" stroke-linecap="round" />
-                <circle cx="11" cy="10.2" r="4" fill="var(--accent-fg)" />
-                <ellipse cx="15.2" cy="17.2" rx="8.4" ry="6.2" transform="rotate(-10 15.2 17.2)" fill="var(--accent-fg)" />
-                <circle cx="8.7" cy="15.6" r="1.1" fill="var(--accent)" />
+              <!-- Collapsed rail: a drawn M monogram. Two strokes meet in a soft
+                   valley; the right leg is lighter so it reads as motion. -->
+              <svg v-if="railCollapsed" class="brand-initial" viewBox="0 0 40 40" aria-hidden="true">
+                <path d="M7 31V11.5c0-1.9 2.4-2.8 3.7-1.4L20 20.5" class="m-a" />
+                <path d="M20 20.5l9.3-10.4c1.3-1.4 3.7-.5 3.7 1.4V31" class="m-b" />
               </svg>
               <span v-if="!railCollapsed" class="brand-text">
                 <span class="brand-name">{{ $t("app.name") }}</span>
-                <span class="brand-lab" v-if="lab.labName">{{ lab.labName }}</span>
+                <span class="brand-lab" v-if="lab.labName" :title="lab.labName">{{ lab.labName }}</span>
               </span>
             </RouterLink>
 
@@ -213,21 +209,42 @@ const activeKey = computed(() => topLevelKeys.find((k) => route.path.startsWith(
 
 .brand {
   display: flex; align-items: center; gap: 10px; min-width: 0;
-  padding: 16px 18px; height: 56px; flex-shrink: 0;
+  padding: 8px 18px; height: 56px; flex-shrink: 0;
 }
-.brand.collapsed { padding: 14px; justify-content: center; }
-.brand-mark { width: 30px; height: 30px; flex-shrink: 0; }
-.brand-text { display: flex; flex-direction: column; min-width: 0; gap: 2px; }
+.brand.collapsed { padding: 8px; justify-content: center; }
+/* The text has no descenders, so its ink sits high in a geometrically centered
+   box; the small top padding shifts it down to look optically centered. */
+.brand-text { display: flex; flex-direction: column; min-width: 0; gap: 2px; padding-top: 3px; }
+/* The wordmark is set in Sora (bundled, no CDN): geometric and tight. */
 .brand-name {
-  font-weight: 700; font-size: 18px; letter-spacing: -0.03em;
-  color: var(--txt); white-space: nowrap; line-height: 1.1;
+  font-family: "Sora Variable", "Sora", "Inter", -apple-system, "Segoe UI", sans-serif;
+  font-weight: 700; font-size: 22px; letter-spacing: -0.05em;
+  color: var(--txt); line-height: 1.05; white-space: nowrap;
 }
+/* Collapsed rail monogram: round-capped strokes, the right leg softer. */
+.brand-initial { width: 36px; height: 36px; flex-shrink: 0; overflow: visible; }
+.brand-initial path {
+  fill: none; stroke-width: 5.2; stroke-linecap: round; stroke-linejoin: round;
+  transition: stroke 0.15s ease, transform 0.2s ease;
+}
+.brand-initial .m-a { stroke: var(--txt); }
+.brand-initial .m-b { stroke: var(--muted); }
+.brand:hover .brand-initial .m-b { stroke: var(--txt); }
 .brand-lab {
-  font-weight: 600; font-size: 10.5px; letter-spacing: 0.07em; text-transform: uppercase;
-  color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.1;
+  font-weight: 500; font-size: 12px; color: var(--muted); line-height: 1.2;
+  /* A long lab name wraps to a second line instead of being cut with "...". */
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2;
+  overflow: hidden; overflow-wrap: anywhere;
 }
 
-.sider-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 8px 0; }
+.sider-scroll { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 8px 0; scrollbar-gutter: auto; }
+/* Short viewports (100% zoom on a laptop): tighten vertical rhythm so the menu
+   fits without scrolling when possible; the scroll stays as a fallback. */
+@media (max-height: 940px) {
+  .sider-scroll :deep(.n-menu-item-content) { height: 38px; }
+  .section-label { margin-top: 10px; }
+  .section-label.first { margin-top: 12px; }
+}
 .section-label {
   margin: 14px 16px 6px; font-size: 11px; font-weight: 700;
   text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted);
