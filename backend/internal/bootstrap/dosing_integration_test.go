@@ -68,7 +68,17 @@ func TestDosingOverHTTP(t *testing.T) {
 		return sqlID(`INSERT INTO misko.regimen_items (experiment_id, group_id, purpose, substance_id, dose_micro, unit, route, frequency, start_day, end_day)
 			VALUES ($1, $2, $3, $4, 10000000, $5, 'INTRAPERITONEAL', $6, $7, $8) RETURNING id`, exp, group, purpose, substance, unit, frequency, start, end)
 	}
+	// A healthy control's vehicle from before migration 020: a started study
+	// keeps and doses it, though no new one can be written. Its no-substance
+	// period is never due and never administered.
+	if _, err := pool.Exec(ctx, `ALTER TABLE misko.regimen_items DISABLE TRIGGER regimen_items_role`); err != nil {
+		t.Fatal(err)
+	}
 	healthyVehicle := item(healthy, "VEHICLE", saline, "mL/kg", "DAILY", 1, 5)
+	if _, err := pool.Exec(ctx, `ALTER TABLE misko.regimen_items ENABLE TRIGGER regimen_items_role`); err != nil {
+		t.Fatal(err)
+	}
+	healthyPeriod := sqlID(`INSERT INTO misko.regimen_items (experiment_id, group_id, purpose, start_day, end_day) VALUES ($1, $2, 'NONE', -3, 30) RETURNING id`, exp, healthy)
 	induction := item(disease, "INDUCTION", mptp, "mg/kg", "ONCE", 0, 0)
 	sickVehicle := item(disease, "VEHICLE", saline, "mL/kg", "DAILY", 1, 5)
 	n := 0
@@ -140,6 +150,7 @@ func TestDosingOverHTTP(t *testing.T) {
 	c.expect("unknown allocation", post(base+"/allocations/"+draftAllocation, unplanned(time.Minute)), 404, "allocation.notFound")
 	c.expect("malformed allocation", post(base+"/allocations/nope", unplanned(time.Minute)), 404, "allocation.notFound")
 	c.expect("regimen item of another group", post(base+"/allocations/"+a1, map[string]any{"regimenItemId": induction, "administeredAt": at(time.Minute)}), 400, "administration.regimenItemOtherGroup")
+	c.expect("no-substance period", post(base+"/allocations/"+a1, map[string]any{"regimenItemId": healthyPeriod, "administeredAt": at(time.Minute)}), 400, "administration.noSubstanceItem")
 	c.expect("unknown regimen item", post(base+"/allocations/"+a1, map[string]any{"regimenItemId": a1, "administeredAt": at(time.Minute)}), 404, "regimenItem.notFound")
 	c.expect("per-kg dose without weight", post(base+"/allocations/"+a3, map[string]any{"regimenItemId": healthyVehicle, "administeredAt": at(time.Minute)}), 400, "administration.weightRequired")
 	c.expect("weight of another animal", post(base+"/allocations/"+a3, map[string]any{
@@ -163,7 +174,7 @@ func TestDosingOverHTTP(t *testing.T) {
 	first, _ := animals[0].(map[string]any)
 	doses, _ := first["doses"].([]any)
 	vehicle, _ := doses[0].(map[string]any)
-	if first["allocationId"] != a1 || first["groupCode"] != "G1" || vehicle["regimenItemId"] != healthyVehicle || vehicle["due"] != float64(1) ||
+	if first["allocationId"] != a1 || first["groupCode"] != "G1" || len(doses) != 1 || vehicle["regimenItemId"] != healthyVehicle || vehicle["due"] != float64(1) ||
 		vehicle["given"] != float64(1) || vehicle["complete"] != true {
 		t.Fatalf("M01 on day 1: %v", first)
 	}

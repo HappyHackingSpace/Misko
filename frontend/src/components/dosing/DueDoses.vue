@@ -9,8 +9,11 @@ import { useExecutionFormat } from "../../composables/useExecutionFormat.js";
 const props = defineProps({
   schedule: { type: Object, default: null },
   groups: { type: Array, default: () => [] },
-  // Groups without any regimen item: never due a dose, listed as such.
+  // Groups with no substance in their regimen: never due a dose, listed as
+  // such, a healthy control with the periods it receives no substance in.
   undosedGroups: { type: Array, default: () => [] },
+  // The regimen items without a substance (purpose NONE) of those groups.
+  periods: { type: Array, default: () => [] },
   loading: { type: Boolean, default: false },
   // The day shown is before or after the laboratory's today.
   past: { type: Boolean, default: false },
@@ -20,6 +23,17 @@ const props = defineProps({
 const emit = defineEmits(["record"]);
 const { t } = useI18n();
 const fmt = useExecutionFormat();
+
+// "No substance: day 0 to 14" for a healthy control, "No dosing" for any
+// other group without items.
+function undosedText(g) {
+  const periods = props.periods.filter((p) => p.groupId === g.id);
+  if (!periods.length) return t(g.role === "HEALTHY_CONTROL" ? "execution.dosing.noSubstance" : "execution.dosing.noDosing");
+  const days = periods.map((p) =>
+    p.startDay === p.endDay ? t("execution.studyDay", { day: p.startDay }) : t("execution.dosing.noSubstancePeriod", { start: p.startDay, end: p.endDay }),
+  );
+  return `${t("execution.dosing.noSubstance")}: ${days.join(", ")}`;
+}
 
 const WEIGHT_MAX_AGE_MS = 7 * 24 * 3600 * 1000;
 const perKg = (unit) => unit.endsWith("/kg");
@@ -116,7 +130,7 @@ Row.props = ["animal"];
       <li v-for="g in undosedGroups" :key="g.id" data-test="undosed-group" :data-group="g.code">
         <strong>{{ g.code }}</strong> · {{ g.name }}
         <NTag size="small" round :bordered="false" class="role">{{ $t(`execution.roles.${g.role}`) }}</NTag>
-        <span class="muted">{{ $t("execution.dosing.noDosing") }}</span>
+        <span class="muted" data-test="undosed-text">{{ undosedText(g) }}</span>
       </li>
     </ul>
   </NSpin>

@@ -103,6 +103,54 @@ func TestRegimenItemValidation(t *testing.T) {
 	}
 }
 
+func TestNoSubstancePeriodHasOnlyStudyDays(t *testing.T) {
+	period := RegimenFields{GroupID: "g", Purpose: "NONE", StartDay: -7, EndDay: 28}
+	r, err := NewRegimenItem("e", period)
+	if err != nil || r.Purpose != NoSubstance || r.StartDay != -7 || r.EndDay != 28 || r.SubstanceID != "" || r.DoseMicro != 0 ||
+		r.Unit != "" || r.Route != "" || r.Frequency != "" || r.IntervalDays != 0 || r.Amount() != "" {
+		t.Fatalf("item=%+v err=%v", r, err)
+	}
+	if f := r.Fields(); f != period {
+		t.Fatalf("fields %+v, want %+v", f, period)
+	}
+	change := func(edit func(*RegimenFields)) RegimenFields {
+		f := period
+		edit(&f)
+		return f
+	}
+	for _, tc := range []struct {
+		name string
+		f    RegimenFields
+		want error
+	}{
+		{"one day", change(func(f *RegimenFields) { f.StartDay, f.EndDay = 3, 3 }), nil},
+		{"substance", change(func(f *RegimenFields) { f.SubstanceID = "s" }), ErrNoSubstanceFields},
+		{"amount", change(func(f *RegimenFields) { f.Amount = "1" }), ErrNoSubstanceFields},
+		{"zero amount", change(func(f *RegimenFields) { f.Amount = "0" }), ErrNoSubstanceFields},
+		{"unit", change(func(f *RegimenFields) { f.Unit = "mg/kg" }), ErrNoSubstanceFields},
+		{"route", change(func(f *RegimenFields) { f.Route = "ORAL" }), ErrNoSubstanceFields},
+		{"frequency", change(func(f *RegimenFields) { f.Frequency = "DAILY" }), ErrNoSubstanceFields},
+		{"interval", change(func(f *RegimenFields) { f.IntervalDays = 3 }), ErrNoSubstanceFields},
+		{"end before start", change(func(f *RegimenFields) { f.EndDay = -8 }), ErrInvalidDays},
+		{"start out of range", change(func(f *RegimenFields) { f.StartDay = MinStudyDay - 1 }), ErrInvalidDays},
+		{"end out of range", change(func(f *RegimenFields) { f.EndDay = MaxStudyDay + 1 }), ErrInvalidDays},
+		{"lower case purpose", change(func(f *RegimenFields) { f.Purpose = "none" }), ErrInvalidPurpose},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := NewRegimenItem("e", tc.f); !errors.Is(err, tc.want) {
+				t.Fatalf("err=%v want %v", err, tc.want)
+			}
+		})
+	}
+	// Every other purpose still needs a substance, an amount, a unit, a
+	// route and a frequency.
+	for _, purpose := range []string{"INDUCTION", "VEHICLE", "TREATMENT"} {
+		if _, err := NewRegimenItem("e", change(func(f *RegimenFields) { f.Purpose = purpose })); !errors.Is(err, ErrInvalidAmount) {
+			t.Errorf("%s with days only: %v", purpose, err)
+		}
+	}
+}
+
 func TestAmountsAreExact(t *testing.T) {
 	for raw, want := range map[string]int64{"1": 1_000_000, "0.000001": 1, "999999999.999999": 999_999_999_999_999, " 10.50 ": 10_500_000} {
 		if got, err := ParseMicro(raw); err != nil || got != want {
@@ -238,7 +286,7 @@ func TestReadinessListsEveryUnmetStartRule(t *testing.T) {
 			group("positive", PositiveControl, "mptp", 8), group("treated", Treatment, "mptp", 8),
 		},
 		Items: []RegimenItem{
-			item("healthy", Vehicle), item("sham", Vehicle),
+			item("healthy", NoSubstance), item("sham", Vehicle),
 			item("disease", Induction), item("disease", Vehicle),
 			item("positive", Induction), item("positive", TreatmentPurpose),
 			item("treated", Induction), item("treated", TreatmentPurpose), item("treated", Vehicle),
@@ -257,7 +305,7 @@ func TestReadinessListsEveryUnmetStartRule(t *testing.T) {
 		group("positive", PositiveControl, "mptp", 8), group("treated", Treatment, "mptp", 8),
 	}
 	broken.Items = []RegimenItem{
-		item("healthy", Induction), item("healthy", TreatmentPurpose),
+		item("healthy", Vehicle), item("healthy", Induction), item("healthy", TreatmentPurpose),
 		item("sham", Induction), item("sham", TreatmentPurpose),
 		item("disease", TreatmentPurpose),
 		item("treated", Vehicle),
@@ -267,6 +315,7 @@ func TestReadinessListsEveryUnmetStartRule(t *testing.T) {
 		{Rule: RulePrimaryEndpointMissing},
 		{Rule: RuleEndpointMetricMissing, EndpointID: "secondary"},
 		{Rule: RuleTargetSizeMissing, GroupID: "healthy"},
+		{Rule: RuleVehicleItemNotAllowed, GroupID: "healthy"},
 		{Rule: RuleInductionItemNotAllowed, GroupID: "healthy"},
 		{Rule: RuleTreatmentItemNotAllowed, GroupID: "healthy"},
 		{Rule: RuleVehicleItemMissing, GroupID: "sham"},
@@ -312,10 +361,18 @@ func TestReadinessNeedsAHealthyControl(t *testing.T) {
 			[]string{},
 		},
 		{
+			"healthy control with no-substance periods",
+			[]Group{{ID: "healthy", Role: HealthyControl, TargetSize: 8}},
+			[]RegimenItem{{GroupID: "healthy", Purpose: NoSubstance, StartDay: -7, EndDay: 0}, {GroupID: "healthy", Purpose: NoSubstance, StartDay: 1, EndDay: 28}},
+			[]string{},
+		},
+		{
+			// A vehicle written before periods existed is kept in started
+			// studies but blocks a draft from starting.
 			"vehicle healthy control",
 			[]Group{{ID: "healthy", Role: HealthyControl, TargetSize: 8}},
-			[]RegimenItem{{GroupID: "healthy", Purpose: Vehicle}},
-			[]string{},
+			[]RegimenItem{{GroupID: "healthy", Purpose: Vehicle}, {GroupID: "healthy", Purpose: NoSubstance}},
+			[]string{RuleVehicleItemNotAllowed},
 		},
 	}
 	for _, tt := range tests {
@@ -334,7 +391,7 @@ func TestRolePurposes(t *testing.T) {
 		role    Role
 		allowed []Purpose
 	}{
-		{HealthyControl, []Purpose{Vehicle}},
+		{HealthyControl, []Purpose{NoSubstance}},
 		{Sham, []Purpose{Vehicle}},
 		{DiseaseControl, []Purpose{Induction, Vehicle}},
 		{PositiveControl, []Purpose{Induction, Vehicle, TreatmentPurpose}},
@@ -346,7 +403,7 @@ func TestRolePurposes(t *testing.T) {
 			if got := tt.role.Purposes(); !slices.Equal(got, tt.allowed) {
 				t.Fatalf("purposes %v, want %v", got, tt.allowed)
 			}
-			for _, p := range []Purpose{Induction, Vehicle, TreatmentPurpose} {
+			for _, p := range []Purpose{NoSubstance, Induction, Vehicle, TreatmentPurpose} {
 				err := tt.role.AllowPurpose(p)
 				if want := slices.Contains(tt.allowed, p); want != (err == nil) {
 					t.Fatalf("%s: allowed=%v err=%v", p, want, err)

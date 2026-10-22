@@ -131,7 +131,11 @@ func TestAnalysisRunsMoveIntoJobs(t *testing.T) {
 	}
 
 	applied, err := schema.Migrate(ctx, pool)
-	if err != nil || !slices.Equal(applied, []string{"018_analysis_jobs.sql", "019_paradigm_trials.sql"}) {
+	pending := []string{}
+	for _, m := range migrations[17:] {
+		pending = append(pending, m.Name)
+	}
+	if err != nil || !slices.Equal(applied, pending) || applied[0] != "018_analysis_jobs.sql" {
 		t.Fatalf("migrate: %v %v", applied, err)
 	}
 

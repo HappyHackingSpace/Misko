@@ -1,13 +1,15 @@
 <script setup>
 // Create or edit one regimen item of a group: what it receives, how much, how
 // and when, in study days. A single dose starts and ends on the same day. Only
-// the purposes the group's role can receive are offered.
+// the purposes the group's role can receive are offered. A healthy control
+// receives no substance: its item is only the period without one, a first and
+// a last study day.
 import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { NAlert, NButton, NInput, NInputNumber, NModal, NSelect } from "naive-ui";
 import { regimenItems } from "../../../api/experiments.js";
 import { filterByText, selectOption } from "../../../composables/selectOptions.js";
-import { FREQUENCIES, ROLE_PURPOSES, ROUTES, UNITS } from "./shared.js";
+import { FREQUENCIES, NO_SUBSTANCE, ROLE_PURPOSES, ROUTES, UNITS } from "./shared.js";
 
 const props = defineProps({
   show: { type: Boolean, default: false },
@@ -36,6 +38,11 @@ const form = ref(empty());
 const error = ref("");
 const saving = ref(false);
 
+// A healthy control's item is a period without any substance. Its form asks
+// only for the two study days; a vehicle such a group kept from before is
+// turned into a period when saved.
+const period = computed(() => props.group?.role === "HEALTHY_CONTROL");
+
 watch(
   () => props.show,
   (open) => {
@@ -62,7 +69,7 @@ const once = computed(() => form.value.frequency === "ONCE");
 watch(
   () => [form.value.frequency, form.value.startDay],
   () => {
-    if (once.value) form.value.endDay = form.value.startDay;
+    if (once.value && !period.value) form.value.endDay = form.value.startDay;
   },
 );
 
@@ -96,6 +103,11 @@ const normalisedAmount = computed(() => form.value.amount.trim().replace(",", ".
 
 function payload() {
   const f = form.value;
+  if (period.value) {
+    const body = { purpose: NO_SUBSTANCE, startDay: f.startDay, endDay: f.endDay };
+    if (!props.item) body.groupId = props.group.id;
+    return body;
+  }
   const body = {
     purpose: f.purpose,
     substanceId: f.substanceId,
@@ -128,8 +140,13 @@ async function save() {
   }
 }
 
-const complete = computed(
-  () => form.value.purpose && form.value.substanceId && normalisedAmount.value !== "" && form.value.unit && form.value.route && form.value.frequency,
+// A period needs both days; their order is checked by the API (an input
+// commits its number only when it loses focus, so the button must stay
+// clickable while the last day is still being typed).
+const complete = computed(() =>
+  period.value
+    ? Number.isInteger(form.value.startDay) && Number.isInteger(form.value.endDay)
+    : form.value.purpose && form.value.substanceId && normalisedAmount.value !== "" && form.value.unit && form.value.route && form.value.frequency,
 );
 </script>
 
@@ -141,7 +158,19 @@ const complete = computed(
     style="width: 620px; max-width: 94vw"
     @update:show="emit('update:show', $event)"
   >
-    <form class="form" data-test="regimen-form" @submit.prevent="save">
+    <form v-if="period" class="form" data-test="regimen-form" data-kind="period" @submit.prevent="save">
+      <label class="fld">
+        <span>{{ $t("design.regimen.startDay") }}</span>
+        <NInputNumber v-model:value="form.startDay" :min="-365" :max="3650" :precision="0" :input-props="{ 'data-test': 'regimen-start' }" />
+      </label>
+      <label class="fld">
+        <span>{{ $t("design.regimen.endDay") }}</span>
+        <NInputNumber v-model:value="form.endDay" :min="-365" :max="3650" :precision="0" :input-props="{ 'data-test': 'regimen-end' }" />
+      </label>
+      <small class="muted wide">{{ $t("design.regimen.periodHint") }} {{ $t("design.regimen.daysHint") }}</small>
+      <NAlert v-if="error" class="wide" type="error" :title="error" data-test="regimen-error" />
+    </form>
+    <form v-else class="form" data-test="regimen-form" @submit.prevent="save">
       <div class="fld">
         <span>{{ $t("design.regimen.purpose") }}</span>
         <NSelect v-model:value="form.purpose" :options="purposeOptions" data-test="regimen-purpose" />

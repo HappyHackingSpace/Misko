@@ -18,8 +18,9 @@ var (
 	ErrDiseaseModelRequired   = errors.New("every group except a healthy control needs a disease model")
 	ErrDiseaseModelNotAllowed = errors.New("a healthy control has no disease model")
 
-	ErrInvalidPurpose    = errors.New("purpose must be INDUCTION, VEHICLE or TREATMENT")
+	ErrInvalidPurpose    = errors.New("purpose must be NONE, INDUCTION, VEHICLE or TREATMENT")
 	ErrPurposeNotAllowed = errors.New("the group's role cannot receive an item with this purpose")
+	ErrNoSubstanceFields = errors.New("a period without any substance (purpose NONE) has only a first and a last study day")
 	ErrInvalidAmount     = errors.New("amount must be a positive decimal with at most 9 integer and 6 fractional digits")
 	ErrInvalidUnit       = errors.New("unit must be one of mg/kg, ug/kg, mL/kg, IU/kg, mg, ug, g, mL, uL, IU")
 	ErrInvalidRoute      = errors.New("route is not supported")
@@ -129,25 +130,33 @@ func (g Group) Fields() GroupFields {
 type Purpose string
 
 const (
+	// NoSubstance is a period in which the group receives no substance at
+	// all: a healthy control's only kind of item. It has a first and a last
+	// study day and nothing else.
+	NoSubstance      Purpose = "NONE"
 	Induction        Purpose = "INDUCTION"
 	Vehicle          Purpose = "VEHICLE"
 	TreatmentPurpose Purpose = "TREATMENT"
 )
 
 func ParsePurpose(raw string) (Purpose, error) {
-	if p := Purpose(raw); p == Induction || p == Vehicle || p == TreatmentPurpose {
+	switch p := Purpose(raw); p {
+	case NoSubstance, Induction, Vehicle, TreatmentPurpose:
 		return p, nil
 	}
 	return "", ErrInvalidPurpose
 }
 
 // Purposes lists the purposes a group of the role can ever receive: a healthy
-// control and a sham only a vehicle, a disease control its induction and a
-// vehicle, and the treated groups also their one treatment. Which items a
-// group must have before the study starts is checked by Readiness.
+// control only periods without any substance, a sham only a vehicle, a
+// disease control its induction and a vehicle, and the treated groups also
+// their one treatment. No other role has a period without a substance. Which
+// items a group must have before the study starts is checked by Readiness.
 func (r Role) Purposes() []Purpose {
 	switch r {
-	case HealthyControl, Sham:
+	case HealthyControl:
+		return []Purpose{NoSubstance}
+	case Sham:
 		return []Purpose{Vehicle}
 	case DiseaseControl:
 		return []Purpose{Induction, Vehicle}
@@ -191,7 +200,8 @@ func ParseFrequency(raw string) (Frequency, error) {
 
 // RegimenItem is what a group receives: its disease induction, a vehicle or
 // its treatment, as a dose per administration over study days. Amounts are
-// stored exactly in millionths of Unit.
+// stored exactly in millionths of Unit. A NoSubstance item is only a period
+// of study days: its substance, dose, unit, route and frequency are empty.
 type RegimenItem struct {
 	ID           string
 	ExperimentID string
@@ -227,6 +237,18 @@ func (r *RegimenItem) Apply(f RegimenFields) error {
 	if out.Purpose, err = ParsePurpose(f.Purpose); err != nil {
 		return err
 	}
+	if out.Purpose == NoSubstance {
+		if out.SubstanceID != "" || strings.TrimSpace(f.Amount) != "" || f.Unit != "" || f.Route != "" || f.Frequency != "" || f.IntervalDays != 0 {
+			return ErrNoSubstanceFields
+		}
+		if !studyDay(f.StartDay) || !studyDay(f.EndDay) || f.EndDay < f.StartDay {
+			return ErrInvalidDays
+		}
+		out.DoseMicro, out.Unit, out.Route, out.Frequency, out.IntervalDays = 0, "", "", "", 0
+		out.StartDay, out.EndDay = f.StartDay, f.EndDay
+		*r = out
+		return nil
+	}
 	if out.DoseMicro, err = ParseMicro(f.Amount); err != nil {
 		return err
 	}
@@ -253,12 +275,18 @@ func (r *RegimenItem) Apply(f RegimenFields) error {
 }
 
 func (r RegimenItem) Fields() RegimenFields {
-	return RegimenFields{GroupID: r.GroupID, Purpose: string(r.Purpose), SubstanceID: r.SubstanceID, Amount: FormatMicro(r.DoseMicro),
+	return RegimenFields{GroupID: r.GroupID, Purpose: string(r.Purpose), SubstanceID: r.SubstanceID, Amount: r.Amount(),
 		Unit: r.Unit, Route: r.Route, Frequency: string(r.Frequency), IntervalDays: r.IntervalDays, StartDay: r.StartDay, EndDay: r.EndDay}
 }
 
-// Amount is the dose per administration as an exact decimal.
-func (r RegimenItem) Amount() string { return FormatMicro(r.DoseMicro) }
+// Amount is the dose per administration as an exact decimal; empty for a
+// period without any substance.
+func (r RegimenItem) Amount() string {
+	if r.Purpose == NoSubstance {
+		return ""
+	}
+	return FormatMicro(r.DoseMicro)
+}
 
 // Timepoint is when animals are tested, in study days relative to day 0.
 type Timepoint struct {

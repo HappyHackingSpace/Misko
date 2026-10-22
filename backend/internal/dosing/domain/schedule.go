@@ -33,10 +33,11 @@ type RegimenItem struct {
 }
 
 // DosesOn returns how many doses of the item are due on a study day: none
-// outside [StartDay, EndDay], two a day for TWICE_DAILY, and for WEEKLY and
-// EVERY_N_DAYS one on the start day and every 7 or IntervalDays days after.
+// for a no-substance period or outside [StartDay, EndDay], two a day for
+// TWICE_DAILY, and for WEEKLY and EVERY_N_DAYS one on the start day and every
+// 7 or IntervalDays days after.
 func (r RegimenItem) DosesOn(studyDay int) int {
-	if studyDay < r.StartDay || studyDay > r.EndDay {
+	if r.Purpose == NoSubstance || studyDay < r.StartDay || studyDay > r.EndDay {
 		return 0
 	}
 	offset := studyDay - r.StartDay

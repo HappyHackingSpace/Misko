@@ -229,7 +229,10 @@ doldurup kaydedin. Deney **Gruplar ve rejimler** sekmesinde açılır. Yeni bir
    veya N günde bir) ve ilk ile son çalışma günü. Amaç listesi yalnızca grubun
    rolünün alabileceklerini sunar; tek bir amaç uyuyorsa o zaten seçilidir.
    Her kartta **Rejim** başlığının altındaki kısa satır, rolün neyi alması
-   gerektiğini ve neyi almadığını söyler.
+   gerektiğini ve neyi almadığını söyler. Sağlıklı kontrol hiçbir madde
+   almadığı için onun **Kalem ekle** penceresi yalnızca hiçbir şey almadığı
+   dönemin **İlk çalışma günü** ve **Son çalışma günü** bilgisini ister;
+   aşağıya bakın.
 
 Roller şunlardır: sağlıklı kontrol, sham, hastalık kontrolü, pozitif kontrol ve
 tedavi. **Her çalışmada en az bir sağlıklı kontrol grubu olmalıdır**: model
@@ -238,7 +241,7 @@ olmayan bir çalışma başlatılamaz. Her rolün alabilecekleri:
 
 | Rol | Almalı | Ayrıca alabilir | Asla almaz |
 | --- | --- | --- | --- |
-| Sağlıklı kontrol | hiçbir şey | taşıyıcı | indüksiyon, tedavi |
+| Sağlıklı kontrol | hiçbir madde (yalnızca dönemi kaydedilir) | | taşıyıcı, indüksiyon, tedavi |
 | Sham | taşıyıcı | | indüksiyon, tedavi |
 | Hastalık kontrolü | indüksiyon ve taşıyıcı | | tedavi |
 | Pozitif kontrol | indüksiyon ve bir tedavi (referans ilaç) | taşıyıcı | ikinci bir tedavi |
@@ -247,13 +250,18 @@ olmayan bir çalışma başlatılamaz. Her rolün alabilecekleri:
 Panel ve API, rolün asla almadığı bir kalemi ("Bu grubun rolü bu amaçla bir
 kalem alamaz") ve bir grubun ikinci tedavi kalemini reddeder.
 
-**Naif kontrol mü, taşıyıcı kontrolü mü?** Hiç kalemi olmayan bir sağlıklı
-kontrol *naif* kontroldür: kartında "Bu gruba madde uygulanmaz (naif kontrol)"
-yazar ve Dozlama sekmesi onu "Uygulama yok" ile listeler. Sağlıklı denekler
-tedavi gruplarıyla aynı taşıyıcıyı da almalıysa (tutma ve enjeksiyon stresini
-de kontrol eden bir *taşıyıcı* kontrolü), kartındaki **Taşıyıcı ekle (isteğe
-bağlı)** düğmesiyle taşıyıcıyı ekleyin. İkisi de geçerli bir sağlıklı
-kontroldür; hangisi olduğunu grubun adında veya açıklamasında belirtin.
+**Sağlıklı kontrol: madde yok, yalnızca dönem.** Sağlıklı kontrol *naif*
+kontroldür ve hiçbir madde almaz: taşıyıcı, indüksiyon ve tedavi yoktur.
+Kartında "Bu gruba madde uygulanmaz (naif kontrol)" yazar. Grubun hangi
+günlerde hiçbir madde almadığını kaydetmek için kartındaki **Kalem ekle**'ye
+tıklayın ve yalnızca **İlk çalışma günü** ile **Son çalışma günü**'nü girin;
+amaç, madde, doz, birim, yol ve sıklık yoktur. Kalem "Madde uygulanmaz: gün 0
+ile 14 arası" olarak görünür ve Dozlama sekmesi grubu "Madde uygulanmaz" ve bu
+dönemle listeler. Dönem isteğe bağlıdır; kalemi olmayan bir sağlıklı kontrol
+de geçerlidir. Eski bir taslakta sağlıklı kontrole girilmiş bir taşıyıcı,
+çalışmanın başlamasını engeller ("Sağlıklı kontrol grubunda olmaması gereken
+bir taşıyıcı kalemi var"): kalemi düzenleyip iki günü kaydederek döneme
+çevirin ya da silin. Başlamış çalışmaların tasarımı değişmeden kalır.
 
 **Zaman noktaları ve protokoller.** **Zaman noktaları ve protokoller**
 sekmesinde:
@@ -304,9 +312,10 @@ girmez.
 
 **Dozlama** sekmesi bir günün verilecek dozlarını grup ve deneğe göre, her
 deneğin son ağırlığıyla birlikte gösterir. Başka bir güne geçmek için okları
-veya tarih seçiciyi, geri dönmek için **Bugün**'ü kullanın. Hiç rejim kalemi
-olmayan gruplar (naif sağlıklı kontrol) altta **Uygulama yok** ile
-listelenir. Bir doz bugün
+veya tarih seçiciyi, geri dönmek için **Bugün**'ü kullanın. Sağlıklı kontrolün
+hiçbir zaman verilecek dozu olmaz: altta **Madde uygulanmaz** ve dönemiyle
+(örneğin "Madde uygulanmaz: gün 0 ile 14 arası"), rejim kalemi olmayan diğer
+gruplar **Uygulama yok** ile listelenir. Bir doz bugün
 **Bekliyor**, kaydedilince **Verildi**, geçmiş bir günde **Eksik** ve gelecek
 bir günde **Planlandı** olarak görünür.
 

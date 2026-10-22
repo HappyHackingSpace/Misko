@@ -135,8 +135,53 @@ func TestExperimentsOverHTTP(t *testing.T) {
 		t.Fatalf("regimen item: %v", treatment)
 	}
 	c.expect("second treatment", c.call("POST", base+"/regimen-items", admin, item(treated, "TREATMENT", compound, "DAILY", 1, 14)), 409, "regimen.treatmentTaken")
-	c.expect("once over days", c.call("POST", base+"/regimen-items", admin, item(healthy, "VEHICLE", saline, "ONCE", 1, 3)), 400, "regimen.invalidDays")
-	c.expect("unknown substance", c.call("POST", base+"/regimen-items", admin, item(healthy, "VEHICLE", id(healthy), "DAILY", 1, 3)), 400, "regimen.unknownSubstance")
+	c.expect("once over days", c.call("POST", base+"/regimen-items", admin, item(disease, "VEHICLE", saline, "ONCE", 1, 3)), 400, "regimen.invalidDays")
+	c.expect("unknown substance", c.call("POST", base+"/regimen-items", admin, item(disease, "VEHICLE", id(healthy), "DAILY", 1, 3)), 400, "regimen.unknownSubstance")
+
+	// A healthy control receives no substance: its items are periods with a
+	// first and a last study day and nothing else.
+	period := func(group map[string]any, start, end int) map[string]any {
+		return map[string]any{"groupId": id(group), "purpose": "NONE", "startDay": start, "endDay": end}
+	}
+	naive := c.create(base+"/regimen-items", admin, period(healthy, -7, 28))
+	for _, field := range []string{"substanceId", "amount", "unit", "route", "frequency", "intervalDays"} {
+		if v, ok := naive[field]; !ok || v != nil {
+			t.Fatalf("period %s: %v", field, naive)
+		}
+	}
+	if naive["purpose"] != "NONE" || naive["startDay"] != float64(-7) || naive["endDay"] != float64(28) {
+		t.Fatalf("period: %v", naive)
+	}
+	if moved := c.expect("period days", c.call("PATCH", base+"/regimen-items/"+id(naive), admin, map[string]any{"startDay": -3, "endDay": 21}), 200, "").body; moved["startDay"] != float64(-3) || moved["endDay"] != float64(21) || moved["amount"] != nil {
+		t.Fatalf("period patch: %v", moved)
+	}
+	withSubstance := period(healthy, 0, 14)
+	withSubstance["substanceId"] = saline
+	c.expect("period with a substance", c.call("POST", base+"/regimen-items", admin, withSubstance), 400, "regimen.noSubstanceFields")
+	withDose := period(healthy, 0, 14)
+	withDose["amount"], withDose["unit"] = "1", "mL/kg"
+	c.expect("period with a dose", c.call("POST", base+"/regimen-items", admin, withDose), 400, "regimen.noSubstanceFields")
+	c.expect("period ending before it starts", c.call("POST", base+"/regimen-items", admin, period(healthy, 5, 4)), 400, "regimen.invalidDays")
+	c.expect("period without a substance for a disease control", c.call("POST", base+"/regimen-items", admin, period(disease, 0, 14)), 400, "regimen.purposeNotAllowed")
+	c.expect("period moved to a disease control", c.call("PATCH", base+"/regimen-items/"+id(naive), admin, map[string]any{"groupId": id(disease)}), 400, "regimen.purposeNotAllowed")
+	c.expect("healthy vehicle", c.call("POST", base+"/regimen-items", admin, item(healthy, "VEHICLE", saline, "DAILY", 1, 14)), 400, "regimen.purposeNotAllowed")
+	c.expect("healthy control with a period becomes diseased", c.call("PATCH", base+"/groups/"+id(healthy), admin, map[string]any{"role": "DISEASE_CONTROL", "diseaseModelId": model}), 409, "group.regimenConflict")
+	c.expect("disease control becomes healthy", c.call("PATCH", base+"/groups/"+id(disease), admin, map[string]any{"role": "HEALTHY_CONTROL", "diseaseModelId": ""}), 409, "group.regimenConflict")
+	// A vehicle a draft's healthy control kept from before periods existed
+	// blocks the start until it is turned into a period.
+	sql.exec(`ALTER TABLE misko.regimen_items DISABLE TRIGGER regimen_items_role`)
+	legacy := sql.id(`INSERT INTO misko.regimen_items (experiment_id, group_id, purpose, substance_id, dose_micro, unit, route, frequency, start_day, end_day)
+		VALUES ($1, $2, 'VEHICLE', $3, 10000000, 'mL/kg', 'ORAL', 'DAILY', 1, 14) RETURNING id`, id(exp), id(healthy), saline)
+	sql.exec(`ALTER TABLE misko.regimen_items ENABLE TRIGGER regimen_items_role`)
+	if r := c.call("GET", base+"/readiness", admin, nil).body; !hasRule(r["unmet"], "readiness.vehicleItemNotAllowed", id(healthy)) {
+		t.Fatalf("readiness with a healthy control's vehicle: %v", r)
+	}
+	c.expect("healthy control's vehicle changed", c.call("PATCH", base+"/regimen-items/"+legacy, admin, map[string]any{"amount": "5"}), 400, "regimen.purposeNotAllowed")
+	if turned := c.expect("vehicle to period", c.call("PATCH", base+"/regimen-items/"+legacy, admin, map[string]any{"purpose": "NONE"}), 200, "").body; turned["purpose"] != "NONE" || turned["substanceId"] != nil || turned["frequency"] != nil || turned["startDay"] != float64(1) {
+		t.Fatalf("vehicle to period: %v", turned)
+	}
+	c.expect("second period", c.call("DELETE", base+"/regimen-items/"+legacy, admin, nil), 204, "")
+
 	// A purpose the group's role can never receive is rejected on create and update.
 	c.expect("healthy induction", c.call("POST", base+"/regimen-items", admin, item(healthy, "INDUCTION", mptp, "ONCE", 0, 0)), 400, "regimen.purposeNotAllowed")
 	c.expect("healthy treatment", c.call("POST", base+"/regimen-items", admin, item(healthy, "TREATMENT", compound, "DAILY", 1, 14)), 400, "regimen.purposeNotAllowed")

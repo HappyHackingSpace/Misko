@@ -8,7 +8,7 @@ import { useRoute, useRouter } from "vue-router";
 import { NAlert, NButton, NCard, NEmpty, NPopconfirm, NProgress, NSpin, NTag, useMessage } from "naive-ui";
 import { groups as groupsApi, pickers, regimenItems } from "../../../api/experiments.js";
 import { useAuth } from "../../../stores/auth.js";
-import { purposeTagType, roleColor, roleTagType, useDesignFormat } from "../design/shared.js";
+import { NO_SUBSTANCE, purposeTagType, roleColor, roleTagType, useDesignFormat } from "../design/shared.js";
 import GroupForm from "../design/GroupForm.vue";
 import RegimenForm from "../design/RegimenForm.vue";
 
@@ -62,11 +62,11 @@ const nextCode = computed(() => {
   return `G${n}`;
 });
 
-// A healthy control receives nothing (a naive control) or only a vehicle; a
-// sham only a vehicle. Their empty regimen and add button say so.
+// A healthy control receives no substance at all (its items are only the
+// periods without one); a sham only a vehicle. Their empty regimen and add
+// button say so.
 const emptyText = (g) => t(g.role === "HEALTHY_CONTROL" ? "design.regimen.emptyNaive" : "design.regimen.empty");
-const addLabel = (g) =>
-  t({ HEALTHY_CONTROL: "design.regimen.addVehicleOptional", SHAM: "design.regimen.addVehicle" }[g.role] || "design.regimen.add");
+const addLabel = (g) => t(g.role === "SHAM" ? "design.regimen.addVehicle" : "design.regimen.add");
 
 // Group dialog. The readiness panel links here with ?addGroup=<role> to open
 // it with that role chosen.
@@ -194,9 +194,10 @@ watch(() => route.query.addGroup, openRequestedGroup);
             <small class="muted hint" :data-test="`regimen-rule-${g.code}`">{{ $t(`design.regimen.roleRules.${g.role}`) }}</small>
             <p v-if="!itemsOf(g.id).length" class="muted small" :data-test="`regimen-empty-${g.code}`">{{ emptyText(g) }}</p>
             <ul class="items">
-              <li v-for="item in itemsOf(g.id)" :key="item.id" class="item" data-test="regimen-item">
-                <NTag size="small" :bordered="false" :type="purposeTagType(item.purpose)">{{ fmt.purpose(item.purpose) }}</NTag>
-                <div class="item-body">
+              <li v-for="item in itemsOf(g.id)" :key="item.id" class="item" data-test="regimen-item" :data-purpose="item.purpose">
+                <div v-if="item.purpose === NO_SUBSTANCE" class="item-body" data-test="regimen-period">{{ fmt.period(item) }}</div>
+                <NTag v-else size="small" :bordered="false" :type="purposeTagType(item.purpose)">{{ fmt.purpose(item.purpose) }}</NTag>
+                <div v-if="item.purpose !== NO_SUBSTANCE" class="item-body">
                   <div><strong>{{ substanceName(item.substanceId) }}</strong> <span data-test="regimen-dose">{{ fmt.dose(item) }}</span></div>
                   <small class="muted">{{ fmt.route(item.route) }} · {{ fmt.frequency(item) }} · {{ fmt.days(item) }}</small>
                 </div>
