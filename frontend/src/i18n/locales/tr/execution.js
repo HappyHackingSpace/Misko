@@ -60,6 +60,7 @@ export default {
       today: "Bugün",
       totals: "{due} dozdan {given} tanesi verildi",
       nothingDue: "Bu gün verilecek doz yok.",
+      noDosing: "Uygulama yok",
       weight: "Ağırlık",
       weightState: { missing: "Tartılmadı", stale: "Ağırlık 7 günden eski" },
       doses: "Dozlar",

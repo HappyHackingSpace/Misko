@@ -1,18 +1,21 @@
 <script setup>
 // Create or edit one regimen item of a group: what it receives, how much, how
-// and when, in study days. A single dose starts and ends on the same day.
+// and when, in study days. A single dose starts and ends on the same day. Only
+// the purposes the group's role can receive are offered.
 import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { NAlert, NButton, NInput, NInputNumber, NModal, NSelect } from "naive-ui";
 import { regimenItems } from "../../../api/experiments.js";
 import { filterByText, selectOption } from "../../../composables/selectOptions.js";
-import { FREQUENCIES, PURPOSES, ROUTES, UNITS } from "./shared.js";
+import { FREQUENCIES, ROLE_PURPOSES, ROUTES, UNITS } from "./shared.js";
 
 const props = defineProps({
   show: { type: Boolean, default: false },
   experimentId: { type: String, required: true },
   group: { type: Object, default: null },
   item: { type: Object, default: null },
+  // The group's current regimen items, to offer a treatment only once.
+  groupItems: { type: Array, default: () => [] },
   substances: { type: Array, default: () => [] },
 });
 const emit = defineEmits(["update:show", "saved"]);
@@ -51,7 +54,7 @@ watch(
           startDay: i.startDay,
           endDay: i.endDay,
         }
-      : empty();
+      : { ...empty(), purpose: allowedPurposes.value.length === 1 ? allowedPurposes.value[0] : null };
   },
 );
 
@@ -73,7 +76,15 @@ const substanceOptions = computed(() => {
   });
   return sorted.map((s) => selectOption("regimen-substance", s.id, `${s.name} (${t(`design.substanceKinds.${s.kind}`)})`));
 });
-const purposeOptions = computed(() => PURPOSES.map((p) => selectOption("regimen-purpose", p, t(`design.purposes.${p}`))));
+// The role's purposes, without a treatment when another item of the group is
+// already its treatment. An edited item keeps its own purpose in the list so
+// the select can show it even if the role no longer allows it.
+const allowedPurposes = computed(() => {
+  const taken = props.groupItems.some((i) => i.purpose === "TREATMENT" && i.id !== props.item?.id);
+  const allowed = (ROLE_PURPOSES[props.group?.role] || []).filter((p) => !(p === "TREATMENT" && taken));
+  return props.item && !allowed.includes(props.item.purpose) ? [...allowed, props.item.purpose] : allowed;
+});
+const purposeOptions = computed(() => allowedPurposes.value.map((p) => selectOption("regimen-purpose", p, t(`design.purposes.${p}`))));
 const unitOptions = computed(() => UNITS.map((u) => selectOption("regimen-unit", u, t(`design.units.${u}`))));
 const routeOptions = computed(() => ROUTES.map((r) => selectOption("regimen-route", r, t(`design.routes.${r}`))));
 const frequencyOptions = computed(() =>

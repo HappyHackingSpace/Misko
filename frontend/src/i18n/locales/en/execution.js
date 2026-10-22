@@ -60,6 +60,7 @@ export default {
       today: "Today",
       totals: "{given} of {due} doses given",
       nothingDue: "Nothing is due on this day.",
+      noDosing: "No dosing",
       weight: "Weight",
       weightState: { missing: "Not weighed", stale: "Weight older than 7 days" },
       doses: "Doses",

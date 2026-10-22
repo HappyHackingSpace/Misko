@@ -233,9 +233,14 @@ completes.
   `TREATMENT`), substance, dose (decimal text, stored exactly in millionths),
   unit, route, `frequency` (`ONCE`, `DAILY`, `TWICE_DAILY`, `WEEKLY`,
   `EVERY_N_DAYS` with `intervalDays`) and `startDay`/`endDay` in study days
-  relative to day 0. A group has at most one `TREATMENT` item, so a treatment
-  group has one substance at one dose level; dose response is the set of
-  treatment groups that share a substance.
+  relative to day 0. A group has at most one `TREATMENT` item
+  (`regimen.treatmentTaken`), so a treatment group has one substance at one
+  dose level; dose response is the set of treatment groups that share a
+  substance. The purpose must suit the group's role, on create and update
+  (400 `regimen.purposeNotAllowed`): a healthy control and a sham receive only
+  a `VEHICLE`, a disease control an `INDUCTION` or a `VEHICLE`, a positive
+  control and a treatment group any of the three. A healthy control may have
+  no item at all (a naive control).
 - **Timepoint**: name, `studyDay` (baseline days are negative or zero) and
   position, both unique in the experiment.
 - **Endpoint**: what the study is judged on: one metric of one paradigm at one
@@ -249,12 +254,13 @@ Lifecycle:
 
 - `GET {e}/readiness` lists the start rules the design breaks, each with a
   stable code (`readiness.noTimepoints`, `readiness.noGroups`,
-  `readiness.targetSizeMissing`, `readiness.primaryEndpointMissing`,
+  `readiness.healthyControlMissing`, `readiness.targetSizeMissing`, `readiness.primaryEndpointMissing`,
   `readiness.endpointMetricUnavailable`, `readiness.treatmentItemMissing`,
   `readiness.treatmentItemNotAllowed`, `readiness.inductionItemMissing`,
   `readiness.inductionItemNotAllowed`, `readiness.vehicleItemMissing`,
   `readiness.diseaseControlMissing`) and the group or endpoint it concerns.
-  The rules: at least one timepoint and one group, a target size on every
+  The rules: at least one timepoint and one group, at least one healthy
+  control (the reference for model validity and rescue), a target size on every
   group, one primary endpoint, every endpoint metric available; treatment and
   positive control groups have exactly one `TREATMENT` item and an `INDUCTION`
   item; a disease control has an `INDUCTION` and a `VEHICLE` item and no

@@ -25,6 +25,7 @@ const date = ref(null); // "YYYY-MM-DD"; null until the API told us today's date
 const today = ref(null);
 const schedule = ref(null);
 const groups = ref([]);
+const regimenItems = ref([]);
 const allocations = ref([]);
 const loading = ref(false);
 const error = ref("");
@@ -54,8 +55,13 @@ async function loadSchedule() {
 
 async function loadDesign() {
   try {
-    const [groupList, allocationList] = await Promise.all([studyDesign.groups(id.value), studyDesign.allocations(id.value)]);
+    const [groupList, itemList, allocationList] = await Promise.all([
+      studyDesign.groups(id.value),
+      studyDesign.regimenItems(id.value),
+      studyDesign.allocations(id.value),
+    ]);
     groups.value = groupList.data || [];
+    regimenItems.value = itemList.data || [];
     allocations.value = allocationList.data || [];
   } catch (e) {
     error.value = e.message;
@@ -65,6 +71,10 @@ async function loadDesign() {
 watch(date, (value, previous) => {
   if (previous) loadSchedule();
 });
+
+// Groups with no regimen item (a naive healthy control) are never due a dose;
+// the schedule names them so their absence is not mistaken for a gap.
+const undosedGroups = computed(() => groups.value.filter((g) => !regimenItems.value.some((i) => i.groupId === g.id)));
 
 const shift = (days) => (date.value = addDays(date.value, days));
 // NDatePicker speaks timestamps; the tab speaks calendar dates.
@@ -144,6 +154,7 @@ watch(started, (value) => value && loadSchedule());
         <DueDoses
           :schedule="schedule"
           :groups="groups"
+          :undosed-groups="undosedGroups"
           :loading="loading"
           :past="!!today && date < today"
           :future="!!today && date > today"

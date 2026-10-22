@@ -6,7 +6,19 @@ import { useRoute, useRouter } from "vue-router";
 import { paradigmCatalog } from "../../../api/protocols.js";
 
 export const ROLES = ["HEALTHY_CONTROL", "SHAM", "DISEASE_CONTROL", "POSITIVE_CONTROL", "TREATMENT"];
-export const PURPOSES = ["INDUCTION", "VEHICLE", "TREATMENT", "CONTROL"];
+export const PURPOSES = ["INDUCTION", "VEHICLE", "TREATMENT"];
+
+// What a group of each role can ever receive, as the API enforces it: a
+// healthy control and a sham only a vehicle, a disease control its induction
+// and a vehicle, the treated groups also their one treatment. A healthy
+// control may receive nothing at all (a naive control).
+export const ROLE_PURPOSES = {
+  HEALTHY_CONTROL: ["VEHICLE"],
+  SHAM: ["VEHICLE"],
+  DISEASE_CONTROL: ["INDUCTION", "VEHICLE"],
+  POSITIVE_CONTROL: ["INDUCTION", "VEHICLE", "TREATMENT"],
+  TREATMENT: ["INDUCTION", "VEHICLE", "TREATMENT"],
+};
 
 export const UNITS = ["mg/kg", "ug/kg", "mL/kg", "IU/kg", "mg", "ug", "g", "mL", "uL", "IU"];
 export const ROUTES = [
@@ -19,12 +31,8 @@ export const ROUTES = [
   "INTRACEREBROVENTRICULAR",
   "TOPICAL",
   "INHALATION",
-  "SHAM",
-  "NONE",
 ];
-
-export const FREQUENCIES = ["ONCE", "DAILY", "TWICE_DAILY", "WEEKLY", "EVERY_N_DAYS", "NONE"];
-
+export const FREQUENCIES = ["ONCE", "DAILY", "TWICE_DAILY", "WEEKLY", "EVERY_N_DAYS"];
 export const EXCLUSION_REASONS = ["DIED", "HUMANE_ENDPOINT", "INDUCTION_FAILED", "TECHNICAL", "OTHER"];
 export const ENDPOINT_KINDS = ["PRIMARY", "SECONDARY"];
 export const DIRECTIONS = ["HIGHER_IS_BETTER", "LOWER_IS_BETTER"];

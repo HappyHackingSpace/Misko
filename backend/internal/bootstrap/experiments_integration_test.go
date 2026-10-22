@@ -128,8 +128,8 @@ func TestExperimentsOverHTTP(t *testing.T) {
 			"route": "INTRAPERITONEAL", "frequency": frequency, "startDay": start, "endDay": end}
 	}
 	c.create(base+"/regimen-items", admin, item(disease, "INDUCTION", mptp, "ONCE", 0, 0))
-	c.create(base+"/regimen-items", admin, item(disease, "VEHICLE", saline, "DAILY", 1, 14))
-	c.create(base+"/regimen-items", admin, item(treated, "INDUCTION", mptp, "ONCE", 0, 0))
+	vehicle := c.create(base+"/regimen-items", admin, item(disease, "VEHICLE", saline, "DAILY", 1, 14))
+	inducing := c.create(base+"/regimen-items", admin, item(treated, "INDUCTION", mptp, "ONCE", 0, 0))
 	treatment := c.create(base+"/regimen-items", admin, item(treated, "TREATMENT", compound, "DAILY", 1, 14))
 	if treatment["amount"] != "20" || treatment["intervalDays"] != nil {
 		t.Fatalf("regimen item: %v", treatment)
@@ -137,6 +137,14 @@ func TestExperimentsOverHTTP(t *testing.T) {
 	c.expect("second treatment", c.call("POST", base+"/regimen-items", admin, item(treated, "TREATMENT", compound, "DAILY", 1, 14)), 409, "regimen.treatmentTaken")
 	c.expect("once over days", c.call("POST", base+"/regimen-items", admin, item(healthy, "VEHICLE", saline, "ONCE", 1, 3)), 400, "regimen.invalidDays")
 	c.expect("unknown substance", c.call("POST", base+"/regimen-items", admin, item(healthy, "VEHICLE", id(healthy), "DAILY", 1, 3)), 400, "regimen.unknownSubstance")
+	// A purpose the group's role can never receive is rejected on create and update.
+	c.expect("healthy induction", c.call("POST", base+"/regimen-items", admin, item(healthy, "INDUCTION", mptp, "ONCE", 0, 0)), 400, "regimen.purposeNotAllowed")
+	c.expect("healthy treatment", c.call("POST", base+"/regimen-items", admin, item(healthy, "TREATMENT", compound, "DAILY", 1, 14)), 400, "regimen.purposeNotAllowed")
+	c.expect("disease treatment", c.call("POST", base+"/regimen-items", admin, item(disease, "TREATMENT", compound, "DAILY", 1, 14)), 400, "regimen.purposeNotAllowed")
+	c.expect("vehicle to treatment", c.call("PATCH", base+"/regimen-items/"+id(vehicle), admin, map[string]any{"purpose": "TREATMENT"}), 400, "regimen.purposeNotAllowed")
+	c.expect("induction to healthy", c.call("PATCH", base+"/regimen-items/"+id(inducing), admin, map[string]any{"groupId": id(healthy)}), 400, "regimen.purposeNotAllowed")
+	c.expect("unknown group", c.call("POST", base+"/regimen-items", admin, map[string]any{"groupId": "00000000-0000-7000-8000-00000000abcd", "purpose": "VEHICLE",
+		"substanceId": saline, "amount": "1", "unit": "mL/kg", "route": "ORAL", "frequency": "ONCE", "startDay": 0, "endDay": 0}), 400, "group.notInExperiment")
 	if changed := c.expect("dose", c.call("PATCH", base+"/regimen-items/"+id(treatment), admin, map[string]any{"amount": "12.5"}), 200, "").body; changed["amount"] != "12.5" {
 		t.Fatalf("regimen patch: %v", changed)
 	}
@@ -149,6 +157,9 @@ func TestExperimentsOverHTTP(t *testing.T) {
 	c.expect("allocated twice", c.call("POST", base+"/allocations", admin, map[string]any{"subjectId": animals[0], "groupId": id(disease)}), 409, "allocation.subjectAllocated")
 	c.expect("unknown subject", c.call("POST", base+"/allocations", admin, map[string]any{"subjectId": id(healthy), "groupId": id(disease)}), 400, "allocation.unknownSubject")
 	other := c.create("/api/experiments", admin, map[string]any{"code": "EXP-2", "title": "Other"})
+	if r := c.call("GET", "/api/experiments/"+id(other)+"/readiness", admin, nil).body; !hasRule(r["unmet"], "readiness.healthyControlMissing", "") {
+		t.Fatalf("readiness without a healthy control: %v", r)
+	}
 	foreign := c.create("/api/experiments/"+id(other)+"/groups", admin, map[string]any{"code": "G1", "name": "Healthy", "role": "HEALTHY_CONTROL"})
 	c.expect("foreign group", c.call("POST", base+"/allocations", admin, map[string]any{"subjectId": animals[1], "groupId": id(foreign)}), 400, "group.notInExperiment")
 	if moved := c.expect("move", c.call("PATCH", base+"/allocations/"+id(allocation), admin, map[string]any{"groupId": id(disease)}), 200, "").body; moved["groupId"] != id(disease) {
@@ -272,9 +283,15 @@ func TestExperimentsOverHTTP(t *testing.T) {
 	c.expect("complete draft", c.call("POST", "/api/experiments/"+id(other)+"/complete", admin, nil), 409, "experiment.notRunning")
 }
 
+// hasRule reports whether unmet lists the rule for the group; an empty
+// groupID matches a rule about the whole design.
 func hasRule(unmet any, rule, groupID string) bool {
+	want := any(groupID)
+	if groupID == "" {
+		want = nil
+	}
 	for _, p := range unmet.([]any) {
-		if problem := p.(map[string]any); problem["rule"] == rule && problem["groupId"] == groupID {
+		if problem := p.(map[string]any); problem["rule"] == rule && problem["groupId"] == want {
 			return true
 		}
 	}

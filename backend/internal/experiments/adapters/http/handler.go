@@ -70,6 +70,7 @@ var failures = []httpjson.Failure{
 	{Err: domain.ErrDiseaseModelRequired, Status: http.StatusBadRequest, Code: "group.diseaseModelRequired"},
 	{Err: domain.ErrDiseaseModelNotAllowed, Status: http.StatusBadRequest, Code: "group.diseaseModelNotAllowed"},
 	{Err: domain.ErrInvalidPurpose, Status: http.StatusBadRequest, Code: "regimen.invalidPurpose"},
+	{Err: domain.ErrPurposeNotAllowed, Status: http.StatusBadRequest, Code: "regimen.purposeNotAllowed"},
 	{Err: domain.ErrInvalidAmount, Status: http.StatusBadRequest, Code: "dose.invalidAmount"},
 	{Err: domain.ErrInvalidUnit, Status: http.StatusBadRequest, Code: "dose.invalidUnit"},
 	{Err: domain.ErrInvalidRoute, Status: http.StatusBadRequest, Code: "dose.invalidRoute"},

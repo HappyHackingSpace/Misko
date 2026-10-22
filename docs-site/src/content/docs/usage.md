@@ -225,12 +225,35 @@ is a **Draft**; its design can be changed until it starts.
 2. On the group's card click **Add item** to say what the group receives: the
    purpose (induction, vehicle or treatment), the substance, the dose and unit
    (for example 10 mg/kg), the route, how often (once, daily, twice daily,
-   weekly or every N days) and the first and last study day.
+   weekly or every N days) and the first and last study day. The purpose list
+   only offers what the group's role may receive; when only one purpose fits it
+   is already chosen. A short line under **Regimen** on every card says what
+   the role must and must not receive.
 
 The roles are: healthy control, sham, disease control, positive control and
-treatment. A treatment or positive control group has exactly one treatment
-item (its dose level) and an induction item; a disease control has an induction
-and a vehicle; a sham has a vehicle and no induction.
+treatment. **Every study needs at least one healthy control group**: model
+validity and rescue % are measured against it, so a study without one cannot
+start. What each role may receive:
+
+| Role | Must receive | May also receive | Never receives |
+| --- | --- | --- | --- |
+| Healthy control | nothing | a vehicle | induction, treatment |
+| Sham | a vehicle | | induction, treatment |
+| Disease control | the induction and a vehicle | | treatment |
+| Positive control | the induction and one treatment (the reference drug) | a vehicle | a second treatment |
+| Treatment | the induction and one treatment (its dose level) | a vehicle | a second treatment |
+
+The panel and the API refuse an item the role never receives ("This group's
+role cannot receive an item with this purpose"), and a second treatment item of
+a group.
+
+**Naive control or vehicle control.** A healthy control without any item is a
+*naive* control: its card says "No substance is given to this group (naive
+control)" and the Dosing tab lists it with "No dosing". If the healthy animals
+should get the same vehicle as the treated groups (a *vehicle* control, which
+also controls for handling and injection stress), click **Add vehicle
+(optional)** on its card and add the vehicle. Both are valid healthy controls;
+say in the group's name or description which one it is.
 
 **Timepoints and protocols.** On the **Timepoints and protocols** tab:
 
@@ -248,7 +271,9 @@ a baseline timepoint, and which direction is better. Exactly one endpoint is
 **primary**; a second primary is refused.
 
 **Starting.** The **Overview** tab lists every start rule that is not met yet,
-each with a link to the tab that fixes it. When the list says the study is
+each with a link to the tab that fixes it. When the healthy control is
+missing, **Add a healthy control group** opens the group dialog with that role
+already chosen. When the list says the study is
 ready, click **Start study**, choose day 0 (the date study days count from,
 usually the induction) and confirm. The study becomes **Running**: groups,
 regimens, timepoints and endpoints are now shown read-only. New protocol
@@ -275,7 +300,8 @@ animals stay on the list with their reason and are left out of statistics.
 
 The **Dosing** tab shows the doses due on a day, grouped by group and animal,
 with each animal's latest weight. Use the arrows or the date picker to move to
-another day and **Today** to come back. A dose is **Due** today, **Given** once
+another day and **Today** to come back. Groups without any regimen item (a
+naive healthy control) are listed below with **No dosing**. A dose is **Due** today, **Given** once
 recorded, **Missing** on a past day and **Planned** on a future day.
 
 1. Click **Record** next to a due dose. The dialog shows the planned dose;

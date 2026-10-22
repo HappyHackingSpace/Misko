@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"errors"
 
 	access "github.com/HappyHackingSpace/Misko/backend/internal/access/domain"
 	"github.com/HappyHackingSpace/Misko/backend/internal/experiments/domain"
@@ -109,6 +110,9 @@ func (s *Service) CreateRegimenItem(ctx context.Context, actor access.Actor, exp
 		if err := draft(ctx, tx, experimentID); err != nil {
 			return err
 		}
+		if err := allowPurpose(ctx, tx, r); err != nil {
+			return err
+		}
 		created, err = tx.CreateRegimenItem(ctx, r)
 		return err
 	})
@@ -151,10 +155,28 @@ func (s *Service) UpdateRegimenItem(ctx context.Context, actor access.Actor, exp
 		if err := r.Apply(f); err != nil {
 			return err
 		}
+		if err := allowPurpose(ctx, tx, r); err != nil {
+			return err
+		}
 		updated, err = tx.UpdateRegimenItem(ctx, r)
 		return err
 	})
 	return updated, err
+}
+
+// allowPurpose rejects an item whose purpose its group's role can never
+// receive. It locks the group so its role cannot change meanwhile. A second
+// treatment item of the group is left to the store, which reports
+// ErrTreatmentItemTaken.
+func allowPurpose(ctx context.Context, tx Store, r domain.RegimenItem) error {
+	g, err := tx.LockGroup(ctx, r.ExperimentID, r.GroupID)
+	if errors.Is(err, ErrGroupNotFound) {
+		return ErrGroupNotInExperiment
+	}
+	if err != nil {
+		return err
+	}
+	return g.Role.AllowPurpose(r.Purpose)
 }
 
 func (s *Service) DeleteRegimenItem(ctx context.Context, actor access.Actor, experimentID, itemID string) error {

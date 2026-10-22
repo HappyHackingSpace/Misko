@@ -1,10 +1,26 @@
-// Designing a study from an empty draft to a running study: groups with their
-// regimens, timepoints, a protocol with a session setting and a second
+// Designing a study from an empty draft to a running study: the healthy
+// control every study needs, groups with the regimens their roles allow, timepoints, a protocol with a session setting and a second
 // version, endpoints, the readiness checklist, the start with day 0, and then
 // allocating, randomising and excluding animals. Once started, the design is
 // shown read-only.
 import { expect, test } from "@playwright/test";
-import { chooseValue, fill, signIn, unique } from "./helpers.js";
+import { chooseValue, field, fill, signIn, unique } from "./helpers.js";
+
+// The purposes listed in the open purpose menu (the chosen one is also drawn in
+// the select itself, so the menu is the scope).
+const purposeOptions = (page) => page.locator(".n-base-select-menu").filter({ visible: true }).getByTestId("regimen-purpose-option");
+
+// Closes the open purpose menu, then the regimen dialog, without saving.
+async function closeRegimenForm(page) {
+  const form = page.getByTestId("regimen-form");
+  await page.keyboard.press("Escape");
+  try {
+    await expect(form).toBeHidden({ timeout: 1000 });
+  } catch {
+    await page.keyboard.press("Escape");
+    await expect(form).toBeHidden();
+  }
+}
 
 test("a study is designed, started and filled with animals", async ({ page, request }) => {
   test.slow();
@@ -50,9 +66,42 @@ test("a study is designed, started and filled with animals", async ({ page, requ
     await page.getByTestId("regimen-save").click();
     await expect(page.getByTestId("regimen-form")).toBeHidden();
   };
-  await addGroup("G1", "Healthy", "HEALTHY_CONTROL");
+  // No study starts without a healthy control; the checklist offers to add one
+  // and opens the group dialog with the role chosen.
+  await page.goto(`${studyUrl}?tab=overview`);
+  await expect(page.getByTestId("readiness-unmet").locator('[data-rule="readiness.healthyControlMissing"]')).toContainText("Add a healthy control group");
+  await page.getByTestId("readiness-add-healthy").click();
+  await expect(page).toHaveURL(/tab=design/);
+  await expect(page.getByTestId("group-form")).toBeVisible();
+  await expect(field(page, "group-code")).toHaveValue("G1");
+  await expect(field(page, "group-name")).toHaveValue("Healthy control");
+  await expect(page.getByTestId("group-role")).toContainText("Healthy control");
+  await fill(page, "group-target", "2");
+  await page.getByTestId("group-save").click();
+  const healthy = page.getByTestId("group-card-G1");
+  await expect(healthy).toBeVisible();
+
+  // A naive healthy control receives nothing; it may only get a vehicle.
+  await expect(healthy.getByTestId("regimen-empty-G1")).toHaveText("No substance is given to this group (naive control).");
+  await expect(healthy.getByTestId("regimen-rule-G1")).toContainText("only a vehicle");
+  await expect(healthy.getByTestId("regimen-add-G1")).toHaveText("Add vehicle (optional)");
+  await healthy.getByTestId("regimen-add-G1").click();
+  await expect(page.getByTestId("regimen-purpose")).toContainText("Vehicle");
+  await page.getByTestId("regimen-purpose").click();
+  await expect(purposeOptions(page)).toHaveCount(1);
+  await expect(purposeOptions(page)).toHaveAttribute("data-value", "VEHICLE");
+  await closeRegimenForm(page);
   await addItem("G1", { purpose: "VEHICLE", substance: "Saline", amount: "10", unit: "mL/kg", route: "ORAL", frequency: "DAILY" });
+  await expect(healthy.getByTestId("regimen-empty-G1")).toHaveCount(0);
+
   await addGroup("G2", "Disease control", "DISEASE_CONTROL", model);
+  // A disease control is induced and gets a vehicle, never a treatment.
+  await expect(page.getByTestId("regimen-add-G2")).toHaveText("Add item");
+  await page.getByTestId("regimen-add-G2").click();
+  await page.getByTestId("regimen-purpose").click();
+  await expect(purposeOptions(page)).toHaveCount(2);
+  await expect(purposeOptions(page).and(page.locator('[data-value="TREATMENT"]'))).toHaveCount(0);
+  await closeRegimenForm(page);
   await addItem("G2", { purpose: "INDUCTION", substance: "MPTP", amount: "20", unit: "mg/kg", route: "INTRAPERITONEAL", frequency: "ONCE" });
   await addItem("G2", { purpose: "VEHICLE", substance: "Saline", amount: "10", unit: "mL/kg", route: "ORAL", frequency: "DAILY" });
   await expect(page.getByTestId("group-card-G1").getByTestId("regimen-item")).toHaveCount(1);
@@ -188,4 +237,39 @@ test("a study is designed, started and filled with animals", async ({ page, requ
   await page.getByTestId("allocation-dialog-save").click();
   await expect(first.getByTestId("allocation-excluded")).toContainText("Died");
   await expect(page.getByTestId("fill-G1")).toContainText("excluded");
+});
+
+test("a treatment group is offered one treatment and a sham only a vehicle", async ({ page, request }) => {
+  const { api } = await signIn(page, request);
+  const substances = (await api("GET", "/catalog/substances")).data;
+  const substance = (name) => substances.find((s) => s.name === name).id;
+  const model = (await api("GET", "/catalog/disease-models")).data.find((m) => m.name === "MPTP Parkinson").id;
+  const experiment = await api("POST", "/experiments", { code: unique("ROLES"), title: "Purposes by role" });
+  const base = `/experiments/${experiment.id}`;
+  const treated = await api("POST", `${base}/groups`, { code: "T1", name: "Treated", role: "TREATMENT", diseaseModelId: model });
+  await api("POST", `${base}/groups`, { code: "S1", name: "Sham", role: "SHAM", diseaseModelId: model });
+  const item = (purpose, name) => ({ groupId: treated.id, purpose, substanceId: substance(name), amount: "5", unit: "mg/kg",
+    route: "ORAL", frequency: "DAILY", startDay: 0, endDay: 7 });
+
+  await page.goto(`/experiments/${experiment.id}?tab=design`);
+  const purposes = purposeOptions(page);
+  const offered = async (groupCode) => {
+    await page.getByTestId(`regimen-add-${groupCode}`).click();
+    await page.getByTestId("regimen-purpose").click();
+    await expect(purposes.first()).toBeVisible();
+    const values = await purposes.evaluateAll((nodes) => nodes.map((n) => n.dataset.value));
+    await closeRegimenForm(page);
+    return values;
+  };
+  await expect(page.getByTestId("regimen-add-S1")).toHaveText("Add vehicle");
+  expect(await offered("S1")).toEqual(["VEHICLE"]);
+  expect(await offered("T1")).toEqual(["INDUCTION", "VEHICLE", "TREATMENT"]);
+
+  // Once the group has its treatment, a second one is not offered.
+  await api("POST", `${base}/regimen-items`, item("TREATMENT", "Compound X"));
+  await page.reload();
+  expect(await offered("T1")).toEqual(["INDUCTION", "VEHICLE"]);
+  // The API refuses what the form no longer offers.
+  await expect(api("POST", `${base}/regimen-items`, { ...item("INDUCTION", "MPTP"), groupId: (await api("GET", `${base}/groups`)).data.find((g) => g.code === "S1").id }))
+    .rejects.toThrow(/regimen.purposeNotAllowed/);
 });

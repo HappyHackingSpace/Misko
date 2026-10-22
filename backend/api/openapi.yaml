@@ -834,6 +834,12 @@ paths:
     post:
       operationId: createRegimenItem
       summary: Add a regimen item to a group of a draft (study:write); a group has at most one TREATMENT item
+      description: >-
+        The purpose must be one the group's role can receive, otherwise 400
+        regimen.purposeNotAllowed: HEALTHY_CONTROL and SHAM only VEHICLE;
+        DISEASE_CONTROL INDUCTION or VEHICLE; POSITIVE_CONTROL and TREATMENT
+        INDUCTION, VEHICLE or TREATMENT. A second TREATMENT item of a group is
+        409 regimen.treatmentTaken.
       requestBody:
         required: true
         content:
@@ -857,6 +863,9 @@ paths:
     patch:
       operationId: updateRegimenItem
       summary: Update a regimen item of a draft (study:write)
+      description: >-
+        The resulting purpose must be one the item's group can receive (400
+        regimen.purposeNotAllowed, see createRegimenItem).
       requestBody:
         required: true
         content:
@@ -2723,7 +2732,8 @@ components:
       properties:
         rule:
           type: string
-          enum: [readiness.noTimepoints, readiness.noGroups, readiness.targetSizeMissing, readiness.primaryEndpointMissing,
+          enum: [readiness.noTimepoints, readiness.noGroups, readiness.healthyControlMissing, readiness.targetSizeMissing,
+                 readiness.primaryEndpointMissing,
                  readiness.endpointMetricUnavailable, readiness.treatmentItemMissing, readiness.treatmentItemNotAllowed,
                  readiness.inductionItemMissing, readiness.inductionItemNotAllowed, readiness.vehicleItemMissing,
                  readiness.diseaseControlMissing]
@@ -2732,7 +2742,8 @@ components:
     Readiness:
       type: object
       description: >-
-        Start rules: at least one timepoint and one group; every group has a
+        Start rules: at least one timepoint and one group; at least one
+        HEALTHY_CONTROL group, the reference every analysis compares against; every group has a
         target size; exactly one primary endpoint; every endpoint's metric is
         computed by a paradigm version of the protocol steps; TREATMENT and
         POSITIVE_CONTROL groups have one TREATMENT and an INDUCTION item;
