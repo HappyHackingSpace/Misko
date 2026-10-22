@@ -1,23 +1,31 @@
 {
   "key": "MWM",
   "name": "Morris water maze",
+  "description": "The animal swims in a circular pool of opaque water and learns to locate a submerged escape platform using distal cues around the room. Assesses spatial learning and memory.",
   "category": "LEARNING_MEMORY",
   "species": [
     "MOUSE",
     "RAT"
   ],
   "trialTypes": [
-    "ACQUISITION",
-    "PROBE"
+    {
+      "key": "ACQUISITION",
+      "label": "Acquisition trial"
+    },
+    {
+      "key": "PROBE",
+      "label": "Probe trial"
+    }
   ],
   "version": 1,
   "metricEngineVersion": 1,
   "resultSchemaVersion": 1,
-  "automatedAnalysis": false,
-  "apparatusParameters": [
+  "parameters": [
     {
       "key": "tank_diameter_cm",
-      "label": "Tank diameter",
+      "scope": "APPARATUS",
+      "label": "Pool diameter",
+      "help": "Internal diameter of the pool at the water surface, measured wall to wall.",
       "unit": "cm",
       "valueType": "number",
       "min": 60,
@@ -26,7 +34,9 @@
     },
     {
       "key": "platform_diameter_cm",
+      "scope": "APPARATUS",
       "label": "Platform diameter",
+      "help": "Diameter of the top surface of the escape platform.",
       "unit": "cm",
       "valueType": "number",
       "min": 4,
@@ -35,7 +45,9 @@
     },
     {
       "key": "platform_x_cm",
-      "label": "Platform center east of tank center",
+      "scope": "APPARATUS",
+      "label": "Platform x offset",
+      "help": "Horizontal offset of the platform center from the pool center, as seen in the camera image. Positive to the right, negative to the left.",
       "unit": "cm",
       "valueType": "number",
       "min": -125,
@@ -44,7 +56,9 @@
     },
     {
       "key": "platform_y_cm",
-      "label": "Platform center north of tank center",
+      "scope": "APPARATUS",
+      "label": "Platform y offset",
+      "help": "Vertical offset of the platform center from the pool center, as seen in the camera image. Positive toward the top, negative toward the bottom.",
       "unit": "cm",
       "valueType": "number",
       "min": -125,
@@ -53,53 +67,60 @@
     },
     {
       "key": "wall_annulus_width_cm",
-      "label": "Wall annulus width for thigmotaxis",
+      "scope": "ANALYSIS",
+      "label": "Wall annulus width",
+      "help": "Width of the outer ring along the pool wall. Time spent in this ring is scored as thigmotaxis (wall hugging).",
       "unit": "cm",
       "valueType": "number",
       "min": 4,
       "max": 30,
       "default": 12
-    }
-  ],
-  "sessionParameters": [
-    {
-      "key": "max_sample_gap_s",
-      "label": "Longest gap between samples that still counts as tracked",
-      "unit": "s",
-      "valueType": "number",
-      "min": 0.01,
-      "max": 5,
-      "default": 0.5
     },
     {
       "key": "min_platform_dwell_s",
-      "label": "Time the subject must stay on the platform to escape",
+      "scope": "ANALYSIS",
+      "label": "Minimum platform dwell time",
+      "help": "The animal must remain on the platform for at least this long for the trial to count as an escape; brief contacts are ignored.",
       "unit": "s",
       "valueType": "number",
       "min": 0,
       "max": 10,
       "default": 1
+    },
+    {
+      "key": "max_sample_gap_s",
+      "scope": "ANALYSIS",
+      "label": "Maximum tracking gap",
+      "help": "Longest tracking dropout that is bridged; movement across a longer gap is excluded. Increase only for low-frame-rate videos.",
+      "unit": "s",
+      "valueType": "number",
+      "min": 0.01,
+      "max": 5,
+      "default": 0.5
     }
   ],
   "zones": [
     {
       "key": "platform",
+      "label": "Platform",
       "role": "TARGET",
-      "geometry": "Closed disk of platform_diameter_cm at the platform center.",
+      "geometry": "Closed disk of diameter platform_diameter_cm centered on the platform position.",
       "calibrated": false,
       "required": true
     },
     {
       "key": "target_quadrant",
+      "label": "Target quadrant",
       "role": "TARGET",
-      "geometry": "Quadrant containing the platform center; x \u003e= 0 is east and y \u003e= 0 is north.",
+      "geometry": "Pool quadrant that contains the platform center (x \u003e= 0 is east, y \u003e= 0 is north).",
       "calibrated": false,
       "required": true
     },
     {
       "key": "wall_annulus",
+      "label": "Wall annulus",
       "role": "PERIPHERY",
-      "geometry": "Ring with distance from the tank center \u003e= tank radius - wall_annulus_width_cm.",
+      "geometry": "Outer ring of the pool: points at a distance \u003e= pool radius - wall_annulus_width_cm from the pool center.",
       "calibrated": false,
       "required": true
     }
@@ -108,28 +129,31 @@
   "events": [
     {
       "type": "in_platform",
+      "label": "Platform visit",
       "kind": "INTERVAL",
       "labels": [],
       "single": false,
-      "definition": "Contiguous counted intervals whose earlier sample is in platform."
+      "definition": "Run of contiguous counted intervals whose earlier sample lies in the platform."
     },
     {
       "type": "platform_entry",
+      "label": "Platform entry",
       "kind": "POINT",
       "labels": [],
       "single": false,
-      "definition": "Later sample time of a counted interval entering platform."
+      "definition": "Time of the later sample of a counted interval that enters the platform."
     }
   ],
   "metrics": [
     {
       "key": "duration_s",
-      "label": "Analyzed duration",
+      "label": "Tracked duration",
+      "description": "Total time during which the animal was tracked.",
       "unit": "s",
       "valueType": "number",
-      "definition": "Coordinates are centimeters from the tank center, x east and y north; samples outside the tank count as lost. A counted interval is a pair of consecutive tracked samples with 0 \u003c dt \u003c= max_sample_gap_s.",
+      "definition": "Coordinates are in centimeters relative to the pool center, with x pointing east and y north; samples outside the pool are treated as lost. A counted interval is a pair of consecutive tracked samples separated by 0 \u003c dt \u003c= max_sample_gap_s.",
       "formula": "sum(dt over counted intervals)",
-      "missingWhen": "Missing (NO_VALID_INTERVALS) when there is no counted interval.",
+      "missingWhen": "Missing (NO_VALID_INTERVALS) when there are no counted intervals.",
       "inputs": [
         "samples",
         "tank_diameter_cm",
@@ -142,11 +166,12 @@
     {
       "key": "escape_latency_s",
       "label": "Escape latency",
+      "description": "Time taken to reach the platform; latencies that decrease across trials indicate learning.",
       "unit": "s",
       "valueType": "number",
-      "definition": "Start of the first platform dwell: consecutive tracked samples on the platform, joined by gaps no longer than max_sample_gap_s, spanning at least min_platform_dwell_s.",
+      "definition": "Onset of the first platform dwell: a run of consecutive tracked samples on the platform, with no gap longer than max_sample_gap_s, that lasts at least min_platform_dwell_s.",
       "formula": "first dwell start with last - first sample time \u003e= min_platform_dwell_s",
-      "missingWhen": "Missing (EVENT_NOT_OBSERVED) when no dwell qualifies, as in probe trials.",
+      "missingWhen": "Missing (EVENT_NOT_OBSERVED) when no dwell meets the criterion, as in probe trials.",
       "inputs": [
         "samples",
         "tank_diameter_cm",
@@ -163,11 +188,12 @@
     {
       "key": "path_length_cm",
       "label": "Path length",
+      "description": "Distance swum before reaching the platform; shorter paths indicate a more direct search.",
       "unit": "cm",
       "valueType": "number",
-      "definition": "Distance over counted intervals ending at or before the escape, or over the whole trial without an escape.",
+      "definition": "Distance traveled over counted intervals that end at or before the escape, or over the whole trial if there is no escape.",
       "formula": "sum(hypot(dx, dy) for counted intervals ending \u003c= escape)",
-      "missingWhen": "Missing (NO_VALID_INTERVALS) when there is no counted interval.",
+      "missingWhen": "Missing (NO_VALID_INTERVALS) when there are no counted intervals.",
       "inputs": [
         "samples",
         "tank_diameter_cm",
@@ -184,6 +210,7 @@
     {
       "key": "mean_swim_speed_cm_s",
       "label": "Mean swim speed",
+      "description": "Path length divided by swim time; helps rule out motor impairment as a confound.",
       "unit": "cm_s",
       "valueType": "number",
       "definition": "Path length divided by the counted time it covers.",
@@ -198,12 +225,13 @@
     },
     {
       "key": "target_quadrant_time_ratio",
-      "label": "Target quadrant time ratio",
+      "label": "Time in target quadrant",
+      "description": "Fraction of time spent in the target quadrant; in a probe trial, higher values indicate better memory of the platform location.",
       "unit": "ratio",
       "valueType": "number",
-      "definition": "Share of analyzed duration whose earlier sample is in the target quadrant.",
+      "definition": "Fraction of the tracked duration in counted intervals whose earlier sample lies in the target quadrant.",
       "formula": "target quadrant time / duration_s",
-      "missingWhen": "Missing (NO_VALID_INTERVALS) when there is no counted interval.",
+      "missingWhen": "Missing (NO_VALID_INTERVALS) when there are no counted intervals.",
       "inputs": [
         "samples",
         "tank_diameter_cm",
@@ -218,12 +246,13 @@
     },
     {
       "key": "thigmotaxis_time_ratio",
-      "label": "Thigmotaxis time ratio",
+      "label": "Thigmotaxis",
+      "description": "Fraction of time spent swimming close to the wall; high values suggest anxiety-like behavior or a poor search strategy.",
       "unit": "ratio",
       "valueType": "number",
-      "definition": "Share of analyzed duration whose earlier sample is in the wall annulus.",
+      "definition": "Fraction of the tracked duration in counted intervals whose earlier sample lies in the wall annulus.",
       "formula": "wall annulus time / duration_s",
-      "missingWhen": "Missing (NO_VALID_INTERVALS) when there is no counted interval.",
+      "missingWhen": "Missing (NO_VALID_INTERVALS) when there are no counted intervals.",
       "inputs": [
         "samples",
         "tank_diameter_cm",
@@ -237,11 +266,12 @@
     {
       "key": "platform_crossings_count",
       "label": "Platform crossings",
+      "description": "Number of times the animal crossed the platform location; in a probe trial, more crossings indicate better spatial memory.",
       "unit": "count",
       "valueType": "integer",
-      "definition": "Counted intervals entering the platform disk; starting on the platform is not a crossing.",
+      "definition": "Number of counted intervals that enter the platform disk; starting the trial on the platform is not a crossing.",
       "formula": "count(platform entries)",
-      "missingWhen": "Missing (NO_VALID_INTERVALS) when there is no counted interval.",
+      "missingWhen": "Missing (NO_VALID_INTERVALS) when there are no counted intervals.",
       "inputs": [
         "samples",
         "tank_diameter_cm",
@@ -257,11 +287,12 @@
     {
       "key": "mean_distance_to_platform_cm",
       "label": "Mean distance to platform",
+      "description": "Average distance from the platform location; smaller values indicate a more focused search.",
       "unit": "cm",
       "valueType": "number",
       "definition": "Time-weighted mean distance from the platform center, using the earlier sample of each counted interval.",
       "formula": "sum(distance(earlier sample, platform) x dt) / sum(dt)",
-      "missingWhen": "Missing (NO_VALID_INTERVALS) when there is no counted interval.",
+      "missingWhen": "Missing (NO_VALID_INTERVALS) when there are no counted intervals.",
       "inputs": [
         "samples",
         "tank_diameter_cm",

@@ -1,5 +1,5 @@
--- Laboratory singleton and users. Constraints repeat the domain rules so data
--- stays valid even if application validation is bypassed.
+-- The laboratory (one per installation) and its users. Constraints repeat the
+-- domain rules so data stays valid even if application validation is bypassed.
 CREATE TABLE misko.laboratory (
     singleton  boolean PRIMARY KEY DEFAULT true CHECK (singleton),
     name       text NOT NULL CHECK (char_length(name) BETWEEN 1 AND 120),

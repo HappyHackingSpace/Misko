@@ -1,7 +1,11 @@
 // Package application contains calibration use cases. An environment's
-// calibration needs apparatus:write, a manual calibration of one recording
-// needs test:run, and reading calibrations and the calibration status needs
-// *:read.
+// calibration needs apparatus:write, a manual override for one animal of a
+// test needs test:run, a paradigm trial's calibration needs trial:run, and
+// reading calibrations and the calibration status needs *:read.
+//
+// Which calibration an animal of a test is analysed with comes from the
+// effective_calibrations view, so the status shown here, the analysis
+// scheduler and the dashboard read the same rule.
 package application
 
 import (
@@ -13,19 +17,30 @@ import (
 )
 
 var (
-	ErrRecordingNotFound = errors.New("recording not found on this test")
-	ErrRevisionNotFound  = errors.New("environment revision not found")
-	ErrVideoNotVerified  = errors.New("the recording's video has not been verified")
+	ErrTestNotFound        = errors.New("test not found")
+	ErrTestSubjectNotFound = errors.New("animal not found in this test")
+	ErrRevisionNotFound    = errors.New("environment revision not found")
+	ErrNoVideo             = errors.New("the test has no video yet")
+	ErrVideoNotVerified    = errors.New("the test's current video has not been verified")
+	ErrInvalidScope        = errors.New("an override must use the arena of its animal and a video of its test")
 )
 
-// RecordingRef is what a calibration needs to know about a recording and its test.
-type RecordingRef struct {
-	ID, TestID, VideoStatus string
-	ParadigmKey             string
-	ParadigmVersion         int
-	EnvironmentRevisionID   string
-	// Apparatus is the environment revision's measurements.
-	Apparatus map[string]float64
+// VideoVerified is the status of a verified video asset.
+const VideoVerified = "VERIFIED"
+
+// TestSubjectRef is what a calibration needs to know about an animal of a test.
+type TestSubjectRef struct {
+	ID, TestID            string
+	EnvironmentRevisionID string
+	ParadigmKey           string
+	ParadigmVersion       int
+	// Parameters are the arena's environment revision values.
+	Parameters map[string]float64
+}
+
+// VideoRef is the current video of a test.
+type VideoRef struct {
+	RecordingID, Status string
 }
 
 // RevisionRef is what a calibration needs to know about an environment revision.
@@ -33,26 +48,52 @@ type RevisionRef struct {
 	ID, EnvironmentID string
 	ParadigmKey       string
 	ParadigmVersion   int
-	Apparatus         map[string]float64
+	Parameters        map[string]float64
+}
+
+// Effective is one row of the effective_calibrations view joined with what
+// deciding the status needs. RecordingID and VideoStatus are empty while the
+// test has no video; Source and CalibrationID as the view reports them.
+type Effective struct {
+	Subject       TestSubjectRef
+	RecordingID   string
+	VideoStatus   string
+	Source        domain.Source
+	CalibrationID string
 }
 
 // Catalog reads calibration needs from the hardcoded paradigm definitions.
 type Catalog interface {
-	Requirement(key string, version int, apparatus map[string]float64) (domain.Requirement, error)
+	Requirement(key string, version int, parameters map[string]float64) (domain.Requirement, error)
 }
 
 type Store interface {
 	Transaction(ctx context.Context, fn func(Store) error) error
-	Recording(ctx context.Context, testID, recordingID string) (RecordingRef, error)
-	// LockRecording serializes calibrations of one recording.
-	LockRecording(ctx context.Context, testID, recordingID string) (RecordingRef, error)
+	TestExists(ctx context.Context, testID string) (bool, error)
+	TestSubject(ctx context.Context, testID, testSubjectID string) (TestSubjectRef, error)
+	// LockTestSubject serializes the overrides of one animal of a test.
+	LockTestSubject(ctx context.Context, testID, testSubjectID string) (TestSubjectRef, error)
+	// CurrentVideo returns the test's current video or ErrNoVideo.
+	CurrentVideo(ctx context.Context, testID string) (VideoRef, error)
 	Revision(ctx context.Context, environmentID string, number int) (RevisionRef, error)
 	// LockRevision serializes the environment calibrations of one revision.
 	LockRevision(ctx context.Context, environmentID string, number int) (RevisionRef, error)
-	// Calibrations lists a recording's own calibrations oldest first.
-	Calibrations(ctx context.Context, recordingID string) ([]domain.Calibration, error)
+	// Overrides lists a test subject's calibrations over all its videos, oldest first.
+	Overrides(ctx context.Context, testSubjectID string) ([]domain.Calibration, error)
 	// EnvironmentCalibrations lists a revision's default calibrations oldest first.
 	EnvironmentCalibrations(ctx context.Context, revisionID string) ([]domain.Calibration, error)
+	// Calibration returns ErrCalibrationNotFound for an unknown id.
+	Calibration(ctx context.Context, id string) (domain.Calibration, error)
+	// Trial returns ErrTrialNotFound for an unknown or deleted paradigm trial.
+	Trial(ctx context.Context, id string) (TrialRef, error)
+	// LockTrial serializes the calibrations of one trial.
+	LockTrial(ctx context.Context, id string) (TrialRef, error)
+	// TrialCalibrations lists a trial's own calibrations, oldest first.
+	TrialCalibrations(ctx context.Context, trialID string) ([]domain.Calibration, error)
+	// TrialEffective returns ErrTrialNotFound for an unknown or deleted trial.
+	TrialEffective(ctx context.Context, trialID string) (TrialEffective, error)
+	// Effective lists the effective calibration of every animal of a test.
+	Effective(ctx context.Context, testID string) ([]Effective, error)
 	CreateCalibration(ctx context.Context, c domain.Calibration) (domain.Calibration, error)
 }
 
@@ -66,43 +107,44 @@ func New(store Store, catalog Catalog, now func() time.Time) *Service {
 	return &Service{store: store, catalog: catalog, now: now}
 }
 
-// Calibrate stores a manual calibration, VALID or REJECTED, for a verified
-// video. It overrides the environment's calibration for this recording only.
-func (s *Service) Calibrate(ctx context.Context, actor access.Actor, testID, recordingID string, in domain.Input) (domain.Calibration, error) {
+// Calibrate stores a manual calibration, VALID or REJECTED, of one animal of a
+// test on the test's current, verified video. It overrides the default of the
+// animal's arena for that video only; once a replacement video is attached the
+// arena default applies again until the animal is calibrated on the new one.
+func (s *Service) Calibrate(ctx context.Context, actor access.Actor, testID, testSubjectID string, in domain.Input) (domain.Calibration, error) {
 	if err := actor.Require(access.TestRun); err != nil {
 		return domain.Calibration{}, err
 	}
 	now := s.now().UTC().Truncate(time.Microsecond)
 	var out domain.Calibration
 	err := s.store.Transaction(ctx, func(tx Store) error {
-		rec, err := tx.LockRecording(ctx, testID, recordingID)
+		subject, err := tx.LockTestSubject(ctx, testID, testSubjectID)
 		if err != nil {
 			return err
 		}
-		if rec.VideoStatus != "VERIFIED" {
+		video, err := tx.CurrentVideo(ctx, subject.TestID)
+		if err != nil {
+			return err
+		}
+		if video.Status != VideoVerified {
 			return ErrVideoNotVerified
 		}
-		req, err := s.catalog.Requirement(rec.ParadigmKey, rec.ParadigmVersion, rec.Apparatus)
+		req, err := s.catalog.Requirement(subject.ParadigmKey, subject.ParadigmVersion, subject.Parameters)
 		if err != nil {
 			return err
 		}
-		chain, err := tx.Calibrations(ctx, rec.ID)
+		chain, err := tx.Overrides(ctx, subject.ID)
 		if err != nil {
 			return err
 		}
-		if err := domain.CanCorrect(chain, in.SupersedesID); err != nil {
+		if err := domain.CheckCorrection(chain, in, video.RecordingID); err != nil {
 			return err
-		}
-		if latest := domain.Latest(chain); latest != nil {
-			if err := domain.SameSetup(*latest, in); err != nil {
-				return err
-			}
 		}
 		c, err := domain.New(in, req, actor.UserID, now)
 		if err != nil {
 			return err
 		}
-		c.RecordingID, c.EnvironmentRevisionID = rec.ID, rec.EnvironmentRevisionID
+		c.TestSubjectID, c.RecordingID, c.EnvironmentRevisionID = subject.ID, video.RecordingID, subject.EnvironmentRevisionID
 		out, err = tx.CreateCalibration(ctx, c)
 		return err
 	})
@@ -113,9 +155,10 @@ func (s *Service) Calibrate(ctx context.Context, actor access.Actor, testID, rec
 }
 
 // CalibrateEnvironment stores the default calibration of an environment
-// revision, VALID or REJECTED. Every recording of the revision uses it unless
-// it has a calibration of its own. A correction supersedes the latest one and
-// changes nothing for analysis runs that already pinned an earlier one.
+// revision, VALID or REJECTED. Every animal tested in that arena uses it unless
+// it has an override on its test's current video. A correction supersedes the
+// latest one and changes nothing for analysis runs that already pinned an
+// earlier one.
 func (s *Service) CalibrateEnvironment(ctx context.Context, actor access.Actor, environmentID string, number int, in domain.Input) (domain.Calibration, error) {
 	if err := actor.Require(access.ApparatusWrite); err != nil {
 		return domain.Calibration{}, err
@@ -127,7 +170,7 @@ func (s *Service) CalibrateEnvironment(ctx context.Context, actor access.Actor, 
 		if err != nil {
 			return err
 		}
-		req, err := s.catalog.Requirement(rev.ParadigmKey, rev.ParadigmVersion, rev.Apparatus)
+		req, err := s.catalog.Requirement(rev.ParadigmKey, rev.ParadigmVersion, rev.Parameters)
 		if err != nil {
 			return err
 		}
@@ -135,13 +178,8 @@ func (s *Service) CalibrateEnvironment(ctx context.Context, actor access.Actor, 
 		if err != nil {
 			return err
 		}
-		if err := domain.CanCorrect(chain, in.SupersedesID); err != nil {
+		if err := domain.CheckCorrection(chain, in, ""); err != nil {
 			return err
-		}
-		if latest := domain.Latest(chain); latest != nil {
-			if err := domain.SameSetup(*latest, in); err != nil {
-				return err
-			}
 		}
 		in.ReferenceFrameUs = 0
 		c, err := domain.New(in, req, actor.UserID, now)
@@ -158,16 +196,17 @@ func (s *Service) CalibrateEnvironment(ctx context.Context, actor access.Actor, 
 	return out, nil
 }
 
-// Calibrations lists the recording's own calibrations, not the environment's.
-func (s *Service) Calibrations(ctx context.Context, actor access.Actor, testID, recordingID string) ([]domain.Calibration, error) {
+// Overrides lists the animal's own calibrations over every video of its test,
+// not its arena's default.
+func (s *Service) Overrides(ctx context.Context, actor access.Actor, testID, testSubjectID string) ([]domain.Calibration, error) {
 	if err := actor.Require(access.Read); err != nil {
 		return nil, err
 	}
-	rec, err := s.store.Recording(ctx, testID, recordingID)
+	subject, err := s.store.TestSubject(ctx, testID, testSubjectID)
 	if err != nil {
 		return nil, err
 	}
-	return s.store.Calibrations(ctx, rec.ID)
+	return s.store.Overrides(ctx, subject.ID)
 }
 
 // EnvironmentCalibrations lists the default calibrations of one revision.
@@ -186,19 +225,23 @@ type CalibrationStatus string
 
 const (
 	NotRequired CalibrationStatus = "NOT_REQUIRED"
-	Waiting     CalibrationStatus = "WAITING_FOR_CALIBRATION"
-	Calibrated  CalibrationStatus = "CALIBRATED"
+	// WaitingForVideo means the test has no current verified video to analyse.
+	WaitingForVideo CalibrationStatus = "WAITING_FOR_VIDEO"
+	Waiting         CalibrationStatus = "WAITING_FOR_CALIBRATION"
+	Calibrated      CalibrationStatus = "CALIBRATED"
 )
 
 // Drift is what is known about camera or arena movement in a video. No check
-// exists yet, so every calibrated recording is UNCHECKED; the field is part of
+// exists yet, so every calibration in use is UNCHECKED; the field is part of
 // the contract so clients are ready when a check is added.
 type Drift string
 
 const DriftUnchecked Drift = "UNCHECKED"
 
-// StatusView is the calibration state of a recording. Source is empty when
-// nothing has been calibrated; Drift is empty unless a calibration applies.
+// StatusView is a calibration state. Source is empty when nothing has been
+// calibrated; Drift is empty unless a calibration applies. A valid calibration
+// without a shape for every required calibrated zone of the paradigm leaves the
+// state WAITING_FOR_CALIBRATION.
 type StatusView struct {
 	Status  CalibrationStatus
 	Current *domain.Calibration
@@ -206,38 +249,89 @@ type StatusView struct {
 	Drift   Drift
 }
 
-// Status tells whether a recording can be analyzed into physical metrics.
-func (s *Service) Status(ctx context.Context, actor access.Actor, testID, recordingID string) (StatusView, error) {
-	if err := actor.Require(access.Read); err != nil {
-		return StatusView{}, err
-	}
-	rec, err := s.store.Recording(ctx, testID, recordingID)
-	if err != nil {
-		return StatusView{}, err
-	}
-	req, err := s.catalog.Requirement(rec.ParadigmKey, rec.ParadigmVersion, rec.Apparatus)
-	if err != nil {
-		return StatusView{}, err
-	}
-	if !req.Required {
-		return StatusView{Status: NotRequired}, nil
-	}
-	if rec.VideoStatus != "VERIFIED" {
-		return StatusView{Status: Waiting}, nil
-	}
-	own, err := s.store.Calibrations(ctx, rec.ID)
-	if err != nil {
-		return StatusView{}, err
-	}
-	inherited, err := s.store.EnvironmentCalibrations(ctx, rec.EnvironmentRevisionID)
-	if err != nil {
-		return StatusView{}, err
-	}
-	return view(domain.Effective(own, inherited)), nil
+// SubjectStatus is the calibration state of one animal of a test on the
+// test's current video. RecordingID is empty while the test has no video.
+type SubjectStatus struct {
+	TestSubjectID         string
+	EnvironmentRevisionID string
+	RecordingID           string
+	StatusView
 }
 
-// EnvironmentStatus tells whether recordings of the revision are calibrated by
-// default.
+// TestStatus tells, for every animal of a test, whether its part of the
+// current video can be analysed into physical metrics.
+func (s *Service) TestStatus(ctx context.Context, actor access.Actor, testID string) ([]SubjectStatus, error) {
+	if err := actor.Require(access.Read); err != nil {
+		return nil, err
+	}
+	exists, err := s.store.TestExists(ctx, testID)
+	if err != nil {
+		return nil, err
+	}
+	if !exists {
+		return nil, ErrTestNotFound
+	}
+	rows, err := s.store.Effective(ctx, testID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]SubjectStatus, 0, len(rows))
+	for _, row := range rows {
+		status, err := s.subjectStatus(ctx, row)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, status)
+	}
+	return out, nil
+}
+
+// SubjectStatus is TestStatus for one animal.
+func (s *Service) SubjectStatus(ctx context.Context, actor access.Actor, testID, testSubjectID string) (SubjectStatus, error) {
+	if err := actor.Require(access.Read); err != nil {
+		return SubjectStatus{}, err
+	}
+	subject, err := s.store.TestSubject(ctx, testID, testSubjectID)
+	if err != nil {
+		return SubjectStatus{}, err
+	}
+	rows, err := s.store.Effective(ctx, subject.TestID)
+	if err != nil {
+		return SubjectStatus{}, err
+	}
+	for _, row := range rows {
+		if row.Subject.ID == subject.ID {
+			return s.subjectStatus(ctx, row)
+		}
+	}
+	return SubjectStatus{}, ErrTestSubjectNotFound
+}
+
+func (s *Service) subjectStatus(ctx context.Context, row Effective) (SubjectStatus, error) {
+	out := SubjectStatus{TestSubjectID: row.Subject.ID, EnvironmentRevisionID: row.Subject.EnvironmentRevisionID, RecordingID: row.RecordingID}
+	req, err := s.catalog.Requirement(row.Subject.ParadigmKey, row.Subject.ParadigmVersion, row.Subject.Parameters)
+	if err != nil {
+		return SubjectStatus{}, err
+	}
+	switch {
+	case !req.Required:
+		out.Status = NotRequired
+	case row.RecordingID == "" || row.VideoStatus != VideoVerified:
+		out.Status = WaitingForVideo
+	case row.CalibrationID == "":
+		out.Status, out.Source = Waiting, row.Source
+	default:
+		c, err := s.store.Calibration(ctx, row.CalibrationID)
+		if err != nil {
+			return SubjectStatus{}, err
+		}
+		out.StatusView = resolved(c, req, row.Source)
+	}
+	return out, nil
+}
+
+// EnvironmentStatus tells whether animals tested in the revision's arena are
+// calibrated by default.
 func (s *Service) EnvironmentStatus(ctx context.Context, actor access.Actor, environmentID string, number int) (StatusView, error) {
 	if err := actor.Require(access.Read); err != nil {
 		return StatusView{}, err
@@ -246,7 +340,7 @@ func (s *Service) EnvironmentStatus(ctx context.Context, actor access.Actor, env
 	if err != nil {
 		return StatusView{}, err
 	}
-	req, err := s.catalog.Requirement(rev.ParadigmKey, rev.ParadigmVersion, rev.Apparatus)
+	req, err := s.catalog.Requirement(rev.ParadigmKey, rev.ParadigmVersion, rev.Parameters)
 	if err != nil {
 		return StatusView{}, err
 	}
@@ -257,12 +351,19 @@ func (s *Service) EnvironmentStatus(ctx context.Context, actor access.Actor, env
 	if err != nil {
 		return StatusView{}, err
 	}
-	return view(domain.Effective(nil, chain)), nil
+	r := domain.Resolve(chain, domain.SourceEnvironment)
+	if r.Calibration == nil {
+		return StatusView{Status: Waiting, Source: r.Source}, nil
+	}
+	return resolved(*r.Calibration, req, r.Source), nil
 }
 
-func view(r domain.Resolution) StatusView {
-	if r.Calibration == nil {
-		return StatusView{Status: Waiting, Source: r.Source}
+// resolved is the state of a valid calibration that applies: CALIBRATED, or
+// WAITING_FOR_CALIBRATION while one of the paradigm's required calibrated
+// zones has no shape in it.
+func resolved(c domain.Calibration, req domain.Requirement, source domain.Source) StatusView {
+	if len(domain.MissingZones(c, req.Zones)) > 0 {
+		return StatusView{Status: Waiting, Source: source}
 	}
-	return StatusView{Status: Calibrated, Current: r.Calibration, Source: r.Source, Drift: DriftUnchecked}
+	return StatusView{Status: Calibrated, Current: &c, Source: source, Drift: DriftUnchecked}
 }

@@ -17,13 +17,13 @@ var (
 	ErrInvalidQuery           = errors.New("invalid list query")
 	ErrUnknownParadigm        = errors.New("unknown paradigm")
 	ErrUnknownParadigmVersion = errors.New("unknown paradigm version")
-	ErrInvalidApparatus       = errors.New("apparatus parameters must match the paradigm version: every measurement given, within range and consistent")
+	ErrInvalidParameters      = errors.New("parameters must match the paradigm version: every apparatus measurement given, only apparatus and analysis values, within range and consistent")
 )
 
 // Catalog checks measurements against the hardcoded paradigm definitions.
 type Catalog interface {
-	// CheckApparatus returns ErrUnknownParadigm, ErrUnknownParadigmVersion or ErrInvalidApparatus.
-	CheckApparatus(key string, version int, apparatus map[string]float64) error
+	// CheckParameters returns ErrUnknownParadigm, ErrUnknownParadigmVersion or ErrInvalidParameters.
+	CheckParameters(key string, version int, parameters map[string]float64) error
 }
 
 // Changes holds validated fields; nil leaves a field unchanged and empty notes clear them.
@@ -47,6 +47,14 @@ type Store interface {
 	// AllRevisions lists every revision of every environment, by environment name.
 	AllRevisions(ctx context.Context) ([]domain.RevisionSummary, error)
 	Revision(ctx context.Context, environmentID string, number int) (domain.Revision, error)
+	// RevisionByID returns ErrRevisionNotFound for an unknown id.
+	RevisionByID(ctx context.Context, id string) (NamedRevision, error)
+}
+
+// NamedRevision is a revision with the name of its environment.
+type NamedRevision struct {
+	domain.Revision
+	EnvironmentName string
 }
 
 type Service struct {
@@ -58,7 +66,7 @@ func New(store Store, catalog Catalog) *Service { return &Service{store: store, 
 
 type RevisionInput struct {
 	ParadigmVersion int
-	Apparatus       map[string]float64
+	Parameters      map[string]float64
 	Notes           string
 }
 
@@ -102,11 +110,11 @@ func (s *Service) Create(ctx context.Context, actor access.Actor, in Environment
 	if err != nil {
 		return Created{}, err
 	}
-	r, err := domain.NewRevision("", e.ParadigmKey, in.Revision.ParadigmVersion, in.Revision.Apparatus, in.Revision.Notes, actor.UserID)
+	r, err := domain.NewRevision("", e.ParadigmKey, in.Revision.ParadigmVersion, in.Revision.Parameters, in.Revision.Notes, actor.UserID)
 	if err != nil {
 		return Created{}, err
 	}
-	if err := s.catalog.CheckApparatus(r.ParadigmKey, r.ParadigmVersion, r.Apparatus); err != nil {
+	if err := s.catalog.CheckParameters(r.ParadigmKey, r.ParadigmVersion, r.Parameters); err != nil {
 		return Created{}, err
 	}
 	var out Created
@@ -175,11 +183,11 @@ func (s *Service) AddRevision(ctx context.Context, actor access.Actor, id string
 		if err != nil {
 			return err
 		}
-		r, err := domain.NewRevision(e.ID, e.ParadigmKey, in.ParadigmVersion, in.Apparatus, in.Notes, actor.UserID)
+		r, err := domain.NewRevision(e.ID, e.ParadigmKey, in.ParadigmVersion, in.Parameters, in.Notes, actor.UserID)
 		if err != nil {
 			return err
 		}
-		if err := s.catalog.CheckApparatus(r.ParadigmKey, r.ParadigmVersion, r.Apparatus); err != nil {
+		if err := s.catalog.CheckParameters(r.ParadigmKey, r.ParadigmVersion, r.Parameters); err != nil {
 			return err
 		}
 		out, err = tx.CreateRevision(ctx, r)
@@ -217,4 +225,10 @@ func (s *Service) Revision(ctx context.Context, actor access.Actor, id string, n
 		return domain.Revision{}, ErrRevisionNotFound
 	}
 	return s.store.Revision(ctx, id, number)
+}
+
+// RevisionByID is the environment port: other modules read the revision they
+// run a paradigm in and authorize their own users.
+func (s *Service) RevisionByID(ctx context.Context, id string) (NamedRevision, error) {
+	return s.store.RevisionByID(ctx, id)
 }

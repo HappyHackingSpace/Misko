@@ -1,17 +1,21 @@
+-- Experiments ----------------------------------------------------------------
+
 -- name: CreateExperiment :one
-INSERT INTO misko.experiments (code, title, description, requires_control)
-VALUES (@code, @title, sqlc.narg(description), @requires_control)
-RETURNING id, code, title, description, requires_control, created_at, updated_at;
+INSERT INTO misko.experiments (code, title, description, hypothesis, randomisation, blinded)
+VALUES (@code, @title, sqlc.narg(description), sqlc.narg(hypothesis), sqlc.narg(randomisation), @blinded)
+RETURNING *;
 
 -- name: GetExperiment :one
-SELECT id, code, title, description, requires_control, created_at, updated_at
-FROM misko.experiments
-WHERE id = @id;
+SELECT * FROM misko.experiments WHERE id = @id;
+
+-- name: LockExperiment :one
+SELECT * FROM misko.experiments WHERE id = @id FOR UPDATE;
 
 -- name: ListExperiments :many
-SELECT id, code, title, description, requires_control, created_at, updated_at
+SELECT *
 FROM misko.experiments
 WHERE (@search::text = '' OR code ILIKE '%' || @search::text || '%' ESCAPE '\' OR title ILIKE '%' || @search::text || '%' ESCAPE '\')
+  AND (@status::text = '' OR status = @status::text)
 ORDER BY
     CASE WHEN @sort_key::text = 'code' AND NOT @descending::boolean THEN lower(code) END ASC,
     CASE WHEN @sort_key::text = 'code' AND @descending::boolean THEN lower(code) END DESC,
@@ -25,139 +29,176 @@ LIMIT @page_limit::integer OFFSET @page_offset::integer;
 -- name: CountExperiments :one
 SELECT count(*)
 FROM misko.experiments
-WHERE (@search::text = '' OR code ILIKE '%' || @search::text || '%' ESCAPE '\' OR title ILIKE '%' || @search::text || '%' ESCAPE '\');
+WHERE (@search::text = '' OR code ILIKE '%' || @search::text || '%' ESCAPE '\' OR title ILIKE '%' || @search::text || '%' ESCAPE '\')
+  AND (@status::text = '' OR status = @status::text);
 
--- A NULL argument leaves a column unchanged; an empty description clears it.
 -- name: UpdateExperiment :one
 UPDATE misko.experiments
-SET code = coalesce(sqlc.narg(code), code),
-    title = coalesce(sqlc.narg(title), title),
-    description = CASE WHEN sqlc.narg(description)::text IS NULL THEN description ELSE NULLIF(sqlc.narg(description)::text, '') END,
-    requires_control = coalesce(sqlc.narg(requires_control), requires_control),
-    updated_at = now()
+SET code = @code, title = @title, description = sqlc.narg(description), hypothesis = sqlc.narg(hypothesis),
+    randomisation = sqlc.narg(randomisation), blinded = @blinded
 WHERE id = @id
-RETURNING id, code, title, description, requires_control, created_at, updated_at;
+RETURNING *;
 
--- name: ListPhases :many
-SELECT id, experiment_id, name, position, description, created_at, updated_at
-FROM misko.experiment_phases
-WHERE experiment_id = @experiment_id
-ORDER BY position, id;
+-- name: StartExperiment :one
+UPDATE misko.experiments
+SET status = 'RUNNING', day_zero = @day_zero::date, started_at = now()
+WHERE id = @id AND status = 'DRAFT'
+RETURNING *;
 
--- name: CreatePhase :one
-INSERT INTO misko.experiment_phases (experiment_id, name, position, description)
-VALUES (@experiment_id, @name, @position, sqlc.narg(description))
-RETURNING id, experiment_id, name, position, description, created_at, updated_at;
+-- name: CompleteExperiment :one
+UPDATE misko.experiments
+SET status = 'COMPLETED', completed_at = greatest(now(), started_at)
+WHERE id = @id AND status = 'RUNNING'
+RETURNING *;
 
--- name: UpdatePhase :one
-UPDATE misko.experiment_phases
-SET name = coalesce(sqlc.narg(name), name),
-    position = coalesce(sqlc.narg(position), position),
-    description = CASE WHEN sqlc.narg(description)::text IS NULL THEN description ELSE NULLIF(sqlc.narg(description)::text, '') END,
-    updated_at = now()
-WHERE experiment_id = @experiment_id AND id = @id
-RETURNING id, experiment_id, name, position, description, created_at, updated_at;
+-- Tests belong to the tests context; completion only counts the open ones.
+-- name: CountOpenTests :one
+SELECT count(*) FROM misko.tests WHERE experiment_id = @experiment_id AND status IN ('PLANNED', 'IN_PROGRESS');
 
--- name: DeletePhase :execrows
-DELETE FROM misko.experiment_phases
-WHERE experiment_id = @experiment_id AND id = @id;
+-- Protocol steps belong to the protocols context; endpoints only read which
+-- paradigm versions they run.
+-- name: ListProtocolParadigms :many
+SELECT DISTINCT s.paradigm_key, s.paradigm_version
+FROM misko.protocol_steps s
+JOIN misko.protocol_versions v ON v.id = s.protocol_version_id
+WHERE v.experiment_id = @experiment_id
+ORDER BY s.paradigm_key, s.paradigm_version;
 
--- Active counts use the database clock so every caller sees the same instant.
--- name: ListGroupSizes :many
-SELECT g.id, g.experiment_id, g.name, g.role, g.target_size, g.description, g.created_at, g.updated_at,
-       (count(a.id) FILTER (WHERE a.valid_from <= now() AND (a.valid_to IS NULL OR a.valid_to > now())))::integer AS active_subjects
+-- Groups ---------------------------------------------------------------------
+
+-- name: ListGroupFills :many
+SELECT g.*,
+       count(a.id) FILTER (WHERE a.excluded_at IS NULL)::integer AS allocated,
+       count(a.id) FILTER (WHERE a.excluded_at IS NOT NULL)::integer AS excluded
 FROM misko.experiment_groups g
-LEFT JOIN misko.group_assignments a ON a.group_id = g.id
+LEFT JOIN misko.allocations a ON a.group_id = g.id
 WHERE g.experiment_id = @experiment_id
 GROUP BY g.id
-ORDER BY lower(g.name), g.id;
+ORDER BY lower(g.code), g.id;
 
--- name: GetGroup :one
-SELECT id, experiment_id, name, role, target_size, description, created_at, updated_at
-FROM misko.experiment_groups
-WHERE experiment_id = @experiment_id AND id = @id;
+-- name: LockGroup :one
+SELECT * FROM misko.experiment_groups WHERE experiment_id = @experiment_id AND id = @id FOR UPDATE;
 
 -- name: CreateGroup :one
-INSERT INTO misko.experiment_groups (experiment_id, name, role, target_size, description)
-VALUES (@experiment_id, @name, @role, sqlc.narg(target_size), sqlc.narg(description))
-RETURNING id, experiment_id, name, role, target_size, description, created_at, updated_at;
+INSERT INTO misko.experiment_groups (experiment_id, code, name, role, disease_model_id, target_size, description)
+VALUES (@experiment_id, @code, @name, @role, sqlc.narg(disease_model_id), sqlc.narg(target_size), sqlc.narg(description))
+RETURNING *;
 
--- A zero target size clears the target.
 -- name: UpdateGroup :one
 UPDATE misko.experiment_groups
-SET name = coalesce(sqlc.narg(name), name),
-    role = coalesce(sqlc.narg(role), role),
-    target_size = CASE WHEN sqlc.narg(target_size)::integer IS NULL THEN target_size ELSE NULLIF(sqlc.narg(target_size)::integer, 0) END,
-    description = CASE WHEN sqlc.narg(description)::text IS NULL THEN description ELSE NULLIF(sqlc.narg(description)::text, '') END,
-    updated_at = now()
+SET code = @code, name = @name, role = @role, disease_model_id = sqlc.narg(disease_model_id),
+    target_size = sqlc.narg(target_size), description = sqlc.narg(description)
 WHERE experiment_id = @experiment_id AND id = @id
-RETURNING id, experiment_id, name, role, target_size, description, created_at, updated_at;
+RETURNING *;
+
+-- name: DeleteGroupRegimen :exec
+DELETE FROM misko.regimen_items WHERE experiment_id = @experiment_id AND group_id = @group_id;
 
 -- name: DeleteGroup :execrows
-DELETE FROM misko.experiment_groups
-WHERE experiment_id = @experiment_id AND id = @id;
+DELETE FROM misko.experiment_groups WHERE experiment_id = @experiment_id AND id = @id;
 
--- name: CreateEnrollment :one
-INSERT INTO misko.enrollments (experiment_id, subject_id, enrolled_at)
-VALUES (@experiment_id, @subject_id, @enrolled_at::timestamptz)
-RETURNING id, experiment_id, subject_id, enrolled_at, created_at;
+-- Regimen items --------------------------------------------------------------
 
--- name: GetEnrollment :one
-SELECT id, experiment_id, subject_id, enrolled_at, created_at
-FROM misko.enrollments
-WHERE experiment_id = @experiment_id AND id = @id;
+-- name: ListRegimenItems :many
+SELECT r.*
+FROM misko.regimen_items r
+JOIN misko.experiment_groups g ON g.id = r.group_id
+WHERE r.experiment_id = @experiment_id
+ORDER BY lower(g.code), r.start_day, r.purpose, r.id;
 
--- Serializes group changes of one enrollment.
--- name: LockEnrollment :one
-SELECT id, experiment_id, subject_id, enrolled_at, created_at
-FROM misko.enrollments
+-- name: LockRegimenItem :one
+SELECT * FROM misko.regimen_items WHERE experiment_id = @experiment_id AND id = @id FOR UPDATE;
+
+-- name: CreateRegimenItem :one
+INSERT INTO misko.regimen_items (experiment_id, group_id, purpose, substance_id, dose_micro, unit, route, frequency, interval_days, start_day, end_day)
+VALUES (@experiment_id, @group_id, @purpose, @substance_id, @dose_micro, @unit, @route, @frequency, sqlc.narg(interval_days), @start_day, @end_day)
+RETURNING *;
+
+-- name: UpdateRegimenItem :one
+UPDATE misko.regimen_items
+SET group_id = @group_id, purpose = @purpose, substance_id = @substance_id, dose_micro = @dose_micro, unit = @unit,
+    route = @route, frequency = @frequency, interval_days = sqlc.narg(interval_days), start_day = @start_day, end_day = @end_day
 WHERE experiment_id = @experiment_id AND id = @id
-FOR UPDATE;
+RETURNING *;
 
--- current_group_id is the group active at the database clock, or empty when none.
--- name: ListEnrollments :many
-SELECT e.id, e.experiment_id, e.subject_id, e.enrolled_at, e.created_at, coalesce(a.group_id::text, '')::text AS current_group_id
-FROM misko.enrollments e
-LEFT JOIN misko.group_assignments a
-    ON a.enrollment_id = e.id AND a.valid_from <= now() AND (a.valid_to IS NULL OR a.valid_to > now())
+-- name: DeleteRegimenItem :execrows
+DELETE FROM misko.regimen_items WHERE experiment_id = @experiment_id AND id = @id;
+
+-- Timepoints -----------------------------------------------------------------
+
+-- name: ListTimepoints :many
+SELECT * FROM misko.timepoints WHERE experiment_id = @experiment_id ORDER BY position, id;
+
+-- name: LockTimepoint :one
+SELECT * FROM misko.timepoints WHERE experiment_id = @experiment_id AND id = @id FOR UPDATE;
+
+-- name: CreateTimepoint :one
+INSERT INTO misko.timepoints (experiment_id, name, study_day, position)
+VALUES (@experiment_id, @name, @study_day, @position)
+RETURNING *;
+
+-- name: UpdateTimepoint :one
+UPDATE misko.timepoints
+SET name = @name, study_day = @study_day, position = @position
+WHERE experiment_id = @experiment_id AND id = @id
+RETURNING *;
+
+-- name: DeleteTimepoint :execrows
+DELETE FROM misko.timepoints WHERE experiment_id = @experiment_id AND id = @id;
+
+-- Endpoints ------------------------------------------------------------------
+
+-- name: ListEndpoints :many
+SELECT e.*
+FROM misko.endpoints e
+JOIN misko.timepoints t ON t.id = e.timepoint_id
 WHERE e.experiment_id = @experiment_id
-  AND (@subject_id::text = '' OR e.subject_id::text = @subject_id::text)
-  AND (@group_id::text = '' OR a.group_id::text = @group_id::text)
-ORDER BY
-    CASE WHEN @descending::boolean THEN e.enrolled_at END DESC,
-    CASE WHEN NOT @descending::boolean THEN e.enrolled_at END ASC,
-    e.id ASC
-LIMIT @page_limit::integer OFFSET @page_offset::integer;
+ORDER BY e.kind = 'SECONDARY', t.position, e.paradigm_key, e.metric_key, e.id;
 
--- name: CountEnrollments :one
-SELECT count(*)
-FROM misko.enrollments e
-LEFT JOIN misko.group_assignments a
-    ON a.enrollment_id = e.id AND a.valid_from <= now() AND (a.valid_to IS NULL OR a.valid_to > now())
-WHERE e.experiment_id = @experiment_id
-  AND (@subject_id::text = '' OR e.subject_id::text = @subject_id::text)
-  AND (@group_id::text = '' OR a.group_id::text = @group_id::text);
+-- name: LockEndpoint :one
+SELECT * FROM misko.endpoints WHERE experiment_id = @experiment_id AND id = @id FOR UPDATE;
 
--- name: ListSubjectEnrollments :many
-SELECT e.id, e.experiment_id, e.subject_id, e.enrolled_at, e.created_at, coalesce(a.group_id::text, '')::text AS current_group_id
-FROM misko.enrollments e
-LEFT JOIN misko.group_assignments a
-    ON a.enrollment_id = e.id AND a.valid_from <= now() AND (a.valid_to IS NULL OR a.valid_to > now())
-WHERE e.subject_id = @subject_id
-ORDER BY e.enrolled_at DESC, e.id ASC;
+-- name: CreateEndpoint :one
+INSERT INTO misko.endpoints (experiment_id, timepoint_id, baseline_timepoint_id, paradigm_key, metric_key, kind, direction)
+VALUES (@experiment_id, @timepoint_id, sqlc.narg(baseline_timepoint_id), @paradigm_key, @metric_key, @kind, @direction)
+RETURNING *;
 
--- name: ListAssignments :many
-SELECT id, experiment_id, enrollment_id, group_id, valid_from, valid_to, created_at
-FROM misko.group_assignments
-WHERE enrollment_id = @enrollment_id
-ORDER BY valid_from, id;
+-- name: UpdateEndpoint :one
+UPDATE misko.endpoints
+SET timepoint_id = @timepoint_id, baseline_timepoint_id = sqlc.narg(baseline_timepoint_id), paradigm_key = @paradigm_key,
+    metric_key = @metric_key, kind = @kind, direction = @direction
+WHERE experiment_id = @experiment_id AND id = @id
+RETURNING *;
 
--- name: CloseAssignment :execrows
-UPDATE misko.group_assignments
-SET valid_to = @valid_to::timestamptz
-WHERE id = @id AND valid_to IS NULL;
+-- name: DeleteEndpoint :execrows
+DELETE FROM misko.endpoints WHERE experiment_id = @experiment_id AND id = @id;
 
--- name: CreateAssignment :one
-INSERT INTO misko.group_assignments (experiment_id, enrollment_id, group_id, valid_from)
-VALUES (@experiment_id, @enrollment_id, @group_id, @valid_from::timestamptz)
-RETURNING id, experiment_id, enrollment_id, group_id, valid_from, valid_to, created_at;
+-- Allocations ----------------------------------------------------------------
+
+-- name: ListAllocations :many
+SELECT a.*, s.code AS subject_code
+FROM misko.allocations a
+JOIN misko.subjects s ON s.id = a.subject_id
+JOIN misko.experiment_groups g ON g.id = a.group_id
+WHERE a.experiment_id = @experiment_id
+  AND (sqlc.narg(group_id)::uuid IS NULL OR a.group_id = sqlc.narg(group_id)::uuid)
+  AND (sqlc.narg(excluded)::boolean IS NULL OR (a.excluded_at IS NOT NULL) = sqlc.narg(excluded)::boolean)
+ORDER BY lower(g.code), lower(s.code), a.id;
+
+-- name: LockAllocation :one
+SELECT * FROM misko.allocations WHERE experiment_id = @experiment_id AND id = @id FOR UPDATE;
+
+-- name: CreateAllocation :one
+INSERT INTO misko.allocations (experiment_id, group_id, subject_id, allocated_at, cage, created_by)
+VALUES (@experiment_id, @group_id, @subject_id, @allocated_at, sqlc.narg(cage), @created_by)
+RETURNING *;
+
+-- name: UpdateAllocation :one
+UPDATE misko.allocations
+SET group_id = @group_id, cage = sqlc.narg(cage), excluded_at = sqlc.narg(excluded_at),
+    exclusion_reason = sqlc.narg(exclusion_reason), exclusion_note = sqlc.narg(exclusion_note)
+WHERE experiment_id = @experiment_id AND id = @id
+RETURNING *;
+
+-- name: DeleteAllocation :execrows
+DELETE FROM misko.allocations WHERE experiment_id = @experiment_id AND id = @id;

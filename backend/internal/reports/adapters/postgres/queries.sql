@@ -1,131 +1,49 @@
--- Every filter is optional: NULL ids, empty keys and zero versions match all
--- rows. The sort key is allowlisted by the application; the trailing keys make
--- paging stable.
+-- Read-only queries over the study design and the reporting views of
+-- schema/012_reports.sql. Statistics use only accepted results of animals that
+-- are not excluded (report_accepted_metrics); report_test_subjects supplies the
+-- pending, rejected and unanalysed animals so a half-reviewed report is never
+-- mistaken for a final one.
 
--- name: MetricRows :many
-SELECT sqlc.embed(r), sqlc.embed(t),
-       m.metric_key, m.unit, m.value, m.missing_reason
-FROM misko.metric_results m
-JOIN misko.report_runs r ON r.id = m.run_id
-JOIN misko.report_tests t ON t.test_id = r.test_id
-WHERE (NOT @latest_only::boolean OR r.latest)
-  AND (sqlc.narg(experiment_id)::uuid IS NULL OR t.experiment_id = sqlc.narg(experiment_id)::uuid)
-  AND (sqlc.narg(subject_id)::uuid IS NULL OR t.subject_id = sqlc.narg(subject_id)::uuid)
-  AND (sqlc.narg(group_id)::uuid IS NULL OR t.group_id = sqlc.narg(group_id)::uuid)
-  AND (sqlc.narg(phase_id)::uuid IS NULL OR t.phase_id = sqlc.narg(phase_id)::uuid)
-  AND (sqlc.narg(test_id)::uuid IS NULL OR t.test_id = sqlc.narg(test_id)::uuid)
-  AND (sqlc.narg(environment_id)::uuid IS NULL OR t.environment_revision_id IN (
-        SELECT er.id FROM misko.environment_revisions er WHERE er.environment_id = sqlc.narg(environment_id)::uuid))
-  AND (sqlc.narg(video_id)::uuid IS NULL OR r.source_asset_id = sqlc.narg(video_id)::uuid)
-  AND (sqlc.narg(run_id)::uuid IS NULL OR r.id = sqlc.narg(run_id)::uuid)
-  AND (@paradigm_key::text = '' OR t.paradigm_key = @paradigm_key::text)
-  AND (@paradigm_version::integer = 0 OR t.paradigm_version = @paradigm_version::integer)
-  AND (@metric_engine_version::integer = 0 OR r.metric_engine_version = @metric_engine_version::integer)
-  AND (@metric_key::text = '' OR m.metric_key = @metric_key::text)
-  AND (sqlc.narg(disease_model_id)::uuid IS NULL OR EXISTS (
-        SELECT 1 FROM misko.subject_conditions c WHERE c.subject_id = t.subject_id AND c.disease_model_id = sqlc.narg(disease_model_id)::uuid))
-  AND (sqlc.narg(substance_id)::uuid IS NULL OR EXISTS (
-        SELECT 1 FROM misko.administrations a
-        WHERE a.subject_id = t.subject_id AND a.experiment_id = t.experiment_id AND a.substance_id = sqlc.narg(substance_id)::uuid))
-ORDER BY
-    CASE WHEN @sort_key::text = 'scheduledAt' AND NOT @descending::boolean THEN t.scheduled_at END ASC,
-    CASE WHEN @sort_key::text = 'scheduledAt' AND @descending::boolean THEN t.scheduled_at END DESC,
-    CASE WHEN @sort_key::text = 'subjectCode' AND NOT @descending::boolean THEN lower(t.subject_code) END ASC,
-    CASE WHEN @sort_key::text = 'subjectCode' AND @descending::boolean THEN lower(t.subject_code) END DESC,
-    CASE WHEN @sort_key::text = 'experimentCode' AND NOT @descending::boolean THEN lower(t.experiment_code) END ASC,
-    CASE WHEN @sort_key::text = 'experimentCode' AND @descending::boolean THEN lower(t.experiment_code) END DESC,
-    CASE WHEN @sort_key::text = 'metricKey' AND NOT @descending::boolean THEN m.metric_key END ASC,
-    CASE WHEN @sort_key::text = 'metricKey' AND @descending::boolean THEN m.metric_key END DESC,
-    CASE WHEN @sort_key::text = 'value' AND NOT @descending::boolean THEN m.value END ASC NULLS LAST,
-    CASE WHEN @sort_key::text = 'value' AND @descending::boolean THEN m.value END DESC NULLS LAST,
-    CASE WHEN @sort_key::text = 'runFinishedAt' AND NOT @descending::boolean THEN r.finished_at END ASC,
-    CASE WHEN @sort_key::text = 'runFinishedAt' AND @descending::boolean THEN r.finished_at END DESC,
-    t.test_id, r.id, m.metric_key
-LIMIT @page_limit::integer OFFSET @page_offset::integer;
+-- name: ReportExperiment :one
+SELECT id, code, title, status, blinded
+FROM misko.experiments
+WHERE id = @id;
 
--- name: CountMetricRows :one
-SELECT count(*)
-FROM misko.metric_results m
-JOIN misko.report_runs r ON r.id = m.run_id
-JOIN misko.report_tests t ON t.test_id = r.test_id
-WHERE (NOT @latest_only::boolean OR r.latest)
-  AND (sqlc.narg(experiment_id)::uuid IS NULL OR t.experiment_id = sqlc.narg(experiment_id)::uuid)
-  AND (sqlc.narg(subject_id)::uuid IS NULL OR t.subject_id = sqlc.narg(subject_id)::uuid)
-  AND (sqlc.narg(group_id)::uuid IS NULL OR t.group_id = sqlc.narg(group_id)::uuid)
-  AND (sqlc.narg(phase_id)::uuid IS NULL OR t.phase_id = sqlc.narg(phase_id)::uuid)
-  AND (sqlc.narg(test_id)::uuid IS NULL OR t.test_id = sqlc.narg(test_id)::uuid)
-  AND (sqlc.narg(environment_id)::uuid IS NULL OR t.environment_revision_id IN (
-        SELECT er.id FROM misko.environment_revisions er WHERE er.environment_id = sqlc.narg(environment_id)::uuid))
-  AND (sqlc.narg(video_id)::uuid IS NULL OR r.source_asset_id = sqlc.narg(video_id)::uuid)
-  AND (sqlc.narg(run_id)::uuid IS NULL OR r.id = sqlc.narg(run_id)::uuid)
-  AND (@paradigm_key::text = '' OR t.paradigm_key = @paradigm_key::text)
-  AND (@paradigm_version::integer = 0 OR t.paradigm_version = @paradigm_version::integer)
-  AND (@metric_engine_version::integer = 0 OR r.metric_engine_version = @metric_engine_version::integer)
-  AND (@metric_key::text = '' OR m.metric_key = @metric_key::text)
-  AND (sqlc.narg(disease_model_id)::uuid IS NULL OR EXISTS (
-        SELECT 1 FROM misko.subject_conditions c WHERE c.subject_id = t.subject_id AND c.disease_model_id = sqlc.narg(disease_model_id)::uuid))
-  AND (sqlc.narg(substance_id)::uuid IS NULL OR EXISTS (
-        SELECT 1 FROM misko.administrations a
-        WHERE a.subject_id = t.subject_id AND a.experiment_id = t.experiment_id AND a.substance_id = sqlc.narg(substance_id)::uuid));
+-- name: ReportGroups :many
+SELECT g.id, g.code, g.name, g.role, g.disease_model_id, dm.name AS disease_model_name,
+       tr.substance_id AS treatment_substance_id, sub.name AS treatment_substance_name,
+       tr.dose_micro AS treatment_dose_micro, tr.unit AS treatment_unit,
+       (SELECT count(*) FROM misko.allocations a WHERE a.group_id = g.id)::integer AS allocated,
+       (SELECT count(*) FROM misko.allocations a WHERE a.group_id = g.id AND a.excluded_at IS NOT NULL)::integer AS excluded
+FROM misko.experiment_groups g
+LEFT JOIN misko.disease_models dm ON dm.id = g.disease_model_id
+LEFT JOIN misko.regimen_items tr ON tr.group_id = g.id AND tr.purpose = 'TREATMENT'
+LEFT JOIN misko.substances sub ON sub.id = tr.substance_id
+WHERE g.experiment_id = @experiment_id
+ORDER BY lower(g.code), g.id;
 
--- name: EventRows :many
-SELECT sqlc.embed(r), sqlc.embed(t),
-       ev.id AS event_id, ev.event_type, ev.kind, ev.start_us, ev.end_us, ev.confidence,
-       ev.trial_id, tr.number AS trial_number, tr.repetition AS trial_repetition, tr.attempt AS trial_attempt
-FROM misko.analysis_events ev
-JOIN misko.report_runs r ON r.id = ev.run_id
-JOIN misko.report_tests t ON t.test_id = r.test_id
-LEFT JOIN misko.trials tr ON tr.id = ev.trial_id
-WHERE (NOT @latest_only::boolean OR r.latest)
-  AND (sqlc.narg(experiment_id)::uuid IS NULL OR t.experiment_id = sqlc.narg(experiment_id)::uuid)
-  AND (sqlc.narg(subject_id)::uuid IS NULL OR t.subject_id = sqlc.narg(subject_id)::uuid)
-  AND (sqlc.narg(group_id)::uuid IS NULL OR t.group_id = sqlc.narg(group_id)::uuid)
-  AND (sqlc.narg(phase_id)::uuid IS NULL OR t.phase_id = sqlc.narg(phase_id)::uuid)
-  AND (sqlc.narg(test_id)::uuid IS NULL OR t.test_id = sqlc.narg(test_id)::uuid)
-  AND (sqlc.narg(environment_id)::uuid IS NULL OR t.environment_revision_id IN (
-        SELECT er.id FROM misko.environment_revisions er WHERE er.environment_id = sqlc.narg(environment_id)::uuid))
-  AND (sqlc.narg(video_id)::uuid IS NULL OR r.source_asset_id = sqlc.narg(video_id)::uuid)
-  AND (sqlc.narg(run_id)::uuid IS NULL OR r.id = sqlc.narg(run_id)::uuid)
-  AND (@paradigm_key::text = '' OR t.paradigm_key = @paradigm_key::text)
-  AND (@paradigm_version::integer = 0 OR t.paradigm_version = @paradigm_version::integer)
-  AND (@metric_engine_version::integer = 0 OR r.metric_engine_version = @metric_engine_version::integer)
-  AND (@event_type::text = '' OR ev.event_type = @event_type::text)
-  AND (sqlc.narg(disease_model_id)::uuid IS NULL OR EXISTS (
-        SELECT 1 FROM misko.subject_conditions c WHERE c.subject_id = t.subject_id AND c.disease_model_id = sqlc.narg(disease_model_id)::uuid))
-  AND (sqlc.narg(substance_id)::uuid IS NULL OR EXISTS (
-        SELECT 1 FROM misko.administrations a
-        WHERE a.subject_id = t.subject_id AND a.experiment_id = t.experiment_id AND a.substance_id = sqlc.narg(substance_id)::uuid))
-ORDER BY
-    CASE WHEN @sort_key::text = 'scheduledAt' AND NOT @descending::boolean THEN t.scheduled_at END ASC,
-    CASE WHEN @sort_key::text = 'scheduledAt' AND @descending::boolean THEN t.scheduled_at END DESC,
-    CASE WHEN @sort_key::text = 'subjectCode' AND NOT @descending::boolean THEN lower(t.subject_code) END ASC,
-    CASE WHEN @sort_key::text = 'subjectCode' AND @descending::boolean THEN lower(t.subject_code) END DESC,
-    CASE WHEN @sort_key::text = 'eventType' AND NOT @descending::boolean THEN ev.event_type END ASC,
-    CASE WHEN @sort_key::text = 'eventType' AND @descending::boolean THEN ev.event_type END DESC,
-    t.test_id, r.id, ev.start_us, ev.id
-LIMIT @page_limit::integer OFFSET @page_offset::integer;
+-- name: ReportTimepoints :many
+SELECT id, name, study_day, position
+FROM misko.timepoints
+WHERE experiment_id = @experiment_id
+ORDER BY position;
 
--- name: CountEventRows :one
-SELECT count(*)
-FROM misko.analysis_events ev
-JOIN misko.report_runs r ON r.id = ev.run_id
-JOIN misko.report_tests t ON t.test_id = r.test_id
-WHERE (NOT @latest_only::boolean OR r.latest)
-  AND (sqlc.narg(experiment_id)::uuid IS NULL OR t.experiment_id = sqlc.narg(experiment_id)::uuid)
-  AND (sqlc.narg(subject_id)::uuid IS NULL OR t.subject_id = sqlc.narg(subject_id)::uuid)
-  AND (sqlc.narg(group_id)::uuid IS NULL OR t.group_id = sqlc.narg(group_id)::uuid)
-  AND (sqlc.narg(phase_id)::uuid IS NULL OR t.phase_id = sqlc.narg(phase_id)::uuid)
-  AND (sqlc.narg(test_id)::uuid IS NULL OR t.test_id = sqlc.narg(test_id)::uuid)
-  AND (sqlc.narg(environment_id)::uuid IS NULL OR t.environment_revision_id IN (
-        SELECT er.id FROM misko.environment_revisions er WHERE er.environment_id = sqlc.narg(environment_id)::uuid))
-  AND (sqlc.narg(video_id)::uuid IS NULL OR r.source_asset_id = sqlc.narg(video_id)::uuid)
-  AND (sqlc.narg(run_id)::uuid IS NULL OR r.id = sqlc.narg(run_id)::uuid)
-  AND (@paradigm_key::text = '' OR t.paradigm_key = @paradigm_key::text)
-  AND (@paradigm_version::integer = 0 OR t.paradigm_version = @paradigm_version::integer)
-  AND (@metric_engine_version::integer = 0 OR r.metric_engine_version = @metric_engine_version::integer)
-  AND (@event_type::text = '' OR ev.event_type = @event_type::text)
-  AND (sqlc.narg(disease_model_id)::uuid IS NULL OR EXISTS (
-        SELECT 1 FROM misko.subject_conditions c WHERE c.subject_id = t.subject_id AND c.disease_model_id = sqlc.narg(disease_model_id)::uuid))
-  AND (sqlc.narg(substance_id)::uuid IS NULL OR EXISTS (
-        SELECT 1 FROM misko.administrations a
-        WHERE a.subject_id = t.subject_id AND a.experiment_id = t.experiment_id AND a.substance_id = sqlc.narg(substance_id)::uuid));
+-- name: ReportEndpoints :many
+SELECT id, timepoint_id, baseline_timepoint_id, paradigm_key, metric_key, kind, direction
+FROM misko.endpoints
+WHERE experiment_id = @experiment_id
+ORDER BY CASE kind WHEN 'PRIMARY' THEN 0 ELSE 1 END, paradigm_key, metric_key, created_at, id;
+
+-- ReportMeasurements returns every animal filmed for one paradigm in tests of
+-- the experiment that were not cancelled, at every timepoint, with its review
+-- state and, when its result is accepted and the animal is not excluded, the
+-- value of one metric.
+-- name: ReportMeasurements :many
+SELECT rts.test_subject_id, rts.test_id, rts.allocation_id, rts.subject_id, rts.subject_code, rts.group_id, rts.excluded::boolean AS excluded,
+       rts.result_status, rts.result_job_id, rts.timepoint_id, rts.paradigm_version, rts.environment_name, rts.scheduled_at,
+       m.unit AS metric_unit, m.value AS metric_value, m.missing_reason, m.metric_engine_version
+FROM misko.report_test_subjects rts
+LEFT JOIN misko.report_accepted_metrics m ON m.test_subject_id = rts.test_subject_id AND m.metric_key = @metric_key::text
+WHERE rts.experiment_id = @experiment_id AND rts.paradigm_key = @paradigm_key::text AND rts.test_status <> 'CANCELLED'
+ORDER BY rts.scheduled_at, lower(rts.subject_code), rts.test_subject_id
+LIMIT @row_limit::integer;

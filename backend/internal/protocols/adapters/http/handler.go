@@ -19,8 +19,7 @@ var failures = []httpjson.Failure{
 	{Err: application.ErrExperimentNotFound, Status: http.StatusNotFound, Code: "experiment.notFound"},
 	{Err: application.ErrProtocolNotFound, Status: http.StatusNotFound, Code: "protocol.notFound"},
 	{Err: application.ErrVersionNotFound, Status: http.StatusNotFound, Code: "protocol.versionNotFound"},
-	{Err: application.ErrEnvironmentRevisionNotFound, Status: http.StatusNotFound, Code: "environment.revisionNotFound"},
-	{Err: application.ErrIncompatibleEnvironment, Status: http.StatusBadRequest, Code: "protocol.incompatibleEnvironment"},
+	{Err: application.ErrExperimentClosed, Status: http.StatusConflict, Code: "protocol.experimentClosed"},
 	{Err: application.ErrTrialTypeNotSupported, Status: http.StatusBadRequest, Code: "protocol.trialTypeNotSupported"},
 	{Err: application.ErrUnknownParadigm, Status: http.StatusBadRequest, Code: "protocol.unknownParadigm"},
 	{Err: application.ErrUnknownParadigmVersion, Status: http.StatusBadRequest, Code: "protocol.unknownParadigmVersion"},
@@ -35,7 +34,6 @@ var failures = []httpjson.Failure{
 	{Err: domain.ErrInvalidStepOrder, Status: http.StatusBadRequest, Code: "protocol.invalidStepOrder"},
 	{Err: domain.ErrInvalidParadigmKey, Status: http.StatusBadRequest, Code: "protocol.invalidParadigmKey"},
 	{Err: domain.ErrInvalidParadigmVersion, Status: http.StatusBadRequest, Code: "protocol.invalidParadigmVersion"},
-	{Err: domain.ErrMissingEnvironment, Status: http.StatusBadRequest, Code: "protocol.missingEnvironment"},
 	{Err: domain.ErrInvalidTrialType, Status: http.StatusBadRequest, Code: "protocol.invalidTrialType"},
 	{Err: domain.ErrInvalidTrials, Status: http.StatusBadRequest, Code: "protocol.invalidTrials"},
 	{Err: domain.ErrInvalidInterval, Status: http.StatusBadRequest, Code: "protocol.invalidInterval"},
@@ -70,15 +68,14 @@ func (h handler) with(next func(http.ResponseWriter, *http.Request, access.Actor
 }
 
 type stepBody struct {
-	Position              int                `json:"position"`
-	ParadigmKey           string             `json:"paradigmKey"`
-	ParadigmVersion       int                `json:"paradigmVersion"`
-	EnvironmentRevisionID string             `json:"environmentRevisionId"`
-	TrialType             string             `json:"trialType"`
-	Trials                int                `json:"trials"`
-	InterTrialIntervalS   int                `json:"interTrialIntervalS"`
-	Session               map[string]float64 `json:"session"`
-	Notes                 string             `json:"notes"`
+	Position            int                `json:"position"`
+	ParadigmKey         string             `json:"paradigmKey"`
+	ParadigmVersion     int                `json:"paradigmVersion"`
+	TrialType           string             `json:"trialType"`
+	Trials              int                `json:"trials"`
+	InterTrialIntervalS int                `json:"interTrialIntervalS"`
+	Session             map[string]float64 `json:"session"`
+	Notes               string             `json:"notes"`
 }
 
 type versionBody struct {
@@ -196,17 +193,14 @@ func protocolJSON(p domain.Protocol) protocolJSONBody {
 }
 
 type stepJSONBody struct {
-	Position              int                `json:"position"`
-	ParadigmKey           string             `json:"paradigmKey"`
-	ParadigmVersion       int                `json:"paradigmVersion"`
-	EnvironmentID         string             `json:"environmentId"`
-	EnvironmentRevision   int                `json:"environmentRevision"`
-	EnvironmentRevisionID string             `json:"environmentRevisionId"`
-	TrialType             string             `json:"trialType"`
-	Trials                int                `json:"trials"`
-	InterTrialIntervalS   int                `json:"interTrialIntervalS"`
-	Session               map[string]float64 `json:"session"`
-	Notes                 *string            `json:"notes"`
+	Position            int                `json:"position"`
+	ParadigmKey         string             `json:"paradigmKey"`
+	ParadigmVersion     int                `json:"paradigmVersion"`
+	TrialType           string             `json:"trialType"`
+	Trials              int                `json:"trials"`
+	InterTrialIntervalS int                `json:"interTrialIntervalS"`
+	Session             map[string]float64 `json:"session"`
+	Notes               *string            `json:"notes"`
 }
 
 type versionJSONBody struct {
@@ -228,8 +222,7 @@ func versionJSON(v domain.Version) versionJSONBody {
 			session = map[string]float64{}
 		}
 		out.Steps = append(out.Steps, stepJSONBody{
-			s.Position, s.ParadigmKey, s.ParadigmVersion, s.EnvironmentID, s.EnvironmentRevision, s.EnvironmentRevisionID,
-			s.TrialType, s.Trials, s.InterTrialIntervalS, session, nullable(s.Notes),
+			s.Position, s.ParadigmKey, s.ParadigmVersion, s.TrialType, s.Trials, s.InterTrialIntervalS, session, nullable(s.Notes),
 		})
 	}
 	return out

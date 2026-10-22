@@ -37,21 +37,20 @@ func (q *Queries) CreateProtocol(ctx context.Context, arg CreateProtocolParams) 
 }
 
 const createStep = `-- name: CreateStep :exec
-INSERT INTO misko.protocol_steps (protocol_version_id, position, paradigm_key, paradigm_version, environment_revision_id, trial_type, trials, inter_trial_interval_s, session, notes)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+INSERT INTO misko.protocol_steps (protocol_version_id, position, paradigm_key, paradigm_version, trial_type, trials, inter_trial_interval_s, session, notes)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 `
 
 type CreateStepParams struct {
-	ProtocolVersionID     string
-	Position              int32
-	ParadigmKey           string
-	ParadigmVersion       int32
-	EnvironmentRevisionID string
-	TrialType             string
-	Trials                int32
-	InterTrialIntervalS   int32
-	Session               []byte
-	Notes                 *string
+	ProtocolVersionID   string
+	Position            int32
+	ParadigmKey         string
+	ParadigmVersion     int32
+	TrialType           string
+	Trials              int32
+	InterTrialIntervalS int32
+	Session             []byte
+	Notes               *string
 }
 
 func (q *Queries) CreateStep(ctx context.Context, arg CreateStepParams) error {
@@ -60,7 +59,6 @@ func (q *Queries) CreateStep(ctx context.Context, arg CreateStepParams) error {
 		arg.Position,
 		arg.ParadigmKey,
 		arg.ParadigmVersion,
-		arg.EnvironmentRevisionID,
 		arg.TrialType,
 		arg.Trials,
 		arg.InterTrialIntervalS,
@@ -106,35 +104,6 @@ func (q *Queries) CreateVersion(ctx context.Context, arg CreateVersionParams) (M
 		&i.Notes,
 		&i.CreatedBy,
 		&i.CreatedAt,
-	)
-	return i, err
-}
-
-const getEnvironmentRevision = `-- name: GetEnvironmentRevision :one
-SELECT id, environment_id, number, paradigm_key, paradigm_version, apparatus
-FROM misko.environment_revisions
-WHERE id = $1
-`
-
-type GetEnvironmentRevisionRow struct {
-	ID              string
-	EnvironmentID   string
-	Number          int32
-	ParadigmKey     string
-	ParadigmVersion int32
-	Apparatus       []byte
-}
-
-func (q *Queries) GetEnvironmentRevision(ctx context.Context, id string) (GetEnvironmentRevisionRow, error) {
-	row := q.db.QueryRow(ctx, getEnvironmentRevision, id)
-	var i GetEnvironmentRevisionRow
-	err := row.Scan(
-		&i.ID,
-		&i.EnvironmentID,
-		&i.Number,
-		&i.ParadigmKey,
-		&i.ParadigmVersion,
-		&i.Apparatus,
 	)
 	return i, err
 }
@@ -251,46 +220,26 @@ func (q *Queries) ListProtocols(ctx context.Context, experimentID string) ([]Lis
 }
 
 const listSteps = `-- name: ListSteps :many
-SELECT s.protocol_version_id, s.position, s.paradigm_key, s.paradigm_version, s.environment_revision_id,
-       r.environment_id, r.number AS environment_revision, s.trial_type, s.trials, s.inter_trial_interval_s, s.session, s.notes
+SELECT s.protocol_version_id, s.position, s.paradigm_key, s.paradigm_version, s.trial_type, s.trials, s.inter_trial_interval_s, s.session, s.notes
 FROM misko.protocol_steps s
-JOIN misko.environment_revisions r ON r.id = s.environment_revision_id
 WHERE s.protocol_version_id = ANY($1::uuid[])
 ORDER BY s.protocol_version_id, s.position
 `
 
-type ListStepsRow struct {
-	ProtocolVersionID     string
-	Position              int32
-	ParadigmKey           string
-	ParadigmVersion       int32
-	EnvironmentRevisionID string
-	EnvironmentID         string
-	EnvironmentRevision   int32
-	TrialType             string
-	Trials                int32
-	InterTrialIntervalS   int32
-	Session               []byte
-	Notes                 *string
-}
-
-func (q *Queries) ListSteps(ctx context.Context, versionIds []string) ([]ListStepsRow, error) {
+func (q *Queries) ListSteps(ctx context.Context, versionIds []string) ([]MiskoProtocolStep, error) {
 	rows, err := q.db.Query(ctx, listSteps, versionIds)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []ListStepsRow
+	var items []MiskoProtocolStep
 	for rows.Next() {
-		var i ListStepsRow
+		var i MiskoProtocolStep
 		if err := rows.Scan(
 			&i.ProtocolVersionID,
 			&i.Position,
 			&i.ParadigmKey,
 			&i.ParadigmVersion,
-			&i.EnvironmentRevisionID,
-			&i.EnvironmentID,
-			&i.EnvironmentRevision,
 			&i.TrialType,
 			&i.Trials,
 			&i.InterTrialIntervalS,

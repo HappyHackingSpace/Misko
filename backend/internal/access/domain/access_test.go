@@ -10,10 +10,10 @@ import (
 // The matrix is written with literal strings, independent of the implementation
 // constants, so drift on either side fails loudly.
 var expectedMatrix = map[string]string{
-	"SUPERADMIN":  "user:manage lab:configure study:write subject:write weight:write apparatus:write test:write test:run *:read",
-	"LAB_MANAGER": "user:manage lab:configure study:write subject:write weight:write apparatus:write test:write test:run *:read",
-	"RESEARCHER":  "study:write subject:write weight:write apparatus:write test:write test:run *:read",
-	"TECHNICIAN":  "weight:write test:run *:read",
+	"SUPERADMIN":  "user:manage lab:configure study:write subject:write weight:write apparatus:write test:write test:run trial:run *:read",
+	"LAB_MANAGER": "user:manage lab:configure study:write subject:write weight:write apparatus:write test:write test:run trial:run *:read",
+	"RESEARCHER":  "study:write subject:write weight:write apparatus:write test:write test:run trial:run *:read",
+	"TECHNICIAN":  "weight:write test:run trial:run *:read",
 	"VIEWER":      "*:read",
 }
 

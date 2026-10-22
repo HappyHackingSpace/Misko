@@ -1,118 +1,171 @@
-// Package application contains experiment design, enrollment and group
-// assignment use cases. Design changes need study:write; reads need *:read.
+// Package application contains the study design use cases: experiments and
+// their lifecycle, groups, regimen items, timepoints, endpoints and the
+// allocation of animals to groups. Writes need study:write; reads need *:read.
 package application
 
 import (
 	"context"
 	"errors"
-	access "github.com/HappyHackingSpace/Misko/backend/internal/access/domain"
-	"github.com/HappyHackingSpace/Misko/backend/internal/experiments/domain"
 	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	access "github.com/HappyHackingSpace/Misko/backend/internal/access/domain"
+	"github.com/HappyHackingSpace/Misko/backend/internal/experiments/domain"
 )
 
 var (
-	ErrExperimentNotFound    = errors.New("experiment not found")
-	ErrPhaseNotFound         = errors.New("phase not found in this experiment")
-	ErrGroupNotFound         = errors.New("group not found in this experiment")
-	ErrEnrollmentNotFound    = errors.New("enrollment not found in this experiment")
-	ErrSubjectNotFound       = errors.New("subject not found")
-	ErrCodeTaken             = errors.New("experiment code is already in use")
-	ErrPhaseConflict         = errors.New("another phase of this experiment uses this name or position")
-	ErrGroupNameTaken        = errors.New("another group of this experiment uses this name")
-	ErrGroupInUse            = errors.New("group has assignments or intervention plans and cannot be deleted")
-	ErrPhaseInUse            = errors.New("phase is referenced by intervention plans and cannot be deleted")
-	ErrAlreadyEnrolled       = errors.New("subject is already enrolled in this experiment")
-	ErrOverlappingAssignment = errors.New("assignment period overlaps another assignment")
-	ErrInvalidTime           = errors.New("a timestamp is required")
-	ErrNoChanges             = errors.New("no fields to update")
-	ErrInvalidQuery          = errors.New("invalid list query")
+	ErrExperimentNotFound  = errors.New("experiment not found")
+	ErrGroupNotFound       = errors.New("group not found in this experiment")
+	ErrRegimenItemNotFound = errors.New("regimen item not found in this experiment")
+	ErrTimepointNotFound   = errors.New("timepoint not found in this experiment")
+	ErrEndpointNotFound    = errors.New("endpoint not found in this experiment")
+	ErrAllocationNotFound  = errors.New("allocation not found in this experiment")
+
+	ErrCodeTaken            = errors.New("experiment code is already in use")
+	ErrGroupCodeTaken       = errors.New("another group of this experiment uses this code")
+	ErrGroupNameTaken       = errors.New("another group of this experiment uses this name")
+	ErrGroupInUse           = errors.New("group has allocated animals and cannot be deleted")
+	ErrTimepointConflict    = errors.New("another timepoint of this experiment uses this name or position")
+	ErrTimepointInUse       = errors.New("timepoint is used by an endpoint or a test and cannot be deleted")
+	ErrTreatmentItemTaken   = errors.New("the group already has a treatment item")
+	ErrEndpointDuplicate    = errors.New("this metric is already an endpoint at this timepoint")
+	ErrPrimaryEndpointTaken = errors.New("the experiment already has a primary endpoint")
+	ErrAlreadyAllocated     = errors.New("the animal is already allocated to a group")
+
+	ErrDiseaseModelNotFound     = errors.New("disease model not found")
+	ErrSubstanceNotFound        = errors.New("substance not found")
+	ErrSubjectNotFound          = errors.New("subject not found")
+	ErrGroupNotInExperiment     = errors.New("group does not belong to this experiment")
+	ErrTimepointNotInExperiment = errors.New("timepoint does not belong to this experiment")
+	ErrMetricUnavailable        = errors.New("no protocol step of this experiment runs a paradigm version with this metric")
+	ErrInvalidDayZero           = errors.New("day zero must be a date formatted YYYY-MM-DD")
+	ErrInvalidSubjects          = errors.New("subject ids must be 1 to 1000 distinct values")
+	ErrInvalidGroups            = errors.New("group ids must be distinct")
+	ErrNotEnoughPlaces          = errors.New("the groups do not have enough free places below their target size for these animals")
+	ErrDesignFrozen             = errors.New("the study design can change only while the experiment is a draft")
+	ErrAllocationFrozen         = errors.New("allocations of a running experiment keep their group, and a completed experiment cannot change")
+	ErrNotDraft                 = errors.New("the experiment is not a draft")
+	ErrNotRunning               = errors.New("the experiment is not running")
+	ErrExperimentCompleted      = errors.New("a completed experiment cannot change")
+	ErrOpenTests                = errors.New("every test must be completed or cancelled before the experiment completes")
+	ErrInvalidTransition        = errors.New("the experiment cannot change this way")
+	ErrNotReady                 = errors.New("the experiment does not meet the start rules")
+	ErrNoChanges                = errors.New("no fields to update")
+	ErrInvalidQuery             = errors.New("invalid list query")
 )
 
-// Changes types hold validated fields; nil leaves a field unchanged. An empty
-// description clears it and a zero target size removes the target.
-type ExperimentChanges struct {
-	Code, Title, Description *string
-	RequiresControl          *bool
-}
+// NotReadyError carries the unmet start rules; it matches ErrNotReady.
+type NotReadyError struct{ Problems []domain.Problem }
 
-type PhaseChanges struct {
-	Name, Description *string
-	Position          *int
-}
-
-type GroupChanges struct {
-	Name, Description *string
-	Role              *domain.GroupRole
-	TargetSize        *int
-}
+func (e *NotReadyError) Error() string { return ErrNotReady.Error() }
+func (e *NotReadyError) Unwrap() error { return ErrNotReady }
 
 type ExperimentFilter struct {
 	Search        string
+	Status        string
 	Sort          string
 	Descending    bool
 	Limit, Offset int
 }
 
-type EnrollmentFilter struct {
-	ExperimentID, SubjectID, GroupID string
-	Descending                       bool
-	Limit, Offset                    int
+// GroupFill compares a group's target with its allocated animals; excluded
+// animals are counted apart and do not fill the group.
+type GroupFill struct {
+	Group               domain.Group
+	Allocated, Excluded int
 }
 
-// GroupSize compares a group's target with the subjects assigned to it now.
-type GroupSize struct {
-	Group          domain.Group
-	ActiveSubjects int
+type ParadigmVersion struct {
+	Key     string
+	Version int
 }
 
-// EnrollmentSummary carries the group active now; CurrentGroupID is empty when none.
-type EnrollmentSummary struct {
-	Enrollment     domain.Enrollment
-	CurrentGroupID string
+type AllocationFilter struct {
+	ExperimentID, GroupID string
+	// Excluded filters by exclusion when set.
+	Excluded *bool
 }
 
-// Store persists experiments. Lookups scoped by experiment return the matching
-// not-found error for records of another experiment.
+// AllocationView is an allocation with the animal's code.
+type AllocationView struct {
+	Allocation  domain.Allocation
+	SubjectCode string
+}
+
+// Store persists the study design. Lookups scoped by experiment return the
+// matching not-found error for records of another experiment. Lock methods
+// take a row lock and are meant for use inside Transaction.
 type Store interface {
-	// Transaction runs fn atomically; LockEnrollment inside it serializes
-	// group changes of that enrollment.
 	Transaction(ctx context.Context, fn func(Store) error) error
+
 	CreateExperiment(ctx context.Context, e domain.Experiment) (domain.Experiment, error)
 	Experiment(ctx context.Context, id string) (domain.Experiment, error)
+	LockExperiment(ctx context.Context, id string) (domain.Experiment, error)
 	ListExperiments(ctx context.Context, f ExperimentFilter) ([]domain.Experiment, int, error)
-	UpdateExperiment(ctx context.Context, id string, c ExperimentChanges) (domain.Experiment, error)
-	Phases(ctx context.Context, experimentID string) ([]domain.Phase, error)
-	CreatePhase(ctx context.Context, p domain.Phase) (domain.Phase, error)
-	UpdatePhase(ctx context.Context, experimentID, phaseID string, c PhaseChanges) (domain.Phase, error)
-	DeletePhase(ctx context.Context, experimentID, phaseID string) error
-	GroupSizes(ctx context.Context, experimentID string) ([]GroupSize, error)
-	Group(ctx context.Context, experimentID, groupID string) (domain.Group, error)
+	UpdateExperiment(ctx context.Context, e domain.Experiment) (domain.Experiment, error)
+	StartExperiment(ctx context.Context, id string, dayZero time.Time) (domain.Experiment, error)
+	CompleteExperiment(ctx context.Context, id string) (domain.Experiment, error)
+	// OpenTests counts tests of the experiment that are planned or in progress.
+	OpenTests(ctx context.Context, experimentID string) (int, error)
+	// ProtocolParadigms lists the paradigm versions the experiment's protocol steps run.
+	ProtocolParadigms(ctx context.Context, experimentID string) ([]ParadigmVersion, error)
+
+	Groups(ctx context.Context, experimentID string) ([]GroupFill, error)
+	LockGroup(ctx context.Context, experimentID, groupID string) (domain.Group, error)
 	CreateGroup(ctx context.Context, g domain.Group) (domain.Group, error)
-	UpdateGroup(ctx context.Context, experimentID, groupID string, c GroupChanges) (domain.Group, error)
+	UpdateGroup(ctx context.Context, g domain.Group) (domain.Group, error)
+	// DeleteGroup removes the group with its regimen items.
 	DeleteGroup(ctx context.Context, experimentID, groupID string) error
-	CreateEnrollment(ctx context.Context, e domain.Enrollment) (domain.Enrollment, error)
-	LockEnrollment(ctx context.Context, experimentID, enrollmentID string) (domain.Enrollment, error)
-	Enrollment(ctx context.Context, experimentID, enrollmentID string) (domain.Enrollment, error)
-	ListEnrollments(ctx context.Context, f EnrollmentFilter) ([]EnrollmentSummary, int, error)
-	SubjectEnrollments(ctx context.Context, subjectID string) ([]EnrollmentSummary, error)
-	Assignments(ctx context.Context, enrollmentID string) ([]domain.Assignment, error)
-	CloseAssignment(ctx context.Context, assignmentID string, validTo time.Time) error
-	CreateAssignment(ctx context.Context, a domain.Assignment) (domain.Assignment, error)
+
+	RegimenItems(ctx context.Context, experimentID string) ([]domain.RegimenItem, error)
+	LockRegimenItem(ctx context.Context, experimentID, itemID string) (domain.RegimenItem, error)
+	CreateRegimenItem(ctx context.Context, r domain.RegimenItem) (domain.RegimenItem, error)
+	UpdateRegimenItem(ctx context.Context, r domain.RegimenItem) (domain.RegimenItem, error)
+	DeleteRegimenItem(ctx context.Context, experimentID, itemID string) error
+
+	Timepoints(ctx context.Context, experimentID string) ([]domain.Timepoint, error)
+	LockTimepoint(ctx context.Context, experimentID, timepointID string) (domain.Timepoint, error)
+	CreateTimepoint(ctx context.Context, t domain.Timepoint) (domain.Timepoint, error)
+	UpdateTimepoint(ctx context.Context, t domain.Timepoint) (domain.Timepoint, error)
+	DeleteTimepoint(ctx context.Context, experimentID, timepointID string) error
+
+	Endpoints(ctx context.Context, experimentID string) ([]domain.Endpoint, error)
+	LockEndpoint(ctx context.Context, experimentID, endpointID string) (domain.Endpoint, error)
+	CreateEndpoint(ctx context.Context, e domain.Endpoint) (domain.Endpoint, error)
+	UpdateEndpoint(ctx context.Context, e domain.Endpoint) (domain.Endpoint, error)
+	DeleteEndpoint(ctx context.Context, experimentID, endpointID string) error
+
+	Allocations(ctx context.Context, f AllocationFilter) ([]AllocationView, error)
+	LockAllocation(ctx context.Context, experimentID, allocationID string) (domain.Allocation, error)
+	CreateAllocation(ctx context.Context, a domain.Allocation) (domain.Allocation, error)
+	UpdateAllocation(ctx context.Context, a domain.Allocation) (domain.Allocation, error)
+	DeleteAllocation(ctx context.Context, experimentID, allocationID string) error
+}
+
+// Catalog reads the code-defined paradigm catalog.
+type Catalog interface {
+	// Metrics returns the metric keys a paradigm version computes.
+	Metrics(key string, version int) ([]string, error)
 }
 
 type Service struct {
-	store Store
-	now   func() time.Time
+	store   Store
+	catalog Catalog
+	now     func() time.Time
+	intn    func(int) int
 }
 
-func New(store Store) *Service { return &Service{store: store, now: time.Now} }
+// New wires the use cases. intn(n) returns a uniform random integer in [0, n)
+// and drives randomised allocation.
+func New(store Store, catalog Catalog, now func() time.Time, intn func(int) int) *Service {
+	return &Service{store: store, catalog: catalog, now: now, intn: intn}
+}
 
 type ExperimentQuery struct {
-	Search, Sort, Order string
-	Page, PageSize      int
+	Search, Status, Sort, Order string
+	Page, PageSize              int
 }
 
 type ExperimentPage struct {
@@ -126,12 +179,17 @@ func (s *Service) ListExperiments(ctx context.Context, actor access.Actor, q Exp
 	if err := actor.Require(access.Read); err != nil {
 		return ExperimentPage{}, err
 	}
-	f := ExperimentFilter{Search: strings.TrimSpace(q.Search), Sort: q.Sort}
+	f := ExperimentFilter{Search: strings.TrimSpace(q.Search), Status: q.Status, Sort: q.Sort}
 	if f.Sort == "" {
 		f.Sort = "createdAt"
 	}
 	if !utf8.ValidString(f.Search) || utf8.RuneCountInString(f.Search) > 100 || !slices.Contains(experimentSorts, f.Sort) {
 		return ExperimentPage{}, ErrInvalidQuery
+	}
+	if f.Status != "" {
+		if _, err := domain.ParseStatus(f.Status); err != nil {
+			return ExperimentPage{}, ErrInvalidQuery
+		}
 	}
 	page := 0
 	var err error
@@ -148,51 +206,32 @@ func (s *Service) ListExperiments(ctx context.Context, actor access.Actor, q Exp
 	return ExperimentPage{Experiments: experiments, Total: total, Page: page, PageSize: f.Limit}, nil
 }
 
-type ExperimentDetail struct {
-	Experiment            domain.Experiment
-	ControlRequirementMet bool
-}
-
-func (s *Service) Experiment(ctx context.Context, actor access.Actor, id string) (ExperimentDetail, error) {
+func (s *Service) Experiment(ctx context.Context, actor access.Actor, id string) (domain.Experiment, error) {
 	if err := actor.Require(access.Read); err != nil {
-		return ExperimentDetail{}, err
+		return domain.Experiment{}, err
 	}
-	e, err := s.store.Experiment(ctx, id)
-	if err != nil {
-		return ExperimentDetail{}, err
-	}
-	sizes, err := s.store.GroupSizes(ctx, id)
-	if err != nil {
-		return ExperimentDetail{}, err
-	}
-	groups := make([]domain.Group, 0, len(sizes))
-	for _, size := range sizes {
-		groups = append(groups, size.Group)
-	}
-	return ExperimentDetail{Experiment: e, ControlRequirementMet: domain.ControlRequirementMet(e.RequiresControl, groups)}, nil
+	return s.store.Experiment(ctx, id)
 }
 
-type ExperimentInput struct {
-	Code, Title, Description string
-	RequiresControl          bool
-}
-
-func (s *Service) CreateExperiment(ctx context.Context, actor access.Actor, in ExperimentInput) (domain.Experiment, error) {
+func (s *Service) CreateExperiment(ctx context.Context, actor access.Actor, in domain.ExperimentFields) (domain.Experiment, error) {
 	if err := actor.Require(access.StudyWrite); err != nil {
 		return domain.Experiment{}, err
 	}
-	e, err := domain.NewExperiment(in.Code, in.Title, in.Description, in.RequiresControl)
+	e, err := domain.NewExperiment(in)
 	if err != nil {
 		return domain.Experiment{}, err
 	}
 	return s.store.CreateExperiment(ctx, e)
 }
 
+// ExperimentPatch leaves nil fields unchanged; an empty optional text clears it.
 type ExperimentPatch struct {
-	Code, Title, Description *string
-	RequiresControl          *bool
+	Code, Title, Description, Hypothesis, Randomisation *string
+	Blinded                                             *bool
 }
 
+// UpdateExperiment edits code, title and description until the experiment
+// completes; hypothesis, randomisation and blinding only in a draft.
 func (s *Service) UpdateExperiment(ctx context.Context, actor access.Actor, id string, p ExperimentPatch) (domain.Experiment, error) {
 	if err := actor.Require(access.StudyWrite); err != nil {
 		return domain.Experiment{}, err
@@ -200,295 +239,199 @@ func (s *Service) UpdateExperiment(ctx context.Context, actor access.Actor, id s
 	if p == (ExperimentPatch{}) {
 		return domain.Experiment{}, ErrNoChanges
 	}
-	c := ExperimentChanges{RequiresControl: p.RequiresControl}
-	var err error
-	if c.Code, err = optional(p.Code, domain.NormalizeCode); err != nil {
-		return domain.Experiment{}, err
-	}
-	if c.Title, err = optional(p.Title, domain.NormalizeTitle); err != nil {
-		return domain.Experiment{}, err
-	}
-	if c.Description, err = optional(p.Description, domain.NormalizeDescription); err != nil {
-		return domain.Experiment{}, err
-	}
-	return s.store.UpdateExperiment(ctx, id, c)
-}
-
-func (s *Service) Phases(ctx context.Context, actor access.Actor, experimentID string) ([]domain.Phase, error) {
-	if err := s.readExperiment(ctx, actor, experimentID); err != nil {
-		return nil, err
-	}
-	return s.store.Phases(ctx, experimentID)
-}
-
-type PhaseInput struct {
-	Name, Description string
-	Position          int
-}
-
-func (s *Service) CreatePhase(ctx context.Context, actor access.Actor, experimentID string, in PhaseInput) (domain.Phase, error) {
-	if err := actor.Require(access.StudyWrite); err != nil {
-		return domain.Phase{}, err
-	}
-	p, err := domain.NewPhase(experimentID, in.Name, in.Position, in.Description)
-	if err != nil {
-		return domain.Phase{}, err
-	}
-	return s.store.CreatePhase(ctx, p)
-}
-
-type PhasePatch struct {
-	Name, Description *string
-	Position          *int
-}
-
-func (s *Service) UpdatePhase(ctx context.Context, actor access.Actor, experimentID, phaseID string, p PhasePatch) (domain.Phase, error) {
-	if err := actor.Require(access.StudyWrite); err != nil {
-		return domain.Phase{}, err
-	}
-	if p == (PhasePatch{}) {
-		return domain.Phase{}, ErrNoChanges
-	}
-	c := PhaseChanges{Position: p.Position}
-	var err error
-	if c.Name, err = optional(p.Name, domain.NormalizeName); err != nil {
-		return domain.Phase{}, err
-	}
-	if c.Description, err = optional(p.Description, domain.NormalizeDescription); err != nil {
-		return domain.Phase{}, err
-	}
-	if p.Position != nil {
-		if err := domain.ValidatePosition(*p.Position); err != nil {
-			return domain.Phase{}, err
-		}
-	}
-	return s.store.UpdatePhase(ctx, experimentID, phaseID, c)
-}
-
-func (s *Service) DeletePhase(ctx context.Context, actor access.Actor, experimentID, phaseID string) error {
-	if err := actor.Require(access.StudyWrite); err != nil {
-		return err
-	}
-	return s.store.DeletePhase(ctx, experimentID, phaseID)
-}
-
-func (s *Service) Groups(ctx context.Context, actor access.Actor, experimentID string) ([]GroupSize, error) {
-	if err := s.readExperiment(ctx, actor, experimentID); err != nil {
-		return nil, err
-	}
-	return s.store.GroupSizes(ctx, experimentID)
-}
-
-type GroupInput struct {
-	Name, Role, Description string
-	TargetSize              int
-}
-
-func (s *Service) CreateGroup(ctx context.Context, actor access.Actor, experimentID string, in GroupInput) (domain.Group, error) {
-	if err := actor.Require(access.StudyWrite); err != nil {
-		return domain.Group{}, err
-	}
-	g, err := domain.NewGroup(experimentID, in.Name, in.Role, in.TargetSize, in.Description)
-	if err != nil {
-		return domain.Group{}, err
-	}
-	return s.store.CreateGroup(ctx, g)
-}
-
-type GroupPatch struct {
-	Name, Role, Description *string
-	TargetSize              *int
-}
-
-func (s *Service) UpdateGroup(ctx context.Context, actor access.Actor, experimentID, groupID string, p GroupPatch) (domain.Group, error) {
-	if err := actor.Require(access.StudyWrite); err != nil {
-		return domain.Group{}, err
-	}
-	if p == (GroupPatch{}) {
-		return domain.Group{}, ErrNoChanges
-	}
-	c := GroupChanges{TargetSize: p.TargetSize}
-	var err error
-	if c.Name, err = optional(p.Name, domain.NormalizeName); err != nil {
-		return domain.Group{}, err
-	}
-	if c.Description, err = optional(p.Description, domain.NormalizeDescription); err != nil {
-		return domain.Group{}, err
-	}
-	if c.Role, err = optional(p.Role, domain.ParseRole); err != nil {
-		return domain.Group{}, err
-	}
-	if p.TargetSize != nil {
-		if err := domain.ValidateTargetSize(*p.TargetSize); err != nil {
-			return domain.Group{}, err
-		}
-	}
-	return s.store.UpdateGroup(ctx, experimentID, groupID, c)
-}
-
-func (s *Service) DeleteGroup(ctx context.Context, actor access.Actor, experimentID, groupID string) error {
-	if err := actor.Require(access.StudyWrite); err != nil {
-		return err
-	}
-	return s.store.DeleteGroup(ctx, experimentID, groupID)
-}
-
-// EnrollInput optionally assigns an initial group starting at enrollment.
-type EnrollInput struct {
-	SubjectID, GroupID string
-	EnrolledAt         time.Time
-}
-
-func (s *Service) Enroll(ctx context.Context, actor access.Actor, experimentID string, in EnrollInput) (EnrollmentSummary, error) {
-	if err := actor.Require(access.StudyWrite); err != nil {
-		return EnrollmentSummary{}, err
-	}
-	if in.EnrolledAt.IsZero() {
-		return EnrollmentSummary{}, ErrInvalidTime
-	}
-	if strings.TrimSpace(in.SubjectID) == "" {
-		return EnrollmentSummary{}, ErrSubjectNotFound
-	}
-	at := instant(in.EnrolledAt)
-	var summary EnrollmentSummary
+	var updated domain.Experiment
 	err := s.store.Transaction(ctx, func(tx Store) error {
-		e, err := tx.CreateEnrollment(ctx, domain.Enrollment{ExperimentID: experimentID, SubjectID: in.SubjectID, EnrolledAt: at})
+		e, err := tx.LockExperiment(ctx, id)
 		if err != nil {
 			return err
 		}
-		summary = EnrollmentSummary{Enrollment: e}
-		if in.GroupID == "" {
-			return nil
+		if e.Status == domain.Completed {
+			return ErrExperimentCompleted
 		}
-		a, err := s.assign(ctx, tx, e, nil, in.GroupID, at)
-		if err == nil && a.ActiveAt(s.now()) {
-			summary.CurrentGroupID = a.GroupID
+		f := e.Fields()
+		set(&f.Code, p.Code)
+		set(&f.Title, p.Title)
+		set(&f.Description, p.Description)
+		set(&f.Hypothesis, p.Hypothesis)
+		set(&f.Randomisation, p.Randomisation)
+		set(&f.Blinded, p.Blinded)
+		next := e
+		if err := next.Apply(f); err != nil {
+			return err
 		}
+		if e.Status != domain.Draft && e.DesignChanged(next.Fields()) {
+			return ErrDesignFrozen
+		}
+		updated, err = tx.UpdateExperiment(ctx, next)
 		return err
 	})
-	if err != nil {
-		return EnrollmentSummary{}, err
-	}
-	return summary, nil
+	return updated, err
 }
 
-type EnrollmentQuery struct {
-	SubjectID, GroupID, Order string
-	Page, PageSize            int
+// Readiness is the start check of an experiment.
+type Readiness struct {
+	Status   domain.Status
+	Problems []domain.Problem
 }
 
-type EnrollmentPage struct {
-	Enrollments           []EnrollmentSummary
-	Total, Page, PageSize int
-}
-
-func (s *Service) ListEnrollments(ctx context.Context, actor access.Actor, experimentID string, q EnrollmentQuery) (EnrollmentPage, error) {
+func (s *Service) Readiness(ctx context.Context, actor access.Actor, id string) (Readiness, error) {
 	if err := actor.Require(access.Read); err != nil {
-		return EnrollmentPage{}, err
+		return Readiness{}, err
 	}
-	f := EnrollmentFilter{ExperimentID: experimentID, SubjectID: q.SubjectID, GroupID: q.GroupID}
-	page := 0
-	var err error
-	if f.Descending, err = descending(q.Order, true); err != nil {
-		return EnrollmentPage{}, err
-	}
-	if page, f.Limit, f.Offset, err = paging(q.Page, q.PageSize); err != nil {
-		return EnrollmentPage{}, err
-	}
-	if _, err := s.store.Experiment(ctx, experimentID); err != nil {
-		return EnrollmentPage{}, err
-	}
-	enrollments, total, err := s.store.ListEnrollments(ctx, f)
+	e, err := s.store.Experiment(ctx, id)
 	if err != nil {
-		return EnrollmentPage{}, err
+		return Readiness{}, err
 	}
-	return EnrollmentPage{Enrollments: enrollments, Total: total, Page: page, PageSize: f.Limit}, nil
-}
-
-// EnrollmentDetail includes the full assignment history, oldest first.
-type EnrollmentDetail struct {
-	Enrollment     domain.Enrollment
-	Assignments    []domain.Assignment
-	CurrentGroupID string
-}
-
-func (s *Service) Enrollment(ctx context.Context, actor access.Actor, experimentID, enrollmentID string) (EnrollmentDetail, error) {
-	if err := actor.Require(access.Read); err != nil {
-		return EnrollmentDetail{}, err
-	}
-	e, err := s.store.Enrollment(ctx, experimentID, enrollmentID)
+	design, err := s.design(ctx, s.store, id)
 	if err != nil {
-		return EnrollmentDetail{}, err
+		return Readiness{}, err
 	}
-	history, err := s.store.Assignments(ctx, e.ID)
-	if err != nil {
-		return EnrollmentDetail{}, err
-	}
-	current, _ := domain.GroupAt(history, s.now())
-	return EnrollmentDetail{Enrollment: e, Assignments: history, CurrentGroupID: current}, nil
+	return Readiness{Status: e.Status, Problems: domain.Readiness(design)}, nil
 }
 
-type AssignInput struct {
-	GroupID       string
-	EffectiveFrom time.Time
-}
-
-// Assign moves an enrollment into a group from EffectiveFrom, closing the
-// open assignment at that instant. Earlier periods are kept as history.
-func (s *Service) Assign(ctx context.Context, actor access.Actor, experimentID, enrollmentID string, in AssignInput) (domain.Assignment, error) {
+// Start moves a draft to RUNNING with day 0 when every start rule holds, which
+// freezes groups, regimens, timepoints and endpoints. Otherwise it returns a
+// NotReadyError listing the unmet rules.
+func (s *Service) Start(ctx context.Context, actor access.Actor, id, dayZero string) (domain.Experiment, error) {
 	if err := actor.Require(access.StudyWrite); err != nil {
-		return domain.Assignment{}, err
+		return domain.Experiment{}, err
 	}
-	if in.EffectiveFrom.IsZero() {
-		return domain.Assignment{}, ErrInvalidTime
+	day, err := time.Parse(time.DateOnly, strings.TrimSpace(dayZero))
+	if err != nil {
+		return domain.Experiment{}, ErrInvalidDayZero
 	}
-	if in.GroupID == "" {
-		return domain.Assignment{}, domain.ErrGroupNotInExperiment
-	}
-	var created domain.Assignment
-	err := s.store.Transaction(ctx, func(tx Store) error {
-		e, err := tx.LockEnrollment(ctx, experimentID, enrollmentID)
+	var started domain.Experiment
+	err = s.store.Transaction(ctx, func(tx Store) error {
+		e, err := tx.LockExperiment(ctx, id)
 		if err != nil {
 			return err
 		}
-		history, err := tx.Assignments(ctx, e.ID)
+		if e.Status != domain.Draft {
+			return ErrNotDraft
+		}
+		design, err := s.design(ctx, tx, id)
 		if err != nil {
 			return err
 		}
-		created, err = s.assign(ctx, tx, e, domain.OpenAssignment(history), in.GroupID, instant(in.EffectiveFrom))
+		if problems := domain.Readiness(design); len(problems) > 0 {
+			return &NotReadyError{Problems: problems}
+		}
+		started, err = tx.StartExperiment(ctx, id, day)
 		return err
 	})
-	if err != nil {
-		return domain.Assignment{}, err
-	}
-	return created, nil
+	return started, err
 }
 
-func (s *Service) assign(ctx context.Context, tx Store, e domain.Enrollment, current *domain.Assignment, groupID string, from time.Time) (domain.Assignment, error) {
-	g, err := tx.Group(ctx, e.ExperimentID, groupID)
-	if errors.Is(err, ErrGroupNotFound) {
-		return domain.Assignment{}, domain.ErrGroupNotInExperiment
+// Complete closes a running experiment for good once every test is completed
+// or cancelled.
+func (s *Service) Complete(ctx context.Context, actor access.Actor, id string) (domain.Experiment, error) {
+	if err := actor.Require(access.StudyWrite); err != nil {
+		return domain.Experiment{}, err
 	}
-	if err != nil {
-		return domain.Assignment{}, err
-	}
-	if err := domain.PlanAssignment(e, current, g, from); err != nil {
-		return domain.Assignment{}, err
-	}
-	if current != nil {
-		if err := tx.CloseAssignment(ctx, current.ID, from); err != nil {
-			return domain.Assignment{}, err
+	var completed domain.Experiment
+	err := s.store.Transaction(ctx, func(tx Store) error {
+		e, err := tx.LockExperiment(ctx, id)
+		if err != nil {
+			return err
 		}
-	}
-	return tx.CreateAssignment(ctx, domain.Assignment{ExperimentID: e.ExperimentID, EnrollmentID: e.ID, GroupID: g.ID, ValidFrom: from})
+		if e.Status != domain.Running {
+			return ErrNotRunning
+		}
+		open, err := tx.OpenTests(ctx, id)
+		if err != nil {
+			return err
+		}
+		if open > 0 {
+			return ErrOpenTests
+		}
+		completed, err = tx.CompleteExperiment(ctx, id)
+		return err
+	})
+	return completed, err
 }
 
-// SubjectEnrollments lists every experiment a subject is enrolled in.
-func (s *Service) SubjectEnrollments(ctx context.Context, actor access.Actor, subjectID string) ([]EnrollmentSummary, error) {
-	if err := actor.Require(access.Read); err != nil {
+// MetricOption is a paradigm version used by the experiment's protocols with
+// the metrics an endpoint can name.
+type MetricOption struct {
+	Paradigm ParadigmVersion
+	Metrics  []string
+}
+
+// MetricOptions lists what endpoints of the experiment can measure.
+func (s *Service) MetricOptions(ctx context.Context, actor access.Actor, id string) ([]MetricOption, error) {
+	if err := s.readExperiment(ctx, actor, id); err != nil {
 		return nil, err
 	}
-	return s.store.SubjectEnrollments(ctx, subjectID)
+	paradigms, err := s.store.ProtocolParadigms(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	options := make([]MetricOption, 0, len(paradigms))
+	for _, p := range paradigms {
+		metrics, err := s.catalog.Metrics(p.Key, p.Version)
+		if err != nil {
+			return nil, err
+		}
+		options = append(options, MetricOption{Paradigm: p, Metrics: metrics})
+	}
+	return options, nil
+}
+
+func (s *Service) design(ctx context.Context, store Store, id string) (domain.Design, error) {
+	var d domain.Design
+	fills, err := store.Groups(ctx, id)
+	if err != nil {
+		return d, err
+	}
+	for _, f := range fills {
+		d.Groups = append(d.Groups, f.Group)
+	}
+	if d.Items, err = store.RegimenItems(ctx, id); err != nil {
+		return d, err
+	}
+	if d.Timepoints, err = store.Timepoints(ctx, id); err != nil {
+		return d, err
+	}
+	if d.Endpoints, err = store.Endpoints(ctx, id); err != nil {
+		return d, err
+	}
+	d.Metrics, err = s.metrics(ctx, store, id)
+	return d, err
+}
+
+// metrics returns, per paradigm key, the metrics of the paradigm versions the
+// experiment's protocol steps run.
+func (s *Service) metrics(ctx context.Context, store Store, id string) (map[string]map[string]bool, error) {
+	paradigms, err := store.ProtocolParadigms(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	out := map[string]map[string]bool{}
+	for _, p := range paradigms {
+		metrics, err := s.catalog.Metrics(p.Key, p.Version)
+		if err != nil {
+			return nil, err
+		}
+		if out[p.Key] == nil {
+			out[p.Key] = map[string]bool{}
+		}
+		for _, m := range metrics {
+			out[p.Key][m] = true
+		}
+	}
+	return out, nil
+}
+
+// draft locks the experiment and checks its design can still change.
+func draft(ctx context.Context, tx Store, id string) error {
+	e, err := tx.LockExperiment(ctx, id)
+	if err != nil {
+		return err
+	}
+	if e.Status != domain.Draft {
+		return ErrDesignFrozen
+	}
+	return nil
 }
 
 func (s *Service) readExperiment(ctx context.Context, actor access.Actor, id string) error {
@@ -499,18 +442,10 @@ func (s *Service) readExperiment(ctx context.Context, actor access.Actor, id str
 	return err
 }
 
-// instant stores times in UTC at the database's microsecond precision.
-func instant(t time.Time) time.Time { return t.UTC().Truncate(time.Microsecond) }
-
-func optional[T any](raw *string, parse func(string) (T, error)) (*T, error) {
-	if raw == nil {
-		return nil, nil
+func set[T any](dst *T, value *T) {
+	if value != nil {
+		*dst = *value
 	}
-	value, err := parse(*raw)
-	if err != nil {
-		return nil, err
-	}
-	return &value, nil
 }
 
 func descending(order string, fallback bool) (bool, error) {

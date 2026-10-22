@@ -7,30 +7,39 @@ package sqlcgen
 
 import (
 	"context"
+	"time"
 )
 
 const countSubjects = `-- name: CountSubjects :one
 SELECT count(*)
-FROM misko.subjects
-WHERE ($1::text = '' OR code ILIKE '%' || $1::text || '%' ESCAPE '\')
-  AND ($2::text = '' OR species = $2::text)
-  AND ($3::text = '' OR sex = $3::text)
+FROM misko.subjects s
+WHERE ($1::text = '' OR s.code ILIKE '%' || $1::text || '%' ESCAPE '\')
+  AND ($2::text = '' OR s.species = $2::text)
+  AND ($3::text = '' OR s.sex = $3::text)
+  AND (NOT $4::boolean OR NOT EXISTS (SELECT 1 FROM misko.allocations a WHERE a.subject_id = s.id))
 `
 
 type CountSubjectsParams struct {
-	Search  string
-	Species string
-	Sex     string
+	Search      string
+	Species     string
+	Sex         string
+	Unallocated bool
 }
 
 func (q *Queries) CountSubjects(ctx context.Context, arg CountSubjectsParams) (int64, error) {
-	row := q.db.QueryRow(ctx, countSubjects, arg.Search, arg.Species, arg.Sex)
+	row := q.db.QueryRow(ctx, countSubjects,
+		arg.Search,
+		arg.Species,
+		arg.Sex,
+		arg.Unallocated,
+	)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
 }
 
 const createSubject = `-- name: CreateSubject :one
+
 INSERT INTO misko.subjects (code, species, sex)
 VALUES ($1, $2, $3)
 RETURNING id, code, species, sex, created_at, updated_at
@@ -42,6 +51,9 @@ type CreateSubjectParams struct {
 	Sex     string
 }
 
+// Every read of a subject carries its allocation, if any: the experiment and
+// group it belongs to and whether it was excluded. An animal has at most one
+// allocation (allocations_subject_key), so the joins never repeat a subject.
 func (q *Queries) CreateSubject(ctx context.Context, arg CreateSubjectParams) (MiskoSubject, error) {
 	row := q.db.QueryRow(ctx, createSubject, arg.Code, arg.Species, arg.Sex)
 	var i MiskoSubject
@@ -52,6 +64,38 @@ func (q *Queries) CreateSubject(ctx context.Context, arg CreateSubjectParams) (M
 		&i.Sex,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const createWeight = `-- name: CreateWeight :one
+INSERT INTO misko.weight_measurements (subject_id, body_milligrams, measured_at, recorded_by)
+VALUES ($1, $2, $3, $4)
+RETURNING id, subject_id, body_milligrams, measured_at, recorded_by, created_at
+`
+
+type CreateWeightParams struct {
+	SubjectID      string
+	BodyMilligrams int64
+	MeasuredAt     time.Time
+	RecordedBy     string
+}
+
+func (q *Queries) CreateWeight(ctx context.Context, arg CreateWeightParams) (MiskoWeightMeasurement, error) {
+	row := q.db.QueryRow(ctx, createWeight,
+		arg.SubjectID,
+		arg.BodyMilligrams,
+		arg.MeasuredAt,
+		arg.RecordedBy,
+	)
+	var i MiskoWeightMeasurement
+	err := row.Scan(
+		&i.ID,
+		&i.SubjectID,
+		&i.BodyMilligrams,
+		&i.MeasuredAt,
+		&i.RecordedBy,
+		&i.CreatedAt,
 	)
 	return i, err
 }
@@ -70,14 +114,35 @@ func (q *Queries) DeleteSubject(ctx context.Context, id string) (int64, error) {
 }
 
 const getSubject = `-- name: GetSubject :one
-SELECT id, code, species, sex, created_at, updated_at
-FROM misko.subjects
-WHERE id = $1
+SELECT s.id, s.code, s.species, s.sex, s.created_at, s.updated_at,
+       a.experiment_id AS allocation_experiment_id, e.code AS allocation_experiment_code,
+       a.group_id AS allocation_group_id, g.code AS allocation_group_code, g.role AS allocation_group_role,
+       (a.excluded_at IS NOT NULL)::boolean AS allocation_excluded
+FROM misko.subjects s
+LEFT JOIN misko.allocations a ON a.subject_id = s.id
+LEFT JOIN misko.experiments e ON e.id = a.experiment_id
+LEFT JOIN misko.experiment_groups g ON g.id = a.group_id
+WHERE s.id = $1
 `
 
-func (q *Queries) GetSubject(ctx context.Context, id string) (MiskoSubject, error) {
+type GetSubjectRow struct {
+	ID                       string
+	Code                     string
+	Species                  string
+	Sex                      string
+	CreatedAt                time.Time
+	UpdatedAt                time.Time
+	AllocationExperimentID   *string
+	AllocationExperimentCode *string
+	AllocationGroupID        *string
+	AllocationGroupCode      *string
+	AllocationGroupRole      *string
+	AllocationExcluded       bool
+}
+
+func (q *Queries) GetSubject(ctx context.Context, id string) (GetSubjectRow, error) {
 	row := q.db.QueryRow(ctx, getSubject, id)
-	var i MiskoSubject
+	var i GetSubjectRow
 	err := row.Scan(
 		&i.ID,
 		&i.Code,
@@ -85,45 +150,75 @@ func (q *Queries) GetSubject(ctx context.Context, id string) (MiskoSubject, erro
 		&i.Sex,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.AllocationExperimentID,
+		&i.AllocationExperimentCode,
+		&i.AllocationGroupID,
+		&i.AllocationGroupCode,
+		&i.AllocationGroupRole,
+		&i.AllocationExcluded,
 	)
 	return i, err
 }
 
 const listSubjects = `-- name: ListSubjects :many
-SELECT id, code, species, sex, created_at, updated_at
-FROM misko.subjects
-WHERE ($1::text = '' OR code ILIKE '%' || $1::text || '%' ESCAPE '\')
-  AND ($2::text = '' OR species = $2::text)
-  AND ($3::text = '' OR sex = $3::text)
+SELECT s.id, s.code, s.species, s.sex, s.created_at, s.updated_at,
+       a.experiment_id AS allocation_experiment_id, e.code AS allocation_experiment_code,
+       a.group_id AS allocation_group_id, g.code AS allocation_group_code, g.role AS allocation_group_role,
+       (a.excluded_at IS NOT NULL)::boolean AS allocation_excluded
+FROM misko.subjects s
+LEFT JOIN misko.allocations a ON a.subject_id = s.id
+LEFT JOIN misko.experiments e ON e.id = a.experiment_id
+LEFT JOIN misko.experiment_groups g ON g.id = a.group_id
+WHERE ($1::text = '' OR s.code ILIKE '%' || $1::text || '%' ESCAPE '\')
+  AND ($2::text = '' OR s.species = $2::text)
+  AND ($3::text = '' OR s.sex = $3::text)
+  AND (NOT $4::boolean OR a.id IS NULL)
 ORDER BY
-    CASE WHEN $4::text = 'code' AND NOT $5::boolean THEN lower(code) END ASC,
-    CASE WHEN $4::text = 'code' AND $5::boolean THEN lower(code) END DESC,
-    CASE WHEN $4::text = 'species' AND NOT $5::boolean THEN species END ASC,
-    CASE WHEN $4::text = 'species' AND $5::boolean THEN species END DESC,
-    CASE WHEN $4::text = 'sex' AND NOT $5::boolean THEN sex END ASC,
-    CASE WHEN $4::text = 'sex' AND $5::boolean THEN sex END DESC,
-    CASE WHEN $4::text = 'createdAt' AND NOT $5::boolean THEN created_at END ASC,
-    CASE WHEN $4::text = 'createdAt' AND $5::boolean THEN created_at END DESC,
-    id ASC
-LIMIT $7::integer OFFSET $6::integer
+    CASE WHEN $5::text = 'code' AND NOT $6::boolean THEN lower(s.code) END ASC,
+    CASE WHEN $5::text = 'code' AND $6::boolean THEN lower(s.code) END DESC,
+    CASE WHEN $5::text = 'species' AND NOT $6::boolean THEN s.species END ASC,
+    CASE WHEN $5::text = 'species' AND $6::boolean THEN s.species END DESC,
+    CASE WHEN $5::text = 'sex' AND NOT $6::boolean THEN s.sex END ASC,
+    CASE WHEN $5::text = 'sex' AND $6::boolean THEN s.sex END DESC,
+    CASE WHEN $5::text = 'createdAt' AND NOT $6::boolean THEN s.created_at END ASC,
+    CASE WHEN $5::text = 'createdAt' AND $6::boolean THEN s.created_at END DESC,
+    s.id ASC
+LIMIT $8::integer OFFSET $7::integer
 `
 
 type ListSubjectsParams struct {
-	Search     string
-	Species    string
-	Sex        string
-	SortKey    string
-	Descending bool
-	PageOffset int32
-	PageLimit  int32
+	Search      string
+	Species     string
+	Sex         string
+	Unallocated bool
+	SortKey     string
+	Descending  bool
+	PageOffset  int32
+	PageLimit   int32
+}
+
+type ListSubjectsRow struct {
+	ID                       string
+	Code                     string
+	Species                  string
+	Sex                      string
+	CreatedAt                time.Time
+	UpdatedAt                time.Time
+	AllocationExperimentID   *string
+	AllocationExperimentCode *string
+	AllocationGroupID        *string
+	AllocationGroupCode      *string
+	AllocationGroupRole      *string
+	AllocationExcluded       bool
 }
 
 // The sort key is allowlisted by the application; id breaks ties for stable paging.
-func (q *Queries) ListSubjects(ctx context.Context, arg ListSubjectsParams) ([]MiskoSubject, error) {
+func (q *Queries) ListSubjects(ctx context.Context, arg ListSubjectsParams) ([]ListSubjectsRow, error) {
 	rows, err := q.db.Query(ctx, listSubjects,
 		arg.Search,
 		arg.Species,
 		arg.Sex,
+		arg.Unallocated,
 		arg.SortKey,
 		arg.Descending,
 		arg.PageOffset,
@@ -133,9 +228,9 @@ func (q *Queries) ListSubjects(ctx context.Context, arg ListSubjectsParams) ([]M
 		return nil, err
 	}
 	defer rows.Close()
-	var items []MiskoSubject
+	var items []ListSubjectsRow
 	for rows.Next() {
-		var i MiskoSubject
+		var i ListSubjectsRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.Code,
@@ -143,6 +238,46 @@ func (q *Queries) ListSubjects(ctx context.Context, arg ListSubjectsParams) ([]M
 			&i.Sex,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.AllocationExperimentID,
+			&i.AllocationExperimentCode,
+			&i.AllocationGroupID,
+			&i.AllocationGroupCode,
+			&i.AllocationGroupRole,
+			&i.AllocationExcluded,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listWeights = `-- name: ListWeights :many
+SELECT id, subject_id, body_milligrams, measured_at, recorded_by, created_at
+FROM misko.weight_measurements
+WHERE subject_id = $1
+ORDER BY measured_at DESC, id DESC
+`
+
+func (q *Queries) ListWeights(ctx context.Context, subjectID string) ([]MiskoWeightMeasurement, error) {
+	rows, err := q.db.Query(ctx, listWeights, subjectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []MiskoWeightMeasurement
+	for rows.Next() {
+		var i MiskoWeightMeasurement
+		if err := rows.Scan(
+			&i.ID,
+			&i.SubjectID,
+			&i.BodyMilligrams,
+			&i.MeasuredAt,
+			&i.RecordedBy,
+			&i.CreatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -158,10 +293,9 @@ const updateSubject = `-- name: UpdateSubject :one
 UPDATE misko.subjects
 SET code = coalesce($1, code),
     species = coalesce($2, species),
-    sex = coalesce($3, sex),
-    updated_at = now()
+    sex = coalesce($3, sex)
 WHERE id = $4
-RETURNING id, code, species, sex, created_at, updated_at
+RETURNING id
 `
 
 type UpdateSubjectParams struct {
@@ -171,22 +305,16 @@ type UpdateSubjectParams struct {
 	ID      string
 }
 
-// A NULL argument leaves a column unchanged.
-func (q *Queries) UpdateSubject(ctx context.Context, arg UpdateSubjectParams) (MiskoSubject, error) {
+// A NULL argument leaves a column unchanged. The store reads the subject
+// back with GetSubject to include its allocation.
+func (q *Queries) UpdateSubject(ctx context.Context, arg UpdateSubjectParams) (string, error) {
 	row := q.db.QueryRow(ctx, updateSubject,
 		arg.Code,
 		arg.Species,
 		arg.Sex,
 		arg.ID,
 	)
-	var i MiskoSubject
-	err := row.Scan(
-		&i.ID,
-		&i.Code,
-		&i.Species,
-		&i.Sex,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
+	var id string
+	err := row.Scan(&id)
+	return id, err
 }

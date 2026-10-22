@@ -1,13 +1,16 @@
 package domain
 
-import "testing"
+import (
+	"errors"
+	"testing"
+)
 
 func chainOf(scope Scope, statuses ...Status) []Calibration {
 	var out []Calibration
 	for i, s := range statuses {
-		c := Calibration{ID: string(scope) + string(rune('a'+i)), Status: s}
-		if scope == ScopeRecording {
-			c.RecordingID = "rec"
+		c := Calibration{ID: string(scope) + string(rune('a'+i)), Status: s, CameraID: "cam", FrameWidth: 1920, FrameHeight: 1080}
+		if scope == ScopeOverride {
+			c.TestSubjectID, c.RecordingID = "subject", "rec"
 		}
 		if i > 0 {
 			c.SupersedesID = out[i-1].ID
@@ -17,33 +20,27 @@ func chainOf(scope Scope, statuses ...Status) []Calibration {
 	return out
 }
 
-func TestScopeFollowsTheRecording(t *testing.T) {
-	if (Calibration{}).Scope() != ScopeEnvironment || (Calibration{RecordingID: "r"}).Scope() != ScopeRecording {
-		t.Fatal("scope must follow RecordingID")
+func TestScopeFollowsTheTestSubject(t *testing.T) {
+	if (Calibration{}).Scope() != ScopeEnvironment || (Calibration{TestSubjectID: "s", RecordingID: "r"}).Scope() != ScopeOverride {
+		t.Fatal("scope must follow TestSubjectID")
 	}
 }
 
-func TestEffectiveResolution(t *testing.T) {
-	tests := []struct {
-		name        string
-		recording   []Calibration
-		environment []Calibration
-		source      Source
-		usesID      string
+func TestResolveUsesTheLatestValidCalibration(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		chain  []Calibration
+		source Source
+		usesID string
 	}{
-		{"nothing calibrated", nil, nil, "", ""},
-		{"environment default applies to every recording", nil, chainOf(ScopeEnvironment, Valid), SourceEnvironment, "ENVIRONMENTa"},
-		{"rejected environment default waits", nil, chainOf(ScopeEnvironment, Rejected), SourceEnvironment, ""},
-		{"corrected environment default uses the correction", nil, chainOf(ScopeEnvironment, Rejected, Valid), SourceEnvironment, "ENVIRONMENTb"},
-		{"a valid override beats the environment", chainOf(ScopeRecording, Valid), chainOf(ScopeEnvironment, Valid), SourceRecording, "RECORDINGa"},
-		{"an override works without an environment default", chainOf(ScopeRecording, Valid), nil, SourceRecording, "RECORDINGa"},
-		{"a rejected override never falls back to the environment", chainOf(ScopeRecording, Rejected), chainOf(ScopeEnvironment, Valid), SourceRecording, ""},
-		{"a corrected override is used", chainOf(ScopeRecording, Rejected, Valid), chainOf(ScopeEnvironment, Valid), SourceRecording, "RECORDINGb"},
-		{"a later rejected correction of a valid override waits", chainOf(ScopeRecording, Valid, Rejected), chainOf(ScopeEnvironment, Valid), SourceRecording, ""},
-	}
-	for _, tc := range tests {
+		{"nothing calibrated", nil, "", ""},
+		{"a valid default", chainOf(ScopeEnvironment, Valid), SourceEnvironment, "ENVIRONMENTa"},
+		{"a rejected default waits", chainOf(ScopeEnvironment, Rejected), SourceEnvironment, ""},
+		{"a corrected default uses the correction", chainOf(ScopeEnvironment, Rejected, Valid), SourceEnvironment, "ENVIRONMENTb"},
+		{"a later rejected correction waits", chainOf(ScopeEnvironment, Valid, Rejected), SourceEnvironment, ""},
+	} {
 		t.Run(tc.name, func(t *testing.T) {
-			got := Effective(tc.recording, tc.environment)
+			got := Resolve(tc.chain, SourceEnvironment)
 			if got.Source != tc.source {
 				t.Fatalf("source %q, want %q", got.Source, tc.source)
 			}
@@ -54,5 +51,25 @@ func TestEffectiveResolution(t *testing.T) {
 				t.Fatalf("calibration %+v, want %s", got.Calibration, tc.usesID)
 			}
 		})
+	}
+}
+
+func TestCorrectionsKeepTheCameraOnlyWithinOneVideo(t *testing.T) {
+	chain := chainOf(ScopeOverride, Valid)
+	otherCamera := Input{CameraID: "cam-2", FrameWidth: 1280, FrameHeight: 720, SupersedesID: "OVERRIDEa"}
+	if err := CheckCorrection(chain, otherCamera, "rec"); !errors.Is(err, ErrCameraMismatch) {
+		t.Fatalf("another camera on the same video: %v", err)
+	}
+	if err := CheckCorrection(chain, otherCamera, "replacement"); err != nil {
+		t.Fatalf("a replacement video from another camera: %v", err)
+	}
+	if err := CheckCorrection(chain, Input{CameraID: "cam", FrameWidth: 1920, FrameHeight: 1080}, "replacement"); !errors.Is(err, ErrStaleCorrection) {
+		t.Fatalf("a new video still continues the chain: %v", err)
+	}
+	if err := CheckCorrection(nil, otherCamera, "rec"); !errors.Is(err, ErrStaleCorrection) {
+		t.Fatalf("the first calibration supersedes nothing: %v", err)
+	}
+	if err := CheckCorrection(chainOf(ScopeEnvironment, Valid), Input{CameraID: "cam", FrameWidth: 1920, FrameHeight: 1080, SupersedesID: "ENVIRONMENTa"}, ""); err != nil {
+		t.Fatalf("an environment correction with the same camera: %v", err)
 	}
 }

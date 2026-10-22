@@ -1,6 +1,7 @@
-// Package domain holds experiments, their measurement phases and arms, and the
-// enrollment and dated group assignment of subjects. A phase is when a subject
-// is measured; a group is the arm it is assigned to. Neither implies the other.
+// Package domain holds the study design of an experiment: its lifecycle, its
+// groups (role and disease model), what each group receives (regimen items),
+// when animals are tested (timepoints), what the study is judged on
+// (endpoints) and which animal is in which group (allocations).
 package domain
 
 import (
@@ -12,195 +13,97 @@ import (
 )
 
 var (
-	ErrInvalidCode        = errors.New("code must contain 1 to 64 ASCII letters, digits, '.', '_', '/' or '-'")
-	ErrInvalidTitle       = errors.New("title must contain 1 to 200 printable characters")
-	ErrInvalidDescription = errors.New("description must contain at most 5000 characters")
-	ErrInvalidName        = errors.New("name must contain 1 to 120 printable characters")
-	ErrInvalidPosition    = errors.New("position must be between 1 and 1000")
-	ErrInvalidRole        = errors.New("role must be CONTROL or TREATMENT")
-	ErrInvalidTargetSize  = errors.New("target size must be between 0 and 100000")
-
-	ErrGroupNotInExperiment       = errors.New("group does not belong to this experiment")
-	ErrAssignmentBeforeEnrollment = errors.New("assignment cannot start before enrollment")
-	ErrAssignmentOutOfOrder       = errors.New("assignment must start after the current assignment")
-	ErrAlreadyInGroup             = errors.New("subject is already assigned to this group")
+	ErrInvalidCode          = errors.New("code must contain 1 to 64 ASCII letters, digits, '.', '_', '/' or '-'")
+	ErrInvalidTitle         = errors.New("title must contain 1 to 200 printable characters")
+	ErrInvalidDescription   = errors.New("description must contain at most 5000 characters")
+	ErrInvalidHypothesis    = errors.New("hypothesis must contain at most 2000 characters")
+	ErrInvalidRandomisation = errors.New("randomisation must contain at most 500 characters")
+	ErrInvalidStatus        = errors.New("status must be DRAFT, RUNNING or COMPLETED")
 )
 
-type Experiment struct {
-	ID          string
-	Code        string
-	Title       string
-	Description string
-	// RequiresControl states that the design needs at least one control group.
-	RequiresControl bool
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
+type Status string
+
+const (
+	Draft     Status = "DRAFT"
+	Running   Status = "RUNNING"
+	Completed Status = "COMPLETED"
+)
+
+func ParseStatus(raw string) (Status, error) {
+	if s := Status(raw); s == Draft || s == Running || s == Completed {
+		return s, nil
+	}
+	return "", ErrInvalidStatus
 }
 
-func NewExperiment(code, title, description string, requiresControl bool) (Experiment, error) {
-	e := Experiment{RequiresControl: requiresControl}
-	var err error
-	if e.Code, err = NormalizeCode(code); err != nil {
-		return Experiment{}, err
-	}
-	if e.Title, err = NormalizeTitle(title); err != nil {
-		return Experiment{}, err
-	}
-	if e.Description, err = NormalizeDescription(description); err != nil {
+// Experiment is one study. The design can change only in DRAFT; starting sets
+// day 0 (a calendar date) and freezes it; COMPLETED is read-only.
+type Experiment struct {
+	ID            string
+	Code          string
+	Title         string
+	Description   string
+	Hypothesis    string
+	Randomisation string
+	Blinded       bool
+	Status        Status
+	// DayZero is the date study days count from, set when the study starts.
+	DayZero     *time.Time
+	StartedAt   *time.Time
+	CompletedAt *time.Time
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+// ExperimentFields are the editable fields of an experiment.
+type ExperimentFields struct {
+	Code, Title, Description, Hypothesis, Randomisation string
+	Blinded                                             bool
+}
+
+// NewExperiment validates the fields of a new draft experiment.
+func NewExperiment(f ExperimentFields) (Experiment, error) {
+	e := Experiment{Status: Draft}
+	if err := e.Apply(f); err != nil {
 		return Experiment{}, err
 	}
 	return e, nil
 }
 
-// Phase is an ordered measurement period, such as a healthy baseline.
-type Phase struct {
-	ID           string
-	ExperimentID string
-	Name         string
-	Position     int
-	Description  string
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
-}
-
-func NewPhase(experimentID, name string, position int, description string) (Phase, error) {
-	p := Phase{ExperimentID: experimentID, Position: position}
+// Apply validates f and copies it onto the experiment.
+func (e *Experiment) Apply(f ExperimentFields) error {
 	var err error
-	if p.Name, err = NormalizeName(name); err != nil {
-		return Phase{}, err
+	out := *e
+	if out.Code, err = NormalizeCode(f.Code); err != nil {
+		return err
 	}
-	if err = ValidatePosition(position); err != nil {
-		return Phase{}, err
+	if out.Title, err = line(f.Title, 200, ErrInvalidTitle); err != nil {
+		return err
 	}
-	if p.Description, err = NormalizeDescription(description); err != nil {
-		return Phase{}, err
+	if out.Description, err = text(f.Description, 5000, ErrInvalidDescription); err != nil {
+		return err
 	}
-	return p, nil
-}
-
-type GroupRole string
-
-const (
-	Control   GroupRole = "CONTROL"
-	Treatment GroupRole = "TREATMENT"
-)
-
-func ParseRole(raw string) (GroupRole, error) {
-	if r := GroupRole(raw); r == Control || r == Treatment {
-		return r, nil
+	if out.Hypothesis, err = text(f.Hypothesis, 2000, ErrInvalidHypothesis); err != nil {
+		return err
 	}
-	return "", ErrInvalidRole
-}
-
-// Group is an experimental arm. TargetSize is the planned number of subjects;
-// zero means no target was set.
-type Group struct {
-	ID           string
-	ExperimentID string
-	Name         string
-	Role         GroupRole
-	TargetSize   int
-	Description  string
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
-}
-
-func NewGroup(experimentID, name, role string, targetSize int, description string) (Group, error) {
-	g := Group{ExperimentID: experimentID, TargetSize: targetSize}
-	var err error
-	if g.Name, err = NormalizeName(name); err != nil {
-		return Group{}, err
+	if out.Randomisation, err = text(f.Randomisation, 500, ErrInvalidRandomisation); err != nil {
+		return err
 	}
-	if g.Role, err = ParseRole(role); err != nil {
-		return Group{}, err
-	}
-	if err = ValidateTargetSize(targetSize); err != nil {
-		return Group{}, err
-	}
-	if g.Description, err = NormalizeDescription(description); err != nil {
-		return Group{}, err
-	}
-	return g, nil
-}
-
-// Enrollment connects a subject to one experiment; a subject may be enrolled
-// in many experiments but only once in each.
-type Enrollment struct {
-	ID           string
-	ExperimentID string
-	SubjectID    string
-	EnrolledAt   time.Time
-	CreatedAt    time.Time
-}
-
-// Assignment places an enrollment in a group for [ValidFrom, ValidTo). A nil
-// ValidTo is open-ended. Periods of one enrollment never overlap.
-type Assignment struct {
-	ID           string
-	ExperimentID string
-	EnrollmentID string
-	GroupID      string
-	ValidFrom    time.Time
-	ValidTo      *time.Time
-	CreatedAt    time.Time
-}
-
-func (a Assignment) ActiveAt(t time.Time) bool {
-	return !t.Before(a.ValidFrom) && (a.ValidTo == nil || t.Before(*a.ValidTo))
-}
-
-// PlanAssignment checks moving an enrollment into group from the given time.
-// current is the open-ended assignment, if any; it will be closed at from.
-// Crossover is modeled by history, so earlier periods are never rewritten.
-func PlanAssignment(e Enrollment, current *Assignment, g Group, from time.Time) error {
-	if g.ExperimentID != e.ExperimentID {
-		return ErrGroupNotInExperiment
-	}
-	if from.Before(e.EnrolledAt) {
-		return ErrAssignmentBeforeEnrollment
-	}
-	if current != nil {
-		if current.GroupID == g.ID {
-			return ErrAlreadyInGroup
-		}
-		if !from.After(current.ValidFrom) {
-			return ErrAssignmentOutOfOrder
-		}
-	}
+	out.Blinded = f.Blinded
+	*e = out
 	return nil
 }
 
-// GroupAt returns the group assigned at t. It depends only on the assignment
-// history, never on phases or a subject's condition.
-func GroupAt(history []Assignment, t time.Time) (string, bool) {
-	for _, a := range history {
-		if a.ActiveAt(t) {
-			return a.GroupID, true
-		}
-	}
-	return "", false
+// Fields returns the editable fields, the base a partial update starts from.
+func (e Experiment) Fields() ExperimentFields {
+	return ExperimentFields{Code: e.Code, Title: e.Title, Description: e.Description, Hypothesis: e.Hypothesis, Randomisation: e.Randomisation, Blinded: e.Blinded}
 }
 
-// OpenAssignment returns the open-ended assignment, which is always the latest.
-func OpenAssignment(history []Assignment) *Assignment {
-	for i := range history {
-		if history[i].ValidTo == nil {
-			return &history[i]
-		}
-	}
-	return nil
-}
-
-func ControlRequirementMet(requiresControl bool, groups []Group) bool {
-	if !requiresControl {
-		return true
-	}
-	for _, g := range groups {
-		if g.Role == Control {
-			return true
-		}
-	}
-	return false
+// DesignChanged reports whether f changes a field that belongs to the frozen
+// study design (hypothesis, randomisation, blinding). Code, title and
+// description stay editable while the study runs.
+func (e Experiment) DesignChanged(f ExperimentFields) bool {
+	return f.Hypothesis != e.Hypothesis || f.Randomisation != e.Randomisation || f.Blinded != e.Blinded
 }
 
 func NormalizeCode(raw string) (string, error) {
@@ -216,38 +119,21 @@ func NormalizeCode(raw string) (string, error) {
 	return code, nil
 }
 
-func NormalizeTitle(raw string) (string, error) { return line(raw, 200, ErrInvalidTitle) }
-
-func NormalizeName(raw string) (string, error) { return line(raw, 120, ErrInvalidName) }
-
-// NormalizeDescription returns "" for no description and allows line breaks.
-func NormalizeDescription(raw string) (string, error) {
-	text := strings.TrimSpace(raw)
-	invalid := func(r rune) bool { return unicode.IsControl(r) && r != '\n' && r != '\r' && r != '\t' }
-	if !utf8.ValidString(text) || utf8.RuneCountInString(text) > 5000 || strings.IndexFunc(text, invalid) >= 0 {
-		return "", ErrInvalidDescription
-	}
-	return text, nil
-}
-
-func ValidatePosition(position int) error {
-	if position < 1 || position > 1000 {
-		return ErrInvalidPosition
-	}
-	return nil
-}
-
-func ValidateTargetSize(size int) error {
-	if size < 0 || size > 100000 {
-		return ErrInvalidTargetSize
-	}
-	return nil
-}
-
+// line is a required single-line text.
 func line(raw string, maxChars int, invalid error) (string, error) {
-	text := strings.TrimSpace(raw)
-	if text == "" || !utf8.ValidString(text) || utf8.RuneCountInString(text) > maxChars || strings.IndexFunc(text, unicode.IsControl) >= 0 {
+	s := strings.TrimSpace(raw)
+	if s == "" || !utf8.ValidString(s) || utf8.RuneCountInString(s) > maxChars || strings.IndexFunc(s, unicode.IsControl) >= 0 {
 		return "", invalid
 	}
-	return text, nil
+	return s, nil
+}
+
+// text is an optional multi-line text; "" means none.
+func text(raw string, maxChars int, invalid error) (string, error) {
+	s := strings.TrimSpace(raw)
+	bad := func(r rune) bool { return unicode.IsControl(r) && r != '\n' && r != '\r' && r != '\t' }
+	if !utf8.ValidString(s) || utf8.RuneCountInString(s) > maxChars || strings.IndexFunc(s, bad) >= 0 {
+		return "", invalid
+	}
+	return s, nil
 }

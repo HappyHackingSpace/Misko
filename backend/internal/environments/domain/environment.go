@@ -33,15 +33,16 @@ type Environment struct {
 	UpdatedAt      time.Time
 }
 
-// Revision is one set of apparatus measurements validated against a paradigm
-// version. Number counts revisions of the same environment from 1.
+// Revision is one set of parameters, apparatus measurements and analysis
+// settings, validated against a paradigm version. Number counts revisions of
+// the same environment from 1.
 type Revision struct {
 	ID              string
 	EnvironmentID   string
 	ParadigmKey     string
 	Number          int
 	ParadigmVersion int
-	Apparatus       map[string]float64
+	Parameters      map[string]float64
 	Notes           string
 	CreatedBy       string
 	CreatedAt       time.Time
@@ -63,8 +64,8 @@ func NewEnvironment(name, key, notes string) (Environment, error) {
 	return e, nil
 }
 
-// NewRevision copies apparatus so later changes by the caller cannot alter it.
-func NewRevision(environmentID, key string, version int, apparatus map[string]float64, notes, createdBy string) (Revision, error) {
+// NewRevision copies parameters so later changes by the caller cannot alter it.
+func NewRevision(environmentID, key string, version int, parameters map[string]float64, notes, createdBy string) (Revision, error) {
 	if err := ValidateParadigmKey(key); err != nil {
 		return Revision{}, err
 	}
@@ -75,11 +76,11 @@ func NewRevision(environmentID, key string, version int, apparatus map[string]fl
 	if err != nil {
 		return Revision{}, err
 	}
-	values := maps.Clone(apparatus)
+	values := maps.Clone(parameters)
 	if values == nil {
 		values = map[string]float64{}
 	}
-	return Revision{EnvironmentID: environmentID, ParadigmKey: key, ParadigmVersion: version, Apparatus: values, Notes: text, CreatedBy: createdBy}, nil
+	return Revision{EnvironmentID: environmentID, ParadigmKey: key, ParadigmVersion: version, Parameters: values, Notes: text, CreatedBy: createdBy}, nil
 }
 
 func NormalizeName(raw string) (string, error) {

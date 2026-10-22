@@ -29,4 +29,7 @@ func TestShapesIncludeTheirBoundary(t *testing.T) {
 			t.Errorf("%s: contains(%v, %v) = %v", tc.name, tc.x, tc.y, got)
 		}
 	}
+	if inAny(nil, 0, 0) || !inAny([]Shape{square, disk}, -3, 4) {
+		t.Error("a zone is the union of its shapes")
+	}
 }

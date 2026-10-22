@@ -1,4 +1,5 @@
 // Package mediahttp exposes test recordings, uploads and read URLs over HTTP.
+// A test has one current recording; a new upload supersedes it.
 // Signed URLs appear only in responses to the caller and are never logged.
 package mediahttp
 
@@ -18,7 +19,8 @@ var failures = []httpjson.Failure{
 	{Err: access.ErrForbidden, Status: http.StatusForbidden, Code: "auth.forbidden"},
 	{Err: application.ErrStorageNotConfigured, Status: http.StatusServiceUnavailable, Code: "media.storageNotConfigured"},
 	{Err: application.ErrTestNotFound, Status: http.StatusNotFound, Code: "test.notFound"},
-	{Err: application.ErrTestCancelled, Status: http.StatusConflict, Code: "test.cancelled"},
+	{Err: domain.ErrTestNotStarted, Status: http.StatusConflict, Code: "media.testNotStarted"},
+	{Err: application.ErrConcurrentUpload, Status: http.StatusConflict, Code: "media.concurrentUpload"},
 	{Err: application.ErrRecordingNotFound, Status: http.StatusNotFound, Code: "recording.notFound"},
 	{Err: application.ErrNotUploader, Status: http.StatusForbidden, Code: "media.notUploader"},
 	{Err: application.ErrUploadIncomplete, Status: http.StatusConflict, Code: "media.uploadIncomplete"},
@@ -41,6 +43,7 @@ func Register(mux *http.ServeMux, service *application.Service, authenticate fun
 	h := handler{service: service, authenticate: authenticate, logger: logger}
 	mux.HandleFunc("GET /api/tests/{id}/recordings", h.with(h.list))
 	mux.HandleFunc("POST /api/tests/{id}/recordings", h.with(h.start))
+	mux.HandleFunc("GET /api/tests/{id}/recordings/current", h.with(h.current))
 	mux.HandleFunc("POST /api/tests/{id}/recordings/{recordingId}/finalize", h.with(h.finalize))
 	mux.HandleFunc("GET /api/tests/{id}/recordings/{recordingId}/read-url", h.with(h.readURL))
 }
@@ -69,6 +72,15 @@ func (h handler) list(w http.ResponseWriter, r *http.Request, actor access.Actor
 	httpjson.Write(w, http.StatusOK, struct {
 		Data []recordingJSON `json:"data"`
 	}{data})
+}
+
+func (h handler) current(w http.ResponseWriter, r *http.Request, actor access.Actor) {
+	rec, err := h.service.Current(r.Context(), actor, r.PathValue("id"))
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	httpjson.Write(w, http.StatusOK, toRecording(rec))
 }
 
 func (h handler) start(w http.ResponseWriter, r *http.Request, actor access.Actor) {
@@ -151,6 +163,8 @@ type recordingJSON struct {
 	ID           string    `json:"id"`
 	ExperimentID string    `json:"experimentId"`
 	TestID       string    `json:"testId"`
+	SupersedesID *string   `json:"supersedesId"`
+	Current      bool      `json:"current"`
 	ClipStartUs  int64     `json:"clipStartUs"`
 	ClipEndUs    *int64    `json:"clipEndUs"`
 	Video        videoJSON `json:"video"`
@@ -169,7 +183,7 @@ func toRecording(rec domain.Recording) recordingJSON {
 		// Generations exceed the integers JavaScript represents exactly, so they are strings.
 		video.Generation = nullable(strconv.FormatInt(a.Generation, 10))
 	}
-	return recordingJSON{rec.ID, rec.ExperimentID, rec.TestID, rec.Clip.StartUs, rec.Clip.EndUs, video, rec.CreatedBy, rec.CreatedAt}
+	return recordingJSON{rec.ID, rec.ExperimentID, rec.TestID, nullable(rec.SupersedesID), rec.Current, rec.Clip.StartUs, rec.Clip.EndUs, video, rec.CreatedBy, rec.CreatedAt}
 }
 
 func nullable(s string) *string {

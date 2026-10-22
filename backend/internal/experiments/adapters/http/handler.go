@@ -1,46 +1,94 @@
-// Package experimentshttp exposes experiments, phases, groups, enrollments and
-// group assignments over HTTP.
+// Package experimentshttp exposes the study design over HTTP: experiments and
+// their lifecycle, groups, regimen items, timepoints, endpoints and
+// allocations.
 package experimentshttp
 
 import (
+	"errors"
+	"log/slog"
+	"net/http"
+	"time"
+
 	access "github.com/HappyHackingSpace/Misko/backend/internal/access/domain"
 	"github.com/HappyHackingSpace/Misko/backend/internal/experiments/application"
 	"github.com/HappyHackingSpace/Misko/backend/internal/experiments/domain"
 	"github.com/HappyHackingSpace/Misko/backend/internal/platform/httpjson"
-	"log/slog"
-	"net/http"
-	"time"
 )
 
 var failures = []httpjson.Failure{
 	{Err: access.ErrUnauthenticated, Status: http.StatusUnauthorized, Code: "auth.unauthenticated"},
 	{Err: access.ErrForbidden, Status: http.StatusForbidden, Code: "auth.forbidden"},
+
 	{Err: application.ErrExperimentNotFound, Status: http.StatusNotFound, Code: "experiment.notFound"},
-	{Err: application.ErrPhaseNotFound, Status: http.StatusNotFound, Code: "phase.notFound"},
 	{Err: application.ErrGroupNotFound, Status: http.StatusNotFound, Code: "group.notFound"},
-	{Err: application.ErrEnrollmentNotFound, Status: http.StatusNotFound, Code: "enrollment.notFound"},
-	{Err: application.ErrSubjectNotFound, Status: http.StatusBadRequest, Code: "enrollment.subjectNotFound"},
+	{Err: application.ErrRegimenItemNotFound, Status: http.StatusNotFound, Code: "regimen.notFound"},
+	{Err: application.ErrTimepointNotFound, Status: http.StatusNotFound, Code: "timepoint.notFound"},
+	{Err: application.ErrEndpointNotFound, Status: http.StatusNotFound, Code: "endpoint.notFound"},
+	{Err: application.ErrAllocationNotFound, Status: http.StatusNotFound, Code: "allocation.notFound"},
+
 	{Err: application.ErrCodeTaken, Status: http.StatusConflict, Code: "experiment.codeTaken"},
-	{Err: application.ErrPhaseConflict, Status: http.StatusConflict, Code: "phase.conflict"},
+	{Err: application.ErrGroupCodeTaken, Status: http.StatusConflict, Code: "group.codeTaken"},
 	{Err: application.ErrGroupNameTaken, Status: http.StatusConflict, Code: "group.nameTaken"},
 	{Err: application.ErrGroupInUse, Status: http.StatusConflict, Code: "group.inUse"},
-	{Err: application.ErrPhaseInUse, Status: http.StatusConflict, Code: "phase.inUse"},
-	{Err: application.ErrAlreadyEnrolled, Status: http.StatusConflict, Code: "enrollment.duplicate"},
-	{Err: application.ErrOverlappingAssignment, Status: http.StatusConflict, Code: "assignment.overlap"},
-	{Err: application.ErrInvalidTime, Status: http.StatusBadRequest, Code: "common.invalidTime"},
+	{Err: application.ErrTimepointConflict, Status: http.StatusConflict, Code: "timepoint.conflict"},
+	{Err: application.ErrTimepointInUse, Status: http.StatusConflict, Code: "timepoint.inUse"},
+	{Err: application.ErrTreatmentItemTaken, Status: http.StatusConflict, Code: "regimen.treatmentTaken"},
+	{Err: application.ErrEndpointDuplicate, Status: http.StatusConflict, Code: "endpoint.duplicate"},
+	{Err: application.ErrPrimaryEndpointTaken, Status: http.StatusConflict, Code: "endpoint.primaryTaken"},
+	{Err: application.ErrAlreadyAllocated, Status: http.StatusConflict, Code: "allocation.subjectAllocated"},
+	{Err: application.ErrNotEnoughPlaces, Status: http.StatusConflict, Code: "allocation.notEnoughPlaces"},
+	{Err: application.ErrDesignFrozen, Status: http.StatusConflict, Code: "experiment.designFrozen"},
+	{Err: application.ErrAllocationFrozen, Status: http.StatusConflict, Code: "allocation.frozen"},
+	{Err: application.ErrNotDraft, Status: http.StatusConflict, Code: "experiment.notDraft"},
+	{Err: application.ErrNotRunning, Status: http.StatusConflict, Code: "experiment.notRunning"},
+	{Err: application.ErrExperimentCompleted, Status: http.StatusConflict, Code: "experiment.completed"},
+	{Err: application.ErrOpenTests, Status: http.StatusConflict, Code: "experiment.testsOpen"},
+	{Err: application.ErrInvalidTransition, Status: http.StatusConflict, Code: "experiment.invalidTransition"},
+	{Err: domain.ErrAlreadyExcluded, Status: http.StatusConflict, Code: "allocation.alreadyExcluded"},
+
+	{Err: application.ErrDiseaseModelNotFound, Status: http.StatusBadRequest, Code: "group.unknownDiseaseModel"},
+	{Err: application.ErrSubstanceNotFound, Status: http.StatusBadRequest, Code: "regimen.unknownSubstance"},
+	{Err: application.ErrSubjectNotFound, Status: http.StatusBadRequest, Code: "allocation.unknownSubject"},
+	{Err: application.ErrGroupNotInExperiment, Status: http.StatusBadRequest, Code: "group.notInExperiment"},
+	{Err: application.ErrTimepointNotInExperiment, Status: http.StatusBadRequest, Code: "timepoint.notInExperiment"},
+	{Err: application.ErrMetricUnavailable, Status: http.StatusBadRequest, Code: "endpoint.metricUnavailable"},
+	{Err: application.ErrInvalidDayZero, Status: http.StatusBadRequest, Code: "experiment.invalidDayZero"},
+	{Err: application.ErrInvalidSubjects, Status: http.StatusBadRequest, Code: "allocation.invalidSubjects"},
+	{Err: application.ErrInvalidGroups, Status: http.StatusBadRequest, Code: "allocation.invalidGroups"},
 	{Err: application.ErrNoChanges, Status: http.StatusBadRequest, Code: "common.noChanges"},
 	{Err: application.ErrInvalidQuery, Status: http.StatusBadRequest, Code: "common.invalidQuery"},
+
 	{Err: domain.ErrInvalidCode, Status: http.StatusBadRequest, Code: "experiment.invalidCode"},
 	{Err: domain.ErrInvalidTitle, Status: http.StatusBadRequest, Code: "experiment.invalidTitle"},
 	{Err: domain.ErrInvalidDescription, Status: http.StatusBadRequest, Code: "common.invalidDescription"},
+	{Err: domain.ErrInvalidHypothesis, Status: http.StatusBadRequest, Code: "experiment.invalidHypothesis"},
+	{Err: domain.ErrInvalidRandomisation, Status: http.StatusBadRequest, Code: "experiment.invalidRandomisation"},
+	{Err: domain.ErrInvalidGroupCode, Status: http.StatusBadRequest, Code: "group.invalidCode"},
 	{Err: domain.ErrInvalidName, Status: http.StatusBadRequest, Code: "common.invalidName"},
-	{Err: domain.ErrInvalidPosition, Status: http.StatusBadRequest, Code: "phase.invalidPosition"},
 	{Err: domain.ErrInvalidRole, Status: http.StatusBadRequest, Code: "group.invalidRole"},
 	{Err: domain.ErrInvalidTargetSize, Status: http.StatusBadRequest, Code: "group.invalidTargetSize"},
-	{Err: domain.ErrGroupNotInExperiment, Status: http.StatusBadRequest, Code: "assignment.groupNotInExperiment"},
-	{Err: domain.ErrAssignmentBeforeEnrollment, Status: http.StatusBadRequest, Code: "assignment.beforeEnrollment"},
-	{Err: domain.ErrAssignmentOutOfOrder, Status: http.StatusConflict, Code: "assignment.outOfOrder"},
-	{Err: domain.ErrAlreadyInGroup, Status: http.StatusConflict, Code: "assignment.alreadyInGroup"},
+	{Err: domain.ErrDiseaseModelRequired, Status: http.StatusBadRequest, Code: "group.diseaseModelRequired"},
+	{Err: domain.ErrDiseaseModelNotAllowed, Status: http.StatusBadRequest, Code: "group.diseaseModelNotAllowed"},
+	{Err: domain.ErrInvalidPurpose, Status: http.StatusBadRequest, Code: "regimen.invalidPurpose"},
+	{Err: domain.ErrPurposeNotAllowed, Status: http.StatusBadRequest, Code: "regimen.purposeNotAllowed"},
+	{Err: domain.ErrInvalidAmount, Status: http.StatusBadRequest, Code: "dose.invalidAmount"},
+	{Err: domain.ErrInvalidUnit, Status: http.StatusBadRequest, Code: "dose.invalidUnit"},
+	{Err: domain.ErrInvalidRoute, Status: http.StatusBadRequest, Code: "dose.invalidRoute"},
+	{Err: domain.ErrInvalidFrequency, Status: http.StatusBadRequest, Code: "regimen.invalidFrequency"},
+	{Err: domain.ErrInvalidInterval, Status: http.StatusBadRequest, Code: "regimen.invalidInterval"},
+	{Err: domain.ErrInvalidDays, Status: http.StatusBadRequest, Code: "regimen.invalidDays"},
+	{Err: domain.ErrInvalidStudyDay, Status: http.StatusBadRequest, Code: "timepoint.invalidStudyDay"},
+	{Err: domain.ErrInvalidPosition, Status: http.StatusBadRequest, Code: "timepoint.invalidPosition"},
+	{Err: domain.ErrInvalidParadigm, Status: http.StatusBadRequest, Code: "endpoint.invalidParadigm"},
+	{Err: domain.ErrInvalidMetric, Status: http.StatusBadRequest, Code: "endpoint.invalidMetric"},
+	{Err: domain.ErrInvalidKind, Status: http.StatusBadRequest, Code: "endpoint.invalidKind"},
+	{Err: domain.ErrInvalidDirection, Status: http.StatusBadRequest, Code: "endpoint.invalidDirection"},
+	{Err: domain.ErrBaselineSameTimepoint, Status: http.StatusBadRequest, Code: "endpoint.baselineSameTimepoint"},
+	{Err: domain.ErrInvalidCage, Status: http.StatusBadRequest, Code: "allocation.invalidCage"},
+	{Err: domain.ErrInvalidExclusionReason, Status: http.StatusBadRequest, Code: "allocation.invalidExclusionReason"},
+	{Err: domain.ErrInvalidExclusionNote, Status: http.StatusBadRequest, Code: "allocation.invalidExclusionNote"},
+	{Err: domain.ErrExclusionBeforeAllocation, Status: http.StatusBadRequest, Code: "allocation.exclusionBeforeAllocation"},
+	{Err: domain.ErrFutureTime, Status: http.StatusBadRequest, Code: "common.futureTime"},
 }
 
 type handler struct {
@@ -51,23 +99,42 @@ type handler struct {
 
 func Register(mux *http.ServeMux, service *application.Service, authenticate func(*http.Request) (access.Actor, error), logger *slog.Logger) {
 	h := handler{service: service, authenticate: authenticate, logger: logger}
+	const e = "/api/experiments/{id}"
 	mux.HandleFunc("GET /api/experiments", h.with(h.listExperiments))
 	mux.HandleFunc("POST /api/experiments", h.with(h.createExperiment))
-	mux.HandleFunc("GET /api/experiments/{id}", h.with(h.getExperiment))
-	mux.HandleFunc("PATCH /api/experiments/{id}", h.with(h.updateExperiment))
-	mux.HandleFunc("GET /api/experiments/{id}/phases", h.with(h.listPhases))
-	mux.HandleFunc("POST /api/experiments/{id}/phases", h.with(h.createPhase))
-	mux.HandleFunc("PATCH /api/experiments/{id}/phases/{phaseId}", h.with(h.updatePhase))
-	mux.HandleFunc("DELETE /api/experiments/{id}/phases/{phaseId}", h.with(h.deletePhase))
-	mux.HandleFunc("GET /api/experiments/{id}/groups", h.with(h.listGroups))
-	mux.HandleFunc("POST /api/experiments/{id}/groups", h.with(h.createGroup))
-	mux.HandleFunc("PATCH /api/experiments/{id}/groups/{groupId}", h.with(h.updateGroup))
-	mux.HandleFunc("DELETE /api/experiments/{id}/groups/{groupId}", h.with(h.deleteGroup))
-	mux.HandleFunc("GET /api/experiments/{id}/enrollments", h.with(h.listEnrollments))
-	mux.HandleFunc("POST /api/experiments/{id}/enrollments", h.with(h.enroll))
-	mux.HandleFunc("GET /api/experiments/{id}/enrollments/{enrollmentId}", h.with(h.getEnrollment))
-	mux.HandleFunc("POST /api/experiments/{id}/enrollments/{enrollmentId}/assignments", h.with(h.assign))
-	mux.HandleFunc("GET /api/subjects/{id}/enrollments", h.with(h.subjectEnrollments))
+	mux.HandleFunc("GET "+e, h.with(h.getExperiment))
+	mux.HandleFunc("PATCH "+e, h.with(h.updateExperiment))
+	mux.HandleFunc("GET "+e+"/readiness", h.with(h.readiness))
+	mux.HandleFunc("POST "+e+"/start", h.with(h.start))
+	mux.HandleFunc("POST "+e+"/complete", h.with(h.complete))
+	mux.HandleFunc("GET "+e+"/metric-options", h.with(h.metricOptions))
+
+	mux.HandleFunc("GET "+e+"/groups", h.with(h.listGroups))
+	mux.HandleFunc("POST "+e+"/groups", h.with(h.createGroup))
+	mux.HandleFunc("PATCH "+e+"/groups/{groupId}", h.with(h.updateGroup))
+	mux.HandleFunc("DELETE "+e+"/groups/{groupId}", h.with(h.deleteGroup))
+
+	mux.HandleFunc("GET "+e+"/regimen-items", h.with(h.listRegimenItems))
+	mux.HandleFunc("POST "+e+"/regimen-items", h.with(h.createRegimenItem))
+	mux.HandleFunc("PATCH "+e+"/regimen-items/{itemId}", h.with(h.updateRegimenItem))
+	mux.HandleFunc("DELETE "+e+"/regimen-items/{itemId}", h.with(h.deleteRegimenItem))
+
+	mux.HandleFunc("GET "+e+"/timepoints", h.with(h.listTimepoints))
+	mux.HandleFunc("POST "+e+"/timepoints", h.with(h.createTimepoint))
+	mux.HandleFunc("PATCH "+e+"/timepoints/{timepointId}", h.with(h.updateTimepoint))
+	mux.HandleFunc("DELETE "+e+"/timepoints/{timepointId}", h.with(h.deleteTimepoint))
+
+	mux.HandleFunc("GET "+e+"/endpoints", h.with(h.listEndpoints))
+	mux.HandleFunc("POST "+e+"/endpoints", h.with(h.createEndpoint))
+	mux.HandleFunc("PATCH "+e+"/endpoints/{endpointId}", h.with(h.updateEndpoint))
+	mux.HandleFunc("DELETE "+e+"/endpoints/{endpointId}", h.with(h.deleteEndpoint))
+
+	mux.HandleFunc("GET "+e+"/allocations", h.with(h.listAllocations))
+	mux.HandleFunc("POST "+e+"/allocations", h.with(h.allocate))
+	mux.HandleFunc("POST "+e+"/allocations/randomise", h.with(h.randomise))
+	mux.HandleFunc("PATCH "+e+"/allocations/{allocationId}", h.with(h.updateAllocation))
+	mux.HandleFunc("DELETE "+e+"/allocations/{allocationId}", h.with(h.removeAllocation))
+	mux.HandleFunc("POST "+e+"/allocations/{allocationId}/exclusion", h.with(h.exclude))
 }
 
 func (h handler) with(next func(http.ResponseWriter, *http.Request, access.Actor)) http.HandlerFunc {
@@ -81,47 +148,46 @@ func (h handler) with(next func(http.ResponseWriter, *http.Request, access.Actor
 	}
 }
 
+// Experiments and lifecycle
+
 func (h handler) listExperiments(w http.ResponseWriter, r *http.Request, actor access.Actor) {
 	q := r.URL.Query()
 	page, err := h.service.ListExperiments(r.Context(), actor, application.ExperimentQuery{
-		Search: q.Get("search"), Sort: q.Get("sort"), Order: q.Get("order"),
+		Search: q.Get("search"), Status: q.Get("status"), Sort: q.Get("sort"), Order: q.Get("order"),
 		Page: httpjson.QueryInt(q.Get("page")), PageSize: httpjson.QueryInt(q.Get("pageSize")),
 	})
-	if err != nil {
-		h.fail(w, r, err)
-		return
-	}
-	h.write(w, http.StatusOK, pageJSON{mapSlice(page.Experiments, toExperiment), page.Total, page.Page, page.PageSize})
+	h.respond(w, r, http.StatusOK, pageJSON{mapSlice(page.Experiments, toExperiment), page.Total, page.Page, page.PageSize}, err)
 }
 
 func (h handler) createExperiment(w http.ResponseWriter, r *http.Request, actor access.Actor) {
 	var body struct {
-		Code            string `json:"code"`
-		Title           string `json:"title"`
-		Description     string `json:"description"`
-		RequiresControl bool   `json:"requiresControl"`
+		Code          string `json:"code"`
+		Title         string `json:"title"`
+		Description   string `json:"description"`
+		Hypothesis    string `json:"hypothesis"`
+		Randomisation string `json:"randomisation"`
+		Blinded       bool   `json:"blinded"`
 	}
 	if !h.decode(w, r, &body) {
 		return
 	}
-	e, err := h.service.CreateExperiment(r.Context(), actor, application.ExperimentInput(body))
+	e, err := h.service.CreateExperiment(r.Context(), actor, domain.ExperimentFields(body))
 	h.respond(w, r, http.StatusCreated, toExperiment(e), err)
 }
 
 func (h handler) getExperiment(w http.ResponseWriter, r *http.Request, actor access.Actor) {
-	detail, err := h.service.Experiment(r.Context(), actor, r.PathValue("id"))
-	h.respond(w, r, http.StatusOK, struct {
-		experimentJSON
-		ControlRequirementMet bool `json:"controlRequirementMet"`
-	}{toExperiment(detail.Experiment), detail.ControlRequirementMet}, err)
+	e, err := h.service.Experiment(r.Context(), actor, r.PathValue("id"))
+	h.respond(w, r, http.StatusOK, toExperiment(e), err)
 }
 
 func (h handler) updateExperiment(w http.ResponseWriter, r *http.Request, actor access.Actor) {
 	var body struct {
-		Code            *string `json:"code"`
-		Title           *string `json:"title"`
-		Description     *string `json:"description"`
-		RequiresControl *bool   `json:"requiresControl"`
+		Code          *string `json:"code"`
+		Title         *string `json:"title"`
+		Description   *string `json:"description"`
+		Hypothesis    *string `json:"hypothesis"`
+		Randomisation *string `json:"randomisation"`
+		Blinded       *bool   `json:"blinded"`
 	}
 	if !h.decode(w, r, &body) {
 		return
@@ -130,71 +196,65 @@ func (h handler) updateExperiment(w http.ResponseWriter, r *http.Request, actor 
 	h.respond(w, r, http.StatusOK, toExperiment(e), err)
 }
 
-func (h handler) listPhases(w http.ResponseWriter, r *http.Request, actor access.Actor) {
-	phases, err := h.service.Phases(r.Context(), actor, r.PathValue("id"))
-	h.respond(w, r, http.StatusOK, dataJSON{mapSlice(phases, toPhase)}, err)
+func (h handler) readiness(w http.ResponseWriter, r *http.Request, actor access.Actor) {
+	result, err := h.service.Readiness(r.Context(), actor, r.PathValue("id"))
+	h.respond(w, r, http.StatusOK, readinessJSON{string(result.Status), len(result.Problems) == 0, mapSlice(result.Problems, toProblem)}, err)
 }
 
-func (h handler) createPhase(w http.ResponseWriter, r *http.Request, actor access.Actor) {
+func (h handler) start(w http.ResponseWriter, r *http.Request, actor access.Actor) {
 	var body struct {
-		Name        string `json:"name"`
-		Description string `json:"description"`
-		Position    int    `json:"position"`
+		DayZero string `json:"dayZero"`
 	}
 	if !h.decode(w, r, &body) {
 		return
 	}
-	p, err := h.service.CreatePhase(r.Context(), actor, r.PathValue("id"), application.PhaseInput(body))
-	h.respond(w, r, http.StatusCreated, toPhase(p), err)
+	e, err := h.service.Start(r.Context(), actor, r.PathValue("id"), body.DayZero)
+	h.respond(w, r, http.StatusOK, toExperiment(e), err)
 }
 
-func (h handler) updatePhase(w http.ResponseWriter, r *http.Request, actor access.Actor) {
-	var body struct {
-		Name        *string `json:"name"`
-		Description *string `json:"description"`
-		Position    *int    `json:"position"`
-	}
-	if !h.decode(w, r, &body) {
-		return
-	}
-	p, err := h.service.UpdatePhase(r.Context(), actor, r.PathValue("id"), r.PathValue("phaseId"), application.PhasePatch(body))
-	h.respond(w, r, http.StatusOK, toPhase(p), err)
+func (h handler) complete(w http.ResponseWriter, r *http.Request, actor access.Actor) {
+	e, err := h.service.Complete(r.Context(), actor, r.PathValue("id"))
+	h.respond(w, r, http.StatusOK, toExperiment(e), err)
 }
 
-func (h handler) deletePhase(w http.ResponseWriter, r *http.Request, actor access.Actor) {
-	h.noContent(w, r, h.service.DeletePhase(r.Context(), actor, r.PathValue("id"), r.PathValue("phaseId")))
+func (h handler) metricOptions(w http.ResponseWriter, r *http.Request, actor access.Actor) {
+	options, err := h.service.MetricOptions(r.Context(), actor, r.PathValue("id"))
+	h.respond(w, r, http.StatusOK, dataJSON{mapSlice(options, func(o application.MetricOption) metricOptionJSON {
+		return metricOptionJSON{o.Paradigm.Key, o.Paradigm.Version, o.Metrics}
+	})}, err)
 }
+
+// Groups
 
 func (h handler) listGroups(w http.ResponseWriter, r *http.Request, actor access.Actor) {
-	sizes, err := h.service.Groups(r.Context(), actor, r.PathValue("id"))
-	h.respond(w, r, http.StatusOK, dataJSON{mapSlice(sizes, func(s application.GroupSize) any {
-		return struct {
-			groupJSON
-			ActiveSubjects int `json:"activeSubjects"`
-		}{toGroup(s.Group), s.ActiveSubjects}
-	})}, err)
+	fills, err := h.service.Groups(r.Context(), actor, r.PathValue("id"))
+	h.respond(w, r, http.StatusOK, dataJSON{mapSlice(fills, toGroupFill)}, err)
 }
 
 func (h handler) createGroup(w http.ResponseWriter, r *http.Request, actor access.Actor) {
 	var body struct {
-		Name        string `json:"name"`
-		Role        string `json:"role"`
-		Description string `json:"description"`
-		TargetSize  int    `json:"targetSize"`
+		Code           string `json:"code"`
+		Name           string `json:"name"`
+		Role           string `json:"role"`
+		DiseaseModelID string `json:"diseaseModelId"`
+		Description    string `json:"description"`
+		TargetSize     int    `json:"targetSize"`
 	}
 	if !h.decode(w, r, &body) {
 		return
 	}
-	g, err := h.service.CreateGroup(r.Context(), actor, r.PathValue("id"), application.GroupInput(body))
+	g, err := h.service.CreateGroup(r.Context(), actor, r.PathValue("id"), domain.GroupFields(body))
 	h.respond(w, r, http.StatusCreated, toGroup(g), err)
 }
 
 func (h handler) updateGroup(w http.ResponseWriter, r *http.Request, actor access.Actor) {
 	var body struct {
-		Name        *string `json:"name"`
-		Role        *string `json:"role"`
-		Description *string `json:"description"`
-		TargetSize  *int    `json:"targetSize"`
+		Code           *string `json:"code"`
+		Name           *string `json:"name"`
+		Role           *string `json:"role"`
+		DiseaseModelID *string `json:"diseaseModelId"`
+		Description    *string `json:"description"`
+		TargetSize     *int    `json:"targetSize"`
 	}
 	if !h.decode(w, r, &body) {
 		return
@@ -207,52 +267,217 @@ func (h handler) deleteGroup(w http.ResponseWriter, r *http.Request, actor acces
 	h.noContent(w, r, h.service.DeleteGroup(r.Context(), actor, r.PathValue("id"), r.PathValue("groupId")))
 }
 
-func (h handler) listEnrollments(w http.ResponseWriter, r *http.Request, actor access.Actor) {
+// Regimen items
+
+func (h handler) listRegimenItems(w http.ResponseWriter, r *http.Request, actor access.Actor) {
+	items, err := h.service.RegimenItems(r.Context(), actor, r.PathValue("id"))
+	h.respond(w, r, http.StatusOK, dataJSON{mapSlice(items, toRegimenItem)}, err)
+}
+
+func (h handler) createRegimenItem(w http.ResponseWriter, r *http.Request, actor access.Actor) {
+	var body struct {
+		GroupID      string `json:"groupId"`
+		Purpose      string `json:"purpose"`
+		SubstanceID  string `json:"substanceId"`
+		Amount       string `json:"amount"`
+		Unit         string `json:"unit"`
+		Route        string `json:"route"`
+		Frequency    string `json:"frequency"`
+		IntervalDays int    `json:"intervalDays"`
+		StartDay     int    `json:"startDay"`
+		EndDay       int    `json:"endDay"`
+	}
+	if !h.decode(w, r, &body) {
+		return
+	}
+	item, err := h.service.CreateRegimenItem(r.Context(), actor, r.PathValue("id"), domain.RegimenFields(body))
+	h.respond(w, r, http.StatusCreated, toRegimenItem(item), err)
+}
+
+func (h handler) updateRegimenItem(w http.ResponseWriter, r *http.Request, actor access.Actor) {
+	var body struct {
+		GroupID      *string `json:"groupId"`
+		Purpose      *string `json:"purpose"`
+		SubstanceID  *string `json:"substanceId"`
+		Amount       *string `json:"amount"`
+		Unit         *string `json:"unit"`
+		Route        *string `json:"route"`
+		Frequency    *string `json:"frequency"`
+		IntervalDays *int    `json:"intervalDays"`
+		StartDay     *int    `json:"startDay"`
+		EndDay       *int    `json:"endDay"`
+	}
+	if !h.decode(w, r, &body) {
+		return
+	}
+	item, err := h.service.UpdateRegimenItem(r.Context(), actor, r.PathValue("id"), r.PathValue("itemId"), application.RegimenPatch(body))
+	h.respond(w, r, http.StatusOK, toRegimenItem(item), err)
+}
+
+func (h handler) deleteRegimenItem(w http.ResponseWriter, r *http.Request, actor access.Actor) {
+	h.noContent(w, r, h.service.DeleteRegimenItem(r.Context(), actor, r.PathValue("id"), r.PathValue("itemId")))
+}
+
+// Timepoints
+
+func (h handler) listTimepoints(w http.ResponseWriter, r *http.Request, actor access.Actor) {
+	timepoints, err := h.service.Timepoints(r.Context(), actor, r.PathValue("id"))
+	h.respond(w, r, http.StatusOK, dataJSON{mapSlice(timepoints, toTimepoint)}, err)
+}
+
+func (h handler) createTimepoint(w http.ResponseWriter, r *http.Request, actor access.Actor) {
+	var body struct {
+		Name     string `json:"name"`
+		StudyDay int    `json:"studyDay"`
+		Position int    `json:"position"`
+	}
+	if !h.decode(w, r, &body) {
+		return
+	}
+	t, err := h.service.CreateTimepoint(r.Context(), actor, r.PathValue("id"), domain.TimepointFields(body))
+	h.respond(w, r, http.StatusCreated, toTimepoint(t), err)
+}
+
+func (h handler) updateTimepoint(w http.ResponseWriter, r *http.Request, actor access.Actor) {
+	var body struct {
+		Name     *string `json:"name"`
+		StudyDay *int    `json:"studyDay"`
+		Position *int    `json:"position"`
+	}
+	if !h.decode(w, r, &body) {
+		return
+	}
+	t, err := h.service.UpdateTimepoint(r.Context(), actor, r.PathValue("id"), r.PathValue("timepointId"), application.TimepointPatch(body))
+	h.respond(w, r, http.StatusOK, toTimepoint(t), err)
+}
+
+func (h handler) deleteTimepoint(w http.ResponseWriter, r *http.Request, actor access.Actor) {
+	h.noContent(w, r, h.service.DeleteTimepoint(r.Context(), actor, r.PathValue("id"), r.PathValue("timepointId")))
+}
+
+// Endpoints
+
+func (h handler) listEndpoints(w http.ResponseWriter, r *http.Request, actor access.Actor) {
+	endpoints, err := h.service.Endpoints(r.Context(), actor, r.PathValue("id"))
+	h.respond(w, r, http.StatusOK, dataJSON{mapSlice(endpoints, toEndpoint)}, err)
+}
+
+func (h handler) createEndpoint(w http.ResponseWriter, r *http.Request, actor access.Actor) {
+	var body struct {
+		TimepointID         string `json:"timepointId"`
+		BaselineTimepointID string `json:"baselineTimepointId"`
+		ParadigmKey         string `json:"paradigmKey"`
+		MetricKey           string `json:"metricKey"`
+		Kind                string `json:"kind"`
+		Direction           string `json:"direction"`
+	}
+	if !h.decode(w, r, &body) {
+		return
+	}
+	e, err := h.service.CreateEndpoint(r.Context(), actor, r.PathValue("id"), domain.EndpointFields(body))
+	h.respond(w, r, http.StatusCreated, toEndpoint(e), err)
+}
+
+func (h handler) updateEndpoint(w http.ResponseWriter, r *http.Request, actor access.Actor) {
+	var body struct {
+		TimepointID         *string `json:"timepointId"`
+		BaselineTimepointID *string `json:"baselineTimepointId"`
+		ParadigmKey         *string `json:"paradigmKey"`
+		MetricKey           *string `json:"metricKey"`
+		Kind                *string `json:"kind"`
+		Direction           *string `json:"direction"`
+	}
+	if !h.decode(w, r, &body) {
+		return
+	}
+	e, err := h.service.UpdateEndpoint(r.Context(), actor, r.PathValue("id"), r.PathValue("endpointId"), application.EndpointPatch(body))
+	h.respond(w, r, http.StatusOK, toEndpoint(e), err)
+}
+
+func (h handler) deleteEndpoint(w http.ResponseWriter, r *http.Request, actor access.Actor) {
+	h.noContent(w, r, h.service.DeleteEndpoint(r.Context(), actor, r.PathValue("id"), r.PathValue("endpointId")))
+}
+
+// Allocations
+
+func (h handler) listAllocations(w http.ResponseWriter, r *http.Request, actor access.Actor) {
 	q := r.URL.Query()
-	page, err := h.service.ListEnrollments(r.Context(), actor, r.PathValue("id"), application.EnrollmentQuery{
-		SubjectID: q.Get("subjectId"), GroupID: q.Get("groupId"), Order: q.Get("order"),
-		Page: httpjson.QueryInt(q.Get("page")), PageSize: httpjson.QueryInt(q.Get("pageSize")),
-	})
-	h.respond(w, r, http.StatusOK, pageJSON{mapSlice(page.Enrollments, toEnrollment), page.Total, page.Page, page.PageSize}, err)
-}
-
-func (h handler) enroll(w http.ResponseWriter, r *http.Request, actor access.Actor) {
-	var body struct {
-		SubjectID  string    `json:"subjectId"`
-		GroupID    string    `json:"groupId"`
-		EnrolledAt time.Time `json:"enrolledAt"`
-	}
-	if !h.decode(w, r, &body) {
-		return
-	}
-	summary, err := h.service.Enroll(r.Context(), actor, r.PathValue("id"), application.EnrollInput(body))
-	h.respond(w, r, http.StatusCreated, toEnrollment(summary), err)
-}
-
-func (h handler) getEnrollment(w http.ResponseWriter, r *http.Request, actor access.Actor) {
-	detail, err := h.service.Enrollment(r.Context(), actor, r.PathValue("id"), r.PathValue("enrollmentId"))
+	list, err := h.service.Allocations(r.Context(), actor, r.PathValue("id"), application.AllocationQuery{GroupID: q.Get("groupId"), Excluded: q.Get("excluded")})
 	h.respond(w, r, http.StatusOK, struct {
-		enrollmentJSON
-		Assignments []assignmentJSON `json:"assignments"`
-	}{toEnrollment(application.EnrollmentSummary{Enrollment: detail.Enrollment, CurrentGroupID: detail.CurrentGroupID}), mapSlice(detail.Assignments, toAssignment)}, err)
+		Data   []allocationJSON `json:"data"`
+		Groups []groupFillJSON  `json:"groups"`
+	}{mapSlice(list.Allocations, func(v application.AllocationView) allocationJSON {
+		out := toAllocation(v.Allocation)
+		out.SubjectCode = &v.SubjectCode
+		return out
+	}), mapSlice(list.Groups, toGroupFill)}, err)
 }
 
-func (h handler) assign(w http.ResponseWriter, r *http.Request, actor access.Actor) {
+func (h handler) allocate(w http.ResponseWriter, r *http.Request, actor access.Actor) {
 	var body struct {
-		GroupID       string    `json:"groupId"`
-		EffectiveFrom time.Time `json:"effectiveFrom"`
+		SubjectID   string     `json:"subjectId"`
+		GroupID     string     `json:"groupId"`
+		Cage        string     `json:"cage"`
+		AllocatedAt *time.Time `json:"allocatedAt"`
 	}
 	if !h.decode(w, r, &body) {
 		return
 	}
-	a, err := h.service.Assign(r.Context(), actor, r.PathValue("id"), r.PathValue("enrollmentId"), application.AssignInput(body))
-	h.respond(w, r, http.StatusCreated, toAssignment(a), err)
+	in := application.AllocateInput{SubjectID: body.SubjectID, GroupID: body.GroupID, Cage: body.Cage}
+	if body.AllocatedAt != nil {
+		in.AllocatedAt = *body.AllocatedAt
+	}
+	a, err := h.service.Allocate(r.Context(), actor, r.PathValue("id"), in)
+	h.respond(w, r, http.StatusCreated, toAllocation(a), err)
 }
 
-func (h handler) subjectEnrollments(w http.ResponseWriter, r *http.Request, actor access.Actor) {
-	list, err := h.service.SubjectEnrollments(r.Context(), actor, r.PathValue("id"))
-	h.respond(w, r, http.StatusOK, dataJSON{mapSlice(list, toEnrollment)}, err)
+func (h handler) randomise(w http.ResponseWriter, r *http.Request, actor access.Actor) {
+	var body struct {
+		SubjectIDs []string `json:"subjectIds"`
+		GroupIDs   []string `json:"groupIds"`
+		Cage       string   `json:"cage"`
+	}
+	if !h.decode(w, r, &body) {
+		return
+	}
+	created, err := h.service.Randomise(r.Context(), actor, r.PathValue("id"), application.RandomiseInput(body))
+	h.respond(w, r, http.StatusCreated, dataJSON{mapSlice(created, toAllocation)}, err)
 }
+
+func (h handler) updateAllocation(w http.ResponseWriter, r *http.Request, actor access.Actor) {
+	var body struct {
+		GroupID *string `json:"groupId"`
+		Cage    *string `json:"cage"`
+	}
+	if !h.decode(w, r, &body) {
+		return
+	}
+	a, err := h.service.UpdateAllocation(r.Context(), actor, r.PathValue("id"), r.PathValue("allocationId"), application.AllocationPatch(body))
+	h.respond(w, r, http.StatusOK, toAllocation(a), err)
+}
+
+func (h handler) removeAllocation(w http.ResponseWriter, r *http.Request, actor access.Actor) {
+	h.noContent(w, r, h.service.RemoveAllocation(r.Context(), actor, r.PathValue("id"), r.PathValue("allocationId")))
+}
+
+func (h handler) exclude(w http.ResponseWriter, r *http.Request, actor access.Actor) {
+	var body struct {
+		Reason     string     `json:"reason"`
+		Note       string     `json:"note"`
+		ExcludedAt *time.Time `json:"excludedAt"`
+	}
+	if !h.decode(w, r, &body) {
+		return
+	}
+	in := application.ExcludeInput{Reason: body.Reason, Note: body.Note}
+	if body.ExcludedAt != nil {
+		in.ExcludedAt = *body.ExcludedAt
+	}
+	a, err := h.service.Exclude(r.Context(), actor, r.PathValue("id"), r.PathValue("allocationId"), in)
+	h.respond(w, r, http.StatusOK, toAllocation(a), err)
+}
+
+// Plumbing
 
 func (h handler) decode(w http.ResponseWriter, r *http.Request, dst any) bool {
 	if err := httpjson.Decode(w, r, dst); err != nil {
@@ -267,10 +492,8 @@ func (h handler) respond(w http.ResponseWriter, r *http.Request, status int, bod
 		h.fail(w, r, err)
 		return
 	}
-	h.write(w, status, body)
+	httpjson.Write(w, status, body)
 }
-
-func (h handler) write(w http.ResponseWriter, status int, body any) { httpjson.Write(w, status, body) }
 
 func (h handler) noContent(w http.ResponseWriter, r *http.Request, err error) {
 	if err != nil {
@@ -280,7 +503,18 @@ func (h handler) noContent(w http.ResponseWriter, r *http.Request, err error) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// fail answers an unmet start check with 422 and the list of unmet rules;
+// every other error goes through the failures table.
 func (h handler) fail(w http.ResponseWriter, r *http.Request, err error) {
+	var notReady *application.NotReadyError
+	if errors.As(err, &notReady) {
+		httpjson.Write(w, http.StatusUnprocessableEntity, struct {
+			Error string        `json:"error"`
+			Code  string        `json:"code"`
+			Unmet []problemJSON `json:"unmet"`
+		}{application.ErrNotReady.Error(), "experiment.notReady", mapSlice(notReady.Problems, toProblem)})
+		return
+	}
 	httpjson.Fail(w, r, h.logger, err, failures)
 }
 
@@ -296,76 +530,162 @@ type pageJSON struct {
 }
 
 type experimentJSON struct {
-	ID              string    `json:"id"`
-	Code            string    `json:"code"`
-	Title           string    `json:"title"`
-	Description     *string   `json:"description"`
-	RequiresControl bool      `json:"requiresControl"`
-	CreatedAt       time.Time `json:"createdAt"`
-	UpdatedAt       time.Time `json:"updatedAt"`
+	ID            string     `json:"id"`
+	Code          string     `json:"code"`
+	Title         string     `json:"title"`
+	Description   *string    `json:"description"`
+	Hypothesis    *string    `json:"hypothesis"`
+	Randomisation *string    `json:"randomisation"`
+	Blinded       bool       `json:"blinded"`
+	Status        string     `json:"status"`
+	DayZero       *string    `json:"dayZero"`
+	StartedAt     *time.Time `json:"startedAt"`
+	CompletedAt   *time.Time `json:"completedAt"`
+	CreatedAt     time.Time  `json:"createdAt"`
+	UpdatedAt     time.Time  `json:"updatedAt"`
 }
 
 func toExperiment(e domain.Experiment) experimentJSON {
-	return experimentJSON{e.ID, e.Code, e.Title, nullable(e.Description), e.RequiresControl, e.CreatedAt, e.UpdatedAt}
+	out := experimentJSON{e.ID, e.Code, e.Title, nullable(e.Description), nullable(e.Hypothesis), nullable(e.Randomisation), e.Blinded,
+		string(e.Status), nil, e.StartedAt, e.CompletedAt, e.CreatedAt, e.UpdatedAt}
+	if e.DayZero != nil {
+		day := e.DayZero.Format(time.DateOnly)
+		out.DayZero = &day
+	}
+	return out
 }
 
-type phaseJSON struct {
-	ID           string    `json:"id"`
-	ExperimentID string    `json:"experimentId"`
-	Name         string    `json:"name"`
-	Position     int       `json:"position"`
-	Description  *string   `json:"description"`
-	CreatedAt    time.Time `json:"createdAt"`
-	UpdatedAt    time.Time `json:"updatedAt"`
+type problemJSON struct {
+	Rule       string  `json:"rule"`
+	GroupID    *string `json:"groupId"`
+	EndpointID *string `json:"endpointId"`
 }
 
-func toPhase(p domain.Phase) phaseJSON {
-	return phaseJSON{p.ID, p.ExperimentID, p.Name, p.Position, nullable(p.Description), p.CreatedAt, p.UpdatedAt}
+func toProblem(p domain.Problem) problemJSON {
+	return problemJSON{p.Rule, nullable(p.GroupID), nullable(p.EndpointID)}
+}
+
+type readinessJSON struct {
+	Status string        `json:"status"`
+	Ready  bool          `json:"ready"`
+	Unmet  []problemJSON `json:"unmet"`
+}
+
+type metricOptionJSON struct {
+	ParadigmKey     string   `json:"paradigmKey"`
+	ParadigmVersion int      `json:"paradigmVersion"`
+	Metrics         []string `json:"metrics"`
 }
 
 type groupJSON struct {
-	ID           string    `json:"id"`
-	ExperimentID string    `json:"experimentId"`
-	Name         string    `json:"name"`
-	Role         string    `json:"role"`
-	TargetSize   *int      `json:"targetSize"`
-	Description  *string   `json:"description"`
-	CreatedAt    time.Time `json:"createdAt"`
-	UpdatedAt    time.Time `json:"updatedAt"`
+	ID             string    `json:"id"`
+	ExperimentID   string    `json:"experimentId"`
+	Code           string    `json:"code"`
+	Name           string    `json:"name"`
+	Role           string    `json:"role"`
+	DiseaseModelID *string   `json:"diseaseModelId"`
+	TargetSize     *int      `json:"targetSize"`
+	Description    *string   `json:"description"`
+	CreatedAt      time.Time `json:"createdAt"`
+	UpdatedAt      time.Time `json:"updatedAt"`
 }
 
 func toGroup(g domain.Group) groupJSON {
-	out := groupJSON{g.ID, g.ExperimentID, g.Name, string(g.Role), nil, nullable(g.Description), g.CreatedAt, g.UpdatedAt}
+	out := groupJSON{g.ID, g.ExperimentID, g.Code, g.Name, string(g.Role), nullable(g.DiseaseModelID), nil, nullable(g.Description), g.CreatedAt, g.UpdatedAt}
 	if g.TargetSize > 0 {
 		out.TargetSize = &g.TargetSize
 	}
 	return out
 }
 
-type enrollmentJSON struct {
-	ID             string    `json:"id"`
-	ExperimentID   string    `json:"experimentId"`
-	SubjectID      string    `json:"subjectId"`
-	EnrolledAt     time.Time `json:"enrolledAt"`
-	CurrentGroupID *string   `json:"currentGroupId"`
-	CreatedAt      time.Time `json:"createdAt"`
+type groupFillJSON struct {
+	groupJSON
+	Allocated int `json:"allocated"`
+	Excluded  int `json:"excluded"`
 }
 
-func toEnrollment(s application.EnrollmentSummary) enrollmentJSON {
-	e := s.Enrollment
-	return enrollmentJSON{e.ID, e.ExperimentID, e.SubjectID, e.EnrolledAt, nullable(s.CurrentGroupID), e.CreatedAt}
+func toGroupFill(f application.GroupFill) groupFillJSON {
+	return groupFillJSON{toGroup(f.Group), f.Allocated, f.Excluded}
 }
 
-type assignmentJSON struct {
-	ID        string     `json:"id"`
-	GroupID   string     `json:"groupId"`
-	ValidFrom time.Time  `json:"validFrom"`
-	ValidTo   *time.Time `json:"validTo"`
-	CreatedAt time.Time  `json:"createdAt"`
+type regimenItemJSON struct {
+	ID           string    `json:"id"`
+	ExperimentID string    `json:"experimentId"`
+	GroupID      string    `json:"groupId"`
+	Purpose      string    `json:"purpose"`
+	SubstanceID  string    `json:"substanceId"`
+	Amount       string    `json:"amount"`
+	Unit         string    `json:"unit"`
+	Route        string    `json:"route"`
+	Frequency    string    `json:"frequency"`
+	IntervalDays *int      `json:"intervalDays"`
+	StartDay     int       `json:"startDay"`
+	EndDay       int       `json:"endDay"`
+	CreatedAt    time.Time `json:"createdAt"`
+	UpdatedAt    time.Time `json:"updatedAt"`
 }
 
-func toAssignment(a domain.Assignment) assignmentJSON {
-	return assignmentJSON{a.ID, a.GroupID, a.ValidFrom, a.ValidTo, a.CreatedAt}
+func toRegimenItem(r domain.RegimenItem) regimenItemJSON {
+	out := regimenItemJSON{r.ID, r.ExperimentID, r.GroupID, string(r.Purpose), r.SubstanceID, r.Amount(), r.Unit, r.Route, string(r.Frequency),
+		nil, r.StartDay, r.EndDay, r.CreatedAt, r.UpdatedAt}
+	if r.IntervalDays > 0 {
+		out.IntervalDays = &r.IntervalDays
+	}
+	return out
+}
+
+type timepointJSON struct {
+	ID           string    `json:"id"`
+	ExperimentID string    `json:"experimentId"`
+	Name         string    `json:"name"`
+	StudyDay     int       `json:"studyDay"`
+	Position     int       `json:"position"`
+	CreatedAt    time.Time `json:"createdAt"`
+	UpdatedAt    time.Time `json:"updatedAt"`
+}
+
+func toTimepoint(t domain.Timepoint) timepointJSON {
+	return timepointJSON{t.ID, t.ExperimentID, t.Name, t.StudyDay, t.Position, t.CreatedAt, t.UpdatedAt}
+}
+
+type endpointJSON struct {
+	ID                  string    `json:"id"`
+	ExperimentID        string    `json:"experimentId"`
+	TimepointID         string    `json:"timepointId"`
+	BaselineTimepointID *string   `json:"baselineTimepointId"`
+	ParadigmKey         string    `json:"paradigmKey"`
+	MetricKey           string    `json:"metricKey"`
+	Kind                string    `json:"kind"`
+	Direction           string    `json:"direction"`
+	CreatedAt           time.Time `json:"createdAt"`
+	UpdatedAt           time.Time `json:"updatedAt"`
+}
+
+func toEndpoint(e domain.Endpoint) endpointJSON {
+	return endpointJSON{e.ID, e.ExperimentID, e.TimepointID, nullable(e.BaselineTimepointID), e.ParadigmKey, e.MetricKey, string(e.Kind),
+		string(e.Direction), e.CreatedAt, e.UpdatedAt}
+}
+
+type allocationJSON struct {
+	ID              string     `json:"id"`
+	ExperimentID    string     `json:"experimentId"`
+	GroupID         string     `json:"groupId"`
+	SubjectID       string     `json:"subjectId"`
+	SubjectCode     *string    `json:"subjectCode,omitempty"`
+	AllocatedAt     time.Time  `json:"allocatedAt"`
+	Cage            *string    `json:"cage"`
+	Excluded        bool       `json:"excluded"`
+	ExcludedAt      *time.Time `json:"excludedAt"`
+	ExclusionReason *string    `json:"exclusionReason"`
+	ExclusionNote   *string    `json:"exclusionNote"`
+	CreatedBy       string     `json:"createdBy"`
+	CreatedAt       time.Time  `json:"createdAt"`
+}
+
+func toAllocation(a domain.Allocation) allocationJSON {
+	return allocationJSON{ID: a.ID, ExperimentID: a.ExperimentID, GroupID: a.GroupID, SubjectID: a.SubjectID, AllocatedAt: a.AllocatedAt,
+		Cage: nullable(a.Cage), Excluded: a.Excluded(), ExcludedAt: a.ExcludedAt, ExclusionReason: nullable(string(a.ExclusionReason)),
+		ExclusionNote: nullable(a.ExclusionNote), CreatedBy: a.CreatedBy, CreatedAt: a.CreatedAt}
 }
 
 func mapSlice[T, U any](items []T, convert func(T) U) []U {

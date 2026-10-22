@@ -20,35 +20,140 @@ Her sonuç dört katmandan geçer:
 | `Calibration` | Sabit düzenek veya tek test oturumu için pikselden cm'ye eşleme. |
 | `MetricDefinition` | Her metrik anahtarının birim, formül, normalizasyon ve QC bağımlılığını tanımlayan kod sahipli sözlük. |
 
-CV hayvanı takip eder. Bilimsel kontratı Mişko tanımlar.
+CV deneği takip eder. Bilimsel kontratı Mişko tanımlar.
 
-## Paradigma spec sayfaları
+## Paradigmalar şablondur
 
-Her paradigma için şu bölümleri içeren bir detay sayfası gerekir:
+Paradigma, kodda tanımlı ve sürümlenen bir şablondur. Ortamlar bu şablondan
+oluşturulur, protokol adımları da bu ortamlara bağlanır. Her parametrenin
+nerede girildiğini söyleyen bir kapsamı vardır:
 
-- Kimlik: key, ad, kategori, trial türleri.
-- Apparatus parametreleri: birimli fiziksel değerler, validasyon, varsayılanlar ve min/max değerler.
-- Oturum parametreleri: trial süresi, başlangıç pozisyonu, trial indeksi, protokol varyantı.
-- Bölgeler: zone key'leri, geometri tipi, koordinat sistemi ve türetme kuralı.
-- Metrikler: zorunlu ve opsiyonel metrik key'leri, birimler, tanımlar ve normalizasyon.
-- Olay tipleri: bir koşunun toplayabileceği olaylar, payload'ları ve her biri için CV `detect` spec'i.
-- QC gereksinimleri: takip güveni, düşen kareler, kalibrasyon hatası, occlusion, ışık ve kontrast.
-- Artefaktlar: video, trajectory, heatmap, kalibrasyon görseli ve debug overlay URL'leri.
+| Kapsam | Girildiği yer | Zorunlu mu | Örnekler |
+|---|---|---|---|
+| `APPARATUS` | Ortam | Evet, fiziksel düzenekte ölçülür | arena genişliği, tank çapı, direk uzunluğu |
+| `ANALYSIS` | Ortam | Hayır, varsayılanlar çoğu düzenek için uygundur | duvar kenarı bölge genişliği, kaçış için platformda kalma süresi, en az toplam keşif süresi |
+| `SESSION` | Protokol adımı | Hayır, varsayılan kullanılır | deneme süresi sınırı, koşu bandı başlangıç ve bitiş hızı |
+
+Her parametrenin bir etiketi ve neyin ölçüleceğini ya da değerin neyi
+değiştirdiğini anlatan bir yardım metni vardır. Adlar, etiketler, yardım
+metinleri, bölge ve olay adları, metriklerin sade açıklamaları ve teknik
+tanımlar (metrik tanımları, eksik veri kuralları, bölge geometrisi, olay
+tanımları) desteklenen her dilde (İngilizce ve Türkçe) tanımın hemen yanında
+yazılır; API bunları panelin istediği dilde döner (`Accept-Language` ya da
+`?lang=tr`). Formüller düzyazı değil ifade oldukları için olduğu gibi kalır.
+Yayınlanmış manifestler İngilizce olarak sabitlendiğinden bir çeviri
+kontratı fark edilmeden değiştiremez. Panel oranları yüzde, açık/kapalı
+değerleri anahtar olarak gösterir.
 
 ```ts
-interface ParadigmSpec {
-  key: "MWM" | "OPEN_FIELD" | "EPM" | "ROTAROD";
-  name: string;
-  category: "learning_memory" | "anxiety" | "motor" | "social";
-  trialTypes: TrialTypeDef[];
-  apparatusParameters: FieldDef[];
-  sessionParameters: FieldDef[];
-  zones(config: ApparatusConfig): ZoneDef[];
-  metrics: MetricDefinition[];
-  eventTypes: EventTypeDef[];
-  qc: QualityRequirement[];
+interface ParadigmManifest {
+  key: string;
+  name: string;           // yanıt dilinde
+  description: string;    // testin ne olduğu ve neyi ölçtüğü
+  category: "LEARNING_MEMORY" | "MOTOR";
+  trialTypes: { key: string; label: string }[];
+  parameters: {
+    key: string;
+    scope: "APPARATUS" | "ANALYSIS" | "SESSION";
+    label: string;
+    help: string;
+    unit: "cm" | "cm_s" | "s" | "count" | "ratio" | "boolean";
+    valueType: "number" | "integer";
+    min: number;
+    max: number;
+    default: number;
+  }[];
+  zones: { key: string; label: string; role: string; geometry: string }[];
+  metrics: { key: string; label: string; description: string; unit: string;
+             definition: string; formula: string; missingWhen: string }[];
+  qc: { key: string; operator: string; value: number; unit: string }[];
 }
 ```
+
+Bir hesaplamayı, aralığı ya da varsayılanı değiştirmek yeni bir paradigma
+sürümü yayımlar. İfadeler ve yardım metinleri yeni sürüm gerektirmeden
+iyileştirilebilir.
+
+## Her paradigma takip edilir
+
+Elle analiz yoktur. Her paradigmada bir işçi, deneğin ağırlık merkezini
+kalibrasyonun santimetre çerçevesinde takip eder; `backend/internal/paradigms/domain`
+içindeki metrik motoru her olayı ve metriği örneklerden ve bölgelerden türetir.
+İşçi asla olaylara karar vermez ve API ondan asla metrik kabul etmez. Bir kişi
+yalnızca sonucu inceler (kabul eder ya da reddeder). Testin videosu
+doğrulandığında, her zorunlu bölgesiyle kalibrasyon geçerli olduğunda ve etkin
+bir işçinin yetenekleri arasında paradigma sürümü bulunduğunda jobs süreci denek
+başına bir çalıştırma kuyruğa ekler.
+
+| Paradigma | Kamera ve çerçeve | Bölgeler | Türetilen olaylar |
+|---|---|---|---|
+| `MWM` | Tankın üstünde; tank merkezli cm, x doğu, y kuzey | parametrelerden (platform, hedef çeyrek, duvar kenarı bölgesi) | `in_platform` aralıkları, `platform_entry` anları |
+| `NOVEL_OBJECT` | Arenanın üstünde; başlangıç zemin köşesinde, x sağa, y görüntüde aşağı | kalibre edilen `novel_object`, `familiar_object` | `novel` ya da `familiar` etiketli `exploration` aralıkları |
+| `POLE` | Direğin yanında; x yatay, y tabandan yükseklik | kalibre edilen `pole`, `base` | `turn_complete`, `base_reached`, `fall` (anlar, her biri bir kez) |
+| `TREADMILL` | Kulvarın yanında; x şok ızgarası ucundan (0) öne doğru | kalibre edilen `shock_grid` | `shock` anları, `exhaustion` (an, bir kez) |
+
+Her kural eşiği standart varsayılanı olan bir `ANALYSIS` parametresidir; böylece
+bir laboratuvar bunu ortam başına ayarlayabilir:
+
+- **Yeni nesne.** Keşif dönemi, ağırlık merkezinin bir nesnenin bölgesinde en az
+  `min_bout_s` (0,3 sn) kalmasıdır; bölge, keşif mesafesini (yaklaşık 2 cm)
+  içerecek şekilde nesnenin çevresine çizilir. Bilinen sınır: karar burnun
+  yönüne değil vücut merkezine göre verilir, bu yüzden nesnenin üzerinde
+  oturmak da keşif sayılır. Yeni, tanıdık ve toplam keşif süreleri dönemlerin
+  toplamıdır; ayırt etme indeksi (yeni - tanıdık) / (yeni + tanıdık) olup
+  `min_total_exploration_s` altında eksik kalır.
+- **Direk.** Dönüş, o ana kadarki en yüksek noktanın `turn_descent_cm` (2 cm)
+  altındaki ilk direk örneğinde tamamlanır. Tabana ulaşma, direk üzerindeki bir
+  örnekten sonra `base` içindeki ilk örnektir. Düşme, aralarında en fazla
+  `max_sample_gap_s` olan iki örnek arasında direkten (tabana ya da başka bir
+  yere) `fall_speed_cm_s` (80 cm/sn) üstünde aşağı doğru bir hızla
+  ayrılmaktır; düşmeden sonra tabana ulaşma sayılmaz. `max_trial_duration_s`
+  sonrasındaki örnekler dikkate alınmaz.
+- **Koşu bandı.** Şok ızgarasında en az `min_shock_dwell_s` (0,2 sn) süren her
+  kalma bir şoktur; en az `exhaustion_dwell_s` (5 sn) süren ilk kalma
+  tükenmedir. Koşu tükenmede, tükenme yoksa klibin sonunda biter ve en fazla
+  `max_trial_duration_s` sürer; mesafe, bant hızının koşu boyunca
+  integralidir.
+
+Eksik metrikler sıfır yerine bir gerekçe taşır: `NO_VALID_INTERVALS`,
+`EVENT_NOT_OBSERVED`, `ZERO_DENOMINATOR`, `INCOMPLETE_RECORDING` ve
+`BELOW_EXPLORATION_CRITERION`. `NOT_SCORED` artık yoktur.
+
+Her çalıştırma denek başına sonucu besler; bu sonuç insan onayı için `PENDING`
+olarak açılır ve yalnızca kabul edilen sonuçlar rapora girer.
+
+### Bölge gereksinimleri
+
+Bölgeler iki yerden birinden gelir:
+
+- **Parametrelerden.** Su labirenti bölgelerini ortamın ölçülerinden türetir
+  (platform konumu ve çapı, duvar kenarı bölge genişliği). Kalibrasyonunun
+  dünya noktaları bu bölgelerin tanımlandığı çerçeveyi kullanmalıdır:
+  **tank merkezli** çerçeve ((0, 0) tankın merkezi, x doğu, y kuzey; duvar
+  noktaları r = tank çapı / 2 olmak üzere (r, 0), (0, r), (-r, 0) ve (0, -r)).
+- **Kalibre edilen.** Yeni nesne, direk ve koşu bandı bölgeleri videonun
+  ihtiyaç duyduğu düzenek geometrisini taşır (nesneler, direk, taban, şok
+  ızgarası). Ortamın kalibrasyonuyla bir kez kamera karesi üzerine daire ya da
+  çokgen olarak çizilirler; test videosundaki denek başına bir geçersiz kılma
+  gerektiğinde bunları değiştirir (örneğin yeni nesne diğer taraftaysa) ve bir
+  anahtarın birden çok şekli olabilir. Şekiller çizildiği gibi piksel olarak
+  saklanır ve kalibrasyonun uydurulan dönüşümüyle santimetreye çevrilir; karenin
+  içinde kalmaları gerekir ve kalibrasyon kaydedildikten sonra asla değişmezler
+  (`014_calibration_zones.sql` migrasyonu). Her zorunlu bölgesi olan geçerli bir
+  kalibrasyon uygulanana kadar denek `WAITING_FOR_CALIBRATION` durumunda kalır
+  ve analiz edilmez. Yeni nesne arenasının kalibrasyon noktaları arenanın
+  içindedir (0'dan genişliğe, 0'dan derinliğe); direk ve koşu bandının yandan
+  görünüşleri, düzeneğin doğrusal olmayan en az dört noktasıyla
+  `APPARATUS_SIDE` düzleminde kalibre edilir ve kendi çerçevelerini seçer.
+
+### Çıkarımlı örnekler
+
+`misko.trajectory.v1` her örnek için isteğe bağlı bir `inferred` alanı taşır.
+Bir worker, deneğin gizli olduğu bir kare dizisini `tracked` ve
+`inferred: true` olarak işaretlenmiş örneklerle doldurabilir; bu örnekler
+takip edilmiş sayılır ama takip güveni ortalamasına girmez. Güncel katalogdaki
+hiçbir paradigma buna ihtiyaç duymaz ve paketle gelen worker çıkarımlı örnek
+göndermez; tespitin olmadığı kareler kayıp olarak kalır.
 
 ## Geçti/kaldı verdikti yok
 
@@ -61,9 +166,9 @@ kalitesiyle ilgilidir.
 ## Olay tipleri ve CV tespiti
 
 Bir koşu **olaylar** toplar; metrikler bu olaylardan türetilir (bkz.
-`docs/METRIC_ENGINE.md`). Aynı olay akışı bugün manuel girişle, ileride ise CV
-servisiyle üretilir, yani olay katmanı Mişko ile bilgisayarlı görü arasındaki
-kontrattır.
+`docs/METRIC_ENGINE.md`). Metrik motoru olay akışını CV servisinin yörüngesinden
+ve kalibre edilen bölgelerden türetir, yani olay katmanı Mişko ile bilgisayarlı
+görü arasındaki kontrattır.
 
 Her olay tipi, CV servisinin onu trajectory ve bölgelerden nasıl türettiğini
 tanımlayan bir `detect` spec'i bildirir:
@@ -86,22 +191,23 @@ type DetectSpec =
 Jenerik türler (`zone_transition`, `zone_first_enter`, `speed_below`)
 **veri-güdümlüdür**: yalnızca bunları kullanan bir paradigma yeni CV kodu
 gerektirmez, olay tiplerini bildirmek yeterlidir. `custom`, özel bir dedektör
-gerektiren bir olayı işaretler (örn. bir rotarod düşüşü, bir sosyal etkileşim).
+gerektiren bir olayı işaretler. Yayımlanmış paradigmalar olaylarını metrik
+motorunda bölgelerden ve hızlardan türetir; hiçbiri buna ihtiyaç duymaz.
 Olay tipleri paradigma detay API'sinde sunulur
 (`GET /api/paradigms/:key` -> `eventTypes`).
 
 ## Lokalizasyon
 
-Paradigma ve metrik sözlüğü bilimsel kontrattır ve spec kaynağında yalnızca
-Türkçe tutulur (varsayılan dil). Salt-okunur inceleme API'si serbest-metin
-etiketleri ve tanımları, `GET /api/paradigms`, `GET /api/paradigms/:key` ve
-`GET /api/paradigms/metrics` uçlarındaki opsiyonel `?lang=` parametresiyle
-lokalize eder. Desteklenen değerler `tr` (varsayılan) ve `en`'dir; bilinmeyen
-veya eksik bir değer `tr`'ye, çevirisi olmayan bir etiket veya tanım ise Türkçe
-kaynağına geri düşer. Backend tek kaynak olarak kalır (katalog
-`backend/src/config/i18n.js` içinde), böylece CV servisi ve frontend aynı
-sözlüğü kaymadan paylaşır. Küçük sabit enum'lar (zone tipi/rolü, tür) ise
-frontend UI sözlüğü tarafından çevrilir.
+Katalog metinleri `backend/internal/paradigms/domain` altındaki paradigma
+tanımlarında, İngilizce ve Türkçe yan yana yazılır
+(`T("Arena width", "Arena genişliği")`). `GET /api/paradigms`,
+`GET /api/paradigms/{key}` ve `GET /api/paradigms/{key}/versions/{version}`,
+`?lang=` (`en` ya da `tr`) değerinin, yoksa `Accept-Language` başlığının, o da
+yoksa İngilizcenin dilinde yanıt verir ve `Content-Language` başlığını
+ayarlar. Panel seçili dili her istekte gönderir. Bir ad, etiket, yardım metni
+ya da metrik açıklaması herhangi bir dilde eksikse, anahtar gibi görünüyorsa ya
+da uzun tire içeriyorsa test başarısız olur. Küçük sabit enum'lar (birimler,
+kategoriler, kapsamlar, kalite kuralı adları) panelin kendi sözlüğünde çevrilir.
 
 ## Ölçüm sözlüğü
 
@@ -111,7 +217,7 @@ Metrik sözlüğü, iki servisin aynı ismi farklı hesaplar için kullanmasın�
 interface MetricDefinition {
   key: string;
   paradigmKeys: string[];
-  unit: "cm" | "cm_s" | "s" | "count" | "ratio" | "percent" | "deg" | "rpm" | "boolean";
+  unit: "cm" | "cm_s" | "s" | "count" | "ratio" | "percent" | "deg" | "boolean";
   valueType: "number" | "integer" | "boolean" | "object";
   required: boolean;
   definition: string;
@@ -124,7 +230,7 @@ interface MetricDefinition {
 ```
 
 Kanonik sonuç birimleri: pozisyon ve mesafe `cm`, hız `cm_s`, süre `s`, ağırlık
-`g`, açı `deg`, dönüş hızı `rpm`, oranlar `ratio` (`0..1`) veya `percent`, olay
+`g`, açı `deg`, oranlar `ratio` (`0..1`) veya `percent`, olay
 bayrakları `boolean`, sayımlar `count`. Apparatus parametreleri bu enum'ı
 yeniden kullanır ve sonuç metriklerinde hiç görünmeyen `mm` (küçük düzenek
 çapları) ile `c` (Celsius cinsinden su sıcaklığı) birimlerini ekler. Piksel
@@ -147,9 +253,9 @@ değerleri Mişko sonuç metriklerine girmez.
 | Paradigma | Ana metrikler |
 |---|---|
 | MWM | Escape latency, path length, swim speed, target quadrant time, platform crossings, thigmotaxis, mean distance to platform. |
-| Open Field | Total distance, center time, periphery time, center entries, immobility, mean speed. |
-| EPM | Open arm time, closed arm time, open ve closed arm entries, latency to open arm, opsiyonel risk assessment event'leri. |
-| Rotarod | Latency to fall, rpm at fall, trial duration, fall detected, tekrarlı trial'larda learning slope. |
+| Yeni nesne | Yeni nesne keşif süresi, tanıdık nesne keşif süresi, toplam keşif süresi, ayırt etme indeksi. |
+| Direk | Dönme süresi, toplam süre, iniş süresi, iniş hızı, düşme. |
+| Koşu bandı | Tükenme latansı, koşu süresi, koşu mesafesi, şok sayısı. |
 
 ## MWM normalizasyonu
 
@@ -207,6 +313,24 @@ kendisidir.
 | `contrast_warning` | `boolean` | Manuel inceleme. |
 
 QC durumları: `PASS`, `WARN`, `REVIEW_REQUIRED`, `FAIL`.
+
+### Bugün uygulanan kurallar
+
+Yukarıdaki tablo hedef modeldir. API'nin bugün takip edilen bir çalıştırmaya
+uyguladığı kurallar paradigma sürümünün kurallarıdır (`trajectoryQC`):
+
+| Kural | Sınır | Neyle ölçülür |
+|---|---|---|
+| `min_tracking_confidence` | `>= 0.7` | gözlenen örneklerin (takip edilen ve çıkarımlı olmayan) ortalama güveni |
+| `max_lost_frame_ratio` | `<= 0.1` | takip edilmeyen örneklerin payı; çıkarımlı örnekler takip edilmiş sayılır |
+| `max_calibration_error_cm` | `<= 2` cm | kalibrasyon kaydedilirken kontrol noktaları |
+
+Çıkarımlı örnekler güven ortalamasını asla yükseltmez ya da düşürmez. İşçi
+bunların payını yörüngenin tanılama bilgisine (`worker.inferredRatio`) yazar ve
+bir paradigma sürümü bunu `max_inferred_ratio` ile sınırlayabilir; yayımlanmış
+hiçbir sürüm henüz bu kuralı koymuyor. Bir kuralı çiğneyen çalıştırma
+`QC_FAILED` nedeniyle başarısız olur ve hiçbir şey yayımlamaz. Aynı kurallar
+her paradigmaya uygulanır.
 
 ## Sonuç şekli
 

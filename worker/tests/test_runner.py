@@ -31,6 +31,11 @@ class FakeCloud:
         self.heartbeats = 0
         self.stale = False
         self.source_status = 0
+        self.downloads = 0
+        self.source_urls = 0
+        # relative answers like an API with local storage: signed URLs and
+        # upload sessions are paths on the API's own origin.
+        self.relative = False
         server = self
 
         class Handler(BaseHTTPRequestHandler):
@@ -50,6 +55,7 @@ class FakeCloud:
                 return self.rfile.read(int(self.headers.get("Content-Length") or 0))
 
             def do_GET(self) -> None:
+                server.downloads += 1
                 if server.source_status:
                     self.reply(server.source_status)
                 elif self.path == "/gcs/source?generation=42":
@@ -81,7 +87,8 @@ class FakeCloud:
                     name = self.path.removeprefix("/gcs/start/")
                     assert self.headers["x-goog-resumable"] == "start"
                     server.objects[name] = bytearray()
-                    self.reply(201, headers={"Location": f"http://127.0.0.1:{server.port}/gcs/session/{name}"})
+                    origin = "" if server.relative else f"http://127.0.0.1:{server.port}"
+                    self.reply(201, headers={"Location": f"{origin}/gcs/session/{name}"})
                     return
                 if self.headers.get("Authorization") != "Worker " + TOKEN:
                     self.reply(401, {"code": "worker.unauthenticated", "error": "worker authentication required"})
@@ -100,12 +107,15 @@ class FakeCloud:
                     else:
                         self.reply(200, {})
                 elif parts[-1] == "source-url":
-                    self.reply(200, {"url": f"http://127.0.0.1:{server.port}/gcs/source?generation=42", "expiresAt": "2026-09-12T00:00:00Z"})
+                    server.source_urls += 1
+                    origin = "" if server.relative else f"http://127.0.0.1:{server.port}"
+                    self.reply(200, {"url": f"{origin}/gcs/source?generation=42", "expiresAt": "2026-09-12T00:00:00Z"})
                 elif parts[-1] == "outputs":
                     name = f"runs/{parts[3]}/attempts/{body['attempt']}/{body['fileName']}"
                     server.declared[name] = body
                     key = name.replace("/", "_")
-                    self.reply(201, {"objectName": name, "upload": {"method": "POST", "url": f"http://127.0.0.1:{server.port}/gcs/start/{key}",
+                    origin = "" if server.relative else f"http://127.0.0.1:{server.port}"
+                    self.reply(201, {"objectName": name, "upload": {"method": "POST", "url": f"{origin}/gcs/start/{key}",
                                                                      "headers": {"Content-Type": body["contentType"], "x-goog-resumable": "start"}}})
                 elif parts[-1] == "result":
                     server.results.append(body)
@@ -164,6 +174,21 @@ def test_a_job_uploads_verified_outputs_and_submits_no_metrics(tmp_path: Path, w
     assert TOKEN not in caplog.text and "gcs/" not in caplog.text
 
 
+def test_relative_signed_urls_resolve_against_the_api(tmp_path: Path, walk: bytes) -> None:
+    # An API with LOCAL_STORAGE_DIR signs paths on itself and answers upload
+    # sessions with a path; the worker prefixes its API base URL.
+    job = synthetic.job(clip_start_us=500_000, clip_end_us=2_500_000)
+    cloud = FakeCloud(walk, [job])
+    cloud.relative = True
+    api = WorkerApi(f"http://127.0.0.1:{cloud.port}/", TOKEN)
+    assert run_once(api, tmp_path, heartbeat_s=0.05) is True
+    assert not cloud.failures and len(cloud.results) == 1 and cloud.downloads == 1
+    for name, declared in cloud.declared.items():
+        data = cloud.uploaded(name)
+        assert declared["sizeBytes"] == len(data) and declared["crc32c"] == crc(data)
+    assert api.absolute("https://storage.example/o?sig=1") == "https://storage.example/o?sig=1"
+
+
 def test_open_clips_report_their_measured_duration(tmp_path: Path, walk: bytes) -> None:
     job = synthetic.job(clip_start_us=1_000_000, clip_end_us=None)
     cloud = FakeCloud(walk, [job])
@@ -198,6 +223,26 @@ def test_failures_are_reported_with_their_retry_policy(tmp_path: Path, walk: byt
     expired.source_status = 403
     run_once(WorkerApi(f"http://127.0.0.1:{expired.port}", TOKEN), tmp_path)
     assert expired.failures == [{"attempt": 1, "reason": "SOURCE_DOWNLOAD_FAILED: HTTP 403", "retryable": True}]
+
+
+@pytest.mark.parametrize(("key", "version"), [("ROTAROD", 1), ("NOVEL_OBJECT", 2), ("POLE", 2), ("TREADMILL", 2), ("MWM", 2), (None, None)])
+def test_unsupported_paradigms_fail_without_downloading(tmp_path: Path, walk: bytes, key, version) -> None:
+    job = synthetic.job()
+    job["run"]["paradigmKey"], job["run"]["paradigmVersion"] = key, version
+    cloud = FakeCloud(walk, [job])
+    assert run_once(WorkerApi(f"http://127.0.0.1:{cloud.port}", TOKEN), tmp_path, heartbeat_s=0.01) is True
+    assert len(cloud.failures) == 1 and not cloud.results and not cloud.declared
+    failure = cloud.failures[0]
+    assert failure["retryable"] is False and failure["reason"].startswith(f"UNSUPPORTED_PARADIGM: {key} v{version}")
+    assert cloud.downloads == 0 and cloud.source_urls == 0 and cloud.heartbeats == 0
+
+
+def test_the_trajectory_names_the_analysed_animal(tmp_path: Path, walk: bytes) -> None:
+    job = synthetic.job()
+    cloud = FakeCloud(walk, [job])
+    run_once(WorkerApi(f"http://127.0.0.1:{cloud.port}", TOKEN), tmp_path)
+    trajectory = json.loads(cloud.uploaded(job["outputPrefix"] + "trajectory.json"))
+    assert trajectory["worker"]["testSubjectId"] == job["testSubject"]["id"]
 
 
 def test_a_lost_lease_stops_without_a_report(tmp_path: Path, walk: bytes) -> None:

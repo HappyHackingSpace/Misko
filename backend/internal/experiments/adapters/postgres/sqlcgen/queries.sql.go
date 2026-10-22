@@ -10,138 +10,173 @@ import (
 	"time"
 )
 
-const closeAssignment = `-- name: CloseAssignment :execrows
-UPDATE misko.group_assignments
-SET valid_to = $1::timestamptz
-WHERE id = $2 AND valid_to IS NULL
+const completeExperiment = `-- name: CompleteExperiment :one
+UPDATE misko.experiments
+SET status = 'COMPLETED', completed_at = greatest(now(), started_at)
+WHERE id = $1 AND status = 'RUNNING'
+RETURNING id, code, title, description, hypothesis, randomisation, blinded, status, day_zero, started_at, completed_at, created_at, updated_at
 `
 
-type CloseAssignmentParams struct {
-	ValidTo time.Time
-	ID      string
-}
-
-func (q *Queries) CloseAssignment(ctx context.Context, arg CloseAssignmentParams) (int64, error) {
-	result, err := q.db.Exec(ctx, closeAssignment, arg.ValidTo, arg.ID)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
-}
-
-const countEnrollments = `-- name: CountEnrollments :one
-SELECT count(*)
-FROM misko.enrollments e
-LEFT JOIN misko.group_assignments a
-    ON a.enrollment_id = e.id AND a.valid_from <= now() AND (a.valid_to IS NULL OR a.valid_to > now())
-WHERE e.experiment_id = $1
-  AND ($2::text = '' OR e.subject_id::text = $2::text)
-  AND ($3::text = '' OR a.group_id::text = $3::text)
-`
-
-type CountEnrollmentsParams struct {
-	ExperimentID string
-	SubjectID    string
-	GroupID      string
-}
-
-func (q *Queries) CountEnrollments(ctx context.Context, arg CountEnrollmentsParams) (int64, error) {
-	row := q.db.QueryRow(ctx, countEnrollments, arg.ExperimentID, arg.SubjectID, arg.GroupID)
-	var count int64
-	err := row.Scan(&count)
-	return count, err
+func (q *Queries) CompleteExperiment(ctx context.Context, id string) (MiskoExperiment, error) {
+	row := q.db.QueryRow(ctx, completeExperiment, id)
+	var i MiskoExperiment
+	err := row.Scan(
+		&i.ID,
+		&i.Code,
+		&i.Title,
+		&i.Description,
+		&i.Hypothesis,
+		&i.Randomisation,
+		&i.Blinded,
+		&i.Status,
+		&i.DayZero,
+		&i.StartedAt,
+		&i.CompletedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }
 
 const countExperiments = `-- name: CountExperiments :one
 SELECT count(*)
 FROM misko.experiments
 WHERE ($1::text = '' OR code ILIKE '%' || $1::text || '%' ESCAPE '\' OR title ILIKE '%' || $1::text || '%' ESCAPE '\')
+  AND ($2::text = '' OR status = $2::text)
 `
 
-func (q *Queries) CountExperiments(ctx context.Context, search string) (int64, error) {
-	row := q.db.QueryRow(ctx, countExperiments, search)
+type CountExperimentsParams struct {
+	Search string
+	Status string
+}
+
+func (q *Queries) CountExperiments(ctx context.Context, arg CountExperimentsParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countExperiments, arg.Search, arg.Status)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
 }
 
-const createAssignment = `-- name: CreateAssignment :one
-INSERT INTO misko.group_assignments (experiment_id, enrollment_id, group_id, valid_from)
-VALUES ($1, $2, $3, $4::timestamptz)
-RETURNING id, experiment_id, enrollment_id, group_id, valid_from, valid_to, created_at
+const countOpenTests = `-- name: CountOpenTests :one
+SELECT count(*) FROM misko.tests WHERE experiment_id = $1 AND status IN ('PLANNED', 'IN_PROGRESS')
 `
 
-type CreateAssignmentParams struct {
-	ExperimentID string
-	EnrollmentID string
-	GroupID      string
-	ValidFrom    time.Time
+// Tests belong to the tests context; completion only counts the open ones.
+func (q *Queries) CountOpenTests(ctx context.Context, experimentID string) (int64, error) {
+	row := q.db.QueryRow(ctx, countOpenTests, experimentID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
 }
 
-func (q *Queries) CreateAssignment(ctx context.Context, arg CreateAssignmentParams) (MiskoGroupAssignment, error) {
-	row := q.db.QueryRow(ctx, createAssignment,
+const createAllocation = `-- name: CreateAllocation :one
+INSERT INTO misko.allocations (experiment_id, group_id, subject_id, allocated_at, cage, created_by)
+VALUES ($1, $2, $3, $4, $5, $6)
+RETURNING id, experiment_id, group_id, subject_id, allocated_at, cage, excluded_at, exclusion_reason, exclusion_note, created_by, created_at
+`
+
+type CreateAllocationParams struct {
+	ExperimentID string
+	GroupID      string
+	SubjectID    string
+	AllocatedAt  time.Time
+	Cage         *string
+	CreatedBy    string
+}
+
+func (q *Queries) CreateAllocation(ctx context.Context, arg CreateAllocationParams) (MiskoAllocation, error) {
+	row := q.db.QueryRow(ctx, createAllocation,
 		arg.ExperimentID,
-		arg.EnrollmentID,
 		arg.GroupID,
-		arg.ValidFrom,
+		arg.SubjectID,
+		arg.AllocatedAt,
+		arg.Cage,
+		arg.CreatedBy,
 	)
-	var i MiskoGroupAssignment
+	var i MiskoAllocation
 	err := row.Scan(
 		&i.ID,
 		&i.ExperimentID,
-		&i.EnrollmentID,
 		&i.GroupID,
-		&i.ValidFrom,
-		&i.ValidTo,
+		&i.SubjectID,
+		&i.AllocatedAt,
+		&i.Cage,
+		&i.ExcludedAt,
+		&i.ExclusionReason,
+		&i.ExclusionNote,
+		&i.CreatedBy,
 		&i.CreatedAt,
 	)
 	return i, err
 }
 
-const createEnrollment = `-- name: CreateEnrollment :one
-INSERT INTO misko.enrollments (experiment_id, subject_id, enrolled_at)
-VALUES ($1, $2, $3::timestamptz)
-RETURNING id, experiment_id, subject_id, enrolled_at, created_at
+const createEndpoint = `-- name: CreateEndpoint :one
+INSERT INTO misko.endpoints (experiment_id, timepoint_id, baseline_timepoint_id, paradigm_key, metric_key, kind, direction)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+RETURNING id, experiment_id, timepoint_id, baseline_timepoint_id, paradigm_key, metric_key, kind, direction, created_at, updated_at
 `
 
-type CreateEnrollmentParams struct {
-	ExperimentID string
-	SubjectID    string
-	EnrolledAt   time.Time
+type CreateEndpointParams struct {
+	ExperimentID        string
+	TimepointID         string
+	BaselineTimepointID *string
+	ParadigmKey         string
+	MetricKey           string
+	Kind                string
+	Direction           string
 }
 
-func (q *Queries) CreateEnrollment(ctx context.Context, arg CreateEnrollmentParams) (MiskoEnrollment, error) {
-	row := q.db.QueryRow(ctx, createEnrollment, arg.ExperimentID, arg.SubjectID, arg.EnrolledAt)
-	var i MiskoEnrollment
+func (q *Queries) CreateEndpoint(ctx context.Context, arg CreateEndpointParams) (MiskoEndpoint, error) {
+	row := q.db.QueryRow(ctx, createEndpoint,
+		arg.ExperimentID,
+		arg.TimepointID,
+		arg.BaselineTimepointID,
+		arg.ParadigmKey,
+		arg.MetricKey,
+		arg.Kind,
+		arg.Direction,
+	)
+	var i MiskoEndpoint
 	err := row.Scan(
 		&i.ID,
 		&i.ExperimentID,
-		&i.SubjectID,
-		&i.EnrolledAt,
+		&i.TimepointID,
+		&i.BaselineTimepointID,
+		&i.ParadigmKey,
+		&i.MetricKey,
+		&i.Kind,
+		&i.Direction,
 		&i.CreatedAt,
+		&i.UpdatedAt,
 	)
 	return i, err
 }
 
 const createExperiment = `-- name: CreateExperiment :one
-INSERT INTO misko.experiments (code, title, description, requires_control)
-VALUES ($1, $2, $3, $4)
-RETURNING id, code, title, description, requires_control, created_at, updated_at
+
+INSERT INTO misko.experiments (code, title, description, hypothesis, randomisation, blinded)
+VALUES ($1, $2, $3, $4, $5, $6)
+RETURNING id, code, title, description, hypothesis, randomisation, blinded, status, day_zero, started_at, completed_at, created_at, updated_at
 `
 
 type CreateExperimentParams struct {
-	Code            string
-	Title           string
-	Description     *string
-	RequiresControl bool
+	Code          string
+	Title         string
+	Description   *string
+	Hypothesis    *string
+	Randomisation *string
+	Blinded       bool
 }
 
+// Experiments ----------------------------------------------------------------
 func (q *Queries) CreateExperiment(ctx context.Context, arg CreateExperimentParams) (MiskoExperiment, error) {
 	row := q.db.QueryRow(ctx, createExperiment,
 		arg.Code,
 		arg.Title,
 		arg.Description,
-		arg.RequiresControl,
+		arg.Hypothesis,
+		arg.Randomisation,
+		arg.Blinded,
 	)
 	var i MiskoExperiment
 	err := row.Scan(
@@ -149,7 +184,13 @@ func (q *Queries) CreateExperiment(ctx context.Context, arg CreateExperimentPara
 		&i.Code,
 		&i.Title,
 		&i.Description,
-		&i.RequiresControl,
+		&i.Hypothesis,
+		&i.Randomisation,
+		&i.Blinded,
+		&i.Status,
+		&i.DayZero,
+		&i.StartedAt,
+		&i.CompletedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -157,24 +198,28 @@ func (q *Queries) CreateExperiment(ctx context.Context, arg CreateExperimentPara
 }
 
 const createGroup = `-- name: CreateGroup :one
-INSERT INTO misko.experiment_groups (experiment_id, name, role, target_size, description)
-VALUES ($1, $2, $3, $4, $5)
-RETURNING id, experiment_id, name, role, target_size, description, created_at, updated_at
+INSERT INTO misko.experiment_groups (experiment_id, code, name, role, disease_model_id, target_size, description)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+RETURNING id, experiment_id, code, name, role, disease_model_id, target_size, description, created_at, updated_at
 `
 
 type CreateGroupParams struct {
-	ExperimentID string
-	Name         string
-	Role         string
-	TargetSize   *int32
-	Description  *string
+	ExperimentID   string
+	Code           string
+	Name           string
+	Role           string
+	DiseaseModelID *string
+	TargetSize     *int32
+	Description    *string
 }
 
 func (q *Queries) CreateGroup(ctx context.Context, arg CreateGroupParams) (MiskoExperimentGroup, error) {
 	row := q.db.QueryRow(ctx, createGroup,
 		arg.ExperimentID,
+		arg.Code,
 		arg.Name,
 		arg.Role,
+		arg.DiseaseModelID,
 		arg.TargetSize,
 		arg.Description,
 	)
@@ -182,8 +227,10 @@ func (q *Queries) CreateGroup(ctx context.Context, arg CreateGroupParams) (Misko
 	err := row.Scan(
 		&i.ID,
 		&i.ExperimentID,
+		&i.Code,
 		&i.Name,
 		&i.Role,
+		&i.DiseaseModelID,
 		&i.TargetSize,
 		&i.Description,
 		&i.CreatedAt,
@@ -192,42 +239,129 @@ func (q *Queries) CreateGroup(ctx context.Context, arg CreateGroupParams) (Misko
 	return i, err
 }
 
-const createPhase = `-- name: CreatePhase :one
-INSERT INTO misko.experiment_phases (experiment_id, name, position, description)
-VALUES ($1, $2, $3, $4)
-RETURNING id, experiment_id, name, position, description, created_at, updated_at
+const createRegimenItem = `-- name: CreateRegimenItem :one
+INSERT INTO misko.regimen_items (experiment_id, group_id, purpose, substance_id, dose_micro, unit, route, frequency, interval_days, start_day, end_day)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+RETURNING id, experiment_id, group_id, purpose, substance_id, dose_micro, unit, route, frequency, interval_days, start_day, end_day, created_at, updated_at
 `
 
-type CreatePhaseParams struct {
+type CreateRegimenItemParams struct {
 	ExperimentID string
-	Name         string
-	Position     int32
-	Description  *string
+	GroupID      string
+	Purpose      string
+	SubstanceID  string
+	DoseMicro    int64
+	Unit         string
+	Route        string
+	Frequency    string
+	IntervalDays *int32
+	StartDay     int32
+	EndDay       int32
 }
 
-func (q *Queries) CreatePhase(ctx context.Context, arg CreatePhaseParams) (MiskoExperimentPhase, error) {
-	row := q.db.QueryRow(ctx, createPhase,
+func (q *Queries) CreateRegimenItem(ctx context.Context, arg CreateRegimenItemParams) (MiskoRegimenItem, error) {
+	row := q.db.QueryRow(ctx, createRegimenItem,
 		arg.ExperimentID,
-		arg.Name,
-		arg.Position,
-		arg.Description,
+		arg.GroupID,
+		arg.Purpose,
+		arg.SubstanceID,
+		arg.DoseMicro,
+		arg.Unit,
+		arg.Route,
+		arg.Frequency,
+		arg.IntervalDays,
+		arg.StartDay,
+		arg.EndDay,
 	)
-	var i MiskoExperimentPhase
+	var i MiskoRegimenItem
 	err := row.Scan(
 		&i.ID,
 		&i.ExperimentID,
-		&i.Name,
-		&i.Position,
-		&i.Description,
+		&i.GroupID,
+		&i.Purpose,
+		&i.SubstanceID,
+		&i.DoseMicro,
+		&i.Unit,
+		&i.Route,
+		&i.Frequency,
+		&i.IntervalDays,
+		&i.StartDay,
+		&i.EndDay,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
 	return i, err
 }
 
+const createTimepoint = `-- name: CreateTimepoint :one
+INSERT INTO misko.timepoints (experiment_id, name, study_day, position)
+VALUES ($1, $2, $3, $4)
+RETURNING id, experiment_id, name, study_day, position, created_at, updated_at
+`
+
+type CreateTimepointParams struct {
+	ExperimentID string
+	Name         string
+	StudyDay     int32
+	Position     int32
+}
+
+func (q *Queries) CreateTimepoint(ctx context.Context, arg CreateTimepointParams) (MiskoTimepoint, error) {
+	row := q.db.QueryRow(ctx, createTimepoint,
+		arg.ExperimentID,
+		arg.Name,
+		arg.StudyDay,
+		arg.Position,
+	)
+	var i MiskoTimepoint
+	err := row.Scan(
+		&i.ID,
+		&i.ExperimentID,
+		&i.Name,
+		&i.StudyDay,
+		&i.Position,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const deleteAllocation = `-- name: DeleteAllocation :execrows
+DELETE FROM misko.allocations WHERE experiment_id = $1 AND id = $2
+`
+
+type DeleteAllocationParams struct {
+	ExperimentID string
+	ID           string
+}
+
+func (q *Queries) DeleteAllocation(ctx context.Context, arg DeleteAllocationParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteAllocation, arg.ExperimentID, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const deleteEndpoint = `-- name: DeleteEndpoint :execrows
+DELETE FROM misko.endpoints WHERE experiment_id = $1 AND id = $2
+`
+
+type DeleteEndpointParams struct {
+	ExperimentID string
+	ID           string
+}
+
+func (q *Queries) DeleteEndpoint(ctx context.Context, arg DeleteEndpointParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteEndpoint, arg.ExperimentID, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const deleteGroup = `-- name: DeleteGroup :execrows
-DELETE FROM misko.experiment_groups
-WHERE experiment_id = $1 AND id = $2
+DELETE FROM misko.experiment_groups WHERE experiment_id = $1 AND id = $2
 `
 
 type DeleteGroupParams struct {
@@ -243,52 +377,56 @@ func (q *Queries) DeleteGroup(ctx context.Context, arg DeleteGroupParams) (int64
 	return result.RowsAffected(), nil
 }
 
-const deletePhase = `-- name: DeletePhase :execrows
-DELETE FROM misko.experiment_phases
-WHERE experiment_id = $1 AND id = $2
+const deleteGroupRegimen = `-- name: DeleteGroupRegimen :exec
+DELETE FROM misko.regimen_items WHERE experiment_id = $1 AND group_id = $2
 `
 
-type DeletePhaseParams struct {
+type DeleteGroupRegimenParams struct {
+	ExperimentID string
+	GroupID      string
+}
+
+func (q *Queries) DeleteGroupRegimen(ctx context.Context, arg DeleteGroupRegimenParams) error {
+	_, err := q.db.Exec(ctx, deleteGroupRegimen, arg.ExperimentID, arg.GroupID)
+	return err
+}
+
+const deleteRegimenItem = `-- name: DeleteRegimenItem :execrows
+DELETE FROM misko.regimen_items WHERE experiment_id = $1 AND id = $2
+`
+
+type DeleteRegimenItemParams struct {
 	ExperimentID string
 	ID           string
 }
 
-func (q *Queries) DeletePhase(ctx context.Context, arg DeletePhaseParams) (int64, error) {
-	result, err := q.db.Exec(ctx, deletePhase, arg.ExperimentID, arg.ID)
+func (q *Queries) DeleteRegimenItem(ctx context.Context, arg DeleteRegimenItemParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteRegimenItem, arg.ExperimentID, arg.ID)
 	if err != nil {
 		return 0, err
 	}
 	return result.RowsAffected(), nil
 }
 
-const getEnrollment = `-- name: GetEnrollment :one
-SELECT id, experiment_id, subject_id, enrolled_at, created_at
-FROM misko.enrollments
-WHERE experiment_id = $1 AND id = $2
+const deleteTimepoint = `-- name: DeleteTimepoint :execrows
+DELETE FROM misko.timepoints WHERE experiment_id = $1 AND id = $2
 `
 
-type GetEnrollmentParams struct {
+type DeleteTimepointParams struct {
 	ExperimentID string
 	ID           string
 }
 
-func (q *Queries) GetEnrollment(ctx context.Context, arg GetEnrollmentParams) (MiskoEnrollment, error) {
-	row := q.db.QueryRow(ctx, getEnrollment, arg.ExperimentID, arg.ID)
-	var i MiskoEnrollment
-	err := row.Scan(
-		&i.ID,
-		&i.ExperimentID,
-		&i.SubjectID,
-		&i.EnrolledAt,
-		&i.CreatedAt,
-	)
-	return i, err
+func (q *Queries) DeleteTimepoint(ctx context.Context, arg DeleteTimepointParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteTimepoint, arg.ExperimentID, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const getExperiment = `-- name: GetExperiment :one
-SELECT id, code, title, description, requires_control, created_at, updated_at
-FROM misko.experiments
-WHERE id = $1
+SELECT id, code, title, description, hypothesis, randomisation, blinded, status, day_zero, started_at, completed_at, created_at, updated_at FROM misko.experiments WHERE id = $1
 `
 
 func (q *Queries) GetExperiment(ctx context.Context, id string) (MiskoExperiment, error) {
@@ -299,64 +437,75 @@ func (q *Queries) GetExperiment(ctx context.Context, id string) (MiskoExperiment
 		&i.Code,
 		&i.Title,
 		&i.Description,
-		&i.RequiresControl,
+		&i.Hypothesis,
+		&i.Randomisation,
+		&i.Blinded,
+		&i.Status,
+		&i.DayZero,
+		&i.StartedAt,
+		&i.CompletedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
 	return i, err
 }
 
-const getGroup = `-- name: GetGroup :one
-SELECT id, experiment_id, name, role, target_size, description, created_at, updated_at
-FROM misko.experiment_groups
-WHERE experiment_id = $1 AND id = $2
+const listAllocations = `-- name: ListAllocations :many
+
+SELECT a.id, a.experiment_id, a.group_id, a.subject_id, a.allocated_at, a.cage, a.excluded_at, a.exclusion_reason, a.exclusion_note, a.created_by, a.created_at, s.code AS subject_code
+FROM misko.allocations a
+JOIN misko.subjects s ON s.id = a.subject_id
+JOIN misko.experiment_groups g ON g.id = a.group_id
+WHERE a.experiment_id = $1
+  AND ($2::uuid IS NULL OR a.group_id = $2::uuid)
+  AND ($3::boolean IS NULL OR (a.excluded_at IS NOT NULL) = $3::boolean)
+ORDER BY lower(g.code), lower(s.code), a.id
 `
 
-type GetGroupParams struct {
+type ListAllocationsParams struct {
 	ExperimentID string
-	ID           string
+	GroupID      *string
+	Excluded     *bool
 }
 
-func (q *Queries) GetGroup(ctx context.Context, arg GetGroupParams) (MiskoExperimentGroup, error) {
-	row := q.db.QueryRow(ctx, getGroup, arg.ExperimentID, arg.ID)
-	var i MiskoExperimentGroup
-	err := row.Scan(
-		&i.ID,
-		&i.ExperimentID,
-		&i.Name,
-		&i.Role,
-		&i.TargetSize,
-		&i.Description,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
+type ListAllocationsRow struct {
+	ID              string
+	ExperimentID    string
+	GroupID         string
+	SubjectID       string
+	AllocatedAt     time.Time
+	Cage            *string
+	ExcludedAt      *time.Time
+	ExclusionReason *string
+	ExclusionNote   *string
+	CreatedBy       string
+	CreatedAt       time.Time
+	SubjectCode     string
 }
 
-const listAssignments = `-- name: ListAssignments :many
-SELECT id, experiment_id, enrollment_id, group_id, valid_from, valid_to, created_at
-FROM misko.group_assignments
-WHERE enrollment_id = $1
-ORDER BY valid_from, id
-`
-
-func (q *Queries) ListAssignments(ctx context.Context, enrollmentID string) ([]MiskoGroupAssignment, error) {
-	rows, err := q.db.Query(ctx, listAssignments, enrollmentID)
+// Allocations ----------------------------------------------------------------
+func (q *Queries) ListAllocations(ctx context.Context, arg ListAllocationsParams) ([]ListAllocationsRow, error) {
+	rows, err := q.db.Query(ctx, listAllocations, arg.ExperimentID, arg.GroupID, arg.Excluded)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []MiskoGroupAssignment
+	var items []ListAllocationsRow
 	for rows.Next() {
-		var i MiskoGroupAssignment
+		var i ListAllocationsRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.ExperimentID,
-			&i.EnrollmentID,
 			&i.GroupID,
-			&i.ValidFrom,
-			&i.ValidTo,
+			&i.SubjectID,
+			&i.AllocatedAt,
+			&i.Cage,
+			&i.ExcludedAt,
+			&i.ExclusionReason,
+			&i.ExclusionNote,
+			&i.CreatedBy,
 			&i.CreatedAt,
+			&i.SubjectCode,
 		); err != nil {
 			return nil, err
 		}
@@ -368,63 +517,36 @@ func (q *Queries) ListAssignments(ctx context.Context, enrollmentID string) ([]M
 	return items, nil
 }
 
-const listEnrollments = `-- name: ListEnrollments :many
-SELECT e.id, e.experiment_id, e.subject_id, e.enrolled_at, e.created_at, coalesce(a.group_id::text, '')::text AS current_group_id
-FROM misko.enrollments e
-LEFT JOIN misko.group_assignments a
-    ON a.enrollment_id = e.id AND a.valid_from <= now() AND (a.valid_to IS NULL OR a.valid_to > now())
+const listEndpoints = `-- name: ListEndpoints :many
+
+SELECT e.id, e.experiment_id, e.timepoint_id, e.baseline_timepoint_id, e.paradigm_key, e.metric_key, e.kind, e.direction, e.created_at, e.updated_at
+FROM misko.endpoints e
+JOIN misko.timepoints t ON t.id = e.timepoint_id
 WHERE e.experiment_id = $1
-  AND ($2::text = '' OR e.subject_id::text = $2::text)
-  AND ($3::text = '' OR a.group_id::text = $3::text)
-ORDER BY
-    CASE WHEN $4::boolean THEN e.enrolled_at END DESC,
-    CASE WHEN NOT $4::boolean THEN e.enrolled_at END ASC,
-    e.id ASC
-LIMIT $6::integer OFFSET $5::integer
+ORDER BY e.kind = 'SECONDARY', t.position, e.paradigm_key, e.metric_key, e.id
 `
 
-type ListEnrollmentsParams struct {
-	ExperimentID string
-	SubjectID    string
-	GroupID      string
-	Descending   bool
-	PageOffset   int32
-	PageLimit    int32
-}
-
-type ListEnrollmentsRow struct {
-	ID             string
-	ExperimentID   string
-	SubjectID      string
-	EnrolledAt     time.Time
-	CreatedAt      time.Time
-	CurrentGroupID string
-}
-
-// current_group_id is the group active at the database clock, or empty when none.
-func (q *Queries) ListEnrollments(ctx context.Context, arg ListEnrollmentsParams) ([]ListEnrollmentsRow, error) {
-	rows, err := q.db.Query(ctx, listEnrollments,
-		arg.ExperimentID,
-		arg.SubjectID,
-		arg.GroupID,
-		arg.Descending,
-		arg.PageOffset,
-		arg.PageLimit,
-	)
+// Endpoints ------------------------------------------------------------------
+func (q *Queries) ListEndpoints(ctx context.Context, experimentID string) ([]MiskoEndpoint, error) {
+	rows, err := q.db.Query(ctx, listEndpoints, experimentID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []ListEnrollmentsRow
+	var items []MiskoEndpoint
 	for rows.Next() {
-		var i ListEnrollmentsRow
+		var i MiskoEndpoint
 		if err := rows.Scan(
 			&i.ID,
 			&i.ExperimentID,
-			&i.SubjectID,
-			&i.EnrolledAt,
+			&i.TimepointID,
+			&i.BaselineTimepointID,
+			&i.ParadigmKey,
+			&i.MetricKey,
+			&i.Kind,
+			&i.Direction,
 			&i.CreatedAt,
-			&i.CurrentGroupID,
+			&i.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -437,22 +559,24 @@ func (q *Queries) ListEnrollments(ctx context.Context, arg ListEnrollmentsParams
 }
 
 const listExperiments = `-- name: ListExperiments :many
-SELECT id, code, title, description, requires_control, created_at, updated_at
+SELECT id, code, title, description, hypothesis, randomisation, blinded, status, day_zero, started_at, completed_at, created_at, updated_at
 FROM misko.experiments
 WHERE ($1::text = '' OR code ILIKE '%' || $1::text || '%' ESCAPE '\' OR title ILIKE '%' || $1::text || '%' ESCAPE '\')
+  AND ($2::text = '' OR status = $2::text)
 ORDER BY
-    CASE WHEN $2::text = 'code' AND NOT $3::boolean THEN lower(code) END ASC,
-    CASE WHEN $2::text = 'code' AND $3::boolean THEN lower(code) END DESC,
-    CASE WHEN $2::text = 'title' AND NOT $3::boolean THEN lower(title) END ASC,
-    CASE WHEN $2::text = 'title' AND $3::boolean THEN lower(title) END DESC,
-    CASE WHEN $2::text = 'createdAt' AND NOT $3::boolean THEN created_at END ASC,
-    CASE WHEN $2::text = 'createdAt' AND $3::boolean THEN created_at END DESC,
+    CASE WHEN $3::text = 'code' AND NOT $4::boolean THEN lower(code) END ASC,
+    CASE WHEN $3::text = 'code' AND $4::boolean THEN lower(code) END DESC,
+    CASE WHEN $3::text = 'title' AND NOT $4::boolean THEN lower(title) END ASC,
+    CASE WHEN $3::text = 'title' AND $4::boolean THEN lower(title) END DESC,
+    CASE WHEN $3::text = 'createdAt' AND NOT $4::boolean THEN created_at END ASC,
+    CASE WHEN $3::text = 'createdAt' AND $4::boolean THEN created_at END DESC,
     id ASC
-LIMIT $5::integer OFFSET $4::integer
+LIMIT $6::integer OFFSET $5::integer
 `
 
 type ListExperimentsParams struct {
 	Search     string
+	Status     string
 	SortKey    string
 	Descending bool
 	PageOffset int32
@@ -462,6 +586,7 @@ type ListExperimentsParams struct {
 func (q *Queries) ListExperiments(ctx context.Context, arg ListExperimentsParams) ([]MiskoExperiment, error) {
 	rows, err := q.db.Query(ctx, listExperiments,
 		arg.Search,
+		arg.Status,
 		arg.SortKey,
 		arg.Descending,
 		arg.PageOffset,
@@ -479,7 +604,13 @@ func (q *Queries) ListExperiments(ctx context.Context, arg ListExperimentsParams
 			&i.Code,
 			&i.Title,
 			&i.Description,
-			&i.RequiresControl,
+			&i.Hypothesis,
+			&i.Randomisation,
+			&i.Blinded,
+			&i.Status,
+			&i.DayZero,
+			&i.StartedAt,
+			&i.CompletedAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -493,48 +624,56 @@ func (q *Queries) ListExperiments(ctx context.Context, arg ListExperimentsParams
 	return items, nil
 }
 
-const listGroupSizes = `-- name: ListGroupSizes :many
-SELECT g.id, g.experiment_id, g.name, g.role, g.target_size, g.description, g.created_at, g.updated_at,
-       (count(a.id) FILTER (WHERE a.valid_from <= now() AND (a.valid_to IS NULL OR a.valid_to > now())))::integer AS active_subjects
+const listGroupFills = `-- name: ListGroupFills :many
+
+SELECT g.id, g.experiment_id, g.code, g.name, g.role, g.disease_model_id, g.target_size, g.description, g.created_at, g.updated_at,
+       count(a.id) FILTER (WHERE a.excluded_at IS NULL)::integer AS allocated,
+       count(a.id) FILTER (WHERE a.excluded_at IS NOT NULL)::integer AS excluded
 FROM misko.experiment_groups g
-LEFT JOIN misko.group_assignments a ON a.group_id = g.id
+LEFT JOIN misko.allocations a ON a.group_id = g.id
 WHERE g.experiment_id = $1
 GROUP BY g.id
-ORDER BY lower(g.name), g.id
+ORDER BY lower(g.code), g.id
 `
 
-type ListGroupSizesRow struct {
+type ListGroupFillsRow struct {
 	ID             string
 	ExperimentID   string
+	Code           string
 	Name           string
 	Role           string
+	DiseaseModelID *string
 	TargetSize     *int32
 	Description    *string
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
-	ActiveSubjects int32
+	Allocated      int32
+	Excluded       int32
 }
 
-// Active counts use the database clock so every caller sees the same instant.
-func (q *Queries) ListGroupSizes(ctx context.Context, experimentID string) ([]ListGroupSizesRow, error) {
-	rows, err := q.db.Query(ctx, listGroupSizes, experimentID)
+// Groups ---------------------------------------------------------------------
+func (q *Queries) ListGroupFills(ctx context.Context, experimentID string) ([]ListGroupFillsRow, error) {
+	rows, err := q.db.Query(ctx, listGroupFills, experimentID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []ListGroupSizesRow
+	var items []ListGroupFillsRow
 	for rows.Next() {
-		var i ListGroupSizesRow
+		var i ListGroupFillsRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.ExperimentID,
+			&i.Code,
 			&i.Name,
 			&i.Role,
+			&i.DiseaseModelID,
 			&i.TargetSize,
 			&i.Description,
 			&i.CreatedAt,
 			&i.UpdatedAt,
-			&i.ActiveSubjects,
+			&i.Allocated,
+			&i.Excluded,
 		); err != nil {
 			return nil, err
 		}
@@ -546,28 +685,73 @@ func (q *Queries) ListGroupSizes(ctx context.Context, experimentID string) ([]Li
 	return items, nil
 }
 
-const listPhases = `-- name: ListPhases :many
-SELECT id, experiment_id, name, position, description, created_at, updated_at
-FROM misko.experiment_phases
-WHERE experiment_id = $1
-ORDER BY position, id
+const listProtocolParadigms = `-- name: ListProtocolParadigms :many
+SELECT DISTINCT s.paradigm_key, s.paradigm_version
+FROM misko.protocol_steps s
+JOIN misko.protocol_versions v ON v.id = s.protocol_version_id
+WHERE v.experiment_id = $1
+ORDER BY s.paradigm_key, s.paradigm_version
 `
 
-func (q *Queries) ListPhases(ctx context.Context, experimentID string) ([]MiskoExperimentPhase, error) {
-	rows, err := q.db.Query(ctx, listPhases, experimentID)
+type ListProtocolParadigmsRow struct {
+	ParadigmKey     string
+	ParadigmVersion int32
+}
+
+// Protocol steps belong to the protocols context; endpoints only read which
+// paradigm versions they run.
+func (q *Queries) ListProtocolParadigms(ctx context.Context, experimentID string) ([]ListProtocolParadigmsRow, error) {
+	rows, err := q.db.Query(ctx, listProtocolParadigms, experimentID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []MiskoExperimentPhase
+	var items []ListProtocolParadigmsRow
 	for rows.Next() {
-		var i MiskoExperimentPhase
+		var i ListProtocolParadigmsRow
+		if err := rows.Scan(&i.ParadigmKey, &i.ParadigmVersion); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRegimenItems = `-- name: ListRegimenItems :many
+
+SELECT r.id, r.experiment_id, r.group_id, r.purpose, r.substance_id, r.dose_micro, r.unit, r.route, r.frequency, r.interval_days, r.start_day, r.end_day, r.created_at, r.updated_at
+FROM misko.regimen_items r
+JOIN misko.experiment_groups g ON g.id = r.group_id
+WHERE r.experiment_id = $1
+ORDER BY lower(g.code), r.start_day, r.purpose, r.id
+`
+
+// Regimen items --------------------------------------------------------------
+func (q *Queries) ListRegimenItems(ctx context.Context, experimentID string) ([]MiskoRegimenItem, error) {
+	rows, err := q.db.Query(ctx, listRegimenItems, experimentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []MiskoRegimenItem
+	for rows.Next() {
+		var i MiskoRegimenItem
 		if err := rows.Scan(
 			&i.ID,
 			&i.ExperimentID,
-			&i.Name,
-			&i.Position,
-			&i.Description,
+			&i.GroupID,
+			&i.Purpose,
+			&i.SubstanceID,
+			&i.DoseMicro,
+			&i.Unit,
+			&i.Route,
+			&i.Frequency,
+			&i.IntervalDays,
+			&i.StartDay,
+			&i.EndDay,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -581,40 +765,29 @@ func (q *Queries) ListPhases(ctx context.Context, experimentID string) ([]MiskoE
 	return items, nil
 }
 
-const listSubjectEnrollments = `-- name: ListSubjectEnrollments :many
-SELECT e.id, e.experiment_id, e.subject_id, e.enrolled_at, e.created_at, coalesce(a.group_id::text, '')::text AS current_group_id
-FROM misko.enrollments e
-LEFT JOIN misko.group_assignments a
-    ON a.enrollment_id = e.id AND a.valid_from <= now() AND (a.valid_to IS NULL OR a.valid_to > now())
-WHERE e.subject_id = $1
-ORDER BY e.enrolled_at DESC, e.id ASC
+const listTimepoints = `-- name: ListTimepoints :many
+
+SELECT id, experiment_id, name, study_day, position, created_at, updated_at FROM misko.timepoints WHERE experiment_id = $1 ORDER BY position, id
 `
 
-type ListSubjectEnrollmentsRow struct {
-	ID             string
-	ExperimentID   string
-	SubjectID      string
-	EnrolledAt     time.Time
-	CreatedAt      time.Time
-	CurrentGroupID string
-}
-
-func (q *Queries) ListSubjectEnrollments(ctx context.Context, subjectID string) ([]ListSubjectEnrollmentsRow, error) {
-	rows, err := q.db.Query(ctx, listSubjectEnrollments, subjectID)
+// Timepoints -----------------------------------------------------------------
+func (q *Queries) ListTimepoints(ctx context.Context, experimentID string) ([]MiskoTimepoint, error) {
+	rows, err := q.db.Query(ctx, listTimepoints, experimentID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []ListSubjectEnrollmentsRow
+	var items []MiskoTimepoint
 	for rows.Next() {
-		var i ListSubjectEnrollmentsRow
+		var i MiskoTimepoint
 		if err := rows.Scan(
 			&i.ID,
 			&i.ExperimentID,
-			&i.SubjectID,
-			&i.EnrolledAt,
+			&i.Name,
+			&i.StudyDay,
+			&i.Position,
 			&i.CreatedAt,
-			&i.CurrentGroupID,
+			&i.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -626,58 +799,318 @@ func (q *Queries) ListSubjectEnrollments(ctx context.Context, subjectID string) 
 	return items, nil
 }
 
-const lockEnrollment = `-- name: LockEnrollment :one
-SELECT id, experiment_id, subject_id, enrolled_at, created_at
-FROM misko.enrollments
-WHERE experiment_id = $1 AND id = $2
-FOR UPDATE
+const lockAllocation = `-- name: LockAllocation :one
+SELECT id, experiment_id, group_id, subject_id, allocated_at, cage, excluded_at, exclusion_reason, exclusion_note, created_by, created_at FROM misko.allocations WHERE experiment_id = $1 AND id = $2 FOR UPDATE
 `
 
-type LockEnrollmentParams struct {
+type LockAllocationParams struct {
 	ExperimentID string
 	ID           string
 }
 
-// Serializes group changes of one enrollment.
-func (q *Queries) LockEnrollment(ctx context.Context, arg LockEnrollmentParams) (MiskoEnrollment, error) {
-	row := q.db.QueryRow(ctx, lockEnrollment, arg.ExperimentID, arg.ID)
-	var i MiskoEnrollment
+func (q *Queries) LockAllocation(ctx context.Context, arg LockAllocationParams) (MiskoAllocation, error) {
+	row := q.db.QueryRow(ctx, lockAllocation, arg.ExperimentID, arg.ID)
+	var i MiskoAllocation
 	err := row.Scan(
 		&i.ID,
 		&i.ExperimentID,
+		&i.GroupID,
 		&i.SubjectID,
-		&i.EnrolledAt,
+		&i.AllocatedAt,
+		&i.Cage,
+		&i.ExcludedAt,
+		&i.ExclusionReason,
+		&i.ExclusionNote,
+		&i.CreatedBy,
 		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const lockEndpoint = `-- name: LockEndpoint :one
+SELECT id, experiment_id, timepoint_id, baseline_timepoint_id, paradigm_key, metric_key, kind, direction, created_at, updated_at FROM misko.endpoints WHERE experiment_id = $1 AND id = $2 FOR UPDATE
+`
+
+type LockEndpointParams struct {
+	ExperimentID string
+	ID           string
+}
+
+func (q *Queries) LockEndpoint(ctx context.Context, arg LockEndpointParams) (MiskoEndpoint, error) {
+	row := q.db.QueryRow(ctx, lockEndpoint, arg.ExperimentID, arg.ID)
+	var i MiskoEndpoint
+	err := row.Scan(
+		&i.ID,
+		&i.ExperimentID,
+		&i.TimepointID,
+		&i.BaselineTimepointID,
+		&i.ParadigmKey,
+		&i.MetricKey,
+		&i.Kind,
+		&i.Direction,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const lockExperiment = `-- name: LockExperiment :one
+SELECT id, code, title, description, hypothesis, randomisation, blinded, status, day_zero, started_at, completed_at, created_at, updated_at FROM misko.experiments WHERE id = $1 FOR UPDATE
+`
+
+func (q *Queries) LockExperiment(ctx context.Context, id string) (MiskoExperiment, error) {
+	row := q.db.QueryRow(ctx, lockExperiment, id)
+	var i MiskoExperiment
+	err := row.Scan(
+		&i.ID,
+		&i.Code,
+		&i.Title,
+		&i.Description,
+		&i.Hypothesis,
+		&i.Randomisation,
+		&i.Blinded,
+		&i.Status,
+		&i.DayZero,
+		&i.StartedAt,
+		&i.CompletedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const lockGroup = `-- name: LockGroup :one
+SELECT id, experiment_id, code, name, role, disease_model_id, target_size, description, created_at, updated_at FROM misko.experiment_groups WHERE experiment_id = $1 AND id = $2 FOR UPDATE
+`
+
+type LockGroupParams struct {
+	ExperimentID string
+	ID           string
+}
+
+func (q *Queries) LockGroup(ctx context.Context, arg LockGroupParams) (MiskoExperimentGroup, error) {
+	row := q.db.QueryRow(ctx, lockGroup, arg.ExperimentID, arg.ID)
+	var i MiskoExperimentGroup
+	err := row.Scan(
+		&i.ID,
+		&i.ExperimentID,
+		&i.Code,
+		&i.Name,
+		&i.Role,
+		&i.DiseaseModelID,
+		&i.TargetSize,
+		&i.Description,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const lockRegimenItem = `-- name: LockRegimenItem :one
+SELECT id, experiment_id, group_id, purpose, substance_id, dose_micro, unit, route, frequency, interval_days, start_day, end_day, created_at, updated_at FROM misko.regimen_items WHERE experiment_id = $1 AND id = $2 FOR UPDATE
+`
+
+type LockRegimenItemParams struct {
+	ExperimentID string
+	ID           string
+}
+
+func (q *Queries) LockRegimenItem(ctx context.Context, arg LockRegimenItemParams) (MiskoRegimenItem, error) {
+	row := q.db.QueryRow(ctx, lockRegimenItem, arg.ExperimentID, arg.ID)
+	var i MiskoRegimenItem
+	err := row.Scan(
+		&i.ID,
+		&i.ExperimentID,
+		&i.GroupID,
+		&i.Purpose,
+		&i.SubstanceID,
+		&i.DoseMicro,
+		&i.Unit,
+		&i.Route,
+		&i.Frequency,
+		&i.IntervalDays,
+		&i.StartDay,
+		&i.EndDay,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const lockTimepoint = `-- name: LockTimepoint :one
+SELECT id, experiment_id, name, study_day, position, created_at, updated_at FROM misko.timepoints WHERE experiment_id = $1 AND id = $2 FOR UPDATE
+`
+
+type LockTimepointParams struct {
+	ExperimentID string
+	ID           string
+}
+
+func (q *Queries) LockTimepoint(ctx context.Context, arg LockTimepointParams) (MiskoTimepoint, error) {
+	row := q.db.QueryRow(ctx, lockTimepoint, arg.ExperimentID, arg.ID)
+	var i MiskoTimepoint
+	err := row.Scan(
+		&i.ID,
+		&i.ExperimentID,
+		&i.Name,
+		&i.StudyDay,
+		&i.Position,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const startExperiment = `-- name: StartExperiment :one
+UPDATE misko.experiments
+SET status = 'RUNNING', day_zero = $1::date, started_at = now()
+WHERE id = $2 AND status = 'DRAFT'
+RETURNING id, code, title, description, hypothesis, randomisation, blinded, status, day_zero, started_at, completed_at, created_at, updated_at
+`
+
+type StartExperimentParams struct {
+	DayZero time.Time
+	ID      string
+}
+
+func (q *Queries) StartExperiment(ctx context.Context, arg StartExperimentParams) (MiskoExperiment, error) {
+	row := q.db.QueryRow(ctx, startExperiment, arg.DayZero, arg.ID)
+	var i MiskoExperiment
+	err := row.Scan(
+		&i.ID,
+		&i.Code,
+		&i.Title,
+		&i.Description,
+		&i.Hypothesis,
+		&i.Randomisation,
+		&i.Blinded,
+		&i.Status,
+		&i.DayZero,
+		&i.StartedAt,
+		&i.CompletedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const updateAllocation = `-- name: UpdateAllocation :one
+UPDATE misko.allocations
+SET group_id = $1, cage = $2, excluded_at = $3,
+    exclusion_reason = $4, exclusion_note = $5
+WHERE experiment_id = $6 AND id = $7
+RETURNING id, experiment_id, group_id, subject_id, allocated_at, cage, excluded_at, exclusion_reason, exclusion_note, created_by, created_at
+`
+
+type UpdateAllocationParams struct {
+	GroupID         string
+	Cage            *string
+	ExcludedAt      *time.Time
+	ExclusionReason *string
+	ExclusionNote   *string
+	ExperimentID    string
+	ID              string
+}
+
+func (q *Queries) UpdateAllocation(ctx context.Context, arg UpdateAllocationParams) (MiskoAllocation, error) {
+	row := q.db.QueryRow(ctx, updateAllocation,
+		arg.GroupID,
+		arg.Cage,
+		arg.ExcludedAt,
+		arg.ExclusionReason,
+		arg.ExclusionNote,
+		arg.ExperimentID,
+		arg.ID,
+	)
+	var i MiskoAllocation
+	err := row.Scan(
+		&i.ID,
+		&i.ExperimentID,
+		&i.GroupID,
+		&i.SubjectID,
+		&i.AllocatedAt,
+		&i.Cage,
+		&i.ExcludedAt,
+		&i.ExclusionReason,
+		&i.ExclusionNote,
+		&i.CreatedBy,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const updateEndpoint = `-- name: UpdateEndpoint :one
+UPDATE misko.endpoints
+SET timepoint_id = $1, baseline_timepoint_id = $2, paradigm_key = $3,
+    metric_key = $4, kind = $5, direction = $6
+WHERE experiment_id = $7 AND id = $8
+RETURNING id, experiment_id, timepoint_id, baseline_timepoint_id, paradigm_key, metric_key, kind, direction, created_at, updated_at
+`
+
+type UpdateEndpointParams struct {
+	TimepointID         string
+	BaselineTimepointID *string
+	ParadigmKey         string
+	MetricKey           string
+	Kind                string
+	Direction           string
+	ExperimentID        string
+	ID                  string
+}
+
+func (q *Queries) UpdateEndpoint(ctx context.Context, arg UpdateEndpointParams) (MiskoEndpoint, error) {
+	row := q.db.QueryRow(ctx, updateEndpoint,
+		arg.TimepointID,
+		arg.BaselineTimepointID,
+		arg.ParadigmKey,
+		arg.MetricKey,
+		arg.Kind,
+		arg.Direction,
+		arg.ExperimentID,
+		arg.ID,
+	)
+	var i MiskoEndpoint
+	err := row.Scan(
+		&i.ID,
+		&i.ExperimentID,
+		&i.TimepointID,
+		&i.BaselineTimepointID,
+		&i.ParadigmKey,
+		&i.MetricKey,
+		&i.Kind,
+		&i.Direction,
+		&i.CreatedAt,
+		&i.UpdatedAt,
 	)
 	return i, err
 }
 
 const updateExperiment = `-- name: UpdateExperiment :one
 UPDATE misko.experiments
-SET code = coalesce($1, code),
-    title = coalesce($2, title),
-    description = CASE WHEN $3::text IS NULL THEN description ELSE NULLIF($3::text, '') END,
-    requires_control = coalesce($4, requires_control),
-    updated_at = now()
-WHERE id = $5
-RETURNING id, code, title, description, requires_control, created_at, updated_at
+SET code = $1, title = $2, description = $3, hypothesis = $4,
+    randomisation = $5, blinded = $6
+WHERE id = $7
+RETURNING id, code, title, description, hypothesis, randomisation, blinded, status, day_zero, started_at, completed_at, created_at, updated_at
 `
 
 type UpdateExperimentParams struct {
-	Code            *string
-	Title           *string
-	Description     *string
-	RequiresControl *bool
-	ID              string
+	Code          string
+	Title         string
+	Description   *string
+	Hypothesis    *string
+	Randomisation *string
+	Blinded       bool
+	ID            string
 }
 
-// A NULL argument leaves a column unchanged; an empty description clears it.
 func (q *Queries) UpdateExperiment(ctx context.Context, arg UpdateExperimentParams) (MiskoExperiment, error) {
 	row := q.db.QueryRow(ctx, updateExperiment,
 		arg.Code,
 		arg.Title,
 		arg.Description,
-		arg.RequiresControl,
+		arg.Hypothesis,
+		arg.Randomisation,
+		arg.Blinded,
 		arg.ID,
 	)
 	var i MiskoExperiment
@@ -686,7 +1119,13 @@ func (q *Queries) UpdateExperiment(ctx context.Context, arg UpdateExperimentPara
 		&i.Code,
 		&i.Title,
 		&i.Description,
-		&i.RequiresControl,
+		&i.Hypothesis,
+		&i.Randomisation,
+		&i.Blinded,
+		&i.Status,
+		&i.DayZero,
+		&i.StartedAt,
+		&i.CompletedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -695,29 +1134,29 @@ func (q *Queries) UpdateExperiment(ctx context.Context, arg UpdateExperimentPara
 
 const updateGroup = `-- name: UpdateGroup :one
 UPDATE misko.experiment_groups
-SET name = coalesce($1, name),
-    role = coalesce($2, role),
-    target_size = CASE WHEN $3::integer IS NULL THEN target_size ELSE NULLIF($3::integer, 0) END,
-    description = CASE WHEN $4::text IS NULL THEN description ELSE NULLIF($4::text, '') END,
-    updated_at = now()
-WHERE experiment_id = $5 AND id = $6
-RETURNING id, experiment_id, name, role, target_size, description, created_at, updated_at
+SET code = $1, name = $2, role = $3, disease_model_id = $4,
+    target_size = $5, description = $6
+WHERE experiment_id = $7 AND id = $8
+RETURNING id, experiment_id, code, name, role, disease_model_id, target_size, description, created_at, updated_at
 `
 
 type UpdateGroupParams struct {
-	Name         *string
-	Role         *string
-	TargetSize   *int32
-	Description  *string
-	ExperimentID string
-	ID           string
+	Code           string
+	Name           string
+	Role           string
+	DiseaseModelID *string
+	TargetSize     *int32
+	Description    *string
+	ExperimentID   string
+	ID             string
 }
 
-// A zero target size clears the target.
 func (q *Queries) UpdateGroup(ctx context.Context, arg UpdateGroupParams) (MiskoExperimentGroup, error) {
 	row := q.db.QueryRow(ctx, updateGroup,
+		arg.Code,
 		arg.Name,
 		arg.Role,
+		arg.DiseaseModelID,
 		arg.TargetSize,
 		arg.Description,
 		arg.ExperimentID,
@@ -727,8 +1166,10 @@ func (q *Queries) UpdateGroup(ctx context.Context, arg UpdateGroupParams) (Misko
 	err := row.Scan(
 		&i.ID,
 		&i.ExperimentID,
+		&i.Code,
 		&i.Name,
 		&i.Role,
+		&i.DiseaseModelID,
 		&i.TargetSize,
 		&i.Description,
 		&i.CreatedAt,
@@ -737,39 +1178,94 @@ func (q *Queries) UpdateGroup(ctx context.Context, arg UpdateGroupParams) (Misko
 	return i, err
 }
 
-const updatePhase = `-- name: UpdatePhase :one
-UPDATE misko.experiment_phases
-SET name = coalesce($1, name),
-    position = coalesce($2, position),
-    description = CASE WHEN $3::text IS NULL THEN description ELSE NULLIF($3::text, '') END,
-    updated_at = now()
-WHERE experiment_id = $4 AND id = $5
-RETURNING id, experiment_id, name, position, description, created_at, updated_at
+const updateRegimenItem = `-- name: UpdateRegimenItem :one
+UPDATE misko.regimen_items
+SET group_id = $1, purpose = $2, substance_id = $3, dose_micro = $4, unit = $5,
+    route = $6, frequency = $7, interval_days = $8, start_day = $9, end_day = $10
+WHERE experiment_id = $11 AND id = $12
+RETURNING id, experiment_id, group_id, purpose, substance_id, dose_micro, unit, route, frequency, interval_days, start_day, end_day, created_at, updated_at
 `
 
-type UpdatePhaseParams struct {
-	Name         *string
-	Position     *int32
-	Description  *string
+type UpdateRegimenItemParams struct {
+	GroupID      string
+	Purpose      string
+	SubstanceID  string
+	DoseMicro    int64
+	Unit         string
+	Route        string
+	Frequency    string
+	IntervalDays *int32
+	StartDay     int32
+	EndDay       int32
 	ExperimentID string
 	ID           string
 }
 
-func (q *Queries) UpdatePhase(ctx context.Context, arg UpdatePhaseParams) (MiskoExperimentPhase, error) {
-	row := q.db.QueryRow(ctx, updatePhase,
-		arg.Name,
-		arg.Position,
-		arg.Description,
+func (q *Queries) UpdateRegimenItem(ctx context.Context, arg UpdateRegimenItemParams) (MiskoRegimenItem, error) {
+	row := q.db.QueryRow(ctx, updateRegimenItem,
+		arg.GroupID,
+		arg.Purpose,
+		arg.SubstanceID,
+		arg.DoseMicro,
+		arg.Unit,
+		arg.Route,
+		arg.Frequency,
+		arg.IntervalDays,
+		arg.StartDay,
+		arg.EndDay,
 		arg.ExperimentID,
 		arg.ID,
 	)
-	var i MiskoExperimentPhase
+	var i MiskoRegimenItem
+	err := row.Scan(
+		&i.ID,
+		&i.ExperimentID,
+		&i.GroupID,
+		&i.Purpose,
+		&i.SubstanceID,
+		&i.DoseMicro,
+		&i.Unit,
+		&i.Route,
+		&i.Frequency,
+		&i.IntervalDays,
+		&i.StartDay,
+		&i.EndDay,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const updateTimepoint = `-- name: UpdateTimepoint :one
+UPDATE misko.timepoints
+SET name = $1, study_day = $2, position = $3
+WHERE experiment_id = $4 AND id = $5
+RETURNING id, experiment_id, name, study_day, position, created_at, updated_at
+`
+
+type UpdateTimepointParams struct {
+	Name         string
+	StudyDay     int32
+	Position     int32
+	ExperimentID string
+	ID           string
+}
+
+func (q *Queries) UpdateTimepoint(ctx context.Context, arg UpdateTimepointParams) (MiskoTimepoint, error) {
+	row := q.db.QueryRow(ctx, updateTimepoint,
+		arg.Name,
+		arg.StudyDay,
+		arg.Position,
+		arg.ExperimentID,
+		arg.ID,
+	)
+	var i MiskoTimepoint
 	err := row.Scan(
 		&i.ID,
 		&i.ExperimentID,
 		&i.Name,
+		&i.StudyDay,
 		&i.Position,
-		&i.Description,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)

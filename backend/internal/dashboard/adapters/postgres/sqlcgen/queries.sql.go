@@ -11,7 +11,7 @@ import (
 )
 
 const analysisStatusCounts = `-- name: AnalysisStatusCounts :many
-SELECT status, count(*) AS total FROM misko.analysis_runs
+SELECT status, count(*) AS total FROM misko.test_subject_jobs
 WHERE status IN ('QUEUED', 'RUNNING', 'FAILED')
 GROUP BY status
 `
@@ -21,6 +21,7 @@ type AnalysisStatusCountsRow struct {
 	Total  int64
 }
 
+// Jobs of animals of tests only: paradigm trials are not experiment work.
 func (q *Queries) AnalysisStatusCounts(ctx context.Context) ([]AnalysisStatusCountsRow, error) {
 	rows, err := q.db.Query(ctx, analysisStatusCounts)
 	if err != nil {
@@ -41,14 +42,49 @@ func (q *Queries) AnalysisStatusCounts(ctx context.Context) ([]AnalysisStatusCou
 	return items, nil
 }
 
+const experimentStatusCounts = `-- name: ExperimentStatusCounts :many
+
+SELECT status, count(*) AS total FROM misko.experiments GROUP BY status
+`
+
+type ExperimentStatusCountsRow struct {
+	Status string
+	Total  int64
+}
+
+// Read-only aggregation across the experiments, tests, media and calibration
+// domains and the test_subject_jobs view of analysed animals, same standing as
+// the reports package: these queries never write.
+func (q *Queries) ExperimentStatusCounts(ctx context.Context) ([]ExperimentStatusCountsRow, error) {
+	rows, err := q.db.Query(ctx, experimentStatusCounts)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ExperimentStatusCountsRow
+	for rows.Next() {
+		var i ExperimentStatusCountsRow
+		if err := rows.Scan(&i.Status, &i.Total); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const recentSucceededRuns = `-- name: RecentSucceededRuns :many
-SELECT r.id, r.finished_at, r.paradigm_key, r.paradigm_version, s.code AS subject_code, e.code AS experiment_code, t.id AS test_id
-FROM misko.analysis_runs r
-JOIN misko.tests t ON t.id = r.test_id
-JOIN misko.subjects s ON s.id = t.subject_id
-JOIN misko.experiments e ON e.id = t.experiment_id
+SELECT r.job_id AS id, r.finished_at, r.paradigm_key, r.paradigm_version, r.test_id, r.test_subject_id,
+       s.code AS subject_code, e.code AS experiment_code
+FROM misko.test_subject_jobs r
+JOIN misko.test_subjects ts ON ts.id = r.test_subject_id
+JOIN misko.allocations a ON a.id = ts.allocation_id
+JOIN misko.subjects s ON s.id = a.subject_id
+JOIN misko.experiments e ON e.id = r.experiment_id
 WHERE r.status = 'SUCCEEDED'
-ORDER BY r.finished_at DESC, r.id DESC
+ORDER BY r.finished_at DESC, r.job_id DESC
 LIMIT $1::integer
 `
 
@@ -57,9 +93,10 @@ type RecentSucceededRunsRow struct {
 	FinishedAt      *time.Time
 	ParadigmKey     string
 	ParadigmVersion int32
+	TestID          string
+	TestSubjectID   string
 	SubjectCode     string
 	ExperimentCode  string
-	TestID          string
 }
 
 func (q *Queries) RecentSucceededRuns(ctx context.Context, rowLimit int32) ([]RecentSucceededRunsRow, error) {
@@ -76,9 +113,10 @@ func (q *Queries) RecentSucceededRuns(ctx context.Context, rowLimit int32) ([]Re
 			&i.FinishedAt,
 			&i.ParadigmKey,
 			&i.ParadigmVersion,
+			&i.TestID,
+			&i.TestSubjectID,
 			&i.SubjectCode,
 			&i.ExperimentCode,
-			&i.TestID,
 		); err != nil {
 			return nil, err
 		}
@@ -90,42 +128,25 @@ func (q *Queries) RecentSucceededRuns(ctx context.Context, rowLimit int32) ([]Re
 	return items, nil
 }
 
-const recordingsAwaitingCalibrationCheck = `-- name: RecordingsAwaitingCalibrationCheck :many
-SELECT r.id AS recording_id, t.paradigm_key, t.paradigm_version, er.apparatus
-FROM misko.test_recordings r
-JOIN misko.video_assets a ON a.id = r.video_asset_id
-JOIN misko.tests t ON t.id = r.test_id
-JOIN misko.environment_revisions er ON er.id = t.environment_revision_id
-JOIN misko.effective_calibrations ec ON ec.recording_id = r.id
-WHERE a.status = 'VERIFIED' AND ec.calibration_id IS NULL
+const resultStatusCounts = `-- name: ResultStatusCounts :many
+SELECT status, count(*) AS total FROM misko.subject_results GROUP BY status
 `
 
-type RecordingsAwaitingCalibrationCheckRow struct {
-	RecordingID     string
-	ParadigmKey     string
-	ParadigmVersion int32
-	Apparatus       []byte
+type ResultStatusCountsRow struct {
+	Status string
+	Total  int64
 }
 
-// Every verified recording without an effective calibration: neither its own
-// latest calibration nor, when it has none, its environment default is VALID. Whether the paradigm
-// actually requires calibration for it is a rule of the paradigm catalog, not of
-// the database, so it is decided in Go from this candidate set (mirrors the single-recording calibration status check).
-func (q *Queries) RecordingsAwaitingCalibrationCheck(ctx context.Context) ([]RecordingsAwaitingCalibrationCheckRow, error) {
-	rows, err := q.db.Query(ctx, recordingsAwaitingCalibrationCheck)
+func (q *Queries) ResultStatusCounts(ctx context.Context) ([]ResultStatusCountsRow, error) {
+	rows, err := q.db.Query(ctx, resultStatusCounts)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []RecordingsAwaitingCalibrationCheckRow
+	var items []ResultStatusCountsRow
 	for rows.Next() {
-		var i RecordingsAwaitingCalibrationCheckRow
-		if err := rows.Scan(
-			&i.RecordingID,
-			&i.ParadigmKey,
-			&i.ParadigmVersion,
-			&i.Apparatus,
-		); err != nil {
+		var i ResultStatusCountsRow
+		if err := rows.Scan(&i.Status, &i.Total); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -137,7 +158,6 @@ func (q *Queries) RecordingsAwaitingCalibrationCheck(ctx context.Context) ([]Rec
 }
 
 const testStatusCounts = `-- name: TestStatusCounts :many
-
 SELECT status, count(*) AS total FROM misko.tests GROUP BY status
 `
 
@@ -146,8 +166,6 @@ type TestStatusCountsRow struct {
 	Total  int64
 }
 
-// Read-only aggregation across the tests, analysis and calibration domains,
-// same standing as the reports package: these queries never write.
 func (q *Queries) TestStatusCounts(ctx context.Context) ([]TestStatusCountsRow, error) {
 	rows, err := q.db.Query(ctx, testStatusCounts)
 	if err != nil {
@@ -168,12 +186,67 @@ func (q *Queries) TestStatusCounts(ctx context.Context) ([]TestStatusCountsRow, 
 	return items, nil
 }
 
+const testSubjectsAwaitingCalibrationCheck = `-- name: TestSubjectsAwaitingCalibrationCheck :many
+SELECT ts.id AS test_subject_id, t.paradigm_key, t.paradigm_version, er.parameters
+FROM misko.test_subjects ts
+JOIN misko.effective_calibrations ec ON ec.test_subject_id = ts.id
+JOIN misko.test_recordings r ON r.id = ec.recording_id
+JOIN misko.video_assets a ON a.id = r.video_asset_id
+JOIN misko.tests t ON t.id = ts.test_id
+JOIN misko.allocations al ON al.id = ts.allocation_id
+JOIN misko.environment_revisions er ON er.id = ts.environment_revision_id
+WHERE a.status = 'VERIFIED' AND ec.calibration_id IS NULL AND t.status <> 'CANCELLED' AND al.excluded_at IS NULL
+`
+
+type TestSubjectsAwaitingCalibrationCheckRow struct {
+	TestSubjectID   string
+	ParadigmKey     string
+	ParadigmVersion int32
+	Parameters      []byte
+}
+
+// Every animal of a test that is not cancelled, whose current video is
+// verified, that is not excluded and whose arena has no valid effective
+// calibration (neither its own override for this video nor the arena default).
+// Whether the paradigm actually requires one is a rule of the paradigm catalog,
+// so it is decided in Go from this candidate set, the same way the scheduler
+// and the calibration context decide it.
+func (q *Queries) TestSubjectsAwaitingCalibrationCheck(ctx context.Context) ([]TestSubjectsAwaitingCalibrationCheckRow, error) {
+	rows, err := q.db.Query(ctx, testSubjectsAwaitingCalibrationCheck)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []TestSubjectsAwaitingCalibrationCheckRow
+	for rows.Next() {
+		var i TestSubjectsAwaitingCalibrationCheckRow
+		if err := rows.Scan(
+			&i.TestSubjectID,
+			&i.ParadigmKey,
+			&i.ParadigmVersion,
+			&i.Parameters,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const upcomingTests = `-- name: UpcomingTests :many
-SELECT t.id, t.scheduled_at, t.paradigm_key, t.paradigm_version, s.code AS subject_code, e.code AS experiment_code
+SELECT t.id, t.scheduled_at, t.paradigm_key, t.paradigm_version, e.code AS experiment_code, tp.name AS timepoint_name,
+       coalesce(array_agg(s.code ORDER BY lower(s.code)) FILTER (WHERE s.code IS NOT NULL), '{}')::text[] AS subject_codes
 FROM misko.tests t
-JOIN misko.subjects s ON s.id = t.subject_id
 JOIN misko.experiments e ON e.id = t.experiment_id
+JOIN misko.timepoints tp ON tp.id = t.timepoint_id
+LEFT JOIN misko.test_subjects ts ON ts.test_id = t.id
+LEFT JOIN misko.allocations a ON a.id = ts.allocation_id
+LEFT JOIN misko.subjects s ON s.id = a.subject_id
 WHERE t.status = 'PLANNED'
+GROUP BY t.id, e.code, tp.name
 ORDER BY t.scheduled_at ASC, t.id
 LIMIT $1::integer
 `
@@ -183,8 +256,9 @@ type UpcomingTestsRow struct {
 	ScheduledAt     time.Time
 	ParadigmKey     string
 	ParadigmVersion int32
-	SubjectCode     string
 	ExperimentCode  string
+	TimepointName   string
+	SubjectCodes    []string
 }
 
 func (q *Queries) UpcomingTests(ctx context.Context, rowLimit int32) ([]UpcomingTestsRow, error) {
@@ -201,8 +275,9 @@ func (q *Queries) UpcomingTests(ctx context.Context, rowLimit int32) ([]Upcoming
 			&i.ScheduledAt,
 			&i.ParadigmKey,
 			&i.ParadigmVersion,
-			&i.SubjectCode,
 			&i.ExperimentCode,
+			&i.TimepointName,
+			&i.SubjectCodes,
 		); err != nil {
 			return nil, err
 		}

@@ -38,10 +38,48 @@ into the use cases and mounts every route. `internal/access/domain` holds the
 shared permission kernel, and a use case calls `actor.Require(permission)`
 before it touches a store.
 
+The domains follow the study model (see [Domain model](../domain/)):
+
+| Package | Owns |
+|---|---|
+| `identity`, `laboratory` | Users, sign-in, roles, the laboratory singleton |
+| `catalog` | Substances and disease models |
+| `subjects` | Animals and their body weights |
+| `experiments` | Experiments and their lifecycle, groups, regimen items, timepoints, endpoints, allocation and exclusion |
+| `dosing` | Administrations, the daily dosing schedule, induction outcomes |
+| `paradigms` | The versioned paradigm catalog and the metric engine (code only) |
+| `environments`, `protocols` | Arenas with measurement revisions; test batteries of an experiment |
+| `tests` | Sessions, the animals in them with their arenas, trials, comments |
+| `media`, `calibration` | Videos (of tests, and assets for trials); calibrations owned by an arena, an animal of a test or a paradigm trial |
+| `analysis` | The analysis service: jobs, workers and capabilities, leases, outputs, metrics, events and QC |
+| `subjectanalysis` | The experiment side of analysis: which job analyses which animal, the orchestrator, review |
+| `trials` | Paradigm trials: a paradigm tried on one video in one arena, outside any experiment |
+| `reports`, `dashboard` | The read-only study report, CSV export and start-screen counts |
+
+Modules do not import each other. Where one needs another at run time, the
+consumer declares a small interface (a port) in its application package and
+`internal/bootstrap` wires an adapter that calls the other module: the
+analysis service's port (`Submit`, `Get`, `Jobs`, `ByRequester`, `Results`),
+the media asset port, the calibration port and the environment revision port.
+Where one refers to another's rows, for example an allocation to a subject, the
+database enforces it with foreign keys, and the reporting views in the schema
+join the tables for the report. The paradigm catalog is a shared kernel that
+only each module's `adapters/catalog` reads.
+
+```
+trials ───────────┐                         ┌──► media (source videos)
+                  ├──► analysis (port) ─────┤
+subjectanalysis ──┘        │                └──► calibration (snapshot)
+   │                       └──► listener: "job succeeded" ──► subjectanalysis
+   └──► reports, dashboard (views over accepted jobs of animals)
+```
+
 A policy test in `tests/architecture` enforces the shape: domain and
-application packages may not import adapters, and domain code is limited to a
-small allowlist of standard library packages. A layering mistake fails the
-build rather than waiting for review.
+application packages may not import adapters, domain code is limited to a
+small allowlist of standard library packages, adapters import only their own
+module, the analysis service never imports the experiment side or trials, and
+trials never import the experiment side. A layering mistake fails the build
+rather than waiting for review.
 
 ## List queries
 
@@ -56,7 +94,7 @@ paging. On the panel a single `DataTable` component and the `useDataTable`
 composable consume this envelope, so search, paging and sorting behave the same
 way on every screen.
 
-## How analysis runs
+## How analysis works
 
 The camera and computer vision side is not a second service with its own
 database. It is a worker process that authenticates against this API:
@@ -72,12 +110,25 @@ Panel ──► Go API ──► PostgreSQL (records, metrics, events)
    Cloud Storage (original video, analyzed video, trajectory)
 ```
 
-A worker claims a queued run, reads the pinned source video, and uploads an
-analyzed video and a `misko.trajectory.v1` trajectory. It does not send metrics.
+The analysis service analyses "this video, with this paradigm version, these
+parameters and this calibration". A job is an immutable input snapshot (the
+source video generation and clip, the resolved parameters, a copy of the
+calibration with its crop, transform and zones, and an opaque requester: an
+animal of a test or a paradigm trial) plus its execution state (attempts and
+lease, outputs, metrics, events, QC). Two modules request jobs: the experiment
+side submits one per animal of a test when the animal is ready, and paradigm
+trials submit one per trial video and again on demand with changed thresholds.
+A worker claims a job with its calibration snapshot, whose crop is the arena's
+region of the frame, reads the pinned source video and uploads an analysed
+video and a `misko.trajectory.v1` trajectory. It does not send metrics, and it
+never learns the animal's group or treatment.
 The API verifies every uploaded object against its declared size, checksum and
 content type, applies the paradigm's quality rules, and then the Go metric
 engine computes the metrics and events from the trajectory. That keeps one
 definition of every measurement inside the API, whatever produced the tracking.
+A result counts in the study report only after a person accepts it, and only
+jobs linked to animals of tests can be reviewed: a paradigm trial's job never
+reaches review, reports or the dashboard.
 
 Heavy data stays in the bucket: the database holds records, metrics, events and
 references to objects, never video bytes.
@@ -85,9 +136,12 @@ references to objects, never video bytes.
 ## Deployment
 
 The stack runs with Docker Compose: PostgreSQL, the API, the jobs process that
-queues analysis runs, and Nginx serving the panel. The schema and the first
+ticks the scheduler (lease expiry, automatic jobs of animals and trials), and
+Nginx serving the panel. The schema and the first
 administrator are installed by explicit commands (`bootstrap migrate` and the
 one-time `bootstrap setup`), not on container start. `migrate` applies numbered
 SQL migrations in one transaction and records them, and every deploy runs it
-before starting the new containers. Backend, frontend and worker each have their own
+before starting the new containers. The schema was rebuilt from scratch for the
+study model; a database installed with the earlier migrations is refused and
+must be reset. Backend, frontend and worker each have their own
 path-filtered GitHub Actions pipeline.

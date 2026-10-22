@@ -10,7 +10,7 @@ from typing import Any
 
 from . import ALGORITHM_VERSION, TIME_MAPPING_VERSION
 from .api import ApiError, WorkerApi
-from .pipeline import NonRetryable, analyze, trajectory_document
+from .pipeline import NonRetryable, analyze, check_supported, trajectory_document
 from .storage import StorageError, crc32c_base64, download, upload
 from .tracking import TrackerSettings
 from .video import CorruptVideo
@@ -52,6 +52,14 @@ def run_once(api: WorkerApi, work_dir: Path, heartbeat_s: float = 60.0, settings
         return False
     run = job["run"]
     run_id, attempt = run["id"], run["attempt"]
+    subject = (job.get("testSubject") or {}).get("id")
+    try:
+        check_supported(job)
+    except NonRetryable as error:
+        # Nothing is downloaded or leased further for a paradigm this worker cannot measure.
+        _report(api, run_id, attempt, str(error), retryable=False)
+        return True
+    log.info("run claimed", extra={"run": run_id, "attempt": attempt, "testSubject": subject})
     beat = _Heartbeat(api, run_id, attempt, heartbeat_s)
     beat.start()
     try:

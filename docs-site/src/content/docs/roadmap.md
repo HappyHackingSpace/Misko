@@ -37,9 +37,9 @@ Done: `Laboratory` singleton and `Environment` models + migrations; the installa
 
 ## Step 2 - Scientific contract
 
-- Code-backed `ParadigmSpec` registry (11 paradigms): `MWM`, `OPEN_FIELD`, `EPM`, `ROTAROD`, `Y_MAZE`, `NOVEL_OBJECT`, `BARNES_MAZE`, `THREE_CHAMBER`, `LIGHT_DARK`, `POLE`, `TREADMILL`. ✅
+- Code-backed `ParadigmSpec` registry (4 paradigms): `MWM`, `NOVEL_OBJECT`, `POLE`, `TREADMILL`. On 2026-10-15 the catalog was trimmed to these four; the other seven paradigms were removed. ✅
 - Code-backed metric dictionary from [Measurement architecture](../measurements/). ✅
-- Canonical units: results use `cm`, `cm_s`, `s`, `count`, `ratio`, `percent`, `deg`, `rpm`, `g`, `boolean`; apparatus parameters add `mm` and `c`. ✅
+- Canonical units: results use `cm`, `cm_s`, `s`, `count`, `ratio`, `percent`, `deg`, `g`, `boolean`; apparatus parameters add `mm` and `c`. ✅
 - Per-paradigm parameters, zones, metrics, QC requirements and artifact expectations. ✅
 - Per-metric `valueType` / `validRange` / `templated` (zone-keyed) - the contract both manual entry and CV validate against. ✅
 - Result schema versioning with `schemaVersion`. ✅
@@ -106,9 +106,6 @@ physical rig is the `Environment`; calibration stays in Step 5.
 | Paradigm | MVP metrics |
 |---|---|
 | MWM | Escape latency, path length, swim speed, quadrant time, thigmotaxis, platform crossings for probe trials. |
-| Open Field | Distance, mean speed, center time, periphery time, immobility. |
-| EPM | Open arm time, closed arm time, open arm entries, closed arm entries. |
-| Rotarod | Trial duration and fall candidate events, with manual review at first. |
 
 ## Step 7 - Quality control and review
 
@@ -123,15 +120,14 @@ physical rig is the `Environment`; calibration stays in Step 5.
 - Scenario dashboards aggregating their tests; compare subject groups (via `Subject.groupName`).
 - Per-subject history across tests.
 - MWM acquisition curves and probe summaries.
-- Open Field and EPM summaries.
-- Rotarod repeated-trial curves.
+- Novel object, pole test and treadmill summaries.
 - CSV and JSON exports with metric definitions and QC status.
 
 ## Step 9 - Advanced behavior modules
 
 - Optional pose-estimation adapter: DeepLabCut, SLEAP or another open source model.
 - Behavior classifiers for rearing, grooming, freezing, risk assessment and head direction.
-- Improved Rotarod fall detection.
+- Pose-based event detection where the body centre is not enough (nose-directed novel object exploration, the pole turn from head direction).
 - Multi-animal support after single-animal workflows are stable.
 
 ## Step 10 - Live monitoring and sources

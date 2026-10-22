@@ -34,7 +34,12 @@ export async function api(path, { method = "GET", body, query, signal } = {}) {
   const token = getToken();
   const response = await fetch(`/api${path}${search.size ? `?${search}` : ""}`, {
     method,
-    headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    // Catalog wording (paradigm names, parameter labels) comes back in this language.
+    headers: {
+      "Content-Type": "application/json",
+      "Accept-Language": i18n.global.locale.value,
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
     body: body === undefined ? undefined : JSON.stringify(body),
     signal,
   });

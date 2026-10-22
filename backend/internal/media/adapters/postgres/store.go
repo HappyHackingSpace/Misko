@@ -1,5 +1,6 @@
 // Package postgres implements video asset and recording persistence with
-// sqlc-generated queries.
+// sqlc-generated queries. Database rules (a video only for a started test, one
+// linear supersede chain per test) are mapped to the application's errors.
 package postgres
 
 import (
@@ -16,8 +17,12 @@ import (
 
 // constraintErrors maps named constraints to the error a violation means.
 var constraintErrors = map[string]error{
-	"test_recordings_test_fkey": application.ErrTestNotFound,
-	"video_assets_immutable":    domain.ErrAlreadyFinalized,
+	"test_recordings_test_fkey":       application.ErrTestNotFound,
+	"test_recordings_test_started":    domain.ErrTestNotStarted,
+	"test_recordings_first_key":       application.ErrConcurrentUpload,
+	"test_recordings_supersedes_key":  application.ErrConcurrentUpload,
+	"test_recordings_supersedes_fkey": application.ErrConcurrentUpload,
+	"video_assets_immutable":          domain.ErrAlreadyFinalized,
 }
 
 type Store struct {
@@ -44,8 +49,42 @@ func (s *Store) Test(ctx context.Context, id string) (application.TestRef, error
 	return application.TestRef{ID: row.ID, ExperimentID: row.ExperimentID, Status: row.Status}, nil
 }
 
+// LockTest must run inside Transaction; the lock lasts until it ends.
+func (s *Store) LockTest(ctx context.Context, id string) (application.TestRef, error) {
+	if !pgtx.ValidUUID(id) {
+		return application.TestRef{}, application.ErrTestNotFound
+	}
+	row, err := s.queries.LockTestRef(ctx, id)
+	if err != nil {
+		return application.TestRef{}, translate(err, application.ErrTestNotFound, "lock test")
+	}
+	return application.TestRef{ID: row.ID, ExperimentID: row.ExperimentID, Status: row.Status}, nil
+}
+
+func (s *Store) CurrentRecording(ctx context.Context, testID string) (domain.Recording, error) {
+	if !pgtx.ValidUUID(testID) {
+		return domain.Recording{}, application.ErrRecordingNotFound
+	}
+	row, err := s.queries.GetCurrentRecording(ctx, testID)
+	if err != nil {
+		return domain.Recording{}, translate(err, application.ErrRecordingNotFound, "get current recording")
+	}
+	return toRecording(sqlcgen.GetRecordingRow(row)), nil
+}
+
+func (s *Store) NewestRecordingID(ctx context.Context, testID string) (string, error) {
+	id, err := s.queries.GetNewestRecordingID(ctx, testID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("get newest recording: %w", err)
+	}
+	return id, nil
+}
+
 // CreateRecording must run inside Transaction so the asset and recording are stored together.
-func (s *Store) CreateRecording(ctx context.Context, test application.TestRef, asset domain.Asset, clip domain.Clip) (domain.Recording, error) {
+func (s *Store) CreateRecording(ctx context.Context, test application.TestRef, asset domain.Asset, clip domain.Clip, supersedesID string) (domain.Recording, error) {
 	a, err := s.queries.CreateAsset(ctx, sqlcgen.CreateAssetParams{
 		Bucket: asset.Bucket, TestID: test.ID, ContentType: asset.ContentType, FileName: optional(asset.FileName),
 		SizeBytes: asset.SizeBytes, Crc32c: int64(asset.CRC32C), CreatedBy: asset.CreatedBy,
@@ -54,14 +93,15 @@ func (s *Store) CreateRecording(ctx context.Context, test application.TestRef, a
 		return domain.Recording{}, translate(err, nil, "create video asset")
 	}
 	r, err := s.queries.CreateRecording(ctx, sqlcgen.CreateRecordingParams{
-		ExperimentID: test.ExperimentID, TestID: test.ID, VideoAssetID: a.ID, ClipStartUs: clip.StartUs, ClipEndUs: clip.EndUs, CreatedBy: asset.CreatedBy,
+		ExperimentID: test.ExperimentID, TestID: test.ID, VideoAssetID: a.ID, SupersedesID: optional(supersedesID),
+		ClipStartUs: clip.StartUs, ClipEndUs: clip.EndUs, CreatedBy: asset.CreatedBy,
 	})
 	if err != nil {
 		return domain.Recording{}, translate(err, nil, "create recording")
 	}
 	return domain.Recording{
-		ID: r.ID, ExperimentID: r.ExperimentID, TestID: r.TestID, Clip: domain.Clip{StartUs: r.ClipStartUs, EndUs: r.ClipEndUs},
-		Asset: toAsset(a), CreatedBy: r.CreatedBy, CreatedAt: r.CreatedAt.UTC(),
+		ID: r.ID, ExperimentID: r.ExperimentID, TestID: r.TestID, SupersedesID: value(r.SupersedesID), Current: false,
+		Clip: domain.Clip{StartUs: r.ClipStartUs, EndUs: r.ClipEndUs}, Asset: toAsset(a), CreatedBy: r.CreatedBy, CreatedAt: r.CreatedAt.UTC(),
 	}, nil
 }
 
@@ -113,6 +153,40 @@ func (s *Store) FinishAsset(ctx context.Context, a domain.Asset) (domain.Asset, 
 	return toAsset(row), nil
 }
 
+func (s *Store) CreateFolderAsset(ctx context.Context, folder string, asset domain.Asset) (domain.Asset, error) {
+	row, err := s.queries.CreateFolderAsset(ctx, sqlcgen.CreateFolderAssetParams{
+		Bucket: asset.Bucket, Folder: folder, ContentType: asset.ContentType, FileName: optional(asset.FileName),
+		SizeBytes: asset.SizeBytes, Crc32c: int64(asset.CRC32C), CreatedBy: asset.CreatedBy,
+	})
+	if err != nil {
+		return domain.Asset{}, translate(err, nil, "create video asset")
+	}
+	return toAsset(row), nil
+}
+
+func (s *Store) Asset(ctx context.Context, id string) (domain.Asset, error) {
+	if !pgtx.ValidUUID(id) {
+		return domain.Asset{}, application.ErrAssetNotFound
+	}
+	row, err := s.queries.GetAsset(ctx, id)
+	if err != nil {
+		return domain.Asset{}, translate(err, application.ErrAssetNotFound, "get video asset")
+	}
+	return toAsset(row), nil
+}
+
+// LockAsset must run inside Transaction; the lock lasts until it ends.
+func (s *Store) LockAsset(ctx context.Context, id string) (domain.Asset, error) {
+	if !pgtx.ValidUUID(id) {
+		return domain.Asset{}, application.ErrAssetNotFound
+	}
+	row, err := s.queries.LockAsset(ctx, id)
+	if err != nil {
+		return domain.Asset{}, translate(err, application.ErrAssetNotFound, "lock video asset")
+	}
+	return toAsset(row), nil
+}
+
 // translate maps a missing row to notFound and named constraint violations to
 // their errors. Other errors are wrapped so PostgreSQL codes stay inspectable.
 func translate(err, notFound error, operation string) error {
@@ -143,8 +217,8 @@ func toAsset(r sqlcgen.MiskoVideoAsset) domain.Asset {
 
 func toRecording(r sqlcgen.GetRecordingRow) domain.Recording {
 	return domain.Recording{
-		ID: r.ID, ExperimentID: r.ExperimentID, TestID: r.TestID, Clip: domain.Clip{StartUs: r.ClipStartUs, EndUs: r.ClipEndUs},
-		CreatedBy: r.CreatedBy, CreatedAt: r.CreatedAt.UTC(),
+		ID: r.ID, ExperimentID: r.ExperimentID, TestID: r.TestID, SupersedesID: value(r.SupersedesID), Current: r.Current,
+		Clip: domain.Clip{StartUs: r.ClipStartUs, EndUs: r.ClipEndUs}, CreatedBy: r.CreatedBy, CreatedAt: r.CreatedAt.UTC(),
 		Asset: toAsset(sqlcgen.MiskoVideoAsset{
 			ID: r.AssetID, Kind: r.Kind, Bucket: r.Bucket, ObjectName: r.ObjectName, ContentType: r.ContentType, FileName: r.FileName,
 			SizeBytes: r.SizeBytes, Crc32c: r.Crc32c, Status: r.Status, Generation: r.Generation, RejectionReason: r.RejectionReason,

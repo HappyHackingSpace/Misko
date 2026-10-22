@@ -21,33 +21,139 @@ Every result passes through four layers:
 
 CV tracks the animal. Mişko defines the scientific contract.
 
-## Paradigm spec pages
+## Paradigms are templates
 
-Each paradigm needs a detail page with:
+A paradigm is a versioned template defined in code. Environments are created
+from it, and protocol steps refer to those environments. Every parameter has a
+scope that says where it is set:
 
-- Identity: key, name, category, trial types.
-- Apparatus parameters: physical values with units, validation, defaults, and min/max values.
-- Session parameters: trial duration, start position, trial index, protocol variant.
-- Zones: zone keys, geometry type, coordinate system, and derivation rule.
-- Metrics: required and optional metric keys, units, definitions, and normalization.
-- Event types: the events a run can collect, their payloads, and the CV `detect` spec for each.
-- QC requirements: tracking confidence, dropped frames, calibration error, occlusion, lighting, and contrast.
-- Artifacts: video, trajectory, heatmap, calibration image, and debug overlay URLs.
+| Scope | Set on | Required | Examples |
+|---|---|---|---|
+| `APPARATUS` | Environment | Yes, measured on the physical setup | arena width, tank diameter, pole length |
+| `ANALYSIS` | Environment | No, defaults suit most setups | wall zone width, time on platform to escape, minimum total exploration |
+| `SESSION` | Protocol step | No, defaults apply | trial cut-off, treadmill start and end speed |
+
+Each parameter carries a label and a help text that says what to measure or what
+the value changes. Names, labels, help texts, zone and event names, plain metric
+descriptions and the technical definitions (metric definitions, missing-data
+rules, zone geometry, event definitions) are written in every supported
+language (English and Turkish) next to the definition, and the API returns them
+in the language the panel asks for (`Accept-Language`, or `?lang=tr`).
+Formulas stay as written, since they are expressions rather than prose. The
+published manifests are pinned in English, so a translation can never change
+the contract unnoticed. The panel shows ratios as percentages and switches as
+on and off.
 
 ```ts
-interface ParadigmSpec {
-  key: "MWM" | "OPEN_FIELD" | "EPM" | "ROTAROD";
-  name: string;
-  category: "learning_memory" | "anxiety" | "motor" | "social";
-  trialTypes: TrialTypeDef[];
-  apparatusParameters: FieldDef[];
-  sessionParameters: FieldDef[];
-  zones(config: ApparatusConfig): ZoneDef[];
-  metrics: MetricDefinition[];
-  eventTypes: EventTypeDef[];
-  qc: QualityRequirement[];
+interface ParadigmManifest {
+  key: string;
+  name: string;           // in the response language
+  description: string;    // what the test is and what it measures
+  category: "LEARNING_MEMORY" | "MOTOR";
+  trialTypes: { key: string; label: string }[];
+  parameters: {
+    key: string;
+    scope: "APPARATUS" | "ANALYSIS" | "SESSION";
+    label: string;
+    help: string;
+    unit: "cm" | "cm_s" | "s" | "count" | "ratio" | "boolean";
+    valueType: "number" | "integer";
+    min: number;
+    max: number;
+    default: number;
+  }[];
+  zones: { key: string; label: string; role: string; geometry: string }[];
+  metrics: { key: string; label: string; description: string; unit: string;
+             definition: string; formula: string; missingWhen: string }[];
+  qc: { key: string; operator: string; value: number; unit: string }[];
 }
 ```
+
+Changing a calculation, a range or a default publishes a new paradigm version.
+Wording and help texts can be improved without a new version.
+
+## Every paradigm is tracked
+
+There is no manual analysis. A worker tracks the subject's centroid in the
+calibration's centimetre frame for every paradigm, and the metric engine in
+`backend/internal/paradigms/domain` derives every event and metric from the
+samples and the zones; the worker never decides events and the API never
+accepts metrics from it. A person only reviews the result (accepts or rejects
+it). The jobs process queues one run per subject once the test's video is
+verified, the calibration with every required zone is valid and an enabled
+worker has the paradigm version as a capability.
+
+| Paradigm | Camera and frame | Zones | Derived events |
+|---|---|---|---|
+| `MWM` | Above the tank; tank-centred cm, x east, y north | from parameters (platform, target quadrant, wall zone) | `in_platform` intervals, `platform_entry` points |
+| `NOVEL_OBJECT` | Above the arena; origin at a floor corner, x right, y down the image | calibrated `novel_object`, `familiar_object` | `exploration` intervals labelled `novel` or `familiar` |
+| `POLE` | Side of the pole; x horizontal, y the height above the base | calibrated `pole`, `base` | `turn_complete`, `base_reached`, `fall` (points, each once) |
+| `TREADMILL` | Side of the lane; x from the shock grid end (0) to the front | calibrated `shock_grid` | `shock` points, `exhaustion` (point, once) |
+
+Every rule threshold is an `ANALYSIS` parameter with a standard default, so a
+lab can tune it per environment:
+
+- **Novel object.** An exploration bout is a stay of the centroid in an
+  object's zone lasting at least `min_bout_s` (0.3 s); the zone is drawn
+  around the object to include the exploration distance (about 2 cm). Known
+  limit: the body centre, not the nose direction, decides, so sitting on the
+  object counts as exploration. Novel, familiar and total exploration time are
+  the sums of the bouts; the discrimination index is
+  (novel - familiar) / (novel + familiar), missing below
+  `min_total_exploration_s`.
+- **Pole.** The turn completes at the first sample on the pole
+  `turn_descent_cm` (2 cm) below the highest point so far. The base is reached
+  at the first sample in `base` after a sample on the pole. A fall is leaving
+  the pole (to the base or anywhere else) between two samples at most
+  `max_sample_gap_s` apart with a downward speed above `fall_speed_cm_s`
+  (80 cm/s); after a fall the base is not reached. Samples after
+  `max_trial_duration_s` are ignored.
+- **Treadmill.** Every stay on the shock grid lasting `min_shock_dwell_s`
+  (0.2 s) is a shock; the first stay lasting `exhaustion_dwell_s` (5 s) is
+  exhaustion. The run ends at exhaustion or, without it, at the end of the
+  clip, censored at `max_trial_duration_s`; the distance is the belt speed
+  integrated over the run.
+
+Missing metrics carry a reason instead of zero: `NO_VALID_INTERVALS`,
+`EVENT_NOT_OBSERVED`, `ZERO_DENOMINATOR`, `INCOMPLETE_RECORDING` and
+`BELOW_EXPLORATION_CRITERION`. There is no `NOT_SCORED` any more.
+
+Every run feeds the per-subject result, which opens `PENDING` for human
+review; only accepted results enter the report.
+
+### Zone requirements
+
+Zones come from one of two places:
+
+- **From parameters.** The water maze derives its zones from the
+  environment's measurements (the platform position and diameter, the wall
+  zone width). Its calibration world points must use the frame those zones are
+  defined in: **tank-centred** ((0, 0) at the tank centre, x east, y north, so
+  the wall points are (r, 0), (0, r), (-r, 0) and (0, -r) with
+  r = tank diameter / 2).
+- **Calibrated.** The novel object, pole and treadmill zones carry the
+  apparatus geometry the video needs (objects, pole, base, shock grid). They
+  are drawn once as circles or polygons on the camera frame with the
+  environment's calibration; a per subject override on the test video changes
+  them when needed (for example the novel object on the other side), and a key
+  may have several shapes. Shapes are stored as drawn in pixels and converted
+  to centimetres with the calibration's fitted transform; they must lie inside
+  the frame and never change after the calibration is saved (migration
+  `014_calibration_zones.sql`). Until a valid calibration with every required
+  zone applies, the subject stays `WAITING_FOR_CALIBRATION` and is not
+  analysed. The novel object arena's calibration points lie in the arena
+  (0 to width, 0 to depth); the side views of the pole and the treadmill are
+  calibrated on the `APPARATUS_SIDE` plane with at least four non-collinear
+  points of the rig and choose their own frame.
+
+### Inferred samples
+
+`misko.trajectory.v1` has an optional `inferred` flag per sample. A worker may
+fill a stretch of frames where the animal is hidden with samples that are
+`tracked` with `inferred: true`; they count as tracked, but not in the
+tracking confidence mean. No paradigm of the current catalog needs this and the
+bundled worker sends no inferred samples; frames without a detection stay
+lost.
 
 ## No pass/fail verdict
 
@@ -59,9 +165,9 @@ data quality, not behavior.
 
 ## Event types and CV detection
 
-A run collects **events**; metrics are derived from them. The same event stream
-is produced by manual entry today and by the CV service later, so the event layer
-is the contract between Mişko and computer vision.
+A run collects **events**; metrics are derived from them. The metric engine
+derives the event stream from the CV service's trajectory and the calibrated
+zones, so the event layer is the contract between Mişko and computer vision.
 
 Each event type declares a `detect` spec describing how the CV service derives it
 from the trajectory and zones:
@@ -84,21 +190,22 @@ type DetectSpec =
 The generic kinds (`zone_transition`, `zone_first_enter`, `speed_below`) are
 **data-driven**: a paradigm that only uses them needs no new CV code, declaring
 the event types is enough. `custom` flags an event that needs a dedicated
-detector (e.g. a rotarod fall, a social interaction). Event types are exposed on
+detector. The published paradigms derive their events from zones and speeds in
+the metric engine, so none needs one. Event types are exposed on
 the paradigm detail API (`GET /api/paradigms/:key` -> `eventTypes`).
 
 ## Localization
 
-The paradigm and metric vocabulary is the scientific contract and stays
-Turkish-only in the spec source (the default language). The read-only inspection
-API localizes free-text labels and definitions through an optional `?lang=`
-query parameter on `GET /api/paradigms`, `GET /api/paradigms/:key` and
-`GET /api/paradigms/metrics`. Supported values are `tr` (default) and `en`; an
-unknown or missing value falls back to `tr`, and any untranslated label or
-definition falls back to its Turkish source. The backend stays the single source
-of truth (catalog in `backend/src/config/i18n.js`), so the CV service and the
-frontend share the same vocabulary with no drift. Small fixed enums (zone
-type/role, species) are translated by the frontend UI dictionary instead.
+Catalog wording lives in the paradigm definitions in
+`backend/internal/paradigms/domain`, written in English and Turkish side by side
+(`T("Arena width", "Arena genişliği")`). `GET /api/paradigms`,
+`GET /api/paradigms/{key}` and `GET /api/paradigms/{key}/versions/{version}`
+answer in the language of `?lang=` (`en` or `tr`), otherwise of
+`Accept-Language`, otherwise English, and set `Content-Language`. The panel
+sends its chosen language with every request. A test fails when any name,
+label, help text or metric description is missing in a language, looks like a
+key, or uses an em dash. Small fixed enums (units, categories, scopes, quality
+rule names) are translated by the panel's own dictionary.
 
 ## Measurement dictionary
 
@@ -109,7 +216,7 @@ calculations.
 interface MetricDefinition {
   key: string;
   paradigmKeys: string[];
-  unit: "cm" | "cm_s" | "s" | "count" | "ratio" | "percent" | "deg" | "rpm" | "boolean";
+  unit: "cm" | "cm_s" | "s" | "count" | "ratio" | "percent" | "deg" | "boolean";
   valueType: "number" | "integer" | "boolean" | "object";
   required: boolean;
   definition: string;
@@ -122,7 +229,7 @@ interface MetricDefinition {
 ```
 
 Canonical result units: positions and distances in `cm`, speed in `cm_s`,
-duration in `s`, weight in `g`, angles in `deg`, rotation speed in `rpm`, ratios
+duration in `s`, weight in `g`, angles in `deg`, ratios
 as `ratio` (`0..1`) or `percent`, event flags as `boolean`, and counts as
 `count`. Apparatus parameters reuse this enum and add `mm` (small rig diameters)
 and `c` (water temperature in Celsius), which never appear in result metrics.
@@ -145,9 +252,9 @@ Pixel values stay out of Mişko result metrics.
 | Paradigm | Core metrics |
 |---|---|
 | MWM | Escape latency, path length, swim speed, target quadrant time, platform crossings, thigmotaxis, mean distance to platform. |
-| Open Field | Total distance, center time, periphery time, center entries, immobility, mean speed. |
-| EPM | Open arm time, closed arm time, open and closed arm entries, latency to open arm, optional risk assessment events. |
-| Rotarod | Latency to fall, rpm at fall, trial duration, fall detected, learning slope across repeated trials. |
+| Novel object | Novel object time, familiar object time, total exploration time, discrimination index. |
+| Pole | Time to turn, total time, descent time, descent speed, fall detected. |
+| Treadmill | Time to exhaustion, running time, distance run, shock count. |
 
 ## MWM normalization
 
@@ -204,6 +311,23 @@ reliability status.
 | `contrast_warning` | `boolean` | Manual review. |
 
 QC statuses: `PASS`, `WARN`, `REVIEW_REQUIRED`, `FAIL`.
+
+### Rules applied today
+
+The table above is the target model. The rules the API applies to a tracked run
+today are those of the paradigm version (`trajectoryQC`):
+
+| Rule | Limit | Measured on |
+|---|---|---|
+| `min_tracking_confidence` | `>= 0.7` | mean confidence of observed samples (tracked and not inferred) |
+| `max_lost_frame_ratio` | `<= 0.1` | share of samples that are not tracked; inferred samples count as tracked |
+| `max_calibration_error_cm` | `<= 2` cm | the calibration's check points, when it is saved |
+
+Inferred samples never raise or lower the confidence mean. The worker records
+their share in the trajectory's diagnostics (`worker.inferredRatio`), and a
+paradigm version may cap it with `max_inferred_ratio`; no published version sets
+that rule yet. A run that breaks a rule fails with a `QC_FAILED` reason and publishes
+nothing. The same rules apply to every paradigm.
 
 ## Result shape
 

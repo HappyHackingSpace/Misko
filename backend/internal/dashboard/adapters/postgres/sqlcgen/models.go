@@ -6,55 +6,138 @@ package sqlcgen
 
 import (
 	"time"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type MiskoAdministration struct {
 	ID                  string
 	ExperimentID        string
-	EnrollmentID        string
+	AllocationID        string
+	GroupID             string
 	SubjectID           string
+	RegimenItemID       *string
+	Purpose             string
 	SubstanceID         string
-	SubstanceName       string
-	PlanID              *string
-	WeightMeasurementID *string
-	BodyMilligrams      *int64
-	AmountMicro         int64
+	DoseMicro           int64
 	Unit                string
 	Route               string
+	WeightMeasurementID *string
 	AdministeredAt      time.Time
 	Notes               *string
 	RecordedBy          string
 	CreatedAt           time.Time
 }
 
-type MiskoAnalysisArtifact struct {
-	RunID        string
-	Attempt      int32
-	ObjectName   string
-	Kind         string
-	Bucket       string
-	Generation   int64
-	SizeBytes    int64
-	Crc32c       int64
-	ContentType  string
-	VideoAssetID *string
+type MiskoAllocation struct {
+	ID              string
+	ExperimentID    string
+	GroupID         string
+	SubjectID       string
+	AllocatedAt     time.Time
+	Cage            *string
+	ExcludedAt      *time.Time
+	ExclusionReason *string
+	ExclusionNote   *string
+	CreatedBy       string
+	CreatedAt       time.Time
 }
 
-type MiskoAnalysisEvent struct {
+type MiskoAnalysisJob struct {
+	ID                     string
+	RequesterKind          string
+	RequesterID            string
+	IdempotencyKey         *string
+	ParadigmKey            string
+	ParadigmVersion        int32
+	MetricEngineVersion    int32
+	ResultSchemaVersion    int32
+	Parameters             []byte
+	SourceAssetID          string
+	SourceGeneration       int64
+	SourceCrc32c           int64
+	ClipStartUs            int64
+	ClipEndUs              *int64
+	CalibrationID          *string
+	CalibrationFrameWidth  *int32
+	CalibrationFrameHeight *int32
+	CalibrationCropX       *int32
+	CalibrationCropY       *int32
+	CalibrationCropWidth   *int32
+	CalibrationCropHeight  *int32
+	CalibrationPlane       *string
+	CalibrationTransform   []float64
+	CalibrationZones       []byte
+	Trigger                string
+	Status                 string
+	Attempt                int32
+	MaxAttempts            int32
+	WorkerID               *string
+	LeaseExpiresAt         *time.Time
+	AvailableAt            time.Time
+	ModelVersion           *string
+	FailureReason          *string
+	CreatedBy              *string
+	CreatedAt              time.Time
+	FinishedAt             *time.Time
+}
+
+type MiskoAnalysisJobEvent struct {
 	ID         string
-	RunID      string
+	JobID      string
 	Attempt    int32
-	TestID     string
 	EventType  string
+	Label      *string
 	Kind       string
 	StartUs    int64
 	EndUs      int64
 	Confidence float32
-	TrialID    *string
 }
 
-type MiskoAnalysisOutputUpload struct {
-	RunID       string
+type MiskoAnalysisJobMetric struct {
+	JobID         string
+	Attempt       int32
+	MetricKey     string
+	Unit          string
+	Value         *float64
+	MissingReason *string
+}
+
+type MiskoAnalysisJobOutput struct {
+	JobID       string
+	Attempt     int32
+	ObjectName  string
+	Kind        string
+	Bucket      string
+	Generation  int64
+	SizeBytes   int64
+	Crc32c      int64
+	ContentType string
+}
+
+type MiskoAnalysisJobPair struct {
+	JobID              string
+	Attempt            int32
+	AnalyzedObjectName string
+	SourceOffsetUs     int64
+	OutputOffsetUs     int64
+	TimeMappingVersion string
+}
+
+type MiskoAnalysisJobQc struct {
+	JobID          string
+	Attempt        int32
+	Samples        int32
+	Tracked        int32
+	Inferred       int32
+	LostRatio      float64
+	InferredRatio  float64
+	MeanConfidence float64
+	Passed         bool
+}
+
+type MiskoAnalysisJobUpload struct {
+	JobID       string
 	Attempt     int32
 	ObjectName  string
 	Kind        string
@@ -62,49 +145,6 @@ type MiskoAnalysisOutputUpload struct {
 	SizeBytes   int64
 	Crc32c      int64
 	CreatedAt   time.Time
-}
-
-type MiskoAnalysisRun struct {
-	ID                    string
-	ExperimentID          string
-	TestID                string
-	RecordingID           string
-	SourceAssetID         string
-	SourceGeneration      int64
-	SourceCrc32c          int64
-	ClipStartUs           int64
-	ClipEndUs             *int64
-	CalibrationID         *string
-	ParadigmKey           string
-	ParadigmVersion       int32
-	MetricEngineVersion   int32
-	ResultSchemaVersion   int32
-	EnvironmentRevisionID string
-	ProtocolVersionID     string
-	Parameters            []byte
-	Trigger               string
-	Status                string
-	Attempt               int32
-	MaxAttempts           int32
-	WorkerID              *string
-	LeaseExpiresAt        *time.Time
-	AvailableAt           time.Time
-	ModelVersion          *string
-	FailureReason         *string
-	CreatedBy             *string
-	CreatedAt             time.Time
-	FinishedAt            *time.Time
-}
-
-type MiskoAnalysisVideoPair struct {
-	RunID              string
-	Attempt            int32
-	SourceAssetID      string
-	SourceGeneration   int64
-	AnalyzedAssetID    string
-	SourceOffsetUs     int64
-	OutputOffsetUs     int64
-	TimeMappingVersion string
 }
 
 type MiskoAnalysisWorker struct {
@@ -119,6 +159,8 @@ type MiskoAnalysisWorker struct {
 
 type MiskoCalibration struct {
 	ID                    string
+	EnvironmentRevisionID string
+	TestSubjectID         *string
 	RecordingID           *string
 	SupersedesID          *string
 	CameraID              string
@@ -142,30 +184,60 @@ type MiskoCalibration struct {
 	RejectionReason       *string
 	CreatedBy             string
 	CreatedAt             time.Time
-	EnvironmentRevisionID string
-	ChainID               *string
+	TrialID               *string
+	VideoAssetID          *string
+	ChainID               string
+}
+
+type MiskoCalibrationZone struct {
+	CalibrationID string
+	ZoneKey       string
+	Position      int32
+	Kind          string
+	Pixels        []byte
+	Centimeters   []byte
+}
+
+type MiskoCurrentRecording struct {
+	ID           string
+	ExperimentID string
+	TestID       string
+	VideoAssetID string
+	SupersedesID *string
+	ClipStartUs  int64
+	ClipEndUs    *int64
+	CreatedBy    string
+	CreatedAt    time.Time
 }
 
 type MiskoDiseaseModel struct {
-	ID          string
-	Name        string
-	Description *string
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	ID                    string
+	Name                  string
+	InductionType         string
+	ConfirmationCriterion *string
+	Description           *string
+	CreatedAt             time.Time
+	UpdatedAt             time.Time
 }
 
 type MiskoEffectiveCalibration struct {
+	TestSubjectID string
 	RecordingID   string
 	Source        interface{}
 	CalibrationID interface{}
 }
 
-type MiskoEnrollment struct {
-	ID           string
-	ExperimentID string
-	SubjectID    string
-	EnrolledAt   time.Time
-	CreatedAt    time.Time
+type MiskoEndpoint struct {
+	ID                  string
+	ExperimentID        string
+	TimepointID         string
+	BaselineTimepointID *string
+	ParadigmKey         string
+	MetricKey           string
+	Kind                string
+	Direction           string
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
 }
 
 type MiskoEnvironment struct {
@@ -181,68 +253,51 @@ type MiskoEnvironmentRevision struct {
 	ID              string
 	EnvironmentID   string
 	ParadigmKey     string
-	Number          int32
 	ParadigmVersion int32
-	Apparatus       []byte
+	Number          int32
+	Parameters      []byte
 	Notes           *string
 	CreatedBy       string
 	CreatedAt       time.Time
 }
 
 type MiskoExperiment struct {
-	ID              string
-	Code            string
-	Title           string
-	Description     *string
-	RequiresControl bool
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
+	ID            string
+	Code          string
+	Title         string
+	Description   *string
+	Hypothesis    *string
+	Randomisation *string
+	Blinded       bool
+	Status        string
+	DayZero       pgtype.Date
+	StartedAt     *time.Time
+	CompletedAt   *time.Time
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
 }
 
 type MiskoExperimentGroup struct {
-	ID           string
-	ExperimentID string
-	Name         string
-	Role         string
-	TargetSize   *int32
-	Description  *string
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
+	ID             string
+	ExperimentID   string
+	Code           string
+	Name           string
+	Role           string
+	DiseaseModelID *string
+	TargetSize     *int32
+	Description    *string
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
 }
 
-type MiskoExperimentPhase struct {
-	ID           string
+type MiskoInductionOutcome struct {
+	AllocationID string
 	ExperimentID string
-	Name         string
-	Position     int32
-	Description  *string
+	Status       string
+	AssessedAt   time.Time
+	Note         *string
+	RecordedBy   string
 	CreatedAt    time.Time
-	UpdatedAt    time.Time
-}
-
-type MiskoGroupAssignment struct {
-	ID           string
-	ExperimentID string
-	EnrollmentID string
-	GroupID      string
-	ValidFrom    time.Time
-	ValidTo      *time.Time
-	CreatedAt    time.Time
-}
-
-type MiskoInterventionPlan struct {
-	ID           string
-	ExperimentID string
-	GroupID      string
-	PhaseID      *string
-	SubstanceID  string
-	AmountMicro  int64
-	Unit         string
-	Route        string
-	Schedule     string
-	Notes        *string
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
 }
 
 type MiskoLaboratory struct {
@@ -254,13 +309,31 @@ type MiskoLaboratory struct {
 	UpdatedAt time.Time
 }
 
-type MiskoMetricResult struct {
-	RunID         string
-	Attempt       int32
-	MetricKey     string
-	Unit          string
-	Value         *float64
-	MissingReason *string
+type MiskoParadigmTrial struct {
+	ID                    string
+	Name                  string
+	ParadigmKey           string
+	ParadigmVersion       int32
+	EnvironmentRevisionID string
+	VideoAssetID          *string
+	ClipStartUs           int64
+	ClipEndUs             *int64
+	Notes                 *string
+	CreatedBy             string
+	CreatedAt             time.Time
+	UpdatedAt             time.Time
+	DeletedAt             *time.Time
+}
+
+type MiskoParadigmTrialJob struct {
+	JobID         string
+	TrialID       string
+	VideoAssetID  string
+	CalibrationID *string
+	Trigger       string
+	Overrides     []byte
+	CreatedBy     *string
+	CreatedAt     time.Time
 }
 
 type MiskoProtocol struct {
@@ -273,16 +346,15 @@ type MiskoProtocol struct {
 }
 
 type MiskoProtocolStep struct {
-	ProtocolVersionID     string
-	Position              int32
-	ParadigmKey           string
-	ParadigmVersion       int32
-	EnvironmentRevisionID string
-	TrialType             string
-	Trials                int32
-	InterTrialIntervalS   int32
-	Session               []byte
-	Notes                 *string
+	ProtocolVersionID   string
+	Position            int32
+	ParadigmKey         string
+	ParadigmVersion     int32
+	TrialType           string
+	Trials              int32
+	InterTrialIntervalS int32
+	Session             []byte
+	Notes               *string
 }
 
 type MiskoProtocolVersion struct {
@@ -296,45 +368,103 @@ type MiskoProtocolVersion struct {
 	CreatedAt    time.Time
 }
 
-type MiskoReportRun struct {
-	ID                  string
-	ExperimentID        string
-	TestID              string
-	RecordingID         string
-	SourceAssetID       string
-	CalibrationID       *string
-	ParadigmKey         string
-	ParadigmVersion     int32
-	MetricEngineVersion int32
-	ResultSchemaVersion int32
-	Trigger             string
-	ModelVersion        *string
-	FinishedAt          *time.Time
-	Latest              bool
+type MiskoRegimenItem struct {
+	ID           string
+	ExperimentID string
+	GroupID      string
+	Purpose      string
+	SubstanceID  string
+	DoseMicro    int64
+	Unit         string
+	Route        string
+	Frequency    string
+	IntervalDays *int32
+	StartDay     int32
+	EndDay       int32
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
 }
 
-type MiskoReportTest struct {
-	TestID                string
-	ExperimentID          string
-	ExperimentCode        string
-	SubjectID             string
-	SubjectCode           string
-	Species               string
-	Sex                   string
-	PhaseID               *string
-	PhaseName             *string
-	GroupID               *string
-	GroupName             *string
-	GroupRole             *string
-	ParadigmKey           string
-	ParadigmVersion       int32
-	EnvironmentRevisionID string
-	EnvironmentID         string
-	EnvironmentName       string
-	EnvironmentRevision   int32
-	TestStatus            string
-	ScheduledAt           time.Time
-	TrialCount            int64
+type MiskoReportAcceptedMetric struct {
+	TestSubjectID          string
+	TestID                 string
+	ExperimentID           string
+	ExperimentCode         string
+	Blinded                bool
+	AllocationID           string
+	SubjectID              string
+	SubjectCode            string
+	Species                string
+	Sex                    string
+	GroupID                string
+	GroupCode              string
+	GroupName              string
+	GroupRole              string
+	DiseaseModelID         *string
+	DiseaseModelName       *string
+	TreatmentSubstanceID   *string
+	TreatmentSubstanceName *string
+	TreatmentDoseMicro     *int64
+	TreatmentUnit          *string
+	Excluded               interface{}
+	TimepointID            string
+	TimepointName          string
+	StudyDay               int32
+	ParadigmKey            string
+	ParadigmVersion        int32
+	TestStatus             string
+	ScheduledAt            time.Time
+	EnvironmentRevisionID  string
+	EnvironmentID          string
+	EnvironmentName        string
+	EnvironmentRevision    int32
+	ResultStatus           *string
+	ResultJobID            *string
+	MetricKey              string
+	Unit                   string
+	Value                  *float64
+	MissingReason          *string
+	MetricEngineVersion    int32
+	ResultSchemaVersion    int32
+	ModelVersion           *string
+	FinishedAt             *time.Time
+}
+
+type MiskoReportTestSubject struct {
+	TestSubjectID          string
+	TestID                 string
+	ExperimentID           string
+	ExperimentCode         string
+	Blinded                bool
+	AllocationID           string
+	SubjectID              string
+	SubjectCode            string
+	Species                string
+	Sex                    string
+	GroupID                string
+	GroupCode              string
+	GroupName              string
+	GroupRole              string
+	DiseaseModelID         *string
+	DiseaseModelName       *string
+	TreatmentSubstanceID   *string
+	TreatmentSubstanceName *string
+	TreatmentDoseMicro     *int64
+	TreatmentUnit          *string
+	Excluded               interface{}
+	TimepointID            string
+	TimepointName          string
+	StudyDay               int32
+	ParadigmKey            string
+	ParadigmVersion        int32
+	TestStatus             string
+	ScheduledAt            time.Time
+	EnvironmentRevisionID  string
+	EnvironmentID          string
+	EnvironmentName        string
+	EnvironmentRevision    int32
+	ResultStatus           *string
+	ResultJobID            *string
 }
 
 type MiskoSubject struct {
@@ -346,50 +476,46 @@ type MiskoSubject struct {
 	UpdatedAt time.Time
 }
 
-type MiskoSubjectCondition struct {
-	ID               string
-	SubjectID        string
-	DiseaseModelID   string
-	DiseaseModelName string
-	EnrollmentID     *string
-	Status           string
-	ObservedAt       time.Time
-	Notes            *string
-	RecordedBy       string
-	CreatedAt        time.Time
+type MiskoSubjectResult struct {
+	TestSubjectID string
+	JobID         string
+	Status        string
+	Reason        *string
+	Note          *string
+	ReviewedBy    *string
+	ReviewedAt    *time.Time
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
 }
 
 type MiskoSubstance struct {
 	ID          string
 	Name        string
+	Kind        string
 	Description *string
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 }
 
 type MiskoTest struct {
-	ID                    string
-	ExperimentID          string
-	EnrollmentID          string
-	SubjectID             string
-	PhaseID               *string
-	GroupID               *string
-	ProtocolVersionID     string
-	StepPosition          int32
-	ParadigmKey           string
-	ParadigmVersion       int32
-	EnvironmentRevisionID string
-	PlannedTrials         int32
-	Status                string
-	ScheduledAt           time.Time
-	StartedAt             *time.Time
-	CompletedAt           *time.Time
-	CancelledAt           *time.Time
-	CancelReason          *string
-	Notes                 *string
-	CreatedBy             string
-	CreatedAt             time.Time
-	UpdatedAt             time.Time
+	ID                string
+	ExperimentID      string
+	TimepointID       string
+	ProtocolVersionID string
+	StepPosition      int32
+	ParadigmKey       string
+	ParadigmVersion   int32
+	PlannedTrials     int32
+	Status            string
+	ScheduledAt       time.Time
+	StartedAt         *time.Time
+	CompletedAt       *time.Time
+	CancelledAt       *time.Time
+	CancelReason      *string
+	Notes             *string
+	CreatedBy         string
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
 }
 
 type MiskoTestComment struct {
@@ -406,23 +532,85 @@ type MiskoTestRecording struct {
 	ExperimentID string
 	TestID       string
 	VideoAssetID string
+	SupersedesID *string
 	ClipStartUs  int64
 	ClipEndUs    *int64
 	CreatedBy    string
 	CreatedAt    time.Time
 }
 
+type MiskoTestSubject struct {
+	ID                    string
+	ExperimentID          string
+	TestID                string
+	AllocationID          string
+	EnvironmentRevisionID string
+	ParadigmKey           string
+	ParadigmVersion       int32
+	CreatedBy             string
+	CreatedAt             time.Time
+}
+
+type MiskoTestSubjectAnalysis struct {
+	JobID         string
+	ExperimentID  string
+	TestID        string
+	TestSubjectID string
+	RecordingID   string
+	CalibrationID *string
+	Trigger       string
+	CreatedBy     *string
+	CreatedAt     time.Time
+}
+
+type MiskoTestSubjectJob struct {
+	JobID               string
+	ExperimentID        string
+	TestID              string
+	TestSubjectID       string
+	RecordingID         string
+	CalibrationID       *string
+	Trigger             string
+	CreatedBy           *string
+	CreatedAt           time.Time
+	ParadigmKey         string
+	ParadigmVersion     int32
+	Status              string
+	MetricEngineVersion int32
+	ResultSchemaVersion int32
+	ModelVersion        *string
+	FinishedAt          *time.Time
+}
+
+type MiskoTimepoint struct {
+	ID           string
+	ExperimentID string
+	Name         string
+	StudyDay     int32
+	Position     int32
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+}
+
 type MiskoTrial struct {
-	ID         string
-	TestID     string
-	Number     int32
-	Repetition int32
-	Attempt    int32
-	StartedAt  time.Time
-	EndedAt    *time.Time
-	Notes      *string
-	RecordedBy string
-	CreatedAt  time.Time
+	ID            string
+	TestID        string
+	TestSubjectID string
+	Number        int32
+	Repetition    int32
+	Attempt       int32
+	StartedAt     time.Time
+	EndedAt       *time.Time
+	Notes         *string
+	RecordedBy    string
+	CreatedAt     time.Time
+}
+
+type MiskoTrialEffectiveCalibration struct {
+	TrialID       string
+	VideoAssetID  *string
+	Source        interface{}
+	CalibrationID interface{}
 }
 
 type MiskoUser struct {
@@ -434,6 +622,7 @@ type MiskoUser struct {
 	SessionVersion int32
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
+	LastLoginAt    *time.Time
 }
 
 type MiskoVideoAsset struct {

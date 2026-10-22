@@ -1,6 +1,10 @@
 // Package application contains video upload and read use cases. Uploads and
 // finalization need test:run; listing and read URLs need *:read. Signed URLs
 // are returned to the caller only and never stored or logged.
+//
+// A test has one current video. Starting an upload attaches a new recording
+// that supersedes the current one in the same transaction, so the chain stays
+// linear; the superseded recordings stay for provenance.
 package application
 
 import (
@@ -14,8 +18,8 @@ import (
 var (
 	ErrStorageNotConfigured = errors.New("video storage is not configured")
 	ErrTestNotFound         = errors.New("test not found")
-	ErrTestCancelled        = errors.New("a cancelled test takes no recordings")
 	ErrRecordingNotFound    = errors.New("recording not found on this test")
+	ErrConcurrentUpload     = errors.New("another video was attached to this test at the same time; try again")
 	ErrNotUploader          = errors.New("only the uploader, a lab manager or a super admin can finalize an upload")
 	ErrUploadIncomplete     = errors.New("the upload has not finished; finalize after it completes")
 	ErrNotVerified          = errors.New("the video has not been verified")
@@ -33,8 +37,12 @@ type SignedRequest struct {
 // ObjectStore is private object storage for videos.
 type ObjectStore interface {
 	Bucket() string
-	// UploadURL signs the start of a resumable upload that fails if the object already exists.
+	// UploadURL signs the start of a resumable upload that fails if the object
+	// already exists. Analysis outputs use it; their size is not known ahead.
 	UploadURL(ctx context.Context, object, contentType string, expires time.Time) (SignedRequest, error)
+	// SizedUploadURL is UploadURL for an upload of a declared size: storage
+	// refuses more than size bytes.
+	SizedUploadURL(ctx context.Context, object, contentType string, size int64, expires time.Time) (SignedRequest, error)
 	// ReadURL signs a read of one object generation; range requests are allowed.
 	ReadURL(ctx context.Context, object string, generation int64, expires time.Time) (string, error)
 	// Attrs returns ErrObjectNotFound when the object does not exist yet.
@@ -52,13 +60,27 @@ type TestRef struct {
 type Store interface {
 	Transaction(ctx context.Context, fn func(Store) error) error
 	Test(ctx context.Context, id string) (TestRef, error)
-	// CreateRecording stores a pending asset with a new object name and its recording.
-	CreateRecording(ctx context.Context, test TestRef, asset domain.Asset, clip domain.Clip) (domain.Recording, error)
+	// LockTest reads a test and serializes the videos attached to it.
+	LockTest(ctx context.Context, id string) (TestRef, error)
+	// CurrentRecording returns the test's newest verified recording, or ErrRecordingNotFound.
+	CurrentRecording(ctx context.Context, testID string) (domain.Recording, error)
+	// NewestRecordingID returns the end of the test's chain, verified or not, or "".
+	NewestRecordingID(ctx context.Context, testID string) (string, error)
+	// CreateRecording stores a pending asset with a new object name and its
+	// recording, which supersedes supersedesID (empty for the first video).
+	CreateRecording(ctx context.Context, test TestRef, asset domain.Asset, clip domain.Clip, supersedesID string) (domain.Recording, error)
+	// Recordings lists every recording of a test, oldest first.
 	Recordings(ctx context.Context, testID string) ([]domain.Recording, error)
 	Recording(ctx context.Context, testID, recordingID string) (domain.Recording, error)
 	LockRecording(ctx context.Context, testID, recordingID string) (domain.Recording, error)
 	// FinishAsset stores a pending asset's verification result.
 	FinishAsset(ctx context.Context, a domain.Asset) (domain.Asset, error)
+	// CreateFolderAsset stores a pending original under folder, named after its own id.
+	CreateFolderAsset(ctx context.Context, folder string, asset domain.Asset) (domain.Asset, error)
+	// Asset returns ErrAssetNotFound for an unknown id.
+	Asset(ctx context.Context, id string) (domain.Asset, error)
+	// LockAsset reads an asset and locks it until the transaction ends.
+	LockAsset(ctx context.Context, id string) (domain.Asset, error)
 }
 
 type Settings struct {
@@ -83,8 +105,10 @@ type Upload struct {
 	Request   SignedRequest
 }
 
-// StartUpload records a pending original video for a test and signs the
-// resumable upload the caller sends straight to storage.
+// StartUpload records a pending original video for a test that has started,
+// appends it to the test's chain (it becomes current once verified) and signs the resumable upload the caller
+// sends straight to storage, limited to the declared size. The upload is
+// signed inside the transaction, so a signing failure attaches nothing.
 func (s *Service) StartUpload(ctx context.Context, actor access.Actor, testID string, req domain.UploadRequest) (Upload, error) {
 	if err := actor.Require(access.TestRun); err != nil {
 		return Upload{}, err
@@ -97,26 +121,34 @@ func (s *Service) StartUpload(ctx context.Context, actor access.Actor, testID st
 		return Upload{}, err
 	}
 	asset.Bucket = s.objects.Bucket()
-	var rec domain.Recording
+	var upload Upload
 	err = s.store.Transaction(ctx, func(tx Store) error {
-		test, err := tx.Test(ctx, testID)
+		test, err := tx.LockTest(ctx, testID)
 		if err != nil {
 			return err
 		}
-		if test.Status == "CANCELLED" {
-			return ErrTestCancelled
+		if err := domain.AcceptsVideo(test.Status); err != nil {
+			return err
 		}
-		rec, err = tx.CreateRecording(ctx, test, asset, clip)
-		return err
+		supersedes, err := tx.NewestRecordingID(ctx, test.ID)
+		if err != nil {
+			return err
+		}
+		rec, err := tx.CreateRecording(ctx, test, asset, clip, supersedes)
+		if err != nil {
+			return err
+		}
+		request, err := s.objects.SizedUploadURL(ctx, rec.Asset.ObjectName, rec.Asset.ContentType, rec.Asset.SizeBytes, s.now().Add(s.settings.UploadTTL))
+		if err != nil {
+			return err
+		}
+		upload = Upload{Recording: rec, Request: request}
+		return nil
 	})
 	if err != nil {
 		return Upload{}, err
 	}
-	request, err := s.objects.UploadURL(ctx, rec.Asset.ObjectName, rec.Asset.ContentType, s.now().Add(s.settings.UploadTTL))
-	if err != nil {
-		return Upload{}, err
-	}
-	return Upload{Recording: rec, Request: request}, nil
+	return upload, nil
 }
 
 // FinalizeUpload reads the stored object and records whether it matches the
@@ -180,6 +212,18 @@ func (s *Service) Recordings(ctx context.Context, actor access.Actor, testID str
 		return nil, err
 	}
 	return s.store.Recordings(ctx, testID)
+}
+
+// Current returns the test's current recording, or ErrRecordingNotFound
+// while it has no video.
+func (s *Service) Current(ctx context.Context, actor access.Actor, testID string) (domain.Recording, error) {
+	if err := actor.Require(access.Read); err != nil {
+		return domain.Recording{}, err
+	}
+	if _, err := s.store.Test(ctx, testID); err != nil {
+		return domain.Recording{}, err
+	}
+	return s.store.CurrentRecording(ctx, testID)
 }
 
 type ReadLink struct {

@@ -2,6 +2,11 @@
 
 # Misko - Measurement Architecture
 
+> **Catalog trimmed (2026-10-15).** The paradigm catalog now holds four
+> paradigms: `MWM`, `NOVEL_OBJECT`, `POLE` and `TREADMILL`, in the categories
+> `LEARNING_MEMORY` and `MOTOR`. The other seven were removed, together with
+> the `ANXIETY` and `SOCIAL` categories and the rotation-speed unit.
+
 > Status: design. Date: 2026-06-02.
 > Scope: paradigm specifications, metric definitions, cross-lab normalization,
 > and data quality rules for behavioral tests.
@@ -51,7 +56,7 @@ for users, developers, and the CV service.
 ```ts
 type Unit =
   | "cm"
-  | "mm" // apparatus parameter only (rod/pole diameter)
+  | "mm" // apparatus parameter only (small rig diameters)
   | "cm_s"
   | "s"
   | "c" // apparatus parameter only (water temperature)
@@ -59,16 +64,14 @@ type Unit =
   | "ratio"
   | "percent"
   | "deg"
-  | "rpm"
   | "g"
   | "boolean";
 
 interface ParadigmSpec {
   key:
-    | "MWM" | "OPEN_FIELD" | "EPM" | "ROTAROD" | "Y_MAZE" | "NOVEL_OBJECT"
-    | "BARNES_MAZE" | "THREE_CHAMBER" | "LIGHT_DARK" | "POLE" | "TREADMILL";
+    | "MWM" | "NOVEL_OBJECT" | "POLE" | "TREADMILL";
   name: string;
-  category: "learning_memory" | "anxiety" | "motor" | "social";
+  category: "learning_memory" | "motor";
   trialTypes: TrialTypeDef[];
   apparatusParameters: FieldDef[];
   sessionParameters: FieldDef[];
@@ -136,7 +139,7 @@ type DetectSpec =
 The generic kinds (`zone_transition`, `zone_first_enter`, `speed_below`) are
 **data-driven**: a paradigm that only uses them needs no new CV code - declaring
 the event types is enough. `custom` flags an event that needs a dedicated
-detector (e.g. a rotarod fall, a social interaction). Event types are exposed on
+detector (e.g. a pole test turn, object exploration). Event types are exposed on
 the paradigm detail API (`GET /api/paradigms/:key` -> `eventTypes`).
 
 ### 2.6 Localization
@@ -196,12 +199,11 @@ Canonical storage units:
 | Angles | `deg` | If pose or heading is supported later. |
 | Ratios | `ratio` | Store `0..1`, render as percent in UI if needed. |
 | Percentages | `percent` | For fields that carry a percent value directly. |
-| Rotation speed | `rpm` | Rotarod rod speed. |
 | Event flags | `boolean` | Presence/absence of an event (e.g. `fall_detected`). |
 | Counts | `count` | Entries, crossings, falls, events. |
 
 Apparatus parameters reuse this enum and add two units that never appear in
-result metrics: `mm` (small rig diameters such as the rotarod rod and pole) and
+result metrics: `mm` (small rig diameters) and
 `c` (water temperature in Celsius).
 
 ### 3.3 Baseline metric keys
@@ -235,37 +237,33 @@ result metrics: `mm` (small rig diameters such as the rotarod rod and pole) and
 | `mean_distance_to_platform_cm` | `cm` | Average proximity to target, robust for probe trials. |
 | `heading_error_deg` | `deg` | Optional, requires heading or smoothed path vector. |
 
-#### Open Field
+#### Novel object recognition (observer scored)
 
 | Key | Unit | Notes |
 |---|---|---|
-| `distance_cm` | `cm` | Total locomotion. |
-| `center_time_ratio` | `ratio` | Time in center zone divided by valid duration. |
-| `periphery_time_ratio` | `ratio` | Time in periphery divided by valid duration. |
-| `center_entries_count` | `count` | Debounced center entries. |
-| `immobility_s` | `s` | Movement below threshold. |
-| `mean_speed_cm_s` | `cm_s` | Locomotor control metric. |
+| `novel_object_time_s` | `s` | Merged exploration of the novel object. |
+| `familiar_object_time_s` | `s` | Merged exploration of the familiar object. |
+| `total_exploration_time_s` | `s` | Novel plus familiar exploration. |
+| `discrimination_index` | `ratio` | `(novel - familiar) / (novel + familiar)`, from -1 to +1; missing below the exploration criterion. |
 
-#### EPM
+#### Pole test (observer scored)
 
 | Key | Unit | Notes |
 |---|---|---|
-| `open_arm_time_ratio` | `ratio` | Time in open arms divided by valid duration. |
-| `closed_arm_time_ratio` | `ratio` | Time in closed arms divided by valid duration. |
-| `open_arm_entries_count` | `count` | Debounced open arm entries. |
-| `closed_arm_entries_count` | `count` | Debounced closed arm entries. |
-| `latency_to_open_arm_s` | `s` | First entry into an open arm. |
-| `risk_assessment_count` | `count` | Optional event if behavior classifier exists. |
+| `t_turn_s` | `s` | Time of the turn_complete event. |
+| `t_total_s` | `s` | Time of the base_reached event. |
+| `descent_time_s` | `s` | `t_total_s - t_turn_s`. |
+| `descent_speed_cm_s` | `cm_s` | Pole length divided by the descent time. |
+| `fall_detected` | `boolean` | Whether a fall was scored. |
 
-#### Rotarod
+#### Treadmill (observer scored)
 
 | Key | Unit | Notes |
 |---|---|---|
-| `latency_to_fall_s` | `s` | Time from trial start to fall event. |
-| `rpm_at_fall` | `rpm` | Derived from mode and elapsed time. |
-| `trial_duration_s` | `s` | May equal max duration if the subject does not fall. |
-| `fall_detected` | `boolean` | Whether a fall event was detected. |
-| `learning_slope` | `ratio` | Study aggregation across repeated trials, not a single-trial CV metric. |
+| `latency_to_exhaustion_s` | `s` | Time to the exhaustion criterion, censored at the cut-off. |
+| `run_time_s` | `s` | Time the animal kept running. |
+| `run_distance_cm` | `cm` | Belt distance covered during the run. |
+| `shock_count` | `count` | Scored shocks or rear-grid contacts. |
 
 ## 4. MWM normalization strategy
 
@@ -431,7 +429,7 @@ lands.
 
 1. Add `MetricDefinition` and `ParadigmSpec` interfaces in code.
 2. Implement the MWM spec first, because it has the hardest normalization case.
-3. Add Open Field, EPM, and Rotarod specs with explicit metric dictionaries.
+3. Add the novel object, pole test and treadmill specs with explicit metric dictionaries.
 4. Change `Test.result` from stringified JSON to structured JSON in the domain migration.
 5. Add result validation on `POST /api/tests/:id/result`.
 6. Add QC display and filtering in the UI.

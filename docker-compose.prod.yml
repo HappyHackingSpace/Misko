@@ -126,7 +126,7 @@ services:
     depends_on:
       - frontend
 
-  # Open Field analysis worker. No published GHCR image exists yet (`release.yml`
+  # Morris water maze analysis worker. No published GHCR image exists yet (`release.yml`
   # only builds backend/frontend), so this builds from the local `worker/`
   # source instead of pulling - the deploy workflow copies that folder next to
   # this file. Swap to a `ghcr.io/.../misko-worker:${IMAGE_TAG:-latest}` image

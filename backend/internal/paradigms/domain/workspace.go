@@ -32,14 +32,14 @@ func CalibrationRequirement(key string, version int, apparatus map[string]float6
 	if !needs.Required {
 		return CalibrationNeeds{}, nil
 	}
+	// The side views of the pole and the treadmill have no fixed extent on
+	// both axes, so their calibration chooses its own frame.
 	switch key {
-	case "OPEN_FIELD":
-		needs.Bounds = &Bounds{0, 0, apparatus["arena_width_cm"], apparatus["arena_height_cm"]}
-	case "LIGHT_DARK":
-		needs.Bounds = &Bounds{0, 0, apparatus["box_width_cm"], apparatus["box_height_cm"]}
 	case "MWM":
 		r := apparatus["tank_diameter_cm"] / 2
 		needs.Bounds = &Bounds{-r, -r, r, r}
+	case "NOVEL_OBJECT":
+		needs.Bounds = &Bounds{0, 0, apparatus["arena_width_cm"], apparatus["arena_height_cm"]}
 	}
 	return needs, nil
 }

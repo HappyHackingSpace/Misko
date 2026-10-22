@@ -91,13 +91,13 @@ func (s *Store) CreateRevision(ctx context.Context, r domain.Revision) (domain.R
 	if !pgtx.ValidUUID(r.EnvironmentID) {
 		return domain.Revision{}, application.ErrEnvironmentNotFound
 	}
-	apparatus, err := encode(r.Apparatus)
+	parameters, err := encode(r.Parameters)
 	if err != nil {
 		return domain.Revision{}, err
 	}
 	row, err := s.queries.CreateRevision(ctx, sqlcgen.CreateRevisionParams{
 		EnvironmentID: r.EnvironmentID, ParadigmKey: r.ParadigmKey, ParadigmVersion: int32(r.ParadigmVersion),
-		Apparatus: apparatus, Notes: optional(r.Notes), CreatedBy: r.CreatedBy,
+		Parameters: parameters, Notes: optional(r.Notes), CreatedBy: r.CreatedBy,
 	})
 	if err != nil {
 		return domain.Revision{}, translate(err, nil, "create revision")
@@ -149,6 +149,22 @@ func (s *Store) Revision(ctx context.Context, environmentID string, number int) 
 	return toRevision(row)
 }
 
+func (s *Store) RevisionByID(ctx context.Context, id string) (application.NamedRevision, error) {
+	if !pgtx.ValidUUID(id) {
+		return application.NamedRevision{}, application.ErrRevisionNotFound
+	}
+	row, err := s.queries.GetRevisionByID(ctx, id)
+	if err != nil {
+		return application.NamedRevision{}, translate(err, application.ErrRevisionNotFound, "get revision")
+	}
+	revision, err := toRevision(sqlcgen.MiskoEnvironmentRevision{ID: row.ID, EnvironmentID: row.EnvironmentID, ParadigmKey: row.ParadigmKey,
+		ParadigmVersion: row.ParadigmVersion, Number: row.Number, Parameters: row.Parameters, Notes: row.Notes, CreatedBy: row.CreatedBy, CreatedAt: row.CreatedAt})
+	if err != nil {
+		return application.NamedRevision{}, err
+	}
+	return application.NamedRevision{Revision: revision, EnvironmentName: row.EnvironmentName}, nil
+}
+
 // translate maps a missing row to notFound and named constraint violations to
 // their errors. Other errors are wrapped so PostgreSQL codes stay inspectable.
 func translate(err, notFound error, operation string) error {
@@ -173,13 +189,13 @@ func toEnvironment(r sqlcgen.ListEnvironmentsRow) domain.Environment {
 }
 
 func toRevision(r sqlcgen.MiskoEnvironmentRevision) (domain.Revision, error) {
-	apparatus := map[string]float64{}
-	if err := json.Unmarshal(r.Apparatus, &apparatus); err != nil {
-		return domain.Revision{}, fmt.Errorf("decode apparatus of revision %s: %w", r.ID, err)
+	parameters := map[string]float64{}
+	if err := json.Unmarshal(r.Parameters, &parameters); err != nil {
+		return domain.Revision{}, fmt.Errorf("decode parameters of revision %s: %w", r.ID, err)
 	}
 	return domain.Revision{
 		ID: r.ID, EnvironmentID: r.EnvironmentID, ParadigmKey: r.ParadigmKey, Number: int(r.Number), ParadigmVersion: int(r.ParadigmVersion),
-		Apparatus: apparatus, Notes: value(r.Notes), CreatedBy: r.CreatedBy, CreatedAt: r.CreatedAt.UTC(),
+		Parameters: parameters, Notes: value(r.Notes), CreatedBy: r.CreatedBy, CreatedAt: r.CreatedAt.UTC(),
 	}, nil
 }
 
@@ -189,7 +205,7 @@ func encode(values map[string]float64) ([]byte, error) {
 	}
 	out, err := json.Marshal(values)
 	if err != nil {
-		return nil, fmt.Errorf("encode apparatus: %w", err)
+		return nil, fmt.Errorf("encode parameters: %w", err)
 	}
 	return out, nil
 }

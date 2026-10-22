@@ -3,14 +3,31 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
 from . import ALGORITHM_VERSION, TRAJECTORY_SCHEMA, video
-from .geometry import to_arena
+from .geometry import to_arena, to_pixels
 from .overlay import Overlay
+from .paradigms import BELT, POLE, SUPPORTED, WATER, Layout, layout
 from .tracking import Background, TrackerSettings, detect, luminance
+
+# Water: a lower base threshold plus each pixel's noise (see tracking).
+WATER_THRESHOLD = 18
+WATER_NOISE_FACTOR = 4.0
+# Opaque water gives less contrast than a lit floor; this many grey levels
+# above the background count as full contrast there.
+WATER_FULL_CONTRAST = 50.0
+# Belt: the noise-aware threshold of water and a background toward the floor
+# (75th percentile from the subject's side): a subject resting for up to about
+# 70% of the clip stays foreground, while a dark stretch of belt texture still
+# needs 4 noise levels beyond it.
+BELT_THRESHOLD = 25
+BELT_NOISE_FACTOR = 4.0
+BELT_PERCENTILE = 75.0
+# Pole: a fall at about 2 m/s seen at 4 px/cm and 25 fps moves 30 px a frame.
+POLE_MAX_JUMP_FRACTION = 0.35
 
 
 class NonRetryable(Exception):
@@ -26,12 +43,18 @@ class Sample:
     confidence: float
     px: float | None = None
     py: float | None = None
+    # Not seen but placed by inference. No supported paradigm infers positions
+    # today; the flag stays part of the trajectory format.
+    inferred: bool = False
 
 
 @dataclass
 class Analysis:
     duration_us: int
     samples: list[Sample] = field(default_factory=list)
+    # The settings actually used (tuned per apparatus) and the subject polarity.
+    settings: TrackerSettings | None = None
+    polarity: str | None = None
 
     @property
     def lost_ratio(self) -> float:
@@ -40,12 +63,66 @@ class Analysis:
         return sum(not s.tracked for s in self.samples) / len(self.samples)
 
     @property
+    def inferred_ratio(self) -> float:
+        if not self.samples:
+            return 0.0
+        return sum(s.inferred for s in self.samples) / len(self.samples)
+
+    @property
     def mean_confidence(self) -> float:
-        tracked = [s.confidence for s in self.samples if s.tracked]
-        return sum(tracked) / len(tracked) if tracked else 0.0
+        """Mean confidence of the samples actually seen."""
+        observed = [s.confidence for s in self.samples if s.tracked and not s.inferred]
+        return sum(observed) / len(observed) if observed else 0.0
+
+
+def check_supported(job: dict[str, Any]) -> None:
+    """Rejects a job this worker cannot measure, before anything is downloaded."""
+    run = job["run"]
+    key, version = run.get("paradigmKey"), run.get("paradigmVersion")
+    if (key, version) not in SUPPORTED:
+        supported = ", ".join(f"{k} v{v}" for k, v in sorted(SUPPORTED))
+        raise NonRetryable(f"UNSUPPORTED_PARADIGM: {key} v{version}; this worker analyzes {supported}")
+
+
+def settings_for(apparatus: Layout, settings: TrackerSettings) -> TrackerSettings:
+    """Tracker settings tuned for the apparatus; settings that already carry a
+    noise factor are taken as given.
+
+    - Water (MWM): a noise-aware threshold and a median background. A swimming
+      subject never rests long at one spot, while a high percentile would take a
+      shimmering reflection as the background and turn the water around it
+      into foreground.
+    - Belt (TREADMILL): the moving belt texture changes every pixel it covers,
+      so the threshold grows with each pixel's own noise as on water. The
+      background is the BELT_PERCENTILE percentile toward the floor (decided
+      once the polarity is known), so a subject resting on the grid for up to
+      about that share of the clip stays foreground.
+    - Pole (POLE): a fall moves the subject far between two frames, so a blob
+      farther from the previous position is still preferred over a larger one.
+    - Floor (NOVEL_OBJECT): the defaults. The objects never move, so they are
+      part of the background, and the 90th percentile keeps a subject resting
+      for most of the clip.
+    """
+    if settings.noise_factor != 0:
+        return settings
+    if apparatus.tracking == WATER:
+        return replace(
+            settings, threshold=min(settings.threshold, WATER_THRESHOLD), noise_factor=WATER_NOISE_FACTOR, background_percentile=50.0,
+            full_contrast=min(settings.full_contrast, WATER_FULL_CONTRAST),
+        )
+    if apparatus.tracking == BELT:
+        return replace(
+            settings, threshold=min(settings.threshold, BELT_THRESHOLD), noise_factor=BELT_NOISE_FACTOR,
+            background_percentile=min(settings.background_percentile, BELT_PERCENTILE),
+        )
+    if apparatus.tracking == POLE:
+        return replace(settings, max_jump_fraction=max(settings.max_jump_fraction, POLE_MAX_JUMP_FRACTION))
+    return settings
 
 
 def analyze(source: Path, job: dict[str, Any], overlay_path: Path, settings: TrackerSettings = TrackerSettings()) -> Analysis:
+    """Measures the one subject of the job inside its arena's crop of the shared video."""
+    check_supported(job)
     run, calibration = job["run"], job.get("calibration")
     if calibration is None:
         raise NonRetryable("MISSING_CALIBRATION: this worker needs a pixel to centimeter calibration")
@@ -66,33 +143,46 @@ def analyze(source: Path, job: dict[str, Any], overlay_path: Path, settings: Tra
     crop = calibration["crop"]
     region = (int(crop["x"]), int(crop["y"]), int(crop["width"]), int(crop["height"]))
     transform = [float(v) for v in calibration["transform"]]
-    parameters = run.get("parameters") or {}
-    width, height = parameters.get("arena_width_cm", 50.0), parameters.get("arena_height_cm", 50.0)
+    apparatus = layout(job)
+    settings = settings_for(apparatus, settings)
 
     background = Background(settings.background_frames)
     for _, rgb in video.frames(source, start, end):
         background.add(luminance(rgb))
     try:
-        model, polarity = background.model(settings, region)
+        model = background.model(settings, region, apparatus.detection_mask(transform, region))
     except ValueError:
         raise NonRetryable("NO_FRAMES_IN_CLIP") from None
 
-    analysis = Analysis(duration_us=duration)
-    overlay = Overlay(overlay_path, info.width, info.height, transform, parameters)
+    analysis = Analysis(duration_us=duration, settings=settings, polarity=model.polarity)
+    previous: tuple[float, float] | None = None
+    for t, rgb in video.frames(source, start, end):
+        # The recording is the half-open clip [start, end).
+        if t >= duration:
+            break
+        found = detect(luminance(rgb), model, region, settings, previous)
+        sample = Sample(t, None, None, False, found.confidence, found.px, found.py)
+        if found.px is not None:
+            previous = (found.px, found.py)
+            x, y = (float(v) for v in to_arena(transform, found.px, found.py))
+            # The engine treats positions outside the apparatus as lost; so does QC.
+            sample = Sample(t, x, y, apparatus.inside(x, y), float(found.confidence), float(found.px), float(found.py))
+        analysis.samples.append(sample)
+
+    # The overlay is drawn in a second pass, once every sample is settled.
+    overlay = Overlay(overlay_path, info.width, info.height, apparatus.drawings(transform))
     try:
+        samples = iter(analysis.samples)
         for t, rgb in video.frames(source, start, end):
-            # The recording is the half-open clip [start, end).
             if t >= duration:
                 break
-            found = detect(luminance(rgb), model, region, settings, polarity)
-            sample = Sample(t, None, None, False, found.confidence, found.px, found.py)
-            if found.px is not None:
-                x, y = (float(v) for v in to_arena(transform, found.px, found.py))
-                # The engine treats positions outside the arena as lost; so does QC.
-                inside = bool(0 <= x <= width and 0 <= y <= height)
-                sample = Sample(t, x, y, inside, float(found.confidence), float(found.px), float(found.py))
-            analysis.samples.append(sample)
-            overlay.write(t, rgb, (found.px, found.py) if sample.tracked else None)
+            sample = next(samples)
+            position = None
+            if sample.inferred:
+                position = to_pixels(transform, sample.x_cm, sample.y_cm)
+            elif sample.tracked:
+                position = (sample.px, sample.py)
+            overlay.write(t, rgb, position, sample.inferred)
     finally:
         overlay.close()
     return analysis
@@ -106,25 +196,38 @@ def trajectory_document(job: dict[str, Any], analysis: Analysis, settings: Track
     def rounded(value: float | None, digits: int) -> float | None:
         return None if value is None else round(value, digits)
 
+    try:
+        frame = layout(job).coordinate_frame
+    except ValueError:
+        frame = "CALIBRATION_CM"
     document = {
         "schema": TRAJECTORY_SCHEMA,
         "runId": run["id"],
         "attempt": run["attempt"],
         "durationUs": analysis.duration_us,
-        "coordinateFrame": "ARENA_CM",
+        "coordinateFrame": frame,
         "samples": {
             "tUs": [s.t_us for s in samples],
             "xCm": [rounded(s.x_cm, 4) if s.tracked else None for s in samples],
             "yCm": [rounded(s.y_cm, 4) if s.tracked else None for s in samples],
             "tracked": [s.tracked for s in samples],
             "confidence": [round(s.confidence, 4) for s in samples],
+            # Optional: inferred samples are tracked with a position that was not seen.
+            "inferred": [s.inferred for s in samples],
         },
         "worker": {
             "algorithm": ALGORITHM_VERSION,
-            "settings": settings.__dict__,
+            "settings": (analysis.settings or settings).__dict__,
+            "polarity": analysis.polarity,
             "calibrationId": (job.get("calibration") or {}).get("id"),
+            "testSubjectId": (job.get("testSubject") or {}).get("id"),
             "pixels": {"x": [rounded(s.px, 2) for s in samples], "y": [rounded(s.py, 2) for s in samples]},
-            "qc": {"lostRatio": round(analysis.lost_ratio, 6), "meanTrackedConfidence": round(analysis.mean_confidence, 6)},
+            "paradigm": {"key": run.get("paradigmKey"), "version": run.get("paradigmVersion")},
+            "qc": {
+                "lostRatio": round(analysis.lost_ratio, 6),
+                "inferredRatio": round(analysis.inferred_ratio, 6),
+                "meanTrackedConfidence": round(analysis.mean_confidence, 6),
+            },
         },
     }
     return json.dumps(document, separators=(",", ":"), allow_nan=False).encode()

@@ -21,7 +21,7 @@ var update = flag.Bool("update", false, "write golden manifests for newly publis
 
 func newMux() *http.ServeMux {
 	mux := http.NewServeMux()
-	Register(mux, application.New(nil), func(r *http.Request) (access.Actor, error) {
+	Register(mux, application.New(), func(r *http.Request) (access.Actor, error) {
 		switch r.Header.Get("Authorization") {
 		case "viewer":
 			return access.Actor{UserID: "u", Role: access.Viewer}, nil
@@ -57,14 +57,14 @@ func TestCatalogIsReadOnlyAndVersioned(t *testing.T) {
 		{"GET", "/api/paradigms", "", 401, "auth.unauthenticated"},
 		{"GET", "/api/paradigms", "unknown-role", 403, "auth.forbidden"},
 		{"GET", "/api/paradigms/MAZE", "viewer", 404, "paradigm.notFound"},
-		{"GET", "/api/paradigms/open_field", "viewer", 404, "paradigm.notFound"},
-		{"GET", "/api/paradigms/OPEN_FIELD/versions/2", "viewer", 404, "paradigm.versionNotFound"},
-		{"GET", "/api/paradigms/OPEN_FIELD/versions/one", "viewer", 404, "paradigm.versionNotFound"},
+		{"GET", "/api/paradigms/mwm", "viewer", 404, "paradigm.notFound"},
+		{"GET", "/api/paradigms/MWM/versions/2", "viewer", 404, "paradigm.versionNotFound"},
+		{"GET", "/api/paradigms/MWM/versions/one", "viewer", 404, "paradigm.versionNotFound"},
 		{"GET", "/api/paradigms/MWM", "", 401, "auth.unauthenticated"},
 		{"POST", "/api/paradigms", "viewer", 405, ""},
-		{"PATCH", "/api/paradigms/OPEN_FIELD", "viewer", 405, ""},
-		{"PUT", "/api/paradigms/EPM", "viewer", 405, ""},
-		{"DELETE", "/api/paradigms/OPEN_FIELD/versions/1", "viewer", 405, ""},
+		{"PATCH", "/api/paradigms/MWM", "viewer", 405, ""},
+		{"PUT", "/api/paradigms/POLE", "viewer", 405, ""},
+		{"DELETE", "/api/paradigms/MWM/versions/1", "viewer", 405, ""},
 	} {
 		if status, body := call(tc.method, tc.path, tc.who); status != tc.status || (tc.code != "" && body["code"] != tc.code) {
 			t.Errorf("%s %s as %q: %d %v", tc.method, tc.path, tc.who, status, body)
@@ -73,22 +73,21 @@ func TestCatalogIsReadOnlyAndVersioned(t *testing.T) {
 
 	status, list := call("GET", "/api/paradigms", "viewer")
 	data, _ := list["data"].([]any)
-	want := []string{"BARNES_MAZE", "EPM", "LIGHT_DARK", "MWM", "NOVEL_OBJECT", "OPEN_FIELD", "POLE", "ROTAROD", "THREE_CHAMBER", "TREADMILL", "Y_MAZE"}
+	want := []string{"MWM", "NOVEL_OBJECT", "POLE", "TREADMILL"}
 	if status != 200 || len(data) != len(want) {
 		t.Fatalf("list: %d %v", status, list)
 	}
 	for i, item := range data {
 		summary := item.(map[string]any)
-		// No worker capability exists yet, so catalog presence must not claim automated analysis.
-		if summary["key"] != want[i] || summary["latestVersion"] != float64(1) || summary["automatedAnalysis"] != false {
+		if summary["key"] != want[i] || summary["latestVersion"] != float64(1) {
 			t.Fatalf("summary %d: %v", i, summary)
 		}
 	}
-	for _, path := range []string{"/api/paradigms/OPEN_FIELD", "/api/paradigms/OPEN_FIELD/versions/1"} {
+	for _, path := range []string{"/api/paradigms/MWM", "/api/paradigms/MWM/versions/1"} {
 		status, manifest := call("GET", path, "viewer")
 		metrics, _ := manifest["metrics"].([]any)
 		if status != 200 || manifest["version"] != float64(1) || manifest["metricEngineVersion"] != float64(1) ||
-			manifest["resultSchemaVersion"] != float64(1) || len(metrics) != 9 || manifest["automatedAnalysis"] != false {
+			manifest["resultSchemaVersion"] != float64(1) || len(metrics) != 8 {
 			t.Fatalf("%s: %d %v", path, status, manifest)
 		}
 		first := metrics[0].(map[string]any)
@@ -97,22 +96,28 @@ func TestCatalogIsReadOnlyAndVersioned(t *testing.T) {
 		}
 	}
 
-	_, epm := call("GET", "/api/paradigms/EPM/versions/1", "viewer")
-	zone := epm["zones"].([]any)[0].(map[string]any)
-	input := epm["inputEvents"].([]any)[0].(map[string]any)
-	if zone["key"] != "center" || zone["calibrated"] != true || zone["required"] != true ||
-		input["type"] != "risk_assessment" || input["kind"] != "POINT" || input["labels"] == nil {
-		t.Fatalf("EPM contract: %v %v", zone, input)
+	_, mwm := call("GET", "/api/paradigms/MWM/versions/1", "viewer")
+	zone := mwm["zones"].([]any)[0].(map[string]any)
+	inputs, _ := mwm["inputEvents"].([]any)
+	if zone["key"] != "platform" || zone["calibrated"] != false || zone["required"] != true || inputs == nil || len(inputs) != 0 {
+		t.Fatalf("MWM contract: %v %v", zone, mwm["inputEvents"])
 	}
-	_, rotarod := call("GET", "/api/paradigms/ROTAROD", "viewer")
-	session := rotarod["sessionParameters"].([]any)[0].(map[string]any)
-	zones, _ := rotarod["zones"].([]any)
-	if session["key"] != "accelerating" || session["valueType"] != "integer" || zones == nil || len(zones) != 0 {
-		t.Fatalf("ROTAROD contract: %v %v", session, rotarod["zones"])
+	_, pole := call("GET", "/api/paradigms/POLE/versions/1", "viewer")
+	event := pole["events"].([]any)[0].(map[string]any)
+	poleInputs, _ := pole["inputEvents"].([]any)
+	if event["type"] != "turn_complete" || event["kind"] != "POINT" || event["single"] != true || event["labels"] == nil || poleInputs == nil || len(poleInputs) != 0 {
+		t.Fatalf("POLE contract: %v %v", event, pole["inputEvents"])
+	}
+	_, treadmill := call("GET", "/api/paradigms/TREADMILL", "viewer")
+	analysis := treadmill["parameters"].([]any)[1].(map[string]any)
+	grid := treadmill["zones"].([]any)[0].(map[string]any)
+	if analysis["key"] != "exhaustion_dwell_s" || analysis["scope"] != "ANALYSIS" || analysis["default"] != float64(5) ||
+		grid["key"] != "shock_grid" || grid["calibrated"] != true || grid["required"] != true {
+		t.Fatalf("TREADMILL contract: %v %v", analysis, grid)
 	}
 	_, novel := call("GET", "/api/paradigms/NOVEL_OBJECT", "viewer")
-	exploration := novel["inputEvents"].([]any)[0].(map[string]any)
-	if labels := exploration["labels"].([]any); len(labels) != 2 || labels[0] != "novel" {
+	exploration := novel["events"].([]any)[0].(map[string]any)
+	if labels := exploration["labels"].([]any); exploration["type"] != "exploration" || len(labels) != 2 || labels[0] != "novel" || labels[1] != "familiar" {
 		t.Fatalf("NOVEL_OBJECT labels: %v", exploration)
 	}
 }
@@ -120,6 +125,35 @@ func TestCatalogIsReadOnlyAndVersioned(t *testing.T) {
 // TestPublishedManifestsNeverChange pins every published manifest to a golden
 // file. A changed contract must be published as a new version instead; run the
 // test with -update only to add goldens for new versions.
+func TestCatalogTextFollowsTheRequestedLanguage(t *testing.T) {
+	mux := newMux()
+	for _, tc := range []struct{ header, query, name, label string }{
+		{"", "", "Morris water maze", "Pool diameter"},
+		{"tr-TR,tr;q=0.9", "", "Morris su labirenti", "Havuz çapı"},
+		{"en", "?lang=tr", "Morris su labirenti", "Havuz çapı"},
+		{"de", "", "Morris water maze", "Pool diameter"},
+	} {
+		req := httptest.NewRequest("GET", "/api/paradigms/MWM"+tc.query, nil)
+		req.Header.Set("Authorization", "viewer")
+		if tc.header != "" {
+			req.Header.Set("Accept-Language", tc.header)
+		}
+		rr := httptest.NewRecorder()
+		mux.ServeHTTP(rr, req)
+		var m struct {
+			Name       string `json:"name"`
+			Parameters []struct {
+				Label string `json:"label"`
+				Scope string `json:"scope"`
+			} `json:"parameters"`
+		}
+		if err := json.Unmarshal(rr.Body.Bytes(), &m); err != nil || m.Name != tc.name || m.Parameters[0].Label != tc.label ||
+			m.Parameters[0].Scope != "APPARATUS" || rr.Header().Get("Content-Language") == "" {
+			t.Errorf("%+v: %d %+v %v", tc, rr.Code, m, err)
+		}
+	}
+}
+
 func TestPublishedManifestsNeverChange(t *testing.T) {
 	mux := newMux()
 	_, raw := get(mux, "GET", "/api/paradigms", "viewer")

@@ -8,12 +8,12 @@ import (
 )
 
 func step(position int) Step {
-	return Step{Position: position, ParadigmKey: "OPEN_FIELD", ParadigmVersion: 1, EnvironmentRevisionID: "rev", TrialType: "STANDARD", Trials: 1}
+	return Step{Position: position, ParadigmKey: "MWM", ParadigmVersion: 1, TrialType: "STANDARD", Trials: 1}
 }
 
 func TestProtocolFieldsAreValidated(t *testing.T) {
-	p, err := NewProtocol("exp", "  Anxiety battery ", " two tests ")
-	if err != nil || p.Name != "Anxiety battery" || p.Description != "two tests" || p.ExperimentID != "exp" {
+	p, err := NewProtocol("exp", "  Memory battery ", " two tests ")
+	if err != nil || p.Name != "Memory battery" || p.Description != "two tests" || p.ExperimentID != "exp" {
 		t.Fatalf("normalized: %+v %v", p, err)
 	}
 	for name, tc := range map[string]struct {
@@ -32,19 +32,19 @@ func TestProtocolFieldsAreValidated(t *testing.T) {
 }
 
 func TestVersionStepsAreOrderedByPosition(t *testing.T) {
-	epm := step(1)
-	epm.ParadigmKey = "EPM"
-	openField := step(2)
-	openField.Session = map[string]float64{"max_sample_gap_s": 0.25}
-	v, err := NewVersion("protocol", " baseline ", "user", []Step{openField, epm})
+	pole := step(1)
+	pole.ParadigmKey = "POLE"
+	tank := step(2)
+	tank.Session = map[string]float64{"max_sample_gap_s": 0.25}
+	v, err := NewVersion("protocol", " baseline ", "user", []Step{tank, pole})
 	if err != nil {
 		t.Fatal(err)
 	}
 	keys := []string{v.Steps[0].ParadigmKey, v.Steps[1].ParadigmKey}
-	if !slices.Equal(keys, []string{"EPM", "OPEN_FIELD"}) || v.Notes != "baseline" || v.CreatedBy != "user" {
+	if !slices.Equal(keys, []string{"POLE", "MWM"}) || v.Notes != "baseline" || v.CreatedBy != "user" {
 		t.Fatalf("version: %+v", v)
 	}
-	openField.Session["max_sample_gap_s"] = 4
+	tank.Session["max_sample_gap_s"] = 4
 	if v.Steps[1].Session["max_sample_gap_s"] != 0.25 {
 		t.Fatal("a version must not share session values with the caller")
 	}
@@ -71,7 +71,6 @@ func TestVersionStepsAreOrderedByPosition(t *testing.T) {
 		"malformed trial type": {[]Step{with(1, func(s *Step) { s.TrialType = "probe" })}, ErrInvalidTrialType},
 		"malformed paradigm":   {[]Step{with(1, func(s *Step) { s.ParadigmKey = "maze" })}, ErrInvalidParadigmKey},
 		"paradigm version 0":   {[]Step{with(1, func(s *Step) { s.ParadigmVersion = 0 })}, ErrInvalidParadigmVersion},
-		"no environment":       {[]Step{with(1, func(s *Step) { s.EnvironmentRevisionID = "" })}, ErrMissingEnvironment},
 		"long step notes":      {[]Step{with(1, func(s *Step) { s.Notes = strings.Repeat("n", 2001) })}, ErrInvalidNotes},
 	} {
 		if _, err := NewVersion("protocol", "", "user", tc.steps); !errors.Is(err, tc.want) {

@@ -55,24 +55,6 @@ func emptyDatabase(t *testing.T) *pgxpool.Pool {
 	return pool
 }
 
-// installUntracked reproduces an installation made before migrations were
-// tracked: the first n files applied in one transaction, nothing recorded.
-func installUntracked(t *testing.T, pool *pgxpool.Pool, n int) {
-	t.Helper()
-	migrations, err := schema.Migrations()
-	if err != nil {
-		t.Fatal(err)
-	}
-	var sql strings.Builder
-	for _, m := range migrations[:n] {
-		sql.WriteString(m.SQL)
-		sql.WriteString("\n")
-	}
-	if _, err := pool.Exec(context.Background(), "BEGIN;\n"+sql.String()+"\nCOMMIT;"); err != nil {
-		t.Fatal(err)
-	}
-}
-
 func versions(t *testing.T, pool *pgxpool.Pool) []int {
 	t.Helper()
 	rows, err := pool.Query(context.Background(), "SELECT version FROM misko.schema_migrations ORDER BY version")
@@ -92,16 +74,6 @@ func all() []int {
 		out[i] = i + 1
 	}
 	return out
-}
-
-func subjectColumns(t *testing.T, pool *pgxpool.Pool) int {
-	t.Helper()
-	var n int
-	if err := pool.QueryRow(context.Background(), `SELECT count(*) FROM information_schema.columns
-		WHERE table_schema = 'misko' AND table_name = 'subjects' AND column_name IN ('strain', 'birth_date', 'notes')`).Scan(&n); err != nil {
-		t.Fatal(err)
-	}
-	return n
 }
 
 func TestFreshInstallIsRecordedAndRepeatable(t *testing.T) {
@@ -138,46 +110,6 @@ func TestFreshInstallIsRecordedAndRepeatable(t *testing.T) {
 	}
 }
 
-func TestUntrackedInstallationIsAdoptedAndUpgraded(t *testing.T) {
-	ctx := context.Background()
-	for _, tc := range []struct {
-		name      string
-		installed int
-		want      []string
-	}{
-		{"installed before environment calibrations", 12, []string{"013_environment_calibrations.sql", "014_drop_subject_optional_fields.sql"}},
-		{"installed with environment calibrations", 13, []string{"014_drop_subject_optional_fields.sql"}},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			pool := emptyDatabase(t)
-			installUntracked(t, pool, tc.installed)
-			if _, err := pool.Exec(ctx, "INSERT INTO misko.subjects (code, species, sex, strain, birth_date, notes) VALUES ('L-1', 'MOUSE', 'MALE', 'C57', '2026-01-01', 'tag')"); err != nil {
-				t.Fatal(err)
-			}
-			if healthpostgres.New(pool, schema.Latest()).Check(ctx) == nil {
-				t.Fatal("untracked installation marked ready")
-			}
-			applied, err := schema.Migrate(ctx, pool)
-			if err != nil || !slices.Equal(applied, tc.want) {
-				t.Fatalf("applied %v want %v: %v", applied, tc.want, err)
-			}
-			if got := versions(t, pool); !slices.Equal(got, all()) {
-				t.Fatalf("recorded versions %v", got)
-			}
-			var code string
-			if err := pool.QueryRow(ctx, "SELECT code FROM misko.subjects").Scan(&code); err != nil || code != "L-1" {
-				t.Fatalf("subject lost: %q %v", code, err)
-			}
-			if n := subjectColumns(t, pool); n != 0 {
-				t.Fatalf("%d removed subject columns remain", n)
-			}
-			if err := healthpostgres.New(pool, schema.Latest()).Check(ctx); err != nil {
-				t.Fatalf("upgraded database not ready: %v", err)
-			}
-		})
-	}
-}
-
 func TestUnknownSchemaIsRefusedUnchanged(t *testing.T) {
 	ctx := context.Background()
 	pool := emptyDatabase(t)
@@ -202,30 +134,48 @@ func TestChangedMigrationIsRefused(t *testing.T) {
 	if _, err := pool.Exec(ctx, "UPDATE misko.schema_migrations SET checksum = 'edited' WHERE version = 3"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := schema.Migrate(ctx, pool); !errors.Is(err, schema.ErrModified) || !strings.Contains(err.Error(), "003_subjects.sql") {
+	if _, err := schema.Migrate(ctx, pool); !errors.Is(err, schema.ErrModified) || !strings.Contains(err.Error(), "003_catalog.sql") {
 		t.Fatalf("changed migration: %v", err)
 	}
+}
+
+// installUpTo applies the first n migrations the way Migrate does and
+// records them, leaving the database n migrations into the history.
+func installUpTo(t *testing.T, pool *pgxpool.Pool, n int) []schema.Migration {
+	t.Helper()
+	ctx := context.Background()
+	migrations, err := schema.Migrations()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range migrations[:n] {
+		if _, err := pool.Exec(ctx, m.SQL); err != nil {
+			t.Fatalf("apply %s: %v", m.Name, err)
+		}
+	}
+	if _, err := pool.Exec(ctx, `CREATE TABLE misko.schema_migrations (version integer PRIMARY KEY, name text NOT NULL, checksum text NOT NULL,
+		applied_at timestamptz NOT NULL DEFAULT now())`); err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range migrations[:n] {
+		if _, err := pool.Exec(ctx, "INSERT INTO misko.schema_migrations (version, name, checksum) VALUES ($1, $2, $3)", m.Version, m.Name, m.Checksum); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return migrations
 }
 
 func TestPendingMigrationRunsAndBlocksReadiness(t *testing.T) {
 	ctx := context.Background()
 	pool := emptyDatabase(t)
-	if _, err := schema.Migrate(ctx, pool); err != nil {
-		t.Fatal(err)
-	}
-	// Simulate a database one release behind: undo 014 and forget it.
-	if _, err := pool.Exec(ctx, `ALTER TABLE misko.subjects ADD COLUMN strain text, ADD COLUMN birth_date date, ADD COLUMN notes text;
-		DELETE FROM misko.schema_migrations WHERE version = 14`); err != nil {
-		t.Fatal(err)
-	}
+	// A database one release behind: every migration but the last is applied.
+	migrations := installUpTo(t, pool, schema.Latest()-1)
+	pending := []string{migrations[len(migrations)-1].Name}
 	if healthpostgres.New(pool, schema.Latest()).Check(ctx) == nil {
 		t.Fatal("database behind the code marked ready")
 	}
-	if applied, err := schema.Migrate(ctx, pool); err != nil || !slices.Equal(applied, []string{"014_drop_subject_optional_fields.sql"}) {
+	if applied, err := schema.Migrate(ctx, pool); err != nil || !slices.Equal(applied, pending) {
 		t.Fatalf("pending migration: %v %v", applied, err)
-	}
-	if n := subjectColumns(t, pool); n != 0 {
-		t.Fatalf("%d removed subject columns remain", n)
 	}
 	// A database ahead of the code (a rollback) still starts.
 	if _, err := pool.Exec(ctx, "INSERT INTO misko.schema_migrations (version, name, checksum) VALUES (999, '999_future.sql', 'x')"); err != nil {

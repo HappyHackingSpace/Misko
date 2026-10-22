@@ -26,21 +26,13 @@ var files embed.FS
 var (
 	// ErrModified means an applied migration file no longer matches the database.
 	ErrModified = errors.New("an applied migration was changed")
-	// ErrUnknownSchema means the database has a misko schema this code cannot place.
-	ErrUnknownSchema = errors.New("the existing misko schema is not a known installation")
+	// ErrUnknownSchema means the database has a misko schema without the
+	// migration table, so it was not installed by these migrations.
+	ErrUnknownSchema = errors.New("the existing misko schema was not installed by these migrations")
 )
 
 // lockKey serializes concurrent migrators; it is an arbitrary constant.
 const lockKey = 7_314_520_261
-
-// Databases installed before migrations were tracked always hold 001-012, which
-// shipped together; 013 shipped later and is recorded only if its objects exist.
-const (
-	legacyBaseline = 12
-	legacyMarker   = "misko.report_runs"
-)
-
-var legacyOptional = map[int]string{13: "misko.effective_calibrations"}
 
 type Migration struct {
 	Version  int
@@ -140,8 +132,9 @@ func Migrate(ctx context.Context, pool *pgxpool.Pool) ([]string, error) {
 	return applied, nil
 }
 
-// appliedVersions reads the migration table, or infers it for a database that
-// predates it. Versions newer than this code are ignored so a rollback can start.
+// appliedVersions reads the migration table. A database without the misko
+// schema is fresh; one with the schema but no table is refused. Versions newer
+// than this code are ignored so a rollback can start.
 func appliedVersions(ctx context.Context, tx pgx.Tx, migrations []Migration) (map[int]struct{}, error) {
 	var installed, tracked bool
 	if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = 'misko'),
@@ -153,7 +146,7 @@ func appliedVersions(ctx context.Context, tx pgx.Tx, migrations []Migration) (ma
 		return applied, nil
 	}
 	if !tracked {
-		return legacyVersions(ctx, tx)
+		return nil, ErrUnknownSchema
 	}
 	rows, err := tx.Query(ctx, "SELECT version, checksum FROM misko.schema_migrations")
 	if err != nil {
@@ -184,32 +177,4 @@ func appliedVersions(ctx context.Context, tx pgx.Tx, migrations []Migration) (ma
 		applied[m.Version] = struct{}{}
 	}
 	return applied, nil
-}
-
-func legacyVersions(ctx context.Context, tx pgx.Tx) (map[int]struct{}, error) {
-	if found, err := exists(ctx, tx, legacyMarker); err != nil || !found {
-		return nil, errors.Join(ErrUnknownSchema, err)
-	}
-	applied := map[int]struct{}{}
-	for v := 1; v <= legacyBaseline; v++ {
-		applied[v] = struct{}{}
-	}
-	for version, marker := range legacyOptional {
-		found, err := exists(ctx, tx, marker)
-		if err != nil {
-			return nil, err
-		}
-		if found {
-			applied[version] = struct{}{}
-		}
-	}
-	return applied, nil
-}
-
-func exists(ctx context.Context, tx pgx.Tx, relation string) (bool, error) {
-	var found bool
-	if err := tx.QueryRow(ctx, "SELECT to_regclass($1) IS NOT NULL", relation).Scan(&found); err != nil {
-		return false, fmt.Errorf("inspect %s: %w", relation, err)
-	}
-	return found, nil
 }

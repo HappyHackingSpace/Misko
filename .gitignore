@@ -229,3 +229,6 @@ docker-compose.override.yml
 docker-compose.override.*.yml
 !docker-compose.override.example.yml
 
+
+# Local video storage (LOCAL_STORAGE_DIR) used in development
+.local-storage/

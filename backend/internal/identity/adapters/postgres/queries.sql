@@ -4,7 +4,7 @@ VALUES (@email, @name, @role, @password_hash)
 RETURNING id, email, name, role, created_at;
 
 -- name: GetUser :one
-SELECT id, email, name, role, created_at
+SELECT id, email, name, role, created_at, last_login_at
 FROM misko.users
 WHERE id = @id;
 
@@ -20,7 +20,7 @@ WHERE id = @id;
 
 -- The sort key is allowlisted by the application; id breaks ties for stable paging.
 -- name: ListUsers :many
-SELECT id, email, name, role, created_at
+SELECT id, email, name, role, created_at, last_login_at
 FROM misko.users
 WHERE (@search::text = '' OR name ILIKE '%' || @search::text || '%' ESCAPE '\' OR email ILIKE '%' || @search::text || '%' ESCAPE '\')
   AND (@role::text = '' OR role = @role::text)
@@ -35,6 +35,11 @@ ORDER BY
     CASE WHEN @sort_key::text = 'createdAt' AND @descending::boolean THEN created_at END DESC,
     id ASC
 LIMIT @page_limit::integer OFFSET @page_offset::integer;
+
+-- RecordLogin marks a successful sign-in; it leaves updated_at alone because
+-- signing in does not change the account.
+-- name: RecordLogin :exec
+UPDATE misko.users SET last_login_at = now() WHERE id = @id;
 
 -- name: CountUsers :one
 SELECT count(*)

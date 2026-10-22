@@ -34,20 +34,20 @@ RETURNING e.id, e.name, e.paradigm_key, e.notes, e.created_at, e.updated_at,
 -- CreateRevision numbers revisions per environment; callers lock the
 -- environment first so concurrent revisions do not collide.
 -- name: CreateRevision :one
-INSERT INTO misko.environment_revisions (environment_id, paradigm_key, number, paradigm_version, apparatus, notes, created_by)
-SELECT @environment_id::uuid, @paradigm_key::text, coalesce(max(r.number), 0) + 1, @paradigm_version::integer, @apparatus::jsonb, sqlc.narg(notes)::text, @created_by::uuid
+INSERT INTO misko.environment_revisions (environment_id, paradigm_key, number, paradigm_version, parameters, notes, created_by)
+SELECT @environment_id::uuid, @paradigm_key::text, coalesce(max(r.number), 0) + 1, @paradigm_version::integer, @parameters::jsonb, sqlc.narg(notes)::text, @created_by::uuid
 FROM misko.environment_revisions r
 WHERE r.environment_id = @environment_id::uuid
-RETURNING id, environment_id, paradigm_key, number, paradigm_version, apparatus, notes, created_by, created_at;
+RETURNING id, environment_id, paradigm_key, paradigm_version, number, parameters, notes, created_by, created_at;
 
 -- name: ListRevisions :many
-SELECT id, environment_id, paradigm_key, number, paradigm_version, apparatus, notes, created_by, created_at
+SELECT id, environment_id, paradigm_key, paradigm_version, number, parameters, notes, created_by, created_at
 FROM misko.environment_revisions
 WHERE environment_id = @environment_id
 ORDER BY number;
 
 -- name: GetRevision :one
-SELECT id, environment_id, paradigm_key, number, paradigm_version, apparatus, notes, created_by, created_at
+SELECT id, environment_id, paradigm_key, paradigm_version, number, parameters, notes, created_by, created_at
 FROM misko.environment_revisions
 WHERE environment_id = @environment_id AND number = @number;
 
@@ -58,3 +58,10 @@ SELECT r.id, r.environment_id, e.name AS environment_name, r.paradigm_key, r.num
 FROM misko.environment_revisions r
 JOIN misko.environments e ON e.id = r.environment_id
 ORDER BY lower(e.name), e.id, r.number;
+
+-- name: GetRevisionByID :one
+SELECT r.id, r.environment_id, r.paradigm_key, r.paradigm_version, r.number, r.parameters, r.notes, r.created_by, r.created_at,
+       e.name AS environment_name
+FROM misko.environment_revisions r
+JOIN misko.environments e ON e.id = r.environment_id
+WHERE r.id = @id;

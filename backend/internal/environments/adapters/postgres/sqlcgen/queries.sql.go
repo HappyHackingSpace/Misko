@@ -37,18 +37,18 @@ func (q *Queries) CreateEnvironment(ctx context.Context, arg CreateEnvironmentPa
 }
 
 const createRevision = `-- name: CreateRevision :one
-INSERT INTO misko.environment_revisions (environment_id, paradigm_key, number, paradigm_version, apparatus, notes, created_by)
+INSERT INTO misko.environment_revisions (environment_id, paradigm_key, number, paradigm_version, parameters, notes, created_by)
 SELECT $1::uuid, $2::text, coalesce(max(r.number), 0) + 1, $3::integer, $4::jsonb, $5::text, $6::uuid
 FROM misko.environment_revisions r
 WHERE r.environment_id = $1::uuid
-RETURNING id, environment_id, paradigm_key, number, paradigm_version, apparatus, notes, created_by, created_at
+RETURNING id, environment_id, paradigm_key, paradigm_version, number, parameters, notes, created_by, created_at
 `
 
 type CreateRevisionParams struct {
 	EnvironmentID   string
 	ParadigmKey     string
 	ParadigmVersion int32
-	Apparatus       []byte
+	Parameters      []byte
 	Notes           *string
 	CreatedBy       string
 }
@@ -60,7 +60,7 @@ func (q *Queries) CreateRevision(ctx context.Context, arg CreateRevisionParams) 
 		arg.EnvironmentID,
 		arg.ParadigmKey,
 		arg.ParadigmVersion,
-		arg.Apparatus,
+		arg.Parameters,
 		arg.Notes,
 		arg.CreatedBy,
 	)
@@ -69,9 +69,9 @@ func (q *Queries) CreateRevision(ctx context.Context, arg CreateRevisionParams) 
 		&i.ID,
 		&i.EnvironmentID,
 		&i.ParadigmKey,
-		&i.Number,
 		&i.ParadigmVersion,
-		&i.Apparatus,
+		&i.Number,
+		&i.Parameters,
 		&i.Notes,
 		&i.CreatedBy,
 		&i.CreatedAt,
@@ -112,7 +112,7 @@ func (q *Queries) GetEnvironment(ctx context.Context, id string) (GetEnvironment
 }
 
 const getRevision = `-- name: GetRevision :one
-SELECT id, environment_id, paradigm_key, number, paradigm_version, apparatus, notes, created_by, created_at
+SELECT id, environment_id, paradigm_key, paradigm_version, number, parameters, notes, created_by, created_at
 FROM misko.environment_revisions
 WHERE environment_id = $1 AND number = $2
 `
@@ -129,12 +129,51 @@ func (q *Queries) GetRevision(ctx context.Context, arg GetRevisionParams) (Misko
 		&i.ID,
 		&i.EnvironmentID,
 		&i.ParadigmKey,
-		&i.Number,
 		&i.ParadigmVersion,
-		&i.Apparatus,
+		&i.Number,
+		&i.Parameters,
 		&i.Notes,
 		&i.CreatedBy,
 		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const getRevisionByID = `-- name: GetRevisionByID :one
+SELECT r.id, r.environment_id, r.paradigm_key, r.paradigm_version, r.number, r.parameters, r.notes, r.created_by, r.created_at,
+       e.name AS environment_name
+FROM misko.environment_revisions r
+JOIN misko.environments e ON e.id = r.environment_id
+WHERE r.id = $1
+`
+
+type GetRevisionByIDRow struct {
+	ID              string
+	EnvironmentID   string
+	ParadigmKey     string
+	ParadigmVersion int32
+	Number          int32
+	Parameters      []byte
+	Notes           *string
+	CreatedBy       string
+	CreatedAt       time.Time
+	EnvironmentName string
+}
+
+func (q *Queries) GetRevisionByID(ctx context.Context, id string) (GetRevisionByIDRow, error) {
+	row := q.db.QueryRow(ctx, getRevisionByID, id)
+	var i GetRevisionByIDRow
+	err := row.Scan(
+		&i.ID,
+		&i.EnvironmentID,
+		&i.ParadigmKey,
+		&i.ParadigmVersion,
+		&i.Number,
+		&i.Parameters,
+		&i.Notes,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.EnvironmentName,
 	)
 	return i, err
 }
@@ -231,7 +270,7 @@ func (q *Queries) ListEnvironments(ctx context.Context, paradigmKey string) ([]L
 }
 
 const listRevisions = `-- name: ListRevisions :many
-SELECT id, environment_id, paradigm_key, number, paradigm_version, apparatus, notes, created_by, created_at
+SELECT id, environment_id, paradigm_key, paradigm_version, number, parameters, notes, created_by, created_at
 FROM misko.environment_revisions
 WHERE environment_id = $1
 ORDER BY number
@@ -250,9 +289,9 @@ func (q *Queries) ListRevisions(ctx context.Context, environmentID string) ([]Mi
 			&i.ID,
 			&i.EnvironmentID,
 			&i.ParadigmKey,
-			&i.Number,
 			&i.ParadigmVersion,
-			&i.Apparatus,
+			&i.Number,
+			&i.Parameters,
 			&i.Notes,
 			&i.CreatedBy,
 			&i.CreatedAt,

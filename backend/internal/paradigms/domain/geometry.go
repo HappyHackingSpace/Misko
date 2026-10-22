@@ -50,6 +50,7 @@ func onSegment(a, b Vertex, x, y float64) bool {
 		y >= math.Min(a.Y, b.Y)-edgeTolerance && y <= math.Max(a.Y, b.Y)+edgeTolerance
 }
 
+// inAny reports whether a point lies in any shape of a calibrated zone.
 func inAny(shapes []Shape, x, y float64) bool {
 	for _, s := range shapes {
 		if s.contains(x, y) {

@@ -1,5 +1,10 @@
 # Environment calibration and drift check
 
+> **2026-10-15:** the paradigm catalog was trimmed to `MWM`, `NOVEL_OBJECT`,
+> `POLE` and `TREADMILL`; the other seven paradigms were removed. Only `MWM`
+> needs a calibration now; calibrated zones stay supported, but no current
+> paradigm declares any.
+
 Status: phase 1 (environment calibration with per-recording override) is implemented on
 the `feat/environment-calibration` branch.
 Phase 2 (automatic drift check) is specified here only as far as phase 1 must
@@ -83,7 +88,7 @@ would defeat the point.
 
 `Requirement` (required or not, tolerance, bounds) is unchanged and still comes
 from the paradigm catalog with the revision's apparatus. Paradigms without
-`max_calibration_error_cm` (for example ROTAROD) stay `NOT_REQUIRED` and the
+`max_calibration_error_cm` (for example POLE) stay `NOT_REQUIRED` and the
 environment calibration endpoints answer `calibration.notRequired`.
 
 ### D3. Environment correction must not mass-reanalyze

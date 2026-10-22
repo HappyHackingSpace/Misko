@@ -42,6 +42,7 @@ func TestEveryOperationRequiresItsPermission(t *testing.T) {
 		{"start upload", access.TestRun, func(s *Service, a access.Actor) error { return second(s.StartUpload(ctx, a, "test", request())) }},
 		{"finalize upload", access.TestRun, func(s *Service, a access.Actor) error { return second(s.FinalizeUpload(ctx, a, "test", "rec")) }},
 		{"list recordings", access.Read, func(s *Service, a access.Actor) error { return second(s.Recordings(ctx, a, "test")) }},
+		{"current recording", access.Read, func(s *Service, a access.Actor) error { return second(s.Current(ctx, a, "test")) }},
 		{"read URL", access.Read, func(s *Service, a access.Actor) error { return second(s.ReadURL(ctx, a, "test", "rec")) }},
 	}
 	for _, role := range append(access.Roles(), "ROOT") {
@@ -62,7 +63,7 @@ func TestEveryOperationRequiresItsPermission(t *testing.T) {
 		for _, op := range operations {
 			if err := guard(func() error {
 				return op.run(New(&fakeStore{}, nil, settings, clock), access.Actor{UserID: "u", Role: access.SuperAdmin})
-			}); op.name != "list recordings" && !errors.Is(err, ErrStorageNotConfigured) {
+			}); op.name != "list recordings" && op.name != "current recording" && !errors.Is(err, ErrStorageNotConfigured) {
 				t.Errorf("%s without storage: %v", op.name, err)
 			}
 		}
@@ -76,28 +77,56 @@ func TestStartUploadSignsANewObjectOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Equal(store.calls, []string{"Transaction", "Test", "CreateRecording"}) {
+	if !slices.Equal(store.calls, []string{"Transaction", "LockTest", "NewestRecordingID", "CreateRecording"}) {
 		t.Fatalf("store calls: %v", store.calls)
 	}
 	rec := upload.Recording
-	if rec.Asset.Status != domain.Pending || rec.Asset.CreatedBy != "tech" || rec.Asset.Bucket != "misko-videos" || rec.TestID != "test" {
+	if rec.Asset.Status != domain.Pending || rec.Asset.CreatedBy != "tech" || rec.Asset.Bucket != "misko-videos" || rec.TestID != "test" || rec.SupersedesID != "" {
 		t.Fatalf("recording: %+v", rec)
 	}
-	if upload.Request.URL != "signed-upload:"+rec.Asset.ObjectName || !upload.Request.ExpiresAt.Equal(now.Add(time.Hour)) || objects.signedType != "video/mp4" {
-		t.Fatalf("upload request: %+v", upload.Request)
+	if upload.Request.URL != "signed-upload:"+rec.Asset.ObjectName || !upload.Request.ExpiresAt.Equal(now.Add(time.Hour)) || objects.signedType != "video/mp4" || objects.signedSize != 1024 {
+		t.Fatalf("upload request: %+v %+v", upload.Request, objects)
 	}
 	for name, tc := range map[string]struct {
 		store *fakeStore
 		req   domain.UploadRequest
 		want  error
 	}{
-		"cancelled test": {&fakeStore{status: "CANCELLED"}, request(), ErrTestCancelled},
+		"planned test":   {&fakeStore{status: "PLANNED"}, request(), domain.ErrTestNotStarted},
+		"cancelled test": {&fakeStore{status: "CANCELLED"}, request(), domain.ErrTestNotStarted},
 		"unknown test":   {&fakeStore{missing: true}, request(), ErrTestNotFound},
 		"invalid upload": {&fakeStore{}, func() domain.UploadRequest { r := request(); r.SizeBytes = 2 << 30; return r }(), domain.ErrInvalidSize},
 	} {
 		if _, err := New(tc.store, &fakeObjects{}, settings, clock).StartUpload(ctx, technician, "test", tc.req); !errors.Is(err, tc.want) || slices.Contains(tc.store.calls, "CreateRecording") {
 			t.Errorf("%s: err=%v calls=%v want %v", name, err, tc.store.calls, tc.want)
 		}
+	}
+}
+
+func TestAReplacementSupersedesTheCurrentVideo(t *testing.T) {
+	technician := access.Actor{UserID: "tech", Role: access.Technician}
+	store := &fakeStore{status: "COMPLETED", current: "old"}
+	upload, err := New(store, &fakeObjects{}, settings, clock).StartUpload(ctx, technician, "test", request())
+	if err != nil || upload.Recording.SupersedesID != "old" {
+		t.Fatalf("replacement: %+v %v", upload.Recording, err)
+	}
+	// A failed signature rolls the attachment back with the transaction.
+	failing := &fakeStore{}
+	if _, err := New(failing, &fakeObjects{signErr: errors.New("no signer")}, settings, clock).StartUpload(ctx, technician, "test", request()); err == nil || err.Error() != "no signer" {
+		t.Fatalf("signing failure: %v", err)
+	}
+}
+
+func TestCurrentNamesTheTestsVideo(t *testing.T) {
+	viewer := access.Actor{UserID: "viewer", Role: access.Viewer}
+	if rec, err := New(&fakeStore{current: "rec"}, nil, settings, clock).Current(ctx, viewer, "test"); err != nil || rec.ID != "rec" || !rec.Current {
+		t.Fatalf("current: %+v %v", rec, err)
+	}
+	if _, err := New(&fakeStore{}, nil, settings, clock).Current(ctx, viewer, "test"); !errors.Is(err, ErrRecordingNotFound) {
+		t.Fatalf("no video yet: %v", err)
+	}
+	if _, err := New(&fakeStore{missing: true}, nil, settings, clock).Current(ctx, viewer, "test"); !errors.Is(err, ErrTestNotFound) {
+		t.Fatalf("unknown test: %v", err)
 	}
 }
 
@@ -187,12 +216,22 @@ type fakeObjects struct {
 	attrs      *domain.ObjectAttrs
 	calls      []string
 	signedType string
+	signedSize int64
+	signErr    error
 }
 
 func (f *fakeObjects) Bucket() string { return "misko-videos" }
 
 func (f *fakeObjects) UploadURL(_ context.Context, object, contentType string, expires time.Time) (SignedRequest, error) {
 	f.calls, f.signedType = append(f.calls, "UploadURL"), contentType
+	return SignedRequest{Method: "POST", URL: "signed-upload:" + object, Headers: map[string]string{"x-goog-resumable": "start"}, ExpiresAt: expires}, nil
+}
+
+func (f *fakeObjects) SizedUploadURL(_ context.Context, object, contentType string, size int64, expires time.Time) (SignedRequest, error) {
+	f.calls, f.signedType, f.signedSize = append(f.calls, "SizedUploadURL"), contentType, size
+	if f.signErr != nil {
+		return SignedRequest{}, f.signErr
+	}
 	return SignedRequest{Method: "POST", URL: "signed-upload:" + object, Headers: map[string]string{"x-goog-resumable": "start"}, ExpiresAt: expires}, nil
 }
 
@@ -219,6 +258,7 @@ type fakeStore struct {
 	calls       []string
 	status      string
 	missing     bool
+	current     string
 	asset       *domain.Asset
 	lockedAsset *domain.Asset
 }
@@ -238,10 +278,30 @@ func (f *fakeStore) Test(_ context.Context, id string) (TestRef, error) {
 	return TestRef{ID: id, ExperimentID: "exp", Status: withDefault(f.status, "IN_PROGRESS")}, nil
 }
 
-func (f *fakeStore) CreateRecording(_ context.Context, test TestRef, asset domain.Asset, clip domain.Clip) (domain.Recording, error) {
+func (f *fakeStore) LockTest(c context.Context, id string) (TestRef, error) {
+	f.record("LockTest")
+	ref, err := f.Test(c, id)
+	f.calls = f.calls[:len(f.calls)-1]
+	return ref, err
+}
+
+func (f *fakeStore) CurrentRecording(_ context.Context, testID string) (domain.Recording, error) {
+	f.record("CurrentRecording")
+	if f.current == "" {
+		return domain.Recording{}, ErrRecordingNotFound
+	}
+	return domain.Recording{ID: f.current, TestID: testID, Current: true}, nil
+}
+
+func (f *fakeStore) NewestRecordingID(_ context.Context, _ string) (string, error) {
+	f.record("NewestRecordingID")
+	return f.current, nil
+}
+
+func (f *fakeStore) CreateRecording(_ context.Context, test TestRef, asset domain.Asset, clip domain.Clip, supersedesID string) (domain.Recording, error) {
 	f.record("CreateRecording")
 	asset.ID, asset.ObjectName = "asset", "tests/"+test.ID+"/originals/asset"
-	return domain.Recording{ID: "rec", ExperimentID: test.ExperimentID, TestID: test.ID, Clip: clip, Asset: asset, CreatedBy: asset.CreatedBy}, nil
+	return domain.Recording{ID: "rec", ExperimentID: test.ExperimentID, TestID: test.ID, SupersedesID: supersedesID, Current: false, Clip: clip, Asset: asset, CreatedBy: asset.CreatedBy}, nil
 }
 
 func (f *fakeStore) recording(testID string) (domain.Recording, error) {

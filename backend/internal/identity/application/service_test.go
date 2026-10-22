@@ -81,6 +81,9 @@ func TestAuthenticationLoadsCurrentRoleAndRejectsDeletedUsers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if store.logins[len(store.logins)-1] != created.User.ID {
+		t.Fatalf("successful sign-in not recorded: %v", store.logins)
+	}
 	principal, err := s.Authenticate(ctx(), session.Token.Value)
 	if err != nil || principal.Actor.Role != access.Researcher || principal.User.ID != created.User.ID {
 		t.Fatalf("authenticate: %+v %v", principal, err)
@@ -116,9 +119,12 @@ func TestLoginFailuresAreIndistinguishable(t *testing.T) {
 		{"user@lab.io", "Right-Password-1" + strings.Repeat("x", 80)},
 		{"user@lab.io", ""},
 	} {
-		comparisons := store.passwords.comparisons
+		comparisons, logins := store.passwords.comparisons, len(store.logins)
 		if _, err := s.Login(ctx(), tc.email, tc.password); !errors.Is(err, ErrInvalidCredentials) {
 			t.Errorf("%q: err=%v", tc.email, err)
+		}
+		if len(store.logins) != logins {
+			t.Errorf("%q: a failed sign-in was recorded", tc.email)
 		}
 		if store.passwords.comparisons == comparisons {
 			t.Errorf("%q: no password comparison performed; timing reveals account existence", tc.email)
@@ -329,6 +335,7 @@ type memoryStore struct {
 	next       int
 	passwords  *fakePasswords
 	lastFilter UserFilter
+	logins     []string
 }
 
 func (m *memoryStore) Serializable(_ context.Context, fn func(Store) error) error {
@@ -427,6 +434,12 @@ func (m *memoryStore) DeleteUser(_ context.Context, id string) error {
 		return ErrNotFound
 	}
 	delete(m.records, id)
+	return nil
+}
+
+func (m *memoryStore) RecordLogin(_ context.Context, id string) error {
+	defer m.lock()()
+	m.logins = append(m.logins, id)
 	return nil
 }
 

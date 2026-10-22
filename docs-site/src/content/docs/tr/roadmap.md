@@ -37,9 +37,9 @@ Tamamlandı: `Laboratory` singleton ve `Environment` modelleri + migration'lar; 
 
 ## Adım 2 - Bilimsel kontrat
 
-- Kod sahipli `ParadigmSpec` kayıt defteri (11 paradigma): `MWM`, `OPEN_FIELD`, `EPM`, `ROTAROD`, `Y_MAZE`, `NOVEL_OBJECT`, `BARNES_MAZE`, `THREE_CHAMBER`, `LIGHT_DARK`, `POLE`, `TREADMILL`. ✅
+- Kod sahipli `ParadigmSpec` kayıt defteri (4 paradigma): `MWM`, `NOVEL_OBJECT`, `POLE`, `TREADMILL`. 2026-10-15 tarihinde katalog bu dördüne indirildi; diğer yedi paradigma kaldırıldı. ✅
 - [Ölçüm mimarisi](../measurements/) içindeki kod sahipli metrik sözlüğü. ✅
-- Kanonik birimler: sonuçlar `cm`, `cm_s`, `s`, `count`, `ratio`, `percent`, `deg`, `rpm`, `g`, `boolean` kullanır; apparatus parametreleri ek olarak `mm` ve `c` taşır. ✅
+- Kanonik birimler: sonuçlar `cm`, `cm_s`, `s`, `count`, `ratio`, `percent`, `deg`, `g`, `boolean` kullanır; apparatus parametreleri ek olarak `mm` ve `c` taşır. ✅
 - Paradigma başına parametreler, bölgeler, metrikler, QC gereksinimleri ve artefakt beklentileri. ✅
 - Metrik başına `valueType` / `validRange` / `templated` (zone-bazlı) - hem manuel giriş hem CV bu sözleşmeye göre doğrular. ✅
 - `schemaVersion` ile sonuç şema versiyonlama. ✅
@@ -106,9 +106,6 @@ düzenek `Environment`'tır; kalibrasyon Adım 5'te kalır.
 | Paradigma | MVP metrikleri |
 |---|---|
 | MWM | Escape latency, path length, swim speed, quadrant time, thigmotaxis, probe trial için platform crossings. |
-| Open Field | Distance, mean speed, center time, periphery time, immobility. |
-| EPM | Open arm time, closed arm time, open arm entries, closed arm entries. |
-| Rotarod | İlk aşamada manuel incelemeyle trial duration ve fall candidate event'leri. |
 
 ## Adım 7 - Kalite kontrol ve inceleme
 
@@ -123,15 +120,14 @@ düzenek `Environment`'tır; kalibrasyon Adım 5'te kalır.
 - Testlerini toplayan senaryo dashboard'ları; denek gruplarını (`Subject.groupName`) karşılaştırma.
 - Test'ler arası denek geçmişi.
 - MWM acquisition curve ve probe summary.
-- Open Field ve EPM özetleri.
-- Rotarod tekrarlı trial curve'leri.
+- Yeni nesne, direk testi ve koşu bandı özetleri.
 - Metrik tanımları ve QC durumuyla CSV ve JSON export.
 
 ## Adım 9 - Gelişmiş davranış modülleri
 
 - Opsiyonel pose-estimation adapter'ı: DeepLabCut, SLEAP veya başka açık kaynak model.
 - Rearing, grooming, freezing, risk assessment ve head direction classifier'ları.
-- İyileştirilmiş Rotarod fall detection.
+- Vücut merkezinin yetmediği yerlerde poza dayalı olay tespiti (burnu nesneye yönelik yeni nesne keşfi, baş yönünden direkte dönüş).
 - Single-animal iş akışları stabil olduktan sonra multi-animal desteği.
 
 ## Adım 10 - Canlı izleme ve kaynaklar

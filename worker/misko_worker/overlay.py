@@ -1,5 +1,8 @@
-"""Annotated video: the source frames with the center zone, the recent path and
-the tracked position drawn on them, encoded as H.264 MP4.
+"""Annotated video: the source frames with the paradigm's zones (derived from
+its parameters, or calibrated and drawn as the calibrator drew them), the
+recent path and the tracked position drawn on them, encoded as H.264 MP4. A
+position inferred while the subject was hidden is drawn as a ring; a frame
+without a position gets a red border.
 
 Each output frame keeps its recording time as its presentation timestamp, so
 the output timeline equals the recording timeline (identity-v1): output time =
@@ -9,25 +12,27 @@ recording time, source time = clip start + recording time.
 from __future__ import annotations
 
 from collections import deque
-from collections.abc import Sequence
 from fractions import Fraction
 from pathlib import Path
 
 import av
 import numpy as np
 
-from .geometry import to_pixels
+from .paradigms import Drawing
 
 MICROSECOND = Fraction(1, 1_000_000)
 ZONE = (255, 215, 0)
+# Colors for zone keys (parameter zones and calibrated zones), in order of appearance.
+ZONE_COLORS = [(255, 215, 0), (255, 105, 180), (0, 191, 255), (186, 85, 211), (255, 140, 0), (127, 255, 212)]
 PATH = (0, 200, 255)
 MARKER = (0, 230, 0)
+INFERRED = (255, 160, 0)
 LOST = (230, 0, 0)
 TRAIL = 45
 
 
 class Overlay:
-    def __init__(self, path: Path, width: int, height: int, transform: Sequence[float], parameters: dict[str, float]) -> None:
+    def __init__(self, path: Path, width: int, height: int, drawings: list[Drawing]) -> None:
         self._width, self._height = width, height
         self._container = av.open(str(path), mode="w", format="mp4", options={"movflags": "faststart"})
         self._stream = self._container.add_stream("libx264", rate=30)
@@ -37,28 +42,30 @@ class Overlay:
         self._stream.time_base = MICROSECOND
         self._stream.codec_context.time_base = MICROSECOND
         self._stream.options = {"preset": "veryfast", "crf": "20"}
-        side = parameters.get("center_fraction", 0.5)
-        arena_w, arena_h = parameters.get("arena_width_cm", 50.0), parameters.get("arena_height_cm", 50.0)
-        left, top = arena_w * (1 - side) / 2, arena_h * (1 - side) / 2
-        corners = [(left, top), (arena_w - left, top), (arena_w - left, arena_h - top), (left, arena_h - top)]
-        self._zone = [to_pixels(transform, x, y) for x, y in corners]
-        self._arena = [to_pixels(transform, x, y) for x, y in [(0, 0), (arena_w, 0), (arena_w, arena_h), (0, arena_h)]]
+        colors: dict[str, tuple[int, int, int]] = {}
+        self.zones: list[tuple[str, list[tuple[float, float]], tuple[int, int, int], int]] = []
+        for d in drawings:
+            color = colors.setdefault(d.key, ZONE_COLORS[len(colors) % len(ZONE_COLORS)])
+            self.zones.append((d.key, list(d.points), color, 2 if d.emphasis else 1))
         self._trail: deque[tuple[float, float]] = deque(maxlen=TRAIL)
 
-    def write(self, t_us: int, rgb: np.ndarray, position: tuple[float, float] | None) -> None:
+    def write(self, t_us: int, rgb: np.ndarray, position: tuple[float, float] | None, inferred: bool = False) -> None:
         image = np.zeros((self._stream.height, self._stream.width, 3), dtype=np.uint8)
         image[: self._height, : self._width] = rgb
-        _polygon(image, self._arena, ZONE, 1)
-        _polygon(image, self._zone, ZONE, 2)
+        for _, points, color, thickness in self.zones:
+            _polygon(image, points, color, thickness)
         if position is None:
             _border(image, LOST, 4)
-        else:
+        elif not inferred:
             self._trail.append(position)
         points = list(self._trail)
         for a, b in zip(points, points[1:]):
             _line(image, a, b, PATH, 2)
         if position is not None:
-            _disc(image, position, 5, MARKER)
+            if inferred:
+                _ring(image, position, 6, INFERRED)
+            else:
+                _disc(image, position, 5, MARKER)
         frame = av.VideoFrame.from_ndarray(image, format="rgb24")
         frame.pts, frame.time_base = t_us, MICROSECOND
         for packet in self._stream.encode(frame):
@@ -99,6 +106,18 @@ def _disc(image: np.ndarray, center: tuple[float, float], radius: int, color: tu
     rows, cols = np.mgrid[y0:y1, x0:x1]
     inside = (cols + 0.5 - cx) ** 2 + (rows + 0.5 - cy) ** 2 <= radius**2
     image[rows[inside], cols[inside]] = color
+
+
+def _ring(image: np.ndarray, center: tuple[float, float], radius: int, color: tuple[int, int, int]) -> None:
+    cx, cy = center
+    x0, x1 = max(int(cx) - radius, 0), min(int(cx) + radius + 1, image.shape[1])
+    y0, y1 = max(int(cy) - radius, 0), min(int(cy) + radius + 1, image.shape[0])
+    if x0 >= x1 or y0 >= y1:
+        return
+    rows, cols = np.mgrid[y0:y1, x0:x1]
+    d2 = (cols + 0.5 - cx) ** 2 + (rows + 0.5 - cy) ** 2
+    ring = (d2 <= radius**2) & (d2 >= (radius - 2) ** 2)
+    image[rows[ring], cols[ring]] = color
 
 
 def _border(image: np.ndarray, color: tuple[int, int, int], width: int) -> None:

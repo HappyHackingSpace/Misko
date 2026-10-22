@@ -24,7 +24,7 @@ from .runner import run_once
 
 
 class _JsonFormatter(logging.Formatter):
-    FIELDS = ("run", "attempt", "status", "code", "reason", "retryable", "error")
+    FIELDS = ("run", "attempt", "testSubject", "status", "code", "reason", "retryable", "error")
 
     def format(self, record: logging.LogRecord) -> str:
         entry = {"level": record.levelname, "message": record.getMessage()}

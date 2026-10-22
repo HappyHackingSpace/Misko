@@ -1,91 +1,58 @@
-// An apparatus can be defined from the panel. The screen was read only, and its
-// own comment claimed a revision is created with the protocol that uses it,
-// which left no way to register a physical setup at all.
+// Environments: an arena is defined from a paradigm's parameters, calibrated
+// once for its fixed camera (the default for every video filmed in it), and
+// changed through a new revision that keeps the earlier one.
 import { expect, test } from "@playwright/test";
+import { fill, fillCalibration, signIn, unique } from "./helpers.js";
 
-const API = `http://127.0.0.1:${process.env.E2E_API_PORT || "4010"}`;
+test("an arena is created with its parameters, calibrated and revised", async ({ page, request }) => {
+  await signIn(page, request);
+  const name = unique("Arena");
 
-async function seed(request) {
-  const response = await request.get(`${API}/e2e/seed`);
-  expect(response.ok()).toBeTruthy();
-  return response.json();
-}
-
-async function signIn(page, email, password) {
-  await page.goto("/login");
-  await page.locator("#login-email").fill(email);
-  await page.locator("#login-password").fill(password);
-  await page.getByTestId("sign-in").click();
-  await expect(page.getByTestId("nav-experiments")).toBeVisible();
-}
-
-// Naive UI's select is not a native <select>: open it, then click the option
-// by its (locale-independent) test hook.
-async function chooseOption(page, triggerTestId, optionTestId) {
-  await page.getByTestId(triggerTestId).click();
-  await page.getByTestId(optionTestId).click();
-}
-
-// The seeded data is shared by every run, so a unique name keeps each run
-// independent of what earlier runs created.
-const uniqueName = () => `E2E Arena ${Date.now().toString(36).toUpperCase()}`;
-
-test("an apparatus can be defined from a paradigm template", async ({ page, request }) => {
-  const data = await seed(request);
-  await signIn(page, data.adminEmail, data.adminPassword);
-
-  const name = uniqueName();
   await page.goto("/environments");
   await page.getByTestId("environment-new").click();
   await expect(page).toHaveURL(/\/environments\/new$/);
-
-  await page.getByTestId("environment-name").fill(name);
-  await chooseOption(page, "environment-paradigm", "environment-paradigm-OPEN_FIELD");
-
-  // The paradigm decides which physical values exist, and the form fills them
-  // with what the published version considers normal.
-  const width = page.getByTestId("apparatus-arena_width_cm");
-  await expect(width).toBeVisible({ timeout: 10_000 });
-  await expect(width).not.toHaveValue("");
-  await width.fill("60");
-
+  await fill(page, "environment-name", name);
+  await page.getByTestId("environment-paradigm").click();
+  await page.getByTestId("environment-paradigm-MWM").click();
+  // The paradigm decides which physical values exist and fills in defaults.
+  await expect(page.getByTestId("apparatus-tank_diameter_cm")).toBeVisible({ timeout: 10_000 });
+  await fill(page, "apparatus-tank_diameter_cm", "120");
+  await fill(page, "apparatus-platform_diameter_cm", "10");
+  await fill(page, "apparatus-platform_x_cm", "30");
+  await fill(page, "apparatus-platform_y_cm", "30");
   await page.getByTestId("environment-save").click();
-  // A new environment opens on its own page, where it is calibrated once.
   await expect(page).toHaveURL(/\/environments\/[0-9a-f-]{36}$/);
-  await expect(page.getByTestId("error")).toHaveCount(0);
   await expect(page.getByTestId("environment-revision")).toHaveCount(1);
 
-  await page.goto("/environments");
+  // The default calibration of the arena, entered once.
+  const section = page.getByTestId("environment-calibration");
+  await expect(section).toHaveAttribute("data-status", "WAITING_FOR_CALIBRATION");
+  await expect(section.getByTestId("calibration-waiting")).toBeVisible();
+  await section.getByTestId("environment-calibrate").click();
+  const form = section.getByTestId("calibration-form");
+  // An arena has no video, so there is no reference frame to name.
+  await expect(form.getByTestId("reference-frame")).toHaveCount(0);
+  await fillCalibration(form);
+  await form.getByTestId("calibration-save").click();
+  await expect(section).toHaveAttribute("data-status", "CALIBRATED", { timeout: 10_000 });
+  await expect(section.getByTestId("calibration-summary")).toHaveAttribute("data-calibration-status", "VALID");
+  await expect(section.getByTestId("tolerance")).toContainText("2 cm");
 
+  // A new revision changes the arena and keeps the first one.
+  await page.getByTestId("environment-new-revision").click();
+  const revision = page.getByTestId("revision-form");
+  await fill(revision, "revision-tank_diameter_cm", "150");
+  await revision.getByTestId("revision-notes").fill("Wider pool");
+  await revision.getByTestId("revision-save").click();
+  await expect(page.getByTestId("environment-revision")).toHaveCount(2);
+  const second = page.locator('[data-test="environment-revision"][data-revision="2"]');
+  await expect(second).toContainText("150");
+  // The new revision is a new physical setup, so it waits for its own calibration.
+  await expect(second.getByTestId("environment-calibration")).toHaveAttribute("data-status", "WAITING_FOR_CALIBRATION");
+  await expect(page.locator('[data-test="environment-revision"][data-revision="1"]').getByTestId("environment-calibration")).toHaveAttribute("data-status", "CALIBRATED");
+
+  await page.goto("/environments");
   const row = page.getByTestId("environment").filter({ hasText: name });
-  await expect(row).toHaveCount(1, { timeout: 10_000 });
-  await expect(row).toContainText("OPEN_FIELD");
-});
-
-test("a paradigm page offers to create an environment from it", async ({ page, request }) => {
-  const data = await seed(request);
-  await signIn(page, data.adminEmail, data.adminPassword);
-
-  await page.goto("/paradigms/OPEN_FIELD");
-  await page.getByTestId("create-environment").click();
-
-  // Arriving this way preselects the paradigm, so the apparatus fields are
-  // already the ones that paradigm declares.
-  await expect(page).toHaveURL(/\/environments\/new\?paradigm=OPEN_FIELD$/);
-  await expect(page.getByTestId("environment-paradigm-OPEN_FIELD")).toBeVisible();
-  await expect(page.getByTestId("apparatus-arena_width_cm")).toBeVisible({ timeout: 10_000 });
-});
-
-test("a viewer cannot define an apparatus", async ({ page, request }) => {
-  const data = await seed(request);
-  await signIn(page, data.viewerEmail, data.viewerPassword);
-
-  await page.goto("/environments");
-  await expect(page.getByTestId("environment-new")).toHaveCount(0);
-
-  await page.goto("/paradigms/OPEN_FIELD");
-  await expect(page.getByTestId("create-environment")).toHaveCount(0);
-
-  await page.goto("/environments/new");
-  await expect(page).toHaveURL(/\/dashboard$/);
+  await expect(row).toHaveCount(1);
+  await expect(row.getByTestId("environment-paradigm")).toHaveAttribute("data-key", "MWM");
 });
