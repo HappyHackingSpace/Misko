@@ -84,6 +84,33 @@ func (m *memory) CreateEndpoint(_ context.Context, e domain.Endpoint) (domain.En
 
 func (m *memory) CreateGroup(_ context.Context, g domain.Group) (domain.Group, error) { return g, nil }
 
+func (m *memory) LockGroup(_ context.Context, _, id string) (domain.Group, error) {
+	for _, f := range m.groups {
+		if f.Group.ID == id {
+			return f.Group, nil
+		}
+	}
+	return domain.Group{}, ErrGroupNotFound
+}
+
+func (m *memory) CreateRegimenItem(_ context.Context, r domain.RegimenItem) (domain.RegimenItem, error) {
+	m.items = append(m.items, r)
+	return r, nil
+}
+
+func (m *memory) LockRegimenItem(_ context.Context, _, id string) (domain.RegimenItem, error) {
+	for _, r := range m.items {
+		if r.ID == id {
+			return r, nil
+		}
+	}
+	return domain.RegimenItem{}, ErrRegimenItemNotFound
+}
+
+func (m *memory) UpdateRegimenItem(_ context.Context, r domain.RegimenItem) (domain.RegimenItem, error) {
+	return r, nil
+}
+
 func (m *memory) CreateAllocation(_ context.Context, a domain.Allocation) (domain.Allocation, error) {
 	m.allocations = append(m.allocations, a)
 	return a, nil
@@ -269,6 +296,73 @@ func TestStartChecksTheRulesAndSetsDayZero(t *testing.T) {
 	}
 	if _, err := service(m).Start(ctx, researcher, "x", "2026-10-20"); !errors.Is(err, ErrExperimentNotFound) {
 		t.Fatalf("unknown experiment: %v", err)
+	}
+}
+
+func TestStartNeedsAHealthyControl(t *testing.T) {
+	m := readyDesign()
+	m.groups = m.groups[1:]
+	_, err := service(m).Start(ctx, researcher, "e", "2026-10-20")
+	var notReady *NotReadyError
+	if !errors.As(err, &notReady) || len(notReady.Problems) != 1 || notReady.Problems[0].Rule != domain.RuleHealthyControlMissing {
+		t.Fatalf("start without a healthy control: %v %+v", err, notReady)
+	}
+	r, err := service(m).Readiness(ctx, researcher, "e")
+	if err != nil || len(r.Problems) != 1 || r.Problems[0].Rule != domain.RuleHealthyControlMissing {
+		t.Fatalf("readiness: %+v %v", r, err)
+	}
+}
+
+func TestRegimenPurposeMustSuitTheGroupRole(t *testing.T) {
+	item := func(group, purpose string) domain.RegimenFields {
+		return domain.RegimenFields{GroupID: group, Purpose: purpose, SubstanceID: "s", Amount: "1", Unit: "mg/kg", Route: "ORAL",
+			Frequency: "ONCE", StartDay: 0, EndDay: 0}
+	}
+	tests := []struct {
+		group, purpose string
+		want           error
+	}{
+		{"healthy", "VEHICLE", nil},
+		{"healthy", "INDUCTION", domain.ErrPurposeNotAllowed},
+		{"healthy", "TREATMENT", domain.ErrPurposeNotAllowed},
+		{"sham", "VEHICLE", nil},
+		{"sham", "INDUCTION", domain.ErrPurposeNotAllowed},
+		{"sham", "TREATMENT", domain.ErrPurposeNotAllowed},
+		{"disease", "INDUCTION", nil},
+		{"disease", "VEHICLE", nil},
+		{"disease", "TREATMENT", domain.ErrPurposeNotAllowed},
+		{"positive", "TREATMENT", nil},
+		{"treated", "INDUCTION", nil},
+		{"treated", "VEHICLE", nil},
+		{"treated", "TREATMENT", nil},
+		{"elsewhere", "VEHICLE", ErrGroupNotInExperiment},
+	}
+	for _, tt := range tests {
+		t.Run(tt.group+"/"+tt.purpose, func(t *testing.T) {
+			m := readyDesign()
+			m.groups = append(m.groups,
+				GroupFill{Group: domain.Group{ID: "sham", Role: domain.Sham, DiseaseModelID: "mptp"}},
+				GroupFill{Group: domain.Group{ID: "positive", Role: domain.PositiveControl, DiseaseModelID: "mptp"}},
+				GroupFill{Group: domain.Group{ID: "treated", Role: domain.Treatment, DiseaseModelID: "mptp"}})
+			before := len(m.items)
+			_, err := service(m).CreateRegimenItem(ctx, researcher, "e", item(tt.group, tt.purpose))
+			if !errors.Is(err, tt.want) || (err == nil) != (len(m.items) == before+1) {
+				t.Fatalf("create: err=%v want=%v items=%d", err, tt.want, len(m.items))
+			}
+		})
+	}
+
+	// Changing the purpose or moving the item to another group is checked too.
+	m := readyDesign()
+	m.items[1] = domain.RegimenItem{ID: "vehicle", GroupID: "disease", Purpose: domain.Vehicle, SubstanceID: "s", DoseMicro: 1_000_000,
+		Unit: "mL/kg", Route: "ORAL", Frequency: domain.Once}
+	induction, healthy := "INDUCTION", "healthy"
+	if _, err := service(m).UpdateRegimenItem(ctx, researcher, "e", "vehicle", RegimenPatch{GroupID: &healthy}); err != nil {
+		t.Fatalf("move a vehicle to the healthy control: %v", err)
+	}
+	m.items[1].GroupID = "healthy"
+	if _, err := service(m).UpdateRegimenItem(ctx, researcher, "e", "vehicle", RegimenPatch{Purpose: &induction}); !errors.Is(err, domain.ErrPurposeNotAllowed) {
+		t.Fatalf("induction for the healthy control: %v", err)
 	}
 }
 

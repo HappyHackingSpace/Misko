@@ -18,13 +18,14 @@ var (
 	ErrDiseaseModelRequired   = errors.New("every group except a healthy control needs a disease model")
 	ErrDiseaseModelNotAllowed = errors.New("a healthy control has no disease model")
 
-	ErrInvalidPurpose   = errors.New("purpose must be INDUCTION, VEHICLE or TREATMENT")
-	ErrInvalidAmount    = errors.New("amount must be a positive decimal with at most 9 integer and 6 fractional digits")
-	ErrInvalidUnit      = errors.New("unit must be one of mg/kg, ug/kg, mL/kg, IU/kg, mg, ug, g, mL, uL, IU")
-	ErrInvalidRoute     = errors.New("route is not supported")
-	ErrInvalidFrequency = errors.New("frequency must be ONCE, DAILY, TWICE_DAILY, WEEKLY or EVERY_N_DAYS")
-	ErrInvalidInterval  = errors.New("interval days must be between 2 and 365 for EVERY_N_DAYS and absent otherwise")
-	ErrInvalidDays      = errors.New("study days must be between -365 and 3650, end on or after start, and be equal for ONCE")
+	ErrInvalidPurpose    = errors.New("purpose must be INDUCTION, VEHICLE or TREATMENT")
+	ErrPurposeNotAllowed = errors.New("the group's role cannot receive an item with this purpose")
+	ErrInvalidAmount     = errors.New("amount must be a positive decimal with at most 9 integer and 6 fractional digits")
+	ErrInvalidUnit       = errors.New("unit must be one of mg/kg, ug/kg, mL/kg, IU/kg, mg, ug, g, mL, uL, IU")
+	ErrInvalidRoute      = errors.New("route is not supported")
+	ErrInvalidFrequency  = errors.New("frequency must be ONCE, DAILY, TWICE_DAILY, WEEKLY or EVERY_N_DAYS")
+	ErrInvalidInterval   = errors.New("interval days must be between 2 and 365 for EVERY_N_DAYS and absent otherwise")
+	ErrInvalidDays       = errors.New("study days must be between -365 and 3650, end on or after start, and be equal for ONCE")
 
 	ErrInvalidStudyDay = errors.New("study day must be between -365 and 3650")
 	ErrInvalidPosition = errors.New("position must be between 1 and 1000")
@@ -138,6 +139,31 @@ func ParsePurpose(raw string) (Purpose, error) {
 		return p, nil
 	}
 	return "", ErrInvalidPurpose
+}
+
+// Purposes lists the purposes a group of the role can ever receive: a healthy
+// control and a sham only a vehicle, a disease control its induction and a
+// vehicle, and the treated groups also their one treatment. Which items a
+// group must have before the study starts is checked by Readiness.
+func (r Role) Purposes() []Purpose {
+	switch r {
+	case HealthyControl, Sham:
+		return []Purpose{Vehicle}
+	case DiseaseControl:
+		return []Purpose{Induction, Vehicle}
+	case PositiveControl, Treatment:
+		return []Purpose{Induction, Vehicle, TreatmentPurpose}
+	}
+	return nil
+}
+
+// AllowPurpose returns ErrPurposeNotAllowed when the role can never receive
+// an item with the purpose.
+func (r Role) AllowPurpose(p Purpose) error {
+	if !slices.Contains(r.Purposes(), p) {
+		return ErrPurposeNotAllowed
+	}
+	return nil
 }
 
 var units = []string{"mg/kg", "ug/kg", "mL/kg", "IU/kg", "mg", "ug", "g", "mL", "uL", "IU"}

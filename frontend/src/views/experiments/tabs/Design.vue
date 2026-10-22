@@ -4,6 +4,7 @@
 // the study is a draft; afterwards it is the frozen record of the design.
 import { computed, inject, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
+import { useRoute, useRouter } from "vue-router";
 import { NAlert, NButton, NCard, NEmpty, NPopconfirm, NProgress, NSpin, NTag, useMessage } from "naive-ui";
 import { groups as groupsApi, pickers, regimenItems } from "../../../api/experiments.js";
 import { useAuth } from "../../../stores/auth.js";
@@ -16,6 +17,8 @@ const message = useMessage();
 const auth = useAuth();
 const fmt = useDesignFormat();
 const { experiment, id } = inject("study");
+const route = useRoute();
+const router = useRouter();
 
 const groups = ref([]);
 const items = ref([]);
@@ -59,15 +62,33 @@ const nextCode = computed(() => {
   return `G${n}`;
 });
 
-// Group dialog.
+// A healthy control receives nothing (a naive control) or only a vehicle; a
+// sham only a vehicle. Their empty regimen and add button say so.
+const emptyText = (g) => t(g.role === "HEALTHY_CONTROL" ? "design.regimen.emptyNaive" : "design.regimen.empty");
+const addLabel = (g) =>
+  t({ HEALTHY_CONTROL: "design.regimen.addVehicleOptional", SHAM: "design.regimen.addVehicle" }[g.role] || "design.regimen.add");
+
+// Group dialog. The readiness panel links here with ?addGroup=<role> to open
+// it with that role chosen.
 const groupOpen = ref(false);
 const editingGroup = ref(null);
-function addGroup() {
+const presetRole = ref(null);
+function addGroup(role = null) {
   editingGroup.value = null;
+  presetRole.value = role;
   groupOpen.value = true;
+}
+function openRequestedGroup() {
+  const role = route.query.addGroup;
+  if (!role) return;
+  const query = { ...route.query };
+  delete query.addGroup;
+  router.replace({ query });
+  if (editable.value) addGroup(String(role));
 }
 function editGroup(g) {
   editingGroup.value = g;
+  presetRole.value = null;
   groupOpen.value = true;
 }
 async function deleteGroup(g) {
@@ -111,8 +132,12 @@ async function onSaved(kind) {
   await load();
 }
 
-onMounted(load);
+onMounted(() => {
+  load();
+  openRequestedGroup();
+});
 watch(() => experiment.value?.status, load);
+watch(() => route.query.addGroup, openRequestedGroup);
 </script>
 
 <template>
@@ -122,7 +147,7 @@ watch(() => experiment.value?.status, load);
 
     <div class="bar">
       <p class="muted">{{ $t("design.groups.intro") }}</p>
-      <NButton v-if="editable" type="primary" data-test="group-add" @click="addGroup">{{ $t("design.groups.add") }}</NButton>
+      <NButton v-if="editable" type="primary" data-test="group-add" @click="addGroup()">{{ $t("design.groups.add") }}</NButton>
     </div>
 
     <NSpin :show="loading">
@@ -164,9 +189,10 @@ watch(() => experiment.value?.status, load);
           <div class="regimen">
             <div class="regimen-head">
               <strong>{{ $t("design.regimen.title") }}</strong>
-              <NButton v-if="editable" size="tiny" secondary :data-test="`regimen-add-${g.code}`" @click="addItem(g)">{{ $t("design.regimen.add") }}</NButton>
+              <NButton v-if="editable" size="tiny" secondary :data-test="`regimen-add-${g.code}`" @click="addItem(g)">{{ addLabel(g) }}</NButton>
             </div>
-            <p v-if="!itemsOf(g.id).length" class="muted small">{{ $t("design.regimen.empty") }}</p>
+            <small class="muted hint" :data-test="`regimen-rule-${g.code}`">{{ $t(`design.regimen.roleRules.${g.role}`) }}</small>
+            <p v-if="!itemsOf(g.id).length" class="muted small" :data-test="`regimen-empty-${g.code}`">{{ emptyText(g) }}</p>
             <ul class="items">
               <li v-for="item in itemsOf(g.id)" :key="item.id" class="item" data-test="regimen-item">
                 <NTag size="small" :bordered="false" :type="purposeTagType(item.purpose)">{{ fmt.purpose(item.purpose) }}</NTag>
@@ -185,7 +211,6 @@ watch(() => experiment.value?.status, load);
                 </div>
               </li>
             </ul>
-            <small class="muted hint">{{ $t(`design.roleHints.${g.role}`) }}</small>
           </div>
 
           <template v-if="editable" #action>
@@ -209,6 +234,7 @@ watch(() => experiment.value?.status, load);
       :group="editingGroup"
       :disease-models="diseaseModels"
       :next-code="nextCode"
+      :role="presetRole"
       @saved="onSaved('group')"
     />
     <RegimenForm
@@ -216,6 +242,7 @@ watch(() => experiment.value?.status, load);
       :experiment-id="id"
       :group="itemGroup"
       :item="editingItem"
+      :group-items="itemGroup ? itemsOf(itemGroup.id) : []"
       :substances="substances"
       @saved="onSaved('item')"
     />
@@ -244,6 +271,6 @@ watch(() => experiment.value?.status, load);
 .item-body { flex: 1; min-width: 0; font-size: 13px; overflow-wrap: anywhere; }
 .item-actions { display: flex; gap: 2px; flex: none; }
 .small { font-size: 12px; margin: 0 0 6px; }
-.hint { display: block; margin-top: 8px; font-size: 11px; }
+.hint { display: block; margin: 0 0 8px; font-size: 11px; }
 .card-actions { display: flex; gap: 8px; justify-content: flex-end; }
 </style>

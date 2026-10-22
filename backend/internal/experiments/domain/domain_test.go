@@ -224,7 +224,7 @@ func TestRandomisationFillsGroupsEvenlyUpToTheirTargets(t *testing.T) {
 }
 
 func TestReadinessListsEveryUnmetStartRule(t *testing.T) {
-	if got := rules(Readiness(Design{})); !slices.Equal(got, []string{RuleNoTimepoints, RuleNoGroups, RulePrimaryEndpointMissing}) {
+	if got := rules(Readiness(Design{})); !slices.Equal(got, []string{RuleNoTimepoints, RuleNoGroups, RuleHealthyControlMissing, RulePrimaryEndpointMissing}) {
 		t.Fatalf("empty design: %v", got)
 	}
 
@@ -283,6 +283,79 @@ func TestReadinessListsEveryUnmetStartRule(t *testing.T) {
 	}
 	if got := Readiness(broken); !slices.Equal(got, want) {
 		t.Fatalf("broken design:\n got %v\nwant %v", got, want)
+	}
+}
+
+func TestReadinessNeedsAHealthyControl(t *testing.T) {
+	base := Design{
+		Timepoints: []Timepoint{{ID: "day14"}},
+		Endpoints:  []Endpoint{{ID: "primary", Kind: Primary, ParadigmKey: "MWM", MetricKey: "path_length_cm"}},
+		Metrics:    map[string]map[string]bool{"MWM": {"path_length_cm": true}},
+	}
+	tests := []struct {
+		name   string
+		groups []Group
+		items  []RegimenItem
+		want   []string
+	}{
+		{"no groups", nil, nil, []string{RuleNoGroups, RuleHealthyControlMissing}},
+		{
+			"disease control only",
+			[]Group{{ID: "disease", Role: DiseaseControl, DiseaseModelID: "mptp", TargetSize: 8}},
+			[]RegimenItem{{GroupID: "disease", Purpose: Induction}, {GroupID: "disease", Purpose: Vehicle}},
+			[]string{RuleHealthyControlMissing},
+		},
+		{
+			"naive healthy control without items",
+			[]Group{{ID: "healthy", Role: HealthyControl, TargetSize: 8}},
+			nil,
+			[]string{},
+		},
+		{
+			"vehicle healthy control",
+			[]Group{{ID: "healthy", Role: HealthyControl, TargetSize: 8}},
+			[]RegimenItem{{GroupID: "healthy", Purpose: Vehicle}},
+			[]string{},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			d := base
+			d.Groups, d.Items = tt.groups, tt.items
+			if got := rules(Readiness(d)); !slices.Equal(got, tt.want) {
+				t.Fatalf("got %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestRolePurposes(t *testing.T) {
+	tests := []struct {
+		role    Role
+		allowed []Purpose
+	}{
+		{HealthyControl, []Purpose{Vehicle}},
+		{Sham, []Purpose{Vehicle}},
+		{DiseaseControl, []Purpose{Induction, Vehicle}},
+		{PositiveControl, []Purpose{Induction, Vehicle, TreatmentPurpose}},
+		{Treatment, []Purpose{Induction, Vehicle, TreatmentPurpose}},
+		{Role("UNKNOWN"), nil},
+	}
+	for _, tt := range tests {
+		t.Run(string(tt.role), func(t *testing.T) {
+			if got := tt.role.Purposes(); !slices.Equal(got, tt.allowed) {
+				t.Fatalf("purposes %v, want %v", got, tt.allowed)
+			}
+			for _, p := range []Purpose{Induction, Vehicle, TreatmentPurpose} {
+				err := tt.role.AllowPurpose(p)
+				if want := slices.Contains(tt.allowed, p); want != (err == nil) {
+					t.Fatalf("%s: allowed=%v err=%v", p, want, err)
+				}
+				if err != nil && !errors.Is(err, ErrPurposeNotAllowed) {
+					t.Fatalf("%s: %v", p, err)
+				}
+			}
+		})
 	}
 }
 

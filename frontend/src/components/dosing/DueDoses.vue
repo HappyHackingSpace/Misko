@@ -9,6 +9,8 @@ import { useExecutionFormat } from "../../composables/useExecutionFormat.js";
 const props = defineProps({
   schedule: { type: Object, default: null },
   groups: { type: Array, default: () => [] },
+  // Groups without any regimen item: never due a dose, listed as such.
+  undosedGroups: { type: Array, default: () => [] },
   loading: { type: Boolean, default: false },
   // The day shown is before or after the laboratory's today.
   past: { type: Boolean, default: false },
@@ -110,6 +112,13 @@ Row.props = ["animal"];
         <Row v-for="animal in section.animals" :key="animal.allocationId" :animal="animal" />
       </div>
     </div>
+    <ul v-if="schedule && undosedGroups.length" class="undosed">
+      <li v-for="g in undosedGroups" :key="g.id" data-test="undosed-group" :data-group="g.code">
+        <strong>{{ g.code }}</strong> · {{ g.name }}
+        <NTag size="small" round :bordered="false" class="role">{{ $t(`execution.roles.${g.role}`) }}</NTag>
+        <span class="muted">{{ $t("execution.dosing.noDosing") }}</span>
+      </li>
+    </ul>
   </NSpin>
 </template>
 
@@ -117,6 +126,8 @@ Row.props = ["animal"];
 .section + .section { margin-top: 18px; }
 h4 { margin: 0 0 8px; font-size: 14px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .role { font-weight: 500; }
+.undosed { list-style: none; margin: 18px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: 14px; }
+.undosed li { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .rows { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
 :deep(.row) { display: grid; grid-template-columns: 110px 130px minmax(0, 1fr); gap: 12px; padding: 10px 12px; align-items: center; }
 :deep(.row + .row) { border-top: 1px solid var(--line); }
