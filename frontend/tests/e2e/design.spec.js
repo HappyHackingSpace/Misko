@@ -81,18 +81,25 @@ test("a study is designed, started and filled with animals", async ({ page, requ
   const healthy = page.getByTestId("group-card-G1");
   await expect(healthy).toBeVisible();
 
-  // A naive healthy control receives nothing; it may only get a vehicle.
+  // A healthy control receives no substance at all: its item is only the
+  // period without one, a first and a last study day.
   await expect(healthy.getByTestId("regimen-empty-G1")).toHaveText("No substance is given to this group (naive control).");
-  await expect(healthy.getByTestId("regimen-rule-G1")).toContainText("only a vehicle");
-  await expect(healthy.getByTestId("regimen-add-G1")).toHaveText("Add vehicle (optional)");
+  await expect(healthy.getByTestId("regimen-rule-G1")).toContainText("Receives no substance at all");
+  await expect(healthy.getByTestId("regimen-add-G1")).toHaveText("Add item");
   await healthy.getByTestId("regimen-add-G1").click();
-  await expect(page.getByTestId("regimen-purpose")).toContainText("Vehicle");
-  await page.getByTestId("regimen-purpose").click();
-  await expect(purposeOptions(page)).toHaveCount(1);
-  await expect(purposeOptions(page)).toHaveAttribute("data-value", "VEHICLE");
-  await closeRegimenForm(page);
-  await addItem("G1", { purpose: "VEHICLE", substance: "Saline", amount: "10", unit: "mL/kg", route: "ORAL", frequency: "DAILY" });
+  const periodForm = page.getByTestId("regimen-form");
+  await expect(periodForm).toHaveAttribute("data-kind", "period");
+  await expect(periodForm.locator("label.fld > span")).toHaveText(["First study day", "Last study day"]);
+  for (const hidden of ["regimen-purpose", "regimen-substance", "regimen-amount", "regimen-unit", "regimen-route", "regimen-frequency"]) {
+    await expect(page.getByTestId(hidden)).toHaveCount(0);
+  }
+  await fill(page, "regimen-start", "-3");
+  await fill(page, "regimen-end", "14");
+  await page.getByTestId("regimen-save").click();
+  await expect(periodForm).toBeHidden();
   await expect(healthy.getByTestId("regimen-empty-G1")).toHaveCount(0);
+  await expect(healthy.getByTestId("regimen-item")).toHaveCount(1);
+  await expect(healthy.getByTestId("regimen-period")).toHaveText("No substance: day -3 to 14");
 
   await addGroup("G2", "Disease control", "DISEASE_CONTROL", model);
   // A disease control is induced and gets a vehicle, never a treatment.
@@ -239,7 +246,7 @@ test("a study is designed, started and filled with animals", async ({ page, requ
   await expect(page.getByTestId("fill-G1")).toContainText("excluded");
 });
 
-test("a treatment group is offered one treatment and a sham only a vehicle", async ({ page, request }) => {
+test("a treatment group is offered one treatment, a sham only a vehicle and a healthy control no substance", async ({ page, request }) => {
   const { api } = await signIn(page, request);
   const substances = (await api("GET", "/catalog/substances")).data;
   const substance = (name) => substances.find((s) => s.name === name).id;
@@ -248,6 +255,7 @@ test("a treatment group is offered one treatment and a sham only a vehicle", asy
   const base = `/experiments/${experiment.id}`;
   const treated = await api("POST", `${base}/groups`, { code: "T1", name: "Treated", role: "TREATMENT", diseaseModelId: model });
   await api("POST", `${base}/groups`, { code: "S1", name: "Sham", role: "SHAM", diseaseModelId: model });
+  const healthy = await api("POST", `${base}/groups`, { code: "H1", name: "Healthy", role: "HEALTHY_CONTROL" });
   const item = (purpose, name) => ({ groupId: treated.id, purpose, substanceId: substance(name), amount: "5", unit: "mg/kg",
     route: "ORAL", frequency: "DAILY", startDay: 0, endDay: 7 });
 
@@ -264,6 +272,16 @@ test("a treatment group is offered one treatment and a sham only a vehicle", asy
   await expect(page.getByTestId("regimen-add-S1")).toHaveText("Add vehicle");
   expect(await offered("S1")).toEqual(["VEHICLE"]);
   expect(await offered("T1")).toEqual(["INDUCTION", "VEHICLE", "TREATMENT"]);
+
+  // A healthy control's form has only the two study days, no purpose.
+  await expect(page.getByTestId("regimen-add-H1")).toHaveText("Add item");
+  await page.getByTestId("regimen-add-H1").click();
+  await expect(page.getByTestId("regimen-form")).toHaveAttribute("data-kind", "period");
+  await expect(page.getByTestId("regimen-purpose")).toHaveCount(0);
+  await expect(page.getByTestId("regimen-substance")).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("regimen-form")).toBeHidden();
+  await expect(api("POST", `${base}/regimen-items`, { ...item("VEHICLE", "Saline"), groupId: healthy.id })).rejects.toThrow(/regimen.purposeNotAllowed/);
 
   // Once the group has its treatment, a second one is not offered.
   await api("POST", `${base}/regimen-items`, item("TREATMENT", "Compound X"));

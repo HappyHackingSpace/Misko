@@ -315,6 +315,9 @@ func TestStartNeedsAHealthyControl(t *testing.T) {
 
 func TestRegimenPurposeMustSuitTheGroupRole(t *testing.T) {
 	item := func(group, purpose string) domain.RegimenFields {
+		if purpose == string(domain.NoSubstance) {
+			return domain.RegimenFields{GroupID: group, Purpose: purpose, StartDay: 0, EndDay: 28}
+		}
 		return domain.RegimenFields{GroupID: group, Purpose: purpose, SubstanceID: "s", Amount: "1", Unit: "mg/kg", Route: "ORAL",
 			Frequency: "ONCE", StartDay: 0, EndDay: 0}
 	}
@@ -322,20 +325,26 @@ func TestRegimenPurposeMustSuitTheGroupRole(t *testing.T) {
 		group, purpose string
 		want           error
 	}{
-		{"healthy", "VEHICLE", nil},
+		{"healthy", "NONE", nil},
+		{"healthy", "VEHICLE", domain.ErrPurposeNotAllowed},
 		{"healthy", "INDUCTION", domain.ErrPurposeNotAllowed},
 		{"healthy", "TREATMENT", domain.ErrPurposeNotAllowed},
+		{"sham", "NONE", domain.ErrPurposeNotAllowed},
 		{"sham", "VEHICLE", nil},
 		{"sham", "INDUCTION", domain.ErrPurposeNotAllowed},
 		{"sham", "TREATMENT", domain.ErrPurposeNotAllowed},
+		{"disease", "NONE", domain.ErrPurposeNotAllowed},
 		{"disease", "INDUCTION", nil},
 		{"disease", "VEHICLE", nil},
 		{"disease", "TREATMENT", domain.ErrPurposeNotAllowed},
+		{"positive", "NONE", domain.ErrPurposeNotAllowed},
 		{"positive", "TREATMENT", nil},
+		{"treated", "NONE", domain.ErrPurposeNotAllowed},
 		{"treated", "INDUCTION", nil},
 		{"treated", "VEHICLE", nil},
 		{"treated", "TREATMENT", nil},
 		{"elsewhere", "VEHICLE", ErrGroupNotInExperiment},
+		{"elsewhere", "NONE", ErrGroupNotInExperiment},
 	}
 	for _, tt := range tests {
 		t.Run(tt.group+"/"+tt.purpose, func(t *testing.T) {
@@ -352,17 +361,42 @@ func TestRegimenPurposeMustSuitTheGroupRole(t *testing.T) {
 		})
 	}
 
+	// A period without a substance takes nothing but its days.
+	withDose := item("healthy", "NONE")
+	withDose.Amount = "1"
+	if _, err := service(readyDesign()).CreateRegimenItem(ctx, researcher, "e", withDose); !errors.Is(err, domain.ErrNoSubstanceFields) {
+		t.Fatalf("period with a dose: %v", err)
+	}
+
 	// Changing the purpose or moving the item to another group is checked too.
 	m := readyDesign()
 	m.items[1] = domain.RegimenItem{ID: "vehicle", GroupID: "disease", Purpose: domain.Vehicle, SubstanceID: "s", DoseMicro: 1_000_000,
 		Unit: "mL/kg", Route: "ORAL", Frequency: domain.Once}
-	induction, healthy := "INDUCTION", "healthy"
-	if _, err := service(m).UpdateRegimenItem(ctx, researcher, "e", "vehicle", RegimenPatch{GroupID: &healthy}); err != nil {
+	none, healthy := "NONE", "healthy"
+	if _, err := service(m).UpdateRegimenItem(ctx, researcher, "e", "vehicle", RegimenPatch{GroupID: &healthy}); !errors.Is(err, domain.ErrPurposeNotAllowed) {
 		t.Fatalf("move a vehicle to the healthy control: %v", err)
 	}
+	if _, err := service(m).UpdateRegimenItem(ctx, researcher, "e", "vehicle", RegimenPatch{Purpose: &none}); !errors.Is(err, domain.ErrPurposeNotAllowed) {
+		t.Fatalf("a period without a substance for a disease control: %v", err)
+	}
+	// A vehicle a healthy control kept from before is turned into a period:
+	// the substance, dose, route and frequency it had are dropped.
 	m.items[1].GroupID = "healthy"
-	if _, err := service(m).UpdateRegimenItem(ctx, researcher, "e", "vehicle", RegimenPatch{Purpose: &induction}); !errors.Is(err, domain.ErrPurposeNotAllowed) {
-		t.Fatalf("induction for the healthy control: %v", err)
+	start, end := -3, 21
+	got, err := service(m).UpdateRegimenItem(ctx, researcher, "e", "vehicle", RegimenPatch{Purpose: &none, StartDay: &start, EndDay: &end})
+	if err != nil || got.Purpose != domain.NoSubstance || got.SubstanceID != "" || got.DoseMicro != 0 || got.Unit != "" || got.Route != "" ||
+		got.Frequency != "" || got.StartDay != -3 || got.EndDay != 21 {
+		t.Fatalf("vehicle to period: %+v %v", got, err)
+	}
+	// Changing anything else of that vehicle is refused.
+	amount := "2"
+	if _, err := service(m).UpdateRegimenItem(ctx, researcher, "e", "vehicle", RegimenPatch{Amount: &amount}); !errors.Is(err, domain.ErrPurposeNotAllowed) {
+		t.Fatalf("change the healthy control's vehicle: %v", err)
+	}
+	// A period that names a substance in the same patch is refused.
+	substance := "s"
+	if _, err := service(m).UpdateRegimenItem(ctx, researcher, "e", "vehicle", RegimenPatch{Purpose: &none, SubstanceID: &substance}); !errors.Is(err, domain.ErrNoSubstanceFields) {
+		t.Fatalf("period with a substance: %v", err)
 	}
 }
 

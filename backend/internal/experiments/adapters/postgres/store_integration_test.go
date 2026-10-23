@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand/v2"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -160,6 +161,28 @@ func TestDatabaseRulesBecomeApplicationErrors(t *testing.T) {
 	_, err = f.store.CreateRegimenItem(ctx, domain.RegimenItem{ExperimentID: e, GroupID: s.treated.ID, Purpose: domain.TreatmentPurpose, SubstanceID: s.treatment.SubstanceID,
 		DoseMicro: 1, Unit: "mg", Route: "ORAL", Frequency: domain.Daily, StartDay: 1, EndDay: 2})
 	expect("second treatment", err, application.ErrTreatmentItemTaken)
+	// A healthy control's no-substance period, written and read back with
+	// its empty fields; the role and shape rules hold without the use cases.
+	period := must(f.s.CreateRegimenItem(ctx, researcher, e, domain.RegimenFields{GroupID: s.healthy.ID, Purpose: "NONE", StartDay: -7, EndDay: 7}))
+	if items := must(f.store.RegimenItems(ctx, e)); !slices.ContainsFunc(items, func(r domain.RegimenItem) bool {
+		return r.ID == period.ID && r.Purpose == domain.NoSubstance && r.SubstanceID == "" && r.DoseMicro == 0 && r.Unit == "" && r.Route == "" &&
+			r.Frequency == "" && r.StartDay == -7 && r.EndDay == 7
+	}) {
+		t.Errorf("period not read back: %+v", items)
+	}
+	_, err = f.store.CreateRegimenItem(ctx, domain.RegimenItem{ExperimentID: e, GroupID: s.disease.ID, Purpose: domain.NoSubstance, StartDay: 0, EndDay: 7})
+	expect("period of a disease control", err, domain.ErrPurposeNotAllowed)
+	_, err = f.store.CreateRegimenItem(ctx, domain.RegimenItem{ExperimentID: e, GroupID: s.healthy.ID, Purpose: domain.Vehicle, SubstanceID: s.treatment.SubstanceID,
+		DoseMicro: 1, Unit: "mg", Route: "ORAL", Frequency: domain.Daily, StartDay: 1, EndDay: 2})
+	expect("vehicle of a healthy control", err, domain.ErrPurposeNotAllowed)
+	withDose := period
+	withDose.DoseMicro, withDose.Unit = 1, "mg"
+	_, err = f.store.UpdateRegimenItem(ctx, withDose)
+	expect("period with a dose", err, domain.ErrNoSubstanceFields)
+	diseased := s.healthy
+	diseased.Role, diseased.DiseaseModelID = domain.DiseaseControl, s.disease.DiseaseModelID
+	_, err = f.store.UpdateGroup(ctx, diseased)
+	expect("healthy control with a period becomes diseased", err, application.ErrGroupRegimenConflict)
 	_, err = f.store.CreateEndpoint(ctx, domain.Endpoint{ExperimentID: e, TimepointID: s.timepoint.ID, ParadigmKey: "MWM", MetricKey: "escape_latency_s",
 		Kind: domain.Primary, Direction: domain.HigherIsBetter})
 	expect("second primary", err, application.ErrPrimaryEndpointTaken)

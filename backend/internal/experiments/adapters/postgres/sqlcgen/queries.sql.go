@@ -249,11 +249,11 @@ type CreateRegimenItemParams struct {
 	ExperimentID string
 	GroupID      string
 	Purpose      string
-	SubstanceID  string
-	DoseMicro    int64
-	Unit         string
-	Route        string
-	Frequency    string
+	SubstanceID  *string
+	DoseMicro    *int64
+	Unit         *string
+	Route        *string
+	Frequency    *string
 	IntervalDays *int32
 	StartDay     int32
 	EndDay       int32
@@ -1189,11 +1189,11 @@ RETURNING id, experiment_id, group_id, purpose, substance_id, dose_micro, unit, 
 type UpdateRegimenItemParams struct {
 	GroupID      string
 	Purpose      string
-	SubstanceID  string
-	DoseMicro    int64
-	Unit         string
-	Route        string
-	Frequency    string
+	SubstanceID  *string
+	DoseMicro    *int64
+	Unit         *string
+	Route        *string
+	Frequency    *string
 	IntervalDays *int32
 	StartDay     int32
 	EndDay       int32

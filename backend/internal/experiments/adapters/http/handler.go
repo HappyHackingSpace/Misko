@@ -30,6 +30,7 @@ var failures = []httpjson.Failure{
 	{Err: application.ErrGroupCodeTaken, Status: http.StatusConflict, Code: "group.codeTaken"},
 	{Err: application.ErrGroupNameTaken, Status: http.StatusConflict, Code: "group.nameTaken"},
 	{Err: application.ErrGroupInUse, Status: http.StatusConflict, Code: "group.inUse"},
+	{Err: application.ErrGroupRegimenConflict, Status: http.StatusConflict, Code: "group.regimenConflict"},
 	{Err: application.ErrTimepointConflict, Status: http.StatusConflict, Code: "timepoint.conflict"},
 	{Err: application.ErrTimepointInUse, Status: http.StatusConflict, Code: "timepoint.inUse"},
 	{Err: application.ErrTreatmentItemTaken, Status: http.StatusConflict, Code: "regimen.treatmentTaken"},
@@ -71,6 +72,7 @@ var failures = []httpjson.Failure{
 	{Err: domain.ErrDiseaseModelNotAllowed, Status: http.StatusBadRequest, Code: "group.diseaseModelNotAllowed"},
 	{Err: domain.ErrInvalidPurpose, Status: http.StatusBadRequest, Code: "regimen.invalidPurpose"},
 	{Err: domain.ErrPurposeNotAllowed, Status: http.StatusBadRequest, Code: "regimen.purposeNotAllowed"},
+	{Err: domain.ErrNoSubstanceFields, Status: http.StatusBadRequest, Code: "regimen.noSubstanceFields"},
 	{Err: domain.ErrInvalidAmount, Status: http.StatusBadRequest, Code: "dose.invalidAmount"},
 	{Err: domain.ErrInvalidUnit, Status: http.StatusBadRequest, Code: "dose.invalidUnit"},
 	{Err: domain.ErrInvalidRoute, Status: http.StatusBadRequest, Code: "dose.invalidRoute"},
@@ -608,16 +610,18 @@ func toGroupFill(f application.GroupFill) groupFillJSON {
 	return groupFillJSON{toGroup(f.Group), f.Allocated, f.Excluded}
 }
 
+// regimenItemJSON leaves substanceId, amount, unit, route, frequency and
+// intervalDays null for a period without any substance (purpose NONE).
 type regimenItemJSON struct {
 	ID           string    `json:"id"`
 	ExperimentID string    `json:"experimentId"`
 	GroupID      string    `json:"groupId"`
 	Purpose      string    `json:"purpose"`
-	SubstanceID  string    `json:"substanceId"`
-	Amount       string    `json:"amount"`
-	Unit         string    `json:"unit"`
-	Route        string    `json:"route"`
-	Frequency    string    `json:"frequency"`
+	SubstanceID  *string   `json:"substanceId"`
+	Amount       *string   `json:"amount"`
+	Unit         *string   `json:"unit"`
+	Route        *string   `json:"route"`
+	Frequency    *string   `json:"frequency"`
 	IntervalDays *int      `json:"intervalDays"`
 	StartDay     int       `json:"startDay"`
 	EndDay       int       `json:"endDay"`
@@ -626,8 +630,8 @@ type regimenItemJSON struct {
 }
 
 func toRegimenItem(r domain.RegimenItem) regimenItemJSON {
-	out := regimenItemJSON{r.ID, r.ExperimentID, r.GroupID, string(r.Purpose), r.SubstanceID, r.Amount(), r.Unit, r.Route, string(r.Frequency),
-		nil, r.StartDay, r.EndDay, r.CreatedAt, r.UpdatedAt}
+	out := regimenItemJSON{r.ID, r.ExperimentID, r.GroupID, string(r.Purpose), nullable(r.SubstanceID), nullable(r.Amount()), nullable(r.Unit),
+		nullable(r.Route), nullable(string(r.Frequency)), nil, r.StartDay, r.EndDay, r.CreatedAt, r.UpdatedAt}
 	if r.IntervalDays > 0 {
 		out.IntervalDays = &r.IntervalDays
 	}

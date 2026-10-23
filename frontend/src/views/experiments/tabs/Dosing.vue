@@ -72,9 +72,11 @@ watch(date, (value, previous) => {
   if (previous) loadSchedule();
 });
 
-// Groups with no regimen item (a naive healthy control) are never due a dose;
-// the schedule names them so their absence is not mistaken for a gap.
-const undosedGroups = computed(() => groups.value.filter((g) => !regimenItems.value.some((i) => i.groupId === g.id)));
+// Groups with no substance in their regimen (a healthy control, whose items
+// are only periods without one) are never due a dose; the schedule names them
+// with those periods so their absence is not mistaken for a gap.
+const undosedGroups = computed(() => groups.value.filter((g) => !regimenItems.value.some((i) => i.groupId === g.id && i.purpose !== "NONE")));
+const periods = computed(() => regimenItems.value.filter((i) => i.purpose === "NONE"));
 
 const shift = (days) => (date.value = addDays(date.value, days));
 // NDatePicker speaks timestamps; the tab speaks calendar dates.
@@ -155,6 +157,7 @@ watch(started, (value) => value && loadSchedule());
           :schedule="schedule"
           :groups="groups"
           :undosed-groups="undosedGroups"
+          :periods="periods"
           :loading="loading"
           :past="!!today && date < today"
           :future="!!today && date > today"

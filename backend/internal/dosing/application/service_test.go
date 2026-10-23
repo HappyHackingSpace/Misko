@@ -167,6 +167,9 @@ func TestAdministrationRules(t *testing.T) {
 		{"future", func(a *AdministrationInput, _ *fakeStore) { a.AdministeredAt = now.Add(time.Hour) }, domain.ErrFutureTime},
 		{"missing time", func(a *AdministrationInput, _ *fakeStore) { a.AdministeredAt = time.Time{} }, domain.ErrMissingTime},
 		{"item of another group", func(_ *AdministrationInput, f *fakeStore) { f.item.GroupID = "other" }, ErrRegimenItemOtherGroup},
+		{"no-substance period", func(_ *AdministrationInput, f *fakeStore) {
+			f.item = domain.RegimenItem{ID: f.item.ID, ExperimentID: f.item.ExperimentID, GroupID: f.item.GroupID, Purpose: domain.NoSubstance, StartDay: 0, EndDay: 14}
+		}, ErrNoSubstanceItem},
 		{"other substance than planned", func(a *AdministrationInput, _ *fakeStore) { a.SubstanceID = "saline" }, ErrSubstanceMismatch},
 		{"other purpose than planned", func(a *AdministrationInput, _ *fakeStore) { a.Purpose = "VEHICLE" }, ErrPurposeMismatch},
 		{"no weight yet", func(_ *AdministrationInput, f *fakeStore) { f.latest = nil }, domain.ErrWeightRequired},

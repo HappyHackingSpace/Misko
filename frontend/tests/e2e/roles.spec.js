@@ -74,10 +74,10 @@ test("a technician doses, runs a session and uploads its video, but cannot plan"
   const study = `/experiments/${data.experimentId}`;
 
   await page.goto(`${study}?tab=dosing`);
-  const m02 = page.locator('[data-test="due-dose"][data-animal="M02"]');
-  await m02.getByTestId("record-dose").click();
+  const m04 = page.locator('[data-test="due-dose"][data-animal="M04"]');
+  await m04.getByTestId("record-dose").click();
   await page.getByTestId("dose-dialog").getByTestId("dose-save").click();
-  await expect(m02).toHaveAttribute("data-state", "given");
+  await expect(m04).toHaveAttribute("data-state", "given");
 
   await page.goto(`${study}?tab=tests`);
   await expect(page.getByTestId("session-link").first()).toBeVisible();

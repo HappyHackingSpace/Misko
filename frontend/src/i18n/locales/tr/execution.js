@@ -61,6 +61,8 @@ export default {
       totals: "{due} dozdan {given} tanesi verildi",
       nothingDue: "Bu gün verilecek doz yok.",
       noDosing: "Uygulama yok",
+      noSubstance: "Madde uygulanmaz",
+      noSubstancePeriod: "gün {start} ile {end} arası",
       weight: "Ağırlık",
       weightState: { missing: "Tartılmadı", stale: "Ağırlık 7 günden eski" },
       doses: "Dozlar",
@@ -262,6 +264,7 @@ export default {
     },
     administration: {
       regimenItemOtherGroup: "Bu planlı doz başka bir gruba ait",
+      noSubstanceItem: "Bu dönemde gruba madde uygulanmaz; doz kaydedilemez",
       unplannedIncomplete: "Plan dışı doz için amaç, madde, miktar, birim ve uygulama yolu gerekir",
       substanceMismatch: "Madde planlanandan farklı",
       purposeMismatch: "Amaç planlanandan farklı",

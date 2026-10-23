@@ -373,11 +373,11 @@ type MiskoRegimenItem struct {
 	ExperimentID string
 	GroupID      string
 	Purpose      string
-	SubstanceID  string
-	DoseMicro    int64
-	Unit         string
-	Route        string
-	Frequency    string
+	SubstanceID  *string
+	DoseMicro    *int64
+	Unit         *string
+	Route        *string
+	Frequency    *string
 	IntervalDays *int32
 	StartDay     int32
 	EndDay       int32

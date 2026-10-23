@@ -152,6 +152,28 @@ func (s *Service) UpdateRegimenItem(ctx context.Context, actor access.Actor, exp
 		set(&f.IntervalDays, p.IntervalDays)
 		set(&f.StartDay, p.StartDay)
 		set(&f.EndDay, p.EndDay)
+		if f.Purpose == string(domain.NoSubstance) {
+			// A period without any substance keeps only its days: what the
+			// item gave before is dropped unless the patch names it.
+			if p.SubstanceID == nil {
+				f.SubstanceID = ""
+			}
+			if p.Amount == nil {
+				f.Amount = ""
+			}
+			if p.Unit == nil {
+				f.Unit = ""
+			}
+			if p.Route == nil {
+				f.Route = ""
+			}
+			if p.Frequency == nil {
+				f.Frequency = ""
+			}
+			if p.IntervalDays == nil {
+				f.IntervalDays = 0
+			}
+		}
 		if err := r.Apply(f); err != nil {
 			return err
 		}
@@ -165,7 +187,8 @@ func (s *Service) UpdateRegimenItem(ctx context.Context, actor access.Actor, exp
 }
 
 // allowPurpose rejects an item whose purpose its group's role can never
-// receive. It locks the group so its role cannot change meanwhile. A second
+// receive: a healthy control takes only periods without any substance, every
+// other role never takes one. It locks the group so its role cannot change meanwhile. A second
 // treatment item of the group is left to the store, which reports
 // ErrTreatmentItemTaken.
 func allowPurpose(ctx context.Context, tx Store, r domain.RegimenItem) error {

@@ -17,6 +17,7 @@ const (
 	RuleInductionItemMissing    = "readiness.inductionItemMissing"
 	RuleInductionItemNotAllowed = "readiness.inductionItemNotAllowed"
 	RuleVehicleItemMissing      = "readiness.vehicleItemMissing"
+	RuleVehicleItemNotAllowed   = "readiness.vehicleItemNotAllowed"
 	RuleDiseaseControlMissing   = "readiness.diseaseControlMissing"
 )
 
@@ -119,6 +120,11 @@ func Readiness(d Design) []Problem {
 				add(RuleTreatmentItemNotAllowed)
 			}
 		case HealthyControl:
+			// A healthy control receives no substance at all; only periods
+			// without one (NoSubstance) belong to it, and it may have none.
+			if has[Vehicle] > 0 {
+				add(RuleVehicleItemNotAllowed)
+			}
 			if has[Induction] > 0 {
 				add(RuleInductionItemNotAllowed)
 			}

@@ -24,6 +24,7 @@ var failures = []httpjson.Failure{
 	{Err: application.ErrExperimentNotRunning, Status: http.StatusConflict, Code: "experiment.notRunning"},
 	{Err: application.ErrExperimentNotStarted, Status: http.StatusConflict, Code: "experiment.notStarted"},
 	{Err: application.ErrRegimenItemOtherGroup, Status: http.StatusBadRequest, Code: "administration.regimenItemOtherGroup"},
+	{Err: application.ErrNoSubstanceItem, Status: http.StatusBadRequest, Code: "administration.noSubstanceItem"},
 	{Err: application.ErrSubstanceRequired, Status: http.StatusBadRequest, Code: "administration.unplannedIncomplete"},
 	{Err: application.ErrSubstanceMismatch, Status: http.StatusBadRequest, Code: "administration.substanceMismatch"},
 	{Err: application.ErrPurposeMismatch, Status: http.StatusBadRequest, Code: "administration.purposeMismatch"},
