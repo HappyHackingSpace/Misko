@@ -4,6 +4,7 @@
 // unmet start rule is written out and links to the tab that fixes it.
 import { computed, inject, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
+import { useRoute, useRouter } from "vue-router";
 import { NAlert, NButton, NCard, NDatePicker, NModal, NPopconfirm, NSpin, NTag, useMessage } from "naive-ui";
 import { experiments, groups as groupsApi } from "../../../api/experiments.js";
 import { useAuth } from "../../../stores/auth.js";
@@ -14,6 +15,10 @@ const message = useMessage();
 const auth = useAuth();
 const fmt = useDesignFormat();
 const goTab = useTabLink();
+const route = useRoute();
+const router = useRouter();
+// Opens the Design tab with the group dialog set to a healthy control.
+const addHealthyControl = () => router.replace({ query: { ...route.query, tab: "design", addGroup: "HEALTHY_CONTROL" } });
 const { experiment, reload, id } = inject("study");
 
 const canWrite = computed(() => auth.can("study:write"));
@@ -153,7 +158,17 @@ watch(status, load);
               <li v-for="(problem, i) in readiness.unmet" :key="i" :data-rule="problem.rule">
                 <span class="dot" aria-hidden="true"></span>
                 <span class="rule-text">{{ ruleText(problem) }}</span>
-                <a href="#" class="link" @click.prevent="goTab(ruleTab(problem.rule))">
+                <NButton
+                  v-if="problem.rule === 'readiness.healthyControlMissing' && canWrite"
+                  size="tiny"
+                  secondary
+                  type="primary"
+                  data-test="readiness-add-healthy"
+                  @click="addHealthyControl"
+                >
+                  {{ $t("design.overview.addHealthyControl") }}
+                </NButton>
+                <a v-else href="#" class="link" @click.prevent="goTab(ruleTab(problem.rule))">
                   {{ $t("design.overview.fixIn", { tab: $t(`experiments.tabs.${ruleTab(problem.rule)}`) }) }}
                 </a>
               </li>

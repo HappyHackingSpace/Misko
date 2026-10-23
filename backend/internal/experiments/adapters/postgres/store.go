@@ -29,11 +29,14 @@ var constraintErrors = map[string]error{
 	"experiment_groups_disease_model_id_fkey": application.ErrDiseaseModelNotFound,
 	"experiment_groups_experiment_id_fkey":    application.ErrExperimentNotFound,
 	"experiment_groups_frozen":                application.ErrDesignFrozen,
+	"experiment_groups_regimen_role":          application.ErrGroupRegimenConflict,
 	"regimen_items_group_fkey":                application.ErrGroupNotInExperiment,
 	"regimen_items_substance_id_fkey":         application.ErrSubstanceNotFound,
 	"regimen_items_treatment_key":             application.ErrTreatmentItemTaken,
 	"regimen_items_interval_check":            domain.ErrInvalidInterval,
 	"regimen_items_days_check":                domain.ErrInvalidDays,
+	"regimen_items_substance_check":           domain.ErrNoSubstanceFields,
+	"regimen_items_role":                      domain.ErrPurposeNotAllowed,
 	"regimen_items_frozen":                    application.ErrDesignFrozen,
 	"timepoints_position_key":                 application.ErrTimepointConflict,
 	"timepoints_name_key":                     application.ErrTimepointConflict,
@@ -267,8 +270,9 @@ func (s *Store) CreateRegimenItem(ctx context.Context, r domain.RegimenItem) (do
 		return domain.RegimenItem{}, err
 	}
 	row, err := s.queries.CreateRegimenItem(ctx, sqlcgen.CreateRegimenItemParams{
-		ExperimentID: r.ExperimentID, GroupID: r.GroupID, Purpose: string(r.Purpose), SubstanceID: r.SubstanceID, DoseMicro: r.DoseMicro,
-		Unit: r.Unit, Route: r.Route, Frequency: string(r.Frequency), IntervalDays: target(r.IntervalDays), StartDay: int32(r.StartDay), EndDay: int32(r.EndDay),
+		ExperimentID: r.ExperimentID, GroupID: r.GroupID, Purpose: string(r.Purpose), SubstanceID: optional(r.SubstanceID), DoseMicro: dose(r.DoseMicro),
+		Unit: optional(r.Unit), Route: optional(r.Route), Frequency: optional(string(r.Frequency)), IntervalDays: target(r.IntervalDays),
+		StartDay: int32(r.StartDay), EndDay: int32(r.EndDay),
 	})
 	if err != nil {
 		return domain.RegimenItem{}, translate(err, nil, "create regimen item")
@@ -281,8 +285,9 @@ func (s *Store) UpdateRegimenItem(ctx context.Context, r domain.RegimenItem) (do
 		return domain.RegimenItem{}, err
 	}
 	row, err := s.queries.UpdateRegimenItem(ctx, sqlcgen.UpdateRegimenItemParams{
-		ExperimentID: r.ExperimentID, ID: r.ID, GroupID: r.GroupID, Purpose: string(r.Purpose), SubstanceID: r.SubstanceID, DoseMicro: r.DoseMicro,
-		Unit: r.Unit, Route: r.Route, Frequency: string(r.Frequency), IntervalDays: target(r.IntervalDays), StartDay: int32(r.StartDay), EndDay: int32(r.EndDay),
+		ExperimentID: r.ExperimentID, ID: r.ID, GroupID: r.GroupID, Purpose: string(r.Purpose), SubstanceID: optional(r.SubstanceID), DoseMicro: dose(r.DoseMicro),
+		Unit: optional(r.Unit), Route: optional(r.Route), Frequency: optional(string(r.Frequency)), IntervalDays: target(r.IntervalDays),
+		StartDay: int32(r.StartDay), EndDay: int32(r.EndDay),
 	})
 	if err != nil {
 		return domain.RegimenItem{}, translate(err, application.ErrRegimenItemNotFound, "update regimen item")
@@ -302,7 +307,8 @@ func regimenReferences(r domain.RegimenItem) error {
 	if !pgtx.ValidUUID(r.GroupID) {
 		return application.ErrGroupNotInExperiment
 	}
-	if !pgtx.ValidUUID(r.SubstanceID) {
+	// A period without any substance names none.
+	if r.Purpose != domain.NoSubstance && !pgtx.ValidUUID(r.SubstanceID) {
 		return application.ErrSubstanceNotFound
 	}
 	return nil
@@ -548,9 +554,12 @@ func toGroup(r sqlcgen.MiskoExperimentGroup) domain.Group {
 }
 
 func toRegimenItem(r sqlcgen.MiskoRegimenItem) domain.RegimenItem {
-	item := domain.RegimenItem{ID: r.ID, ExperimentID: r.ExperimentID, GroupID: r.GroupID, Purpose: domain.Purpose(r.Purpose), SubstanceID: r.SubstanceID,
-		DoseMicro: r.DoseMicro, Unit: r.Unit, Route: r.Route, Frequency: domain.Frequency(r.Frequency), StartDay: int(r.StartDay), EndDay: int(r.EndDay),
+	item := domain.RegimenItem{ID: r.ID, ExperimentID: r.ExperimentID, GroupID: r.GroupID, Purpose: domain.Purpose(r.Purpose), SubstanceID: value(r.SubstanceID),
+		Unit: value(r.Unit), Route: value(r.Route), Frequency: domain.Frequency(value(r.Frequency)), StartDay: int(r.StartDay), EndDay: int(r.EndDay),
 		CreatedAt: r.CreatedAt.UTC(), UpdatedAt: r.UpdatedAt.UTC()}
+	if r.DoseMicro != nil {
+		item.DoseMicro = *r.DoseMicro
+	}
 	if r.IntervalDays != nil {
 		item.IntervalDays = int(*r.IntervalDays)
 	}
@@ -605,6 +614,14 @@ func utc(t *time.Time) *time.Time {
 }
 
 // target stores 0 as NULL.
+// dose stores the missing dose of a period without any substance as NULL.
+func dose(micro int64) *int64 {
+	if micro == 0 {
+		return nil
+	}
+	return &micro
+}
+
 func target(n int) *int32 {
 	if n == 0 {
 		return nil

@@ -60,6 +60,9 @@ export default {
       today: "Today",
       totals: "{given} of {due} doses given",
       nothingDue: "Nothing is due on this day.",
+      noDosing: "No dosing",
+      noSubstance: "No substance",
+      noSubstancePeriod: "day {start} to {end}",
       weight: "Weight",
       weightState: { missing: "Not weighed", stale: "Weight older than 7 days" },
       doses: "Doses",
@@ -261,6 +264,7 @@ export default {
     },
     administration: {
       regimenItemOtherGroup: "This planned dose belongs to another group",
+      noSubstanceItem: "No substance is given to the group in this period; no dose can be recorded",
       unplannedIncomplete: "An unplanned dose needs a purpose, substance, amount, unit and route",
       substanceMismatch: "The substance differs from the planned one",
       purposeMismatch: "The purpose differs from the planned one",

@@ -788,6 +788,9 @@ paths:
     patch:
       operationId: updateGroup
       summary: Update a group of a draft (study:write); other experiments' groups are 404
+      description: >-
+        A role change that would leave a NONE item outside a healthy control, or
+        an item with a substance in one, is 409 group.regimenConflict.
       requestBody:
         required: true
         content:
@@ -834,6 +837,16 @@ paths:
     post:
       operationId: createRegimenItem
       summary: Add a regimen item to a group of a draft (study:write); a group has at most one TREATMENT item
+      description: >-
+        The purpose must be one the group's role can receive, otherwise 400
+        regimen.purposeNotAllowed: HEALTHY_CONTROL only NONE; SHAM only
+        VEHICLE; DISEASE_CONTROL INDUCTION or VEHICLE; POSITIVE_CONTROL and
+        TREATMENT INDUCTION, VEHICLE or TREATMENT. A NONE item is a period in
+        which a healthy control receives no substance at all: it has only
+        groupId, purpose, startDay and endDay, and any substance, amount, unit,
+        route, frequency or interval is 400 regimen.noSubstanceFields. Every
+        other purpose needs all of them. A second TREATMENT item of a group is
+        409 regimen.treatmentTaken.
       requestBody:
         required: true
         content:
@@ -857,6 +870,13 @@ paths:
     patch:
       operationId: updateRegimenItem
       summary: Update a regimen item of a draft (study:write)
+      description: >-
+        The resulting purpose must be one the item's group can receive (400
+        regimen.purposeNotAllowed, see createRegimenItem). Changing the purpose
+        to NONE drops the substance, amount, unit, route, frequency and interval
+        the patch does not name; naming one is 400 regimen.noSubstanceFields.
+        A VEHICLE item of a healthy control written before NONE existed can
+        only become a NONE item or be deleted.
       requestBody:
         required: true
         content:
@@ -1187,7 +1207,8 @@ paths:
         are taken from the item unless a different actual amount and unit or route is given. An unplanned dose names purpose,
         substance, amount, unit and route. A per-kilogram dose uses the animal's latest weight measured by administeredAt
         unless weightMeasurementId names one; the weight must be at most 7 days older than the dose. The response carries the
-        computed absolute amount.
+        computed absolute amount. A NONE regimen item (a period without any substance) is never administered: 400
+        administration.noSubstanceItem.
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/AdministrationInput'}}}}
       responses:
         '201': {description: Recorded, content: {application/json: {schema: {$ref: '#/components/schemas/Administration'}}}}
@@ -2723,7 +2744,8 @@ components:
       properties:
         rule:
           type: string
-          enum: [readiness.noTimepoints, readiness.noGroups, readiness.targetSizeMissing, readiness.primaryEndpointMissing,
+          enum: [readiness.noTimepoints, readiness.noGroups, readiness.healthyControlMissing, readiness.targetSizeMissing,
+                 readiness.primaryEndpointMissing,
                  readiness.endpointMetricUnavailable, readiness.treatmentItemMissing, readiness.treatmentItemNotAllowed,
                  readiness.inductionItemMissing, readiness.inductionItemNotAllowed, readiness.vehicleItemMissing,
                  readiness.diseaseControlMissing]
@@ -2732,7 +2754,8 @@ components:
     Readiness:
       type: object
       description: >-
-        Start rules: at least one timepoint and one group; every group has a
+        Start rules: at least one timepoint and one group; at least one
+        HEALTHY_CONTROL group, the reference every analysis compares against; every group has a
         target size; exactly one primary endpoint; every endpoint's metric is
         computed by a paradigm version of the protocol steps; TREATMENT and
         POSITIVE_CONTROL groups have one TREATMENT and an INDUCTION item;
@@ -2793,7 +2816,10 @@ components:
         diseaseModelId: {type: string}
         targetSize: {type: integer, minimum: 0, maximum: 100000}
         description: {type: string, maxLength: 5000}
-    RegimenPurpose: {type: string, enum: [INDUCTION, VEHICLE, TREATMENT]}
+    RegimenPurpose:
+      type: string
+      enum: [NONE, INDUCTION, VEHICLE, TREATMENT]
+      description: NONE is a period in which a healthy control receives no substance; it has only a first and a last study day
     RegimenUnit: {type: string, enum: [mg/kg, ug/kg, mL/kg, IU/kg, mg, ug, g, mL, uL, IU]}
     RegimenRoute: {type: string, enum: [ORAL, INTRAPERITONEAL, SUBCUTANEOUS, INTRAVENOUS, INTRAMUSCULAR, INTRANASAL, INTRACEREBROVENTRICULAR, TOPICAL, INHALATION]}
     RegimenFrequency: {type: string, enum: [ONCE, DAILY, TWICE_DAILY, WEEKLY, EVERY_N_DAYS]}
@@ -2801,30 +2827,52 @@ components:
     StudyDay: {type: integer, minimum: -365, maximum: 3650, description: Days relative to day 0}
     RegimenItem:
       type: object
+      description: substanceId, amount, unit, route, frequency and intervalDays are null exactly for a NONE item and set otherwise (intervalDays only for EVERY_N_DAYS)
       required: [id, experimentId, groupId, purpose, substanceId, amount, unit, route, frequency, intervalDays, startDay, endDay, createdAt, updatedAt]
       properties:
         id: {type: string, format: uuid}
         experimentId: {type: string, format: uuid}
         groupId: {type: string, format: uuid}
         purpose: {$ref: '#/components/schemas/RegimenPurpose'}
-        substanceId: {type: string, format: uuid}
-        amount: {$ref: '#/components/schemas/RegimenAmount'}
-        unit: {$ref: '#/components/schemas/RegimenUnit'}
-        route: {$ref: '#/components/schemas/RegimenRoute'}
-        frequency: {$ref: '#/components/schemas/RegimenFrequency'}
+        substanceId: {type: [string, 'null'], format: uuid}
+        amount: {oneOf: [{$ref: '#/components/schemas/RegimenAmount'}, {type: 'null'}]}
+        unit: {oneOf: [{$ref: '#/components/schemas/RegimenUnit'}, {type: 'null'}]}
+        route: {oneOf: [{$ref: '#/components/schemas/RegimenRoute'}, {type: 'null'}]}
+        frequency: {oneOf: [{$ref: '#/components/schemas/RegimenFrequency'}, {type: 'null'}]}
         intervalDays: {type: [integer, 'null'], minimum: 2, maximum: 365, description: Set only for EVERY_N_DAYS}
         startDay: {$ref: '#/components/schemas/StudyDay'}
         endDay: {$ref: '#/components/schemas/StudyDay'}
         createdAt: {type: string, format: date-time}
         updatedAt: {type: string, format: date-time}
     RegimenItemInput:
+      oneOf:
+        - {$ref: '#/components/schemas/NoSubstancePeriodInput'}
+        - {$ref: '#/components/schemas/SubstanceItemInput'}
+      discriminator:
+        propertyName: purpose
+        mapping:
+          NONE: '#/components/schemas/NoSubstancePeriodInput'
+          INDUCTION: '#/components/schemas/SubstanceItemInput'
+          VEHICLE: '#/components/schemas/SubstanceItemInput'
+          TREATMENT: '#/components/schemas/SubstanceItemInput'
+    NoSubstancePeriodInput:
+      type: object
+      additionalProperties: false
+      required: [groupId, purpose, startDay, endDay]
+      description: A healthy control's period without any substance; endDay is on or after startDay
+      properties:
+        groupId: {type: string, format: uuid}
+        purpose: {type: string, const: NONE}
+        startDay: {$ref: '#/components/schemas/StudyDay'}
+        endDay: {$ref: '#/components/schemas/StudyDay'}
+    SubstanceItemInput:
       type: object
       additionalProperties: false
       required: [groupId, purpose, substanceId, amount, unit, route, frequency, startDay, endDay]
       description: endDay is on or after startDay and equals it for ONCE
       properties:
         groupId: {type: string, format: uuid}
-        purpose: {$ref: '#/components/schemas/RegimenPurpose'}
+        purpose: {type: string, enum: [INDUCTION, VEHICLE, TREATMENT]}
         substanceId: {type: string, format: uuid}
         amount: {$ref: '#/components/schemas/RegimenAmount'}
         unit: {$ref: '#/components/schemas/RegimenUnit'}
@@ -2837,7 +2885,7 @@ components:
       type: object
       additionalProperties: false
       minProperties: 1
-      description: Omitted fields are unchanged; intervalDays 0 removes the interval
+      description: Omitted fields are unchanged; intervalDays 0 removes the interval. With purpose NONE the item keeps only its days.
       properties:
         groupId: {type: string, format: uuid}
         purpose: {$ref: '#/components/schemas/RegimenPurpose'}

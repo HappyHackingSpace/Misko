@@ -6,7 +6,23 @@ import { useRoute, useRouter } from "vue-router";
 import { paradigmCatalog } from "../../../api/protocols.js";
 
 export const ROLES = ["HEALTHY_CONTROL", "SHAM", "DISEASE_CONTROL", "POSITIVE_CONTROL", "TREATMENT"];
-export const PURPOSES = ["INDUCTION", "VEHICLE", "TREATMENT"];
+// NONE is a period without any substance: a healthy control's only kind of
+// item, with a first and a last study day and nothing else.
+export const NO_SUBSTANCE = "NONE";
+export const PURPOSES = [NO_SUBSTANCE, "INDUCTION", "VEHICLE", "TREATMENT"];
+
+// What a group of each role can ever receive, as the API enforces it: a
+// healthy control no substance at all (only its periods), a sham only a
+// vehicle, a disease control its induction and a vehicle, the treated groups
+// also their one treatment.
+export const ROLE_PURPOSES = {
+  HEALTHY_CONTROL: [NO_SUBSTANCE],
+  SHAM: ["VEHICLE"],
+  DISEASE_CONTROL: ["INDUCTION", "VEHICLE"],
+  POSITIVE_CONTROL: ["INDUCTION", "VEHICLE", "TREATMENT"],
+  TREATMENT: ["INDUCTION", "VEHICLE", "TREATMENT"],
+};
+
 export const UNITS = ["mg/kg", "ug/kg", "mL/kg", "IU/kg", "mg", "ug", "g", "mL", "uL", "IU"];
 export const ROUTES = [
   "ORAL",
@@ -42,7 +58,7 @@ const ROLE_COLOR = {
 export const roleTagType = (role) => ROLE_TAG[role] || "default";
 export const roleColor = (role) => ROLE_COLOR[role] || "var(--line)";
 
-const PURPOSE_TAG = { INDUCTION: "error", VEHICLE: "default", TREATMENT: "info" };
+const PURPOSE_TAG = { NONE: "success", INDUCTION: "error", VEHICLE: "default", TREATMENT: "info" };
 export const purposeTagType = (purpose) => PURPOSE_TAG[purpose] || "default";
 
 // A study date ("2026-10-15") is a calendar day: it is read in local time so
@@ -79,6 +95,11 @@ export function useDesignFormat() {
       item.startDay === item.endDay
         ? t("design.studyDay", { day: item.startDay })
         : t("design.studyDays", { start: item.startDay, end: item.endDay }),
+    // "No substance: day 0 to 14" for a healthy control's period.
+    period: (item) =>
+      item.startDay === item.endDay
+        ? t("design.regimen.noSubstanceDay", { day: item.startDay })
+        : t("design.regimen.noSubstancePeriod", { start: item.startDay, end: item.endDay }),
     studyDay: (day) => t("design.studyDay", { day }),
     // "Baseline (Day -1)", or just "Day 14" when the name already says it.
     timepoint: (tp) => {

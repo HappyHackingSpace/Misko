@@ -226,12 +226,42 @@ doldurup kaydedin. Deney **Gruplar ve rejimler** sekmesinde açılır. Yeni bir
 2. Grubun kartında **Kalem ekle**'ye tıklayarak grubun ne aldığını belirtin:
    amaç (indüksiyon, taşıyıcı veya tedavi), madde, doz ve birim (örneğin
    10 mg/kg), uygulama yolu, sıklık (bir kez, günlük, günde iki kez, haftalık
-   veya N günde bir) ve ilk ile son çalışma günü.
+   veya N günde bir) ve ilk ile son çalışma günü. Amaç listesi yalnızca grubun
+   rolünün alabileceklerini sunar; tek bir amaç uyuyorsa o zaten seçilidir.
+   Her kartta **Rejim** başlığının altındaki kısa satır, rolün neyi alması
+   gerektiğini ve neyi almadığını söyler. Sağlıklı kontrol hiçbir madde
+   almadığı için onun **Kalem ekle** penceresi yalnızca hiçbir şey almadığı
+   dönemin **İlk çalışma günü** ve **Son çalışma günü** bilgisini ister;
+   aşağıya bakın.
 
 Roller şunlardır: sağlıklı kontrol, sham, hastalık kontrolü, pozitif kontrol ve
-tedavi. Tedavi veya pozitif kontrol grubunun tam olarak bir tedavi kalemi (doz
-düzeyi) ve bir indüksiyon kalemi vardır; hastalık kontrolünün bir indüksiyon ve
-bir taşıyıcı kalemi vardır; sham grubunun taşıyıcısı vardır, indüksiyonu yoktur.
+tedavi. **Her çalışmada en az bir sağlıklı kontrol grubu olmalıdır**: model
+geçerliliği ve kurtarma yüzdesi bununla ölçülür, bu yüzden sağlıklı kontrolü
+olmayan bir çalışma başlatılamaz. Her rolün alabilecekleri:
+
+| Rol | Almalı | Ayrıca alabilir | Asla almaz |
+| --- | --- | --- | --- |
+| Sağlıklı kontrol | hiçbir madde (yalnızca dönemi kaydedilir) | | taşıyıcı, indüksiyon, tedavi |
+| Sham | taşıyıcı | | indüksiyon, tedavi |
+| Hastalık kontrolü | indüksiyon ve taşıyıcı | | tedavi |
+| Pozitif kontrol | indüksiyon ve bir tedavi (referans ilaç) | taşıyıcı | ikinci bir tedavi |
+| Tedavi | indüksiyon ve bir tedavi (doz düzeyi) | taşıyıcı | ikinci bir tedavi |
+
+Panel ve API, rolün asla almadığı bir kalemi ("Bu grubun rolü bu amaçla bir
+kalem alamaz") ve bir grubun ikinci tedavi kalemini reddeder.
+
+**Sağlıklı kontrol: madde yok, yalnızca dönem.** Sağlıklı kontrol *naif*
+kontroldür ve hiçbir madde almaz: taşıyıcı, indüksiyon ve tedavi yoktur.
+Kartında "Bu gruba madde uygulanmaz (naif kontrol)" yazar. Grubun hangi
+günlerde hiçbir madde almadığını kaydetmek için kartındaki **Kalem ekle**'ye
+tıklayın ve yalnızca **İlk çalışma günü** ile **Son çalışma günü**'nü girin;
+amaç, madde, doz, birim, yol ve sıklık yoktur. Kalem "Madde uygulanmaz: gün 0
+ile 14 arası" olarak görünür ve Dozlama sekmesi grubu "Madde uygulanmaz" ve bu
+dönemle listeler. Dönem isteğe bağlıdır; kalemi olmayan bir sağlıklı kontrol
+de geçerlidir. Eski bir taslakta sağlıklı kontrole girilmiş bir taşıyıcı,
+çalışmanın başlamasını engeller ("Sağlıklı kontrol grubunda olmaması gereken
+bir taşıyıcı kalemi var"): kalemi düzenleyip iki günü kaydederek döneme
+çevirin ya da silin. Başlamış çalışmaların tasarımı değişmeden kalır.
 
 **Zaman noktaları ve protokoller.** **Zaman noktaları ve protokoller**
 sekmesinde:
@@ -251,7 +281,9 @@ noktasıyla karşılaştırmalı, ve hangi yönün daha iyi olduğu. Tam olarak 
 **birincil**'dir; ikinci bir birincil ölçüt reddedilir.
 
 **Başlatma.** **Genel bakış** sekmesi henüz karşılanmayan her başlatma kuralını,
-düzelteceği sekmeye bir bağlantıyla birlikte listeler. Liste çalışmanın hazır
+düzelteceği sekmeye bir bağlantıyla birlikte listeler. Sağlıklı kontrol
+eksikse **Sağlıklı kontrol grubu ekle** grup penceresini bu rol seçili olarak
+açar. Liste çalışmanın hazır
 olduğunu söylediğinde **Çalışmayı başlat**'a tıklayın, 0. günü (çalışma
 günlerinin sayıldığı tarih, genellikle indüksiyon) seçin ve onaylayın. Çalışma
 **Çalışıyor** olur: gruplar, rejimler, zaman noktaları ve ölçütler artık salt
@@ -280,7 +312,10 @@ girmez.
 
 **Dozlama** sekmesi bir günün verilecek dozlarını grup ve deneğe göre, her
 deneğin son ağırlığıyla birlikte gösterir. Başka bir güne geçmek için okları
-veya tarih seçiciyi, geri dönmek için **Bugün**'ü kullanın. Bir doz bugün
+veya tarih seçiciyi, geri dönmek için **Bugün**'ü kullanın. Sağlıklı kontrolün
+hiçbir zaman verilecek dozu olmaz: altta **Madde uygulanmaz** ve dönemiyle
+(örneğin "Madde uygulanmaz: gün 0 ile 14 arası"), rejim kalemi olmayan diğer
+gruplar **Uygulama yok** ile listelenir. Bir doz bugün
 **Bekliyor**, kaydedilince **Verildi**, geçmiş bir günde **Eksik** ve gelecek
 bir günde **Planlandı** olarak görünür.
 

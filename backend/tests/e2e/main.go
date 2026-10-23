@@ -485,7 +485,8 @@ func seedStudy(api bootstrap.API, store *diskStore, fixtures, adminPassword stri
 		return text(s.post(base+"/regimen-items", map[string]any{"groupId": groupID, "purpose": purpose, "substanceId": substanceID, "amount": amount,
 			"unit": unit, "route": route, "frequency": frequency, "startDay": start, "endDay": end}), "id")
 	}
-	item(healthy, "VEHICLE", saline, "10", "mL/kg", "ORAL", "DAILY", 0, 14)
+	// The healthy control receives no substance: only its period is recorded.
+	s.post(base+"/regimen-items", map[string]any{"groupId": healthy, "purpose": "NONE", "startDay": 0, "endDay": 14})
 	induction := item(disease, "INDUCTION", mptp, "20", "mg/kg", "INTRAPERITONEAL", "ONCE", 0, 0)
 	item(disease, "VEHICLE", saline, "10", "mL/kg", "ORAL", "DAILY", 0, 14)
 	item(treated, "INDUCTION", mptp, "20", "mg/kg", "INTRAPERITONEAL", "ONCE", 0, 0)

@@ -225,12 +225,43 @@ is a **Draft**; its design can be changed until it starts.
 2. On the group's card click **Add item** to say what the group receives: the
    purpose (induction, vehicle or treatment), the substance, the dose and unit
    (for example 10 mg/kg), the route, how often (once, daily, twice daily,
-   weekly or every N days) and the first and last study day.
+   weekly or every N days) and the first and last study day. The purpose list
+   only offers what the group's role may receive; when only one purpose fits it
+   is already chosen. A short line under **Regimen** on every card says what
+   the role must and must not receive. A healthy control receives no
+   substance, so its **Add item** asks only for the **First study day** and
+   the **Last study day** of the period in which it receives nothing; see
+   below.
 
 The roles are: healthy control, sham, disease control, positive control and
-treatment. A treatment or positive control group has exactly one treatment
-item (its dose level) and an induction item; a disease control has an induction
-and a vehicle; a sham has a vehicle and no induction.
+treatment. **Every study needs at least one healthy control group**: model
+validity and rescue % are measured against it, so a study without one cannot
+start. What each role may receive:
+
+| Role | Must receive | May also receive | Never receives |
+| --- | --- | --- | --- |
+| Healthy control | no substance (only its period is recorded) | | vehicle, induction, treatment |
+| Sham | a vehicle | | induction, treatment |
+| Disease control | the induction and a vehicle | | treatment |
+| Positive control | the induction and one treatment (the reference drug) | a vehicle | a second treatment |
+| Treatment | the induction and one treatment (its dose level) | a vehicle | a second treatment |
+
+The panel and the API refuse an item the role never receives ("This group's
+role cannot receive an item with this purpose"), and a second treatment item of
+a group.
+
+**Healthy control: no substance, only the period.** A healthy control is a
+*naive* control and receives no substance at all: no vehicle, no induction and
+no treatment. Its card says "No substance is given to this group (naive
+control)". To record when the group goes without any substance, click **Add
+item** on its card and enter only the **First study day** and the **Last study
+day**; there is no purpose, substance, dose, unit, route or frequency. The item
+reads "No substance: day 0 to 14", and the Dosing tab lists the group with
+"No substance" and that period. The period is optional; an empty healthy
+control is still valid. A vehicle a healthy control received in an older
+draft blocks the start ("A healthy control group has a vehicle item it must
+not have"): edit it and save the two days to turn it into a period, or delete
+it. Studies that already started keep their design unchanged.
 
 **Timepoints and protocols.** On the **Timepoints and protocols** tab:
 
@@ -248,7 +279,9 @@ a baseline timepoint, and which direction is better. Exactly one endpoint is
 **primary**; a second primary is refused.
 
 **Starting.** The **Overview** tab lists every start rule that is not met yet,
-each with a link to the tab that fixes it. When the list says the study is
+each with a link to the tab that fixes it. When the healthy control is
+missing, **Add a healthy control group** opens the group dialog with that role
+already chosen. When the list says the study is
 ready, click **Start study**, choose day 0 (the date study days count from,
 usually the induction) and confirm. The study becomes **Running**: groups,
 regimens, timepoints and endpoints are now shown read-only. New protocol
@@ -275,7 +308,10 @@ animals stay on the list with their reason and are left out of statistics.
 
 The **Dosing** tab shows the doses due on a day, grouped by group and animal,
 with each animal's latest weight. Use the arrows or the date picker to move to
-another day and **Today** to come back. A dose is **Due** today, **Given** once
+another day and **Today** to come back. A healthy control is never due a dose:
+it is listed below with **No substance** and its period (for example "No
+substance: day 0 to 14"), and any other group without a regimen item with **No
+dosing**. A dose is **Due** today, **Given** once
 recorded, **Missing** on a past day and **Planned** on a future day.
 
 1. Click **Record** next to a due dose. The dialog shows the planned dose;

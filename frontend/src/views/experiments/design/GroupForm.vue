@@ -15,6 +15,9 @@ const props = defineProps({
   diseaseModels: { type: Array, default: () => [] },
   // Code suggested for a new group (G1, G2 ...).
   nextCode: { type: String, default: "" },
+  // Role chosen up front for a new group, such as a healthy control the
+  // readiness panel asks for.
+  role: { type: String, default: null },
 });
 const emit = defineEmits(["update:show", "saved"]);
 const { t } = useI18n();
@@ -39,7 +42,7 @@ watch(
           targetSize: g.targetSize,
           description: g.description || "",
         }
-      : { ...empty(), code: props.nextCode };
+      : { ...empty(), code: props.nextCode, role: props.role, name: props.role ? t(`design.roles.${props.role}`) : "" };
   },
 );
 
