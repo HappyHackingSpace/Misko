@@ -6,7 +6,6 @@ import (
 	"context"
 	"crypto/rand"
 	"errors"
-	"fmt"
 	healthpostgres "github.com/HappyHackingSpace/Misko/backend/internal/health/adapters/postgres"
 	"github.com/HappyHackingSpace/Misko/backend/schema"
 	"github.com/jackc/pgx/v5"
@@ -140,33 +139,42 @@ func TestChangedMigrationIsRefused(t *testing.T) {
 	}
 }
 
+// installUpTo applies the first n migrations the way Migrate does and
+// records them, leaving the database n migrations into the history.
+func installUpTo(t *testing.T, pool *pgxpool.Pool, n int) []schema.Migration {
+	t.Helper()
+	ctx := context.Background()
+	migrations, err := schema.Migrations()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range migrations[:n] {
+		if _, err := pool.Exec(ctx, m.SQL); err != nil {
+			t.Fatalf("apply %s: %v", m.Name, err)
+		}
+	}
+	if _, err := pool.Exec(ctx, `CREATE TABLE misko.schema_migrations (version integer PRIMARY KEY, name text NOT NULL, checksum text NOT NULL,
+		applied_at timestamptz NOT NULL DEFAULT now())`); err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range migrations[:n] {
+		if _, err := pool.Exec(ctx, "INSERT INTO misko.schema_migrations (version, name, checksum) VALUES ($1, $2, $3)", m.Version, m.Name, m.Checksum); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return migrations
+}
+
 func TestPendingMigrationRunsAndBlocksReadiness(t *testing.T) {
 	ctx := context.Background()
 	pool := emptyDatabase(t)
-	if _, err := schema.Migrate(ctx, pool); err != nil {
-		t.Fatal(err)
-	}
-	// Simulate a database one release behind: undo the last migration
-	// (observer scoring) and forget it.
-	latest := fmt.Sprintf("%03d_scoring.sql", schema.Latest())
-	if _, err := pool.Exec(ctx, fmt.Sprintf(`DROP TABLE misko.scored_observations;
-		DROP TABLE misko.scoring_sheets;
-		DROP FUNCTION misko.check_scored_observation_change();
-		DROP FUNCTION misko.check_scoring_sheet_change();
-		DROP TRIGGER analysis_runs_scored_finished ON misko.analysis_runs;
-		DROP FUNCTION misko.check_scored_run_finished();
-		DROP TRIGGER analysis_runs_method_fixed ON misko.analysis_runs;
-		DROP FUNCTION misko.check_analysis_run_method();
-		ALTER TABLE misko.analysis_runs DROP CONSTRAINT analysis_runs_state_check;
-		ALTER TABLE misko.analysis_runs DROP COLUMN method, DROP COLUMN scored_by;
-		ALTER TABLE misko.analysis_runs ADD CONSTRAINT analysis_runs_state_check CHECK (status IS NOT NULL);
-		DELETE FROM misko.schema_migrations WHERE version = %d`, schema.Latest())); err != nil {
-		t.Fatal(err)
-	}
+	// A database one release behind: every migration but the last is applied.
+	migrations := installUpTo(t, pool, schema.Latest()-1)
+	pending := []string{migrations[len(migrations)-1].Name}
 	if healthpostgres.New(pool, schema.Latest()).Check(ctx) == nil {
 		t.Fatal("database behind the code marked ready")
 	}
-	if applied, err := schema.Migrate(ctx, pool); err != nil || !slices.Equal(applied, []string{latest}) {
+	if applied, err := schema.Migrate(ctx, pool); err != nil || !slices.Equal(applied, pending) {
 		t.Fatalf("pending migration: %v %v", applied, err)
 	}
 	// A database ahead of the code (a rollback) still starts.

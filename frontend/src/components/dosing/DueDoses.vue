@@ -9,6 +9,11 @@ import { useExecutionFormat } from "../../composables/useExecutionFormat.js";
 const props = defineProps({
   schedule: { type: Object, default: null },
   groups: { type: Array, default: () => [] },
+  // Groups with no substance in their regimen: never due a dose, listed as
+  // such, a healthy control with the periods it receives no substance in.
+  undosedGroups: { type: Array, default: () => [] },
+  // The regimen items without a substance (purpose NONE) of those groups.
+  periods: { type: Array, default: () => [] },
   loading: { type: Boolean, default: false },
   // The day shown is before or after the laboratory's today.
   past: { type: Boolean, default: false },
@@ -18,6 +23,17 @@ const props = defineProps({
 const emit = defineEmits(["record"]);
 const { t } = useI18n();
 const fmt = useExecutionFormat();
+
+// "No substance: day 0 to 14" for a healthy control, "No dosing" for any
+// other group without items.
+function undosedText(g) {
+  const periods = props.periods.filter((p) => p.groupId === g.id);
+  if (!periods.length) return t(g.role === "HEALTHY_CONTROL" ? "execution.dosing.noSubstance" : "execution.dosing.noDosing");
+  const days = periods.map((p) =>
+    p.startDay === p.endDay ? t("execution.studyDay", { day: p.startDay }) : t("execution.dosing.noSubstancePeriod", { start: p.startDay, end: p.endDay }),
+  );
+  return `${t("execution.dosing.noSubstance")}: ${days.join(", ")}`;
+}
 
 const WEIGHT_MAX_AGE_MS = 7 * 24 * 3600 * 1000;
 const perKg = (unit) => unit.endsWith("/kg");
@@ -110,6 +126,13 @@ Row.props = ["animal"];
         <Row v-for="animal in section.animals" :key="animal.allocationId" :animal="animal" />
       </div>
     </div>
+    <ul v-if="schedule && undosedGroups.length" class="undosed">
+      <li v-for="g in undosedGroups" :key="g.id" data-test="undosed-group" :data-group="g.code">
+        <strong>{{ g.code }}</strong> · {{ g.name }}
+        <NTag size="small" round :bordered="false" class="role">{{ $t(`execution.roles.${g.role}`) }}</NTag>
+        <span class="muted" data-test="undosed-text">{{ undosedText(g) }}</span>
+      </li>
+    </ul>
   </NSpin>
 </template>
 
@@ -117,6 +140,8 @@ Row.props = ["animal"];
 .section + .section { margin-top: 18px; }
 h4 { margin: 0 0 8px; font-size: 14px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .role { font-weight: 500; }
+.undosed { list-style: none; margin: 18px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: 14px; }
+.undosed li { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .rows { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
 :deep(.row) { display: grid; grid-template-columns: 110px 130px minmax(0, 1fr); gap: 12px; padding: 10px 12px; align-items: center; }
 :deep(.row + .row) { border-top: 1px solid var(--line); }

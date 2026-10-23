@@ -1,7 +1,7 @@
 {
   "key": "TREADMILL",
-  "name": "Treadmill",
-  "description": "The animal runs on a motorized belt, at a fixed or increasing speed, until it can no longer keep up. Measures endurance and exercise capacity.",
+  "name": "Treadmill exhaustion test",
+  "description": "The animal runs on a motorized treadmill at a constant or increasing speed until exhaustion. Assesses endurance and exercise capacity.",
   "category": "MOTOR",
   "species": [
     "MOUSE",
@@ -14,19 +14,18 @@
     },
     {
       "key": "FIXED_SPEED",
-      "label": "Fixed speed"
+      "label": "Constant speed"
     }
   ],
   "version": 1,
   "metricEngineVersion": 1,
   "resultSchemaVersion": 1,
-  "automatedAnalysis": false,
   "parameters": [
     {
       "key": "lane_length_cm",
       "scope": "APPARATUS",
       "label": "Lane length",
-      "help": "Length of the running lane on the belt, from the front wall to the rear grid.",
+      "help": "Length of the running lane, from the front wall to the rear grid.",
       "unit": "cm",
       "valueType": "number",
       "min": 20,
@@ -34,10 +33,43 @@
       "default": 40
     },
     {
+      "key": "exhaustion_dwell_s",
+      "scope": "ANALYSIS",
+      "label": "Exhaustion time on the grid",
+      "help": "Continuous time on the shock grid that defines exhaustion: the subject no longer returns to the belt.",
+      "unit": "s",
+      "valueType": "number",
+      "min": 1,
+      "max": 60,
+      "default": 5
+    },
+    {
+      "key": "min_shock_dwell_s",
+      "scope": "ANALYSIS",
+      "label": "Minimum grid contact",
+      "help": "A stay on the shock grid counts as a shock only when it lasts at least this long; shorter contacts are ignored.",
+      "unit": "s",
+      "valueType": "number",
+      "min": 0,
+      "max": 5,
+      "default": 0.2
+    },
+    {
+      "key": "max_sample_gap_s",
+      "scope": "ANALYSIS",
+      "label": "Maximum tracking gap",
+      "help": "Longest tracking dropout that is bridged; movement across a longer gap is excluded. Increase only for low-frame-rate videos.",
+      "unit": "s",
+      "valueType": "number",
+      "min": 0.01,
+      "max": 5,
+      "default": 0.5
+    },
+    {
       "key": "accelerating",
       "scope": "SESSION",
-      "label": "Accelerating belt",
-      "help": "On: the belt speeds up from the start speed to the end speed. Off: the belt runs at the start speed for the whole trial.",
+      "label": "Accelerating protocol",
+      "help": "On: the belt accelerates from the start speed to the end speed. Off: the belt runs at the start speed throughout the trial.",
       "unit": "boolean",
       "valueType": "integer",
       "min": 0,
@@ -47,8 +79,8 @@
     {
       "key": "start_speed_cm_s",
       "scope": "SESSION",
-      "label": "Belt start speed",
-      "help": "Belt speed when the trial starts.",
+      "label": "Start speed",
+      "help": "Belt speed at the start of the trial.",
       "unit": "cm_s",
       "valueType": "number",
       "min": 1,
@@ -58,8 +90,8 @@
     {
       "key": "end_speed_cm_s",
       "scope": "SESSION",
-      "label": "Belt end speed",
-      "help": "Belt speed reached at the end of the acceleration and then kept. Must not be below the start speed.",
+      "label": "End speed",
+      "help": "Belt speed reached at the end of the acceleration phase and held thereafter. Must not be lower than the start speed.",
       "unit": "cm_s",
       "valueType": "number",
       "min": 5,
@@ -69,8 +101,8 @@
     {
       "key": "acceleration_duration_s",
       "scope": "SESSION",
-      "label": "Acceleration time",
-      "help": "Time the belt takes to go from the start speed to the end speed.",
+      "label": "Acceleration duration",
+      "help": "Time over which the belt speed rises linearly from the start speed to the end speed.",
       "unit": "s",
       "valueType": "number",
       "min": 1,
@@ -80,8 +112,8 @@
     {
       "key": "max_trial_duration_s",
       "scope": "SESSION",
-      "label": "Trial cut-off",
-      "help": "The trial ends at this time even if the animal is still running.",
+      "label": "Cut-off time",
+      "help": "The trial ends at this time even if the subject is still running.",
       "unit": "s",
       "valueType": "number",
       "min": 60,
@@ -89,33 +121,25 @@
       "default": 1800
     }
   ],
-  "zones": [],
-  "inputEvents": [
+  "zones": [
     {
-      "type": "exhaustion",
-      "label": "Exhaustion",
-      "kind": "POINT",
-      "labels": [],
-      "single": true,
-      "definition": "The exhaustion criterion is met."
-    },
-    {
-      "type": "shock",
-      "label": "Shock",
-      "kind": "POINT",
-      "labels": [],
-      "single": false,
-      "definition": "A shock or rear-grid contact."
+      "key": "shock_grid",
+      "label": "Shock grid",
+      "role": "SHOCK_GRID",
+      "geometry": "Polygon drawn on the side view over the shock grid at the back of the lane.",
+      "calibrated": true,
+      "required": true
     }
   ],
+  "inputEvents": [],
   "events": [
     {
       "type": "exhaustion",
       "label": "Exhaustion",
       "kind": "POINT",
       "labels": [],
-      "single": false,
-      "definition": "Scored exhaustion, passed through."
+      "single": true,
+      "definition": "A stay on the grid is a run of contiguous counted intervals whose earlier sample lies in the shock grid zone. Exhaustion is placed at the start of the first stay that lasts at least exhaustion_dwell_s."
     },
     {
       "type": "shock",
@@ -123,21 +147,24 @@
       "kind": "POINT",
       "labels": [],
       "single": false,
-      "definition": "Scored shock, passed through."
+      "definition": "A stay on the grid is a run of contiguous counted intervals whose earlier sample lies in the shock grid zone. A shock is placed at the start of every stay that lasts at least min_shock_dwell_s."
     }
   ],
   "metrics": [
     {
       "key": "latency_to_exhaustion_s",
-      "label": "Latency to exhaustion",
-      "description": "Time until the animal met the exhaustion criterion. Longer latencies indicate greater endurance.",
+      "label": "Time to exhaustion",
+      "description": "Time until the subject meets the exhaustion criterion; longer times indicate greater endurance.",
       "unit": "s",
       "valueType": "number",
-      "definition": "Exhaustion time by the cut-off.",
+      "definition": "Coordinates are in centimeters in the calibration's side view of the lane: x along the lane from the shock grid end (x = 0) to the front (x = lane_length_cm), y vertical. Samples after max_trial_duration_s are ignored. A counted interval is a pair of consecutive tracked samples separated by 0 \u003c dt \u003c= max_sample_gap_s. Time of the exhaustion event, if it occurs by the cut-off time.",
       "formula": "exhaustion time",
-      "missingWhen": "Missing (NOT_SCORED) when not scored, (EVENT_NOT_OBSERVED) when the full trial was recorded without exhaustion, (INCOMPLETE_RECORDING) otherwise.",
+      "missingWhen": "Missing (NO_VALID_INTERVALS) when there are no counted intervals, (EVENT_NOT_OBSERVED) when the recording covers max_trial_duration_s without exhaustion, and (INCOMPLETE_RECORDING) when a shorter recording ends without exhaustion.",
       "inputs": [
-        "exhaustion event",
+        "samples",
+        "max_sample_gap_s",
+        "shock_grid zone",
+        "exhaustion_dwell_s",
         "max_trial_duration_s",
         "recording duration"
       ],
@@ -147,15 +174,18 @@
     },
     {
       "key": "run_time_s",
-      "label": "Run time",
-      "description": "Time the animal ran, up to exhaustion or the trial cut-off.",
+      "label": "Running time",
+      "description": "Time spent running, until exhaustion or the cut-off time.",
       "unit": "s",
       "valueType": "number",
-      "definition": "Exhaustion time, or max_trial_duration_s when the full trial was recorded without exhaustion.",
-      "formula": "min(exhaustion time, max_trial_duration_s)",
-      "missingWhen": "Missing (NOT_SCORED) when the event was not scored; missing (INCOMPLETE_RECORDING) when it was not observed and the recording is shorter than max_trial_duration_s.",
+      "definition": "The run ends at the exhaustion event or, without exhaustion, at the end of the recording, censored at max_trial_duration_s.",
+      "formula": "exhaustion time, else min(recording duration, max_trial_duration_s)",
+      "missingWhen": "Missing (NO_VALID_INTERVALS) when there are no counted intervals.",
       "inputs": [
-        "exhaustion event",
+        "samples",
+        "max_sample_gap_s",
+        "shock_grid zone",
+        "exhaustion_dwell_s",
         "max_trial_duration_s",
         "recording duration"
       ],
@@ -165,15 +195,18 @@
     },
     {
       "key": "run_distance_cm",
-      "label": "Run distance",
-      "description": "Distance covered on the belt during the run. Longer distances indicate greater endurance.",
+      "label": "Distance run",
+      "description": "Distance covered on the treadmill during the run; longer distances indicate greater endurance.",
       "unit": "cm",
       "valueType": "number",
-      "definition": "Integral of the belt speed over the run time; the speed rises linearly from start to end over acceleration_duration_s, then stays constant.",
+      "definition": "Integral of belt speed over the running time; the speed rises linearly from the start speed to the end speed over acceleration_duration_s and then remains constant.",
       "formula": "integral of speed(t) dt over [0, run_time_s]",
-      "missingWhen": "Missing (NOT_SCORED) when the event was not scored; missing (INCOMPLETE_RECORDING) when it was not observed and the recording is shorter than max_trial_duration_s.",
+      "missingWhen": "Missing (NO_VALID_INTERVALS) when there are no counted intervals.",
       "inputs": [
-        "exhaustion event",
+        "samples",
+        "max_sample_gap_s",
+        "shock_grid zone",
+        "exhaustion_dwell_s",
         "max_trial_duration_s",
         "recording duration",
         "accelerating",
@@ -187,18 +220,21 @@
     },
     {
       "key": "shock_count",
-      "label": "Shocks",
-      "description": "How many shocks or rear-grid contacts occurred during the run. More shocks suggest lower motivation or fatigue.",
+      "label": "Shock count",
+      "description": "Number of shocks or rear-grid contacts during the run; more shocks suggest fatigue or low motivation.",
       "unit": "count",
       "valueType": "integer",
-      "definition": "Shocks strictly before the end of the run.",
+      "definition": "Shock events strictly before the end of the run.",
       "formula": "count(shock time \u003c run end)",
-      "missingWhen": "Missing (NOT_SCORED) when shocks were not scored; otherwise missing with the reason of run_time_s.",
+      "missingWhen": "Missing (NO_VALID_INTERVALS) when there are no counted intervals.",
       "inputs": [
-        "exhaustion event",
+        "samples",
+        "max_sample_gap_s",
+        "shock_grid zone",
+        "exhaustion_dwell_s",
         "max_trial_duration_s",
         "recording duration",
-        "shock events"
+        "min_shock_dwell_s"
       ],
       "min": 0,
       "max": 1000000,
@@ -207,10 +243,22 @@
   ],
   "qc": [
     {
-      "key": "max_event_time_uncertainty_s",
+      "key": "min_tracking_confidence",
+      "operator": "\u003e=",
+      "value": 0.7,
+      "unit": "ratio"
+    },
+    {
+      "key": "max_lost_frame_ratio",
       "operator": "\u003c=",
-      "value": 0.5,
-      "unit": "s"
+      "value": 0.1,
+      "unit": "ratio"
+    },
+    {
+      "key": "max_calibration_error_cm",
+      "operator": "\u003c=",
+      "value": 2,
+      "unit": "cm"
     }
   ]
 }

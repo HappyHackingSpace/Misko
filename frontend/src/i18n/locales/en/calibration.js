@@ -2,6 +2,12 @@
 // crop and the paradigm's calibrated zones drawn on it.
 export default {
   calibration: {
+    // Where the camera goes and what to draw, per paradigm.
+    guide: {
+      NOVEL_OBJECT: "Camera above the arena, looking straight down, with the whole floor in view. Place the four corners of the arena floor, then draw a circle around each object that includes about 2 cm around it: the novel object and the familiar object. When the novel object stands on the other side for a subject, use the swap action in that subject's calibration.",
+      POLE: "Camera at the side of the pole, level with its middle, with the whole pole from the base to the top in view. Place the base and the top of the pole and at least two more marks of the rig away from the pole (for example on the back panel), measured as distance from the pole and height above the base. Then draw the pole zone around the pole where the subject climbs and the base zone over the floor at its foot.",
+      TREADMILL: "Camera at the side of the lane, level with the belt, with the whole lane from the shock grid to the front wall in view. Place the corners of the lane wall: x runs along the lane from the grid end (0) to the front, y up from the belt. Then draw the shock grid zone over the grid at the back of the lane.",
+    },
     source: {
       local: "Video for the frame",
       pick: "Choose a video file",
@@ -40,6 +46,9 @@ export default {
       apply: "Use the apparatus points",
       free: "Type the position on the apparatus of every point you click.",
       box: "Points on the {width} × {depth} cm apparatus: x runs along the width and y along the depth from the origin corner (0, 0). Click each on the frame in turn.",
+      pole: "Points of the side view of the {length} cm pole: x is the distance from the pole, y the height above the base (base 0, top {length}). The base and the top lie on one line, so measure and type the positions of the rig marks away from the pole.",
+      lane: "Points of the side view of the {length} cm lane: x runs along the lane from the grid end (0) to the front ({length}), y up from the belt. Type the height of the lane wall to fill in the upper points.",
+      laneHeight: "Lane wall height (cm)",
       tank: "Points on the wall of the {diameter} cm tank, measured from its centre: x grows east and y north. Click each on the frame in turn.",
       points: {
         cornerOrigin: "Origin corner",
@@ -56,6 +65,20 @@ export default {
         northEast: "North-east wall",
         southEast: "South-east wall",
         southWest: "South-west wall",
+        poleBase: "Base of the pole",
+        poleTop: "Top of the pole",
+        poleMiddle: "Middle of the pole",
+        rigMark1: "Rig mark 1 (type its position)",
+        rigMark2: "Rig mark 2 (type its position)",
+        rigMark3: "Rig mark 3 (type its position)",
+        rigMark4: "Rig mark 4 (type its position)",
+        gridBelt: "Grid end, on the belt",
+        frontBelt: "Front end, on the belt",
+        frontTop: "Front end, top of the wall",
+        gridTop: "Grid end, top of the wall",
+        middleBelt: "Middle of the lane, on the belt",
+        middleTop: "Middle of the lane, top of the wall",
+        gridMiddle: "Grid end, half the wall height",
       },
     },
     cropFull: "Whole frame",
@@ -79,6 +102,8 @@ export default {
       undo: "Undo last corner",
       close: "Close polygon",
       stop: "Stop drawing",
+      swap: "Swap {a} and {b}",
+      swapHint: "For a counterbalanced session: the two drawn zones exchange places.",
       drawing: {
         polygon: "Drawing {zone}: click each corner, then click the first corner again to close it ({count} so far).",
         circle: "Drawing {zone}: press at the centre and drag to the edge.",
@@ -99,6 +124,7 @@ export default {
       points: "Give a frame position and an apparatus position to {points}.",
       zone: "Draw the zone {zone}.",
       openPolygon: "Close or undo the polygon being drawn.",
+      fitLine: "The fit points need four apparatus positions of which no three lie on one line; add rig marks away from that line.",
     },
     summary: {
       status: "Status",
@@ -115,6 +141,15 @@ export default {
   environments: {
     calibration: {
       note: "The points are read from a frame of the fixed camera: pick a video filmed with it to click them, or type the numbers. The video stays on this computer.",
+    },
+  },
+  // Every paradigm is analysed automatically: no wording about scoring.
+  paradigms: {
+    scopeHints: {
+      ANALYSIS: "How videos are tracked and analysed. Kept on the environment; the defaults suit most setups.",
+    },
+    qcRules: {
+      max_event_time_uncertainty_s: "Maximum event timing uncertainty",
     },
   },
   errors: {

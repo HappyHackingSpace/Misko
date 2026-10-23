@@ -400,6 +400,9 @@ func (s *seeder) post(path string, body any) map[string]any {
 //
 // The blinded study (E2E-BLIND) has one session with two pending results.
 //
+// A paradigm trial in Pool A has the fixture as its video and a succeeded
+// automatic analysis.
+//
 // It returns the identifiers and credentials the browser tests need.
 func seedStudy(api bootstrap.API, store *diskStore, fixtures, adminPassword string) (map[string]any, error) {
 	video, err := os.ReadFile(fixtures + "/analyzed.mp4")
@@ -482,7 +485,8 @@ func seedStudy(api bootstrap.API, store *diskStore, fixtures, adminPassword stri
 		return text(s.post(base+"/regimen-items", map[string]any{"groupId": groupID, "purpose": purpose, "substanceId": substanceID, "amount": amount,
 			"unit": unit, "route": route, "frequency": frequency, "startDay": start, "endDay": end}), "id")
 	}
-	item(healthy, "VEHICLE", saline, "10", "mL/kg", "ORAL", "DAILY", 0, 14)
+	// The healthy control receives no substance: only its period is recorded.
+	s.post(base+"/regimen-items", map[string]any{"groupId": healthy, "purpose": "NONE", "startDay": 0, "endDay": 14})
 	induction := item(disease, "INDUCTION", mptp, "20", "mg/kg", "INTRAPERITONEAL", "ONCE", 0, 0)
 	item(disease, "VEHICLE", saline, "10", "mL/kg", "ORAL", "DAILY", 0, 14)
 	item(treated, "INDUCTION", mptp, "20", "mg/kg", "INTRAPERITONEAL", "ONCE", 0, 0)
@@ -610,8 +614,30 @@ func seedStudy(api bootstrap.API, store *diskStore, fixtures, adminPassword stri
 		return nil, s.err
 	}
 
-	// Analysis: a worker analyses every queued animal; M02 is analysed again
-	// so its review offers a newer run; two Day 14 results are accepted.
+	// A paradigm trial in Pool A with the fixture as its video. Pool A is
+	// calibrated, so verifying the video submits its automatic analysis.
+	trial := s.post("/api/trials", map[string]any{"name": "Seeded trial", "paradigmKey": "MWM", "paradigmVersion": 1,
+		"environmentRevisionId": poolARevision, "notes": "Seeded with the fixture video"})
+	trialID := text(trial, "id")
+	trialUpload := s.post("/api/trials/"+trialID+"/video", map[string]any{
+		"fileName": "trial.mp4", "contentType": "video/mp4", "sizeBytes": len(video), "crc32c": mediadomain.FormatCRC32C(crc32c(video)),
+	})
+	if s.err != nil {
+		return nil, s.err
+	}
+	trialObject, err := url.Parse(text(nested(trialUpload, "upload"), "url"))
+	if err != nil {
+		return nil, err
+	}
+	store.put(trialObject.Query().Get("object"), video, "video/mp4")
+	s.post("/api/trials/"+trialID+"/video/finalize", map[string]any{})
+	if s.err != nil {
+		return nil, s.err
+	}
+
+	// Analysis: a worker analyses every queued animal and the trial; M02 is
+	// analysed again so its review offers a newer run; two Day 14 results are
+	// accepted.
 	registered := s.post("/api/analysis/workers", map[string]any{"name": "e2e-tracker", "modelVersion": "tracker 1.0",
 		"capabilities": []any{map[string]any{"paradigmKey": "MWM", "paradigmVersion": 1}}})
 	if s.err != nil {
@@ -647,8 +673,8 @@ func seedStudy(api bootstrap.API, store *diskStore, fixtures, adminPassword stri
 	if err := analyse(); err != nil {
 		return nil, err
 	}
-	if runs != 8 {
-		return nil, fmt.Errorf("the worker analysed %d runs, want 8", runs)
+	if runs != 9 {
+		return nil, fmt.Errorf("the worker analysed %d runs, want 9 (8 animals and the trial)", runs)
 	}
 	for _, accepted := range []string{m04, m06} {
 		s.post("/api/analysis/results/"+accepted+"/accept", map[string]any{"note": "Clean track"})
@@ -668,6 +694,8 @@ func seedStudy(api bootstrap.API, store *diskStore, fixtures, adminPassword stri
 		"results": map[string]any{"M02": m02, "M03": m03, "M04": m04, "M06": m06, "M07": m07},
 		"blind": map[string]any{"experimentId": blindID, "experimentCode": "E2E-BLIND", "testId": blindTestID,
 			"results": map[string]any{"B01": blindAnimals[blindAllocations["B01"]], "B02": blindAnimals[blindAllocations["B02"]]}},
+		// A paradigm trial whose automatic analysis succeeded.
+		"trial": map[string]any{"id": trialID, "name": "Seeded trial"},
 	}, nil
 }
 

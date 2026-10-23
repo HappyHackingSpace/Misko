@@ -237,7 +237,7 @@ func TestStudyLifecycleRules(t *testing.T) {
 	d.reject("calibrations_scope", calibrate, arenaB, first, recording, 0, 0, user)
 	// An override names its video frame; the scope trigger runs first, so
 	// this one passes it and fails on the shape check.
-	d.reject("calibrations_override_check", calibrate, arenaA, first, recording, 0, nil, user)
+	d.reject("calibrations_owner_check", calibrate, arenaA, first, recording, 0, nil, user)
 
 	var effective int
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM misko.effective_calibrations
@@ -245,14 +245,25 @@ func TestStudyLifecycleRules(t *testing.T) {
 		t.Errorf("effective calibrations: %d %v", effective, err)
 	}
 
-	// Analysis runs one animal at a time with that animal's calibration.
-	run := `INSERT INTO misko.analysis_runs (experiment_id, test_id, test_subject_id, recording_id, source_asset_id, source_generation, source_crc32c,
-		clip_start_us, calibration_id, paradigm_key, paradigm_version, metric_engine_version, result_schema_version, parameters, trigger, status,
-		max_attempts, available_at) VALUES ($1, $2, $3, $4, $5, 1, 1, 0, $6, 'MWM', 1, 1, 1, '{}', 'AUTOMATIC', 'QUEUED', 3, now())`
-	queued := d.id(run+" RETURNING id", exp, test, first, recording, asset, calA)
-	d.reject("analysis_runs_calibration_scope", run, exp, test, second, recording, asset, calA)
-	d.reject("analysis_runs_automatic_key", run, exp, test, first, recording, asset, calA)
-	d.reject("subject_results_succeeded", `INSERT INTO misko.subject_results (test_subject_id, run_id) VALUES ($1, $2)`, first, queued)
+	// The analysis service queues a job per animal with that animal's
+	// calibration copied in; the experiment side links it to the animal.
+	job := `INSERT INTO misko.analysis_jobs (requester_kind, requester_id, idempotency_key, paradigm_key, paradigm_version, metric_engine_version,
+		result_schema_version, parameters, source_asset_id, source_generation, source_crc32c, clip_start_us, calibration_id, calibration_frame_width,
+		calibration_frame_height, calibration_crop_x, calibration_crop_y, calibration_crop_width, calibration_crop_height, calibration_plane,
+		calibration_transform, calibration_zones, trigger, status, max_attempts, available_at)
+		VALUES ('TEST_SUBJECT', $1, $2, 'MWM', 1, 1, 1, '{}', $3, 1, 1, 0, $4, 1920, 1080, 0, 0, 960, 1080, 'ARENA_FLOOR', '{1,0,0,0,1,0,0,0,1}', '[]',
+		'AUTOMATIC', 'QUEUED', 3, now())`
+	queued := d.id(job+" RETURNING id", first, "key-1", asset, calA)
+	d.reject("analysis_jobs_idempotency_key", job, first, "key-1", asset, calA)
+	d.reject("analysis_jobs_calibration_check", `INSERT INTO misko.analysis_jobs (requester_kind, requester_id, paradigm_key, paradigm_version,
+		metric_engine_version, result_schema_version, parameters, source_asset_id, source_generation, source_crc32c, clip_start_us, calibration_id,
+		trigger, status, max_attempts, available_at) VALUES ('TRIAL', $1, 'MWM', 1, 1, 1, '{}', $2, 1, 1, 0, $3, 'MANUAL', 'QUEUED', 3, now())`, first, asset, calA)
+	link := `INSERT INTO misko.test_subject_analyses (job_id, experiment_id, test_id, test_subject_id, recording_id, calibration_id, trigger)
+		VALUES ($1, $2, $3, $4, $5, $6, 'AUTOMATIC')`
+	d.reject("test_subject_analyses_requester", link, queued, exp, test, second, recording, calB)
+	d.exec(link, queued, exp, test, first, recording, calA)
+	d.reject("subject_results_succeeded", `INSERT INTO misko.subject_results (test_subject_id, job_id) VALUES ($1, $2)`, first, queued)
+	d.reject("analysis_job_outputs_fenced", `INSERT INTO misko.analysis_job_metrics (job_id, attempt, metric_key, unit, value) VALUES ($1, 1, 'x', 'cm', 1)`, queued)
 
 	var reported int
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM misko.report_test_subjects
@@ -270,4 +281,103 @@ func TestStudyLifecycleRules(t *testing.T) {
 	d.reject("allocations_frozen", `INSERT INTO misko.allocations (experiment_id, group_id, subject_id, allocated_at, created_by)
 		VALUES ($1, $2, $3, now(), $4)`, exp, gHealthy, animal("M5"), user)
 	d.reject("protocols_closed", `INSERT INTO misko.protocols (experiment_id, name) VALUES ($1, 'Late battery')`, exp)
+}
+
+// A healthy control's items are periods without any substance (020): only a
+// first and a last study day, never dosed, and only in a healthy control.
+func TestNoSubstancePeriodRules(t *testing.T) {
+	pool := emptyDatabase(t)
+	if _, err := schema.Migrate(context.Background(), pool); err != nil {
+		t.Fatal(err)
+	}
+	d := db{t, pool}
+	saline := d.id(`INSERT INTO misko.substances (name, kind) VALUES ('Saline', 'VEHICLE') RETURNING id`)
+	model := d.id(`INSERT INTO misko.disease_models (name, induction_type) VALUES ('MPTP Parkinson', 'CHEMICAL') RETURNING id`)
+	exp := d.id(`INSERT INTO misko.experiments (code, title) VALUES ('E1', 'Study') RETURNING id`)
+	healthy := d.id(`INSERT INTO misko.experiment_groups (experiment_id, code, name, role) VALUES ($1, 'G1', 'Healthy', 'HEALTHY_CONTROL') RETURNING id`, exp)
+	sham := d.id(`INSERT INTO misko.experiment_groups (experiment_id, code, name, role, disease_model_id) VALUES ($1, 'G2', 'Sham', 'SHAM', $2) RETURNING id`, exp, model)
+
+	const substanceItem = `INSERT INTO misko.regimen_items (experiment_id, group_id, purpose, substance_id, dose_micro, unit, route, frequency, start_day, end_day)
+		VALUES ($1, $2, $3, $4, 1000000, 'mL/kg', 'ORAL', 'DAILY', 1, 14)`
+	period := d.id(`INSERT INTO misko.regimen_items (experiment_id, group_id, purpose, start_day, end_day) VALUES ($1, $2, 'NONE', -7, 28) RETURNING id`, exp, healthy)
+	d.exec(`INSERT INTO misko.regimen_items (experiment_id, group_id, purpose, start_day, end_day) VALUES ($1, $2, 'NONE', 30, 30)`, exp, healthy)
+	vehicle := d.id(substanceItem+" RETURNING id", exp, sham, "VEHICLE", saline)
+
+	// Shape: a period has nothing but days; every other item has every field.
+	d.reject("regimen_items_substance_check", `UPDATE misko.regimen_items SET substance_id = $2 WHERE id = $1`, period, saline)
+	for _, set := range []string{"dose_micro = 1", "unit = 'mL'", "route = 'ORAL'", "frequency = 'DAILY'", "interval_days = 3"} {
+		d.reject("regimen_items_substance_check", `UPDATE misko.regimen_items SET `+set+` WHERE id = $1`, period)
+	}
+	for _, column := range []string{"substance_id", "dose_micro", "unit", "route", "frequency"} {
+		d.reject("regimen_items_substance_check", `UPDATE misko.regimen_items SET `+column+` = NULL WHERE id = $1`, vehicle)
+	}
+	d.reject("regimen_items_days_check", `INSERT INTO misko.regimen_items (experiment_id, group_id, purpose, start_day, end_day) VALUES ($1, $2, 'NONE', 5, 4)`, exp, healthy)
+	d.reject("regimen_items_purpose_check", `INSERT INTO misko.regimen_items (experiment_id, group_id, purpose, start_day, end_day) VALUES ($1, $2, 'NAIVE', 0, 4)`, exp, healthy)
+	d.reject("regimen_items_dose_micro_check", `UPDATE misko.regimen_items SET dose_micro = 0 WHERE id = $1`, vehicle)
+
+	// Role: periods only in a healthy control, and a healthy control only periods.
+	d.reject("regimen_items_role", `INSERT INTO misko.regimen_items (experiment_id, group_id, purpose, start_day, end_day) VALUES ($1, $2, 'NONE', 0, 4)`, exp, sham)
+	for _, purpose := range []string{"VEHICLE", "INDUCTION", "TREATMENT"} {
+		d.reject("regimen_items_role", substanceItem, exp, healthy, purpose, saline)
+	}
+	d.reject("regimen_items_role", `UPDATE misko.regimen_items SET group_id = $2 WHERE id = $1`, period, sham)
+	d.reject("regimen_items_role", `UPDATE misko.regimen_items SET group_id = $2 WHERE id = $1`, vehicle, healthy)
+	d.reject("experiment_groups_regimen_role", `UPDATE misko.experiment_groups SET role = 'SHAM', disease_model_id = $2 WHERE id = $1`, healthy, model)
+	d.reject("experiment_groups_regimen_role", `UPDATE misko.experiment_groups SET role = 'HEALTHY_CONTROL', disease_model_id = NULL WHERE id = $1`, sham)
+	d.exec(`UPDATE misko.experiment_groups SET name = 'Naive' WHERE id = $1`, healthy)
+	d.exec(`UPDATE misko.regimen_items SET start_day = -3 WHERE id = $1`, period)
+
+	// Never administered, even with a substance of its own.
+	subject := d.id(`INSERT INTO misko.subjects (code, species, sex) VALUES ('M1', 'MOUSE', 'MALE') RETURNING id`)
+	allocation := d.id(`INSERT INTO misko.allocations (experiment_id, group_id, subject_id, allocated_at, created_by)
+		VALUES ($1, $2, $3, now() - interval '1 day', $4) RETURNING id`, exp, healthy, subject, user)
+	d.exec(`UPDATE misko.experiments SET status = 'RUNNING', day_zero = current_date, started_at = now() WHERE id = $1`, exp)
+	d.reject("administrations_no_substance", `INSERT INTO misko.administrations (experiment_id, allocation_id, group_id, subject_id, regimen_item_id, purpose,
+		substance_id, dose_micro, unit, route, administered_at, recorded_by)
+		VALUES ($1, $2, $3, $4, $5, 'VEHICLE', $6, 1, 'mL', 'ORAL', now(), $7)`, exp, allocation, healthy, subject, period, saline, user)
+	// An unplanned dose to the same animal is still recorded.
+	d.exec(`INSERT INTO misko.administrations (experiment_id, allocation_id, group_id, subject_id, purpose, substance_id, dose_micro, unit, route,
+		administered_at, recorded_by) VALUES ($1, $2, $3, $4, 'VEHICLE', $5, 1, 'mL', 'ORAL', now(), $6)`, exp, allocation, healthy, subject, saline, user)
+}
+
+// 020 leaves the items written before it as they are: a healthy control's
+// vehicle in a started study is kept and still dosed.
+func TestNoSubstancePeriodsKeepEarlierItems(t *testing.T) {
+	ctx := context.Background()
+	pool := emptyDatabase(t)
+	migrations := installUpTo(t, pool, 19)
+	if migrations[19].Name != "020_no_substance_periods.sql" {
+		t.Fatalf("this test seeds the schema of 019, got %s", migrations[19].Name)
+	}
+	d := db{t, pool}
+	saline := d.id(`INSERT INTO misko.substances (name, kind) VALUES ('Saline', 'VEHICLE') RETURNING id`)
+	exp := d.id(`INSERT INTO misko.experiments (code, title) VALUES ('E1', 'Started') RETURNING id`)
+	draft := d.id(`INSERT INTO misko.experiments (code, title) VALUES ('E2', 'Draft') RETURNING id`)
+	healthy := d.id(`INSERT INTO misko.experiment_groups (experiment_id, code, name, role) VALUES ($1, 'G1', 'Healthy', 'HEALTHY_CONTROL') RETURNING id`, exp)
+	draftHealthy := d.id(`INSERT INTO misko.experiment_groups (experiment_id, code, name, role) VALUES ($1, 'G1', 'Healthy', 'HEALTHY_CONTROL') RETURNING id`, draft)
+	const vehicle = `INSERT INTO misko.regimen_items (experiment_id, group_id, purpose, substance_id, dose_micro, unit, route, frequency, start_day, end_day)
+		VALUES ($1, $2, 'VEHICLE', $3, 1000000, 'mL', 'ORAL', 'DAILY', 1, 14) RETURNING id`
+	started := d.id(vehicle, exp, healthy, saline)
+	kept := d.id(vehicle, draft, draftHealthy, saline)
+	subject := d.id(`INSERT INTO misko.subjects (code, species, sex) VALUES ('M1', 'MOUSE', 'MALE') RETURNING id`)
+	allocation := d.id(`INSERT INTO misko.allocations (experiment_id, group_id, subject_id, allocated_at, created_by)
+		VALUES ($1, $2, $3, now() - interval '1 day', $4) RETURNING id`, exp, healthy, subject, user)
+	d.exec(`UPDATE misko.experiments SET status = 'RUNNING', day_zero = current_date, started_at = now() WHERE id = $1`, exp)
+
+	if applied, err := schema.Migrate(ctx, pool); err != nil || len(applied) != len(migrations)-19 || applied[0] != "020_no_substance_periods.sql" {
+		t.Fatalf("migrate: %v %v", applied, err)
+	}
+	var rows int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM misko.regimen_items WHERE id IN ($1, $2) AND purpose = 'VEHICLE' AND substance_id = $3
+		AND dose_micro = 1000000 AND frequency = 'DAILY'`, started, kept, saline).Scan(&rows); err != nil || rows != 2 {
+		t.Fatalf("earlier items: %d %v", rows, err)
+	}
+	d.exec(`INSERT INTO misko.administrations (experiment_id, allocation_id, group_id, subject_id, regimen_item_id, purpose, substance_id,
+		dose_micro, unit, route, administered_at, recorded_by) VALUES ($1, $2, $3, $4, $5, 'VEHICLE', $6, 1000000, 'mL', 'ORAL', now(), $7)`,
+		exp, allocation, healthy, subject, started, saline, user)
+	// The draft's vehicle cannot change except into a period, and can be deleted.
+	d.reject("regimen_items_role", `UPDATE misko.regimen_items SET dose_micro = 2000000 WHERE id = $1`, kept)
+	d.exec(`UPDATE misko.regimen_items SET purpose = 'NONE', substance_id = NULL, dose_micro = NULL, unit = NULL, route = NULL, frequency = NULL
+		WHERE id = $1`, kept)
+	d.exec(`DELETE FROM misko.regimen_items WHERE id = $1`, kept)
 }

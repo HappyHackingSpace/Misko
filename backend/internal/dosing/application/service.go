@@ -17,6 +17,7 @@ var (
 	ErrAllocationNotFound    = errors.New("allocation not found in this experiment")
 	ErrRegimenItemNotFound   = errors.New("regimen item not found in this experiment")
 	ErrRegimenItemOtherGroup = errors.New("the regimen item belongs to another group than the animal's")
+	ErrNoSubstanceItem       = errors.New("the regimen item is a period without any substance and cannot be administered")
 	ErrSubstanceNotFound     = errors.New("substance not found")
 	ErrWeightNotFound        = errors.New("weight measurement not found")
 	ErrSubstanceRequired     = errors.New("an unplanned dose needs a substance, purpose, amount, unit and route")
@@ -146,6 +147,8 @@ func (s *Service) RecordAdministration(ctx context.Context, actor access.Actor, 
 				return err
 			}
 			switch {
+			case item.Purpose == domain.NoSubstance:
+				return ErrNoSubstanceItem
 			case item.GroupID != alloc.GroupID:
 				return ErrRegimenItemOtherGroup
 			case in.SubstanceID != "" && in.SubstanceID != item.SubstanceID:

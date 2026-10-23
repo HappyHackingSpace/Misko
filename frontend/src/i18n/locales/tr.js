@@ -392,7 +392,6 @@ export default {
       zone: "Bölge",
       key: "Anahtar",
       versions: "Sürümler",
-      automated: "Otomatik analiz",
       title: "Paradigmalar",
       intro:
         "Paradigmalar, ortamların oluşturulduğu hazır şablonlardır. Her paradigma girilecek düzenek ölçülerini, analiz ve seans ayarlarını ve üreteceği metrikleri tanımlar.",
@@ -638,7 +637,7 @@ export default {
       sexMale: "Erkek",
       sexUnknown: "Bilinmiyor",
       title: "Denekler (Fareler)",
-      subtitle: "Laboratuvar hayvanları; tür ve cinsiyet bilgileriyle.",
+      subtitle: "Laboratuvar denekleri; tür ve cinsiyet bilgileriyle.",
       code: "Kod",
       sex: "Cinsiyet",
       male: "Erkek",

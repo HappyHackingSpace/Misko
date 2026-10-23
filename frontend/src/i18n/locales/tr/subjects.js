@@ -1,7 +1,7 @@
 export default {
   subjects: {
     title: "Denekler",
-    subtitle: "Laboratuvar hayvanları, her birinin bulunduğu grup ve vücut ağırlıkları.",
+    subtitle: "Laboratuvar denekleri, her birinin bulunduğu grup ve vücut ağırlıkları.",
     new: "Yeni denek",
     edit: "Deneği düzenle",
     details: "Bilgiler",
@@ -23,7 +23,7 @@ export default {
     onStudy: "Çalışmada",
     excluded: "Çıkarıldı",
     unallocated: "Atanmamış",
-    unallocatedHint: "Bu hayvan henüz bir gruba atanmadı. Hayvanlar gruplara deney sayfasından atanır.",
+    unallocatedHint: "Bu denek henüz bir gruba atanmadı. Denekler gruplara deney sayfasından atanır.",
     roles: {
       HEALTHY_CONTROL: "Sağlıklı kontrol",
       SHAM: "Sham",

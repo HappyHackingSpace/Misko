@@ -13,7 +13,9 @@ standard deviation over the sampled frames), so rippling or glinting pixels need
 a larger difference while calm water keeps a low threshold; detection only
 looks at pixels near the apparatus (a mask from the paradigm layout); and among
 several blobs the one near the previous position wins over a larger one far
-away, so a reflection does not pull the track across the tank. Pixel coordinates are
+away, so a reflection does not pull the track across the tank. A treadmill
+belt uses the same noise-aware threshold: its moving texture is noise that a
+pixel the belt covers always shows. Pixel coordinates are
 continuous, with the top-left corner of the frame at (0, 0); a pixel's center is
 at (column + 0.5, row + 0.5), the convention calibration points use.
 """
@@ -97,8 +99,13 @@ class Background:
         region = stack[:, y0 : y0 + height, x0 : x0 + width]
         threshold: np.ndarray | float = float(settings.threshold)
         if settings.noise_factor > 0:
-            median = np.median(region, axis=0)
-            sigma = 1.4826 * np.median(np.abs(region - median), axis=0)
+            # Robust per-pixel noise from differences between consecutive
+            # sampled frames: ripples change every transition, while a
+            # subject resting on one spot (an MWM animal on the platform)
+            # changes only its arrival and departure, so it cannot inflate
+            # the threshold the way a deviation from the median does.
+            steps = np.diff(region.astype(np.float32), axis=0)
+            sigma = 1.4826 * np.median(np.abs(steps), axis=0) / math.sqrt(2.0)
             threshold = settings.threshold + settings.noise_factor * sigma
         if settings.subject in ("dark", "light"):
             polarity = settings.subject

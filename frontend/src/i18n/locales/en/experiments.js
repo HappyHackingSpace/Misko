@@ -6,11 +6,11 @@ export default {
       design: "Groups and regimens",
       timeline: "Timepoints and protocols",
       endpoints: "Endpoints",
-      animals: "Animals",
+      animals: "Subjects",
       dosing: "Dosing",
       tests: "Tests",
       results: "Results",
     },
   },
-  nav: { catalog: "Catalog", review: "Result review" },
+  nav: { review: "Result review" },
 };

@@ -1,6 +1,6 @@
 // Package calibrationhttp exposes environment calibrations, overrides per
-// animal of a test (test subject) and the calibration status that gates
-// analysis over HTTP.
+// animal of a test (test subject), calibrations of paradigm trials and the
+// calibration status that gates analysis over HTTP.
 package calibrationhttp
 
 import (
@@ -43,6 +43,8 @@ var failures = []httpjson.Failure{
 	{Err: domain.ErrInvalidZone, Status: http.StatusBadRequest, Code: "calibration.invalidZone"},
 	{Err: domain.ErrZoneOutsideFrame, Status: http.StatusBadRequest, Code: "calibration.zoneOutsideFrame"},
 	{Err: domain.ErrZonesFrozen, Status: http.StatusConflict, Code: "calibration.zonesFrozen"},
+	{Err: application.ErrTrialNotFound, Status: http.StatusNotFound, Code: "trial.notFound"},
+	{Err: application.ErrTrialNoVideo, Status: http.StatusConflict, Code: "calibration.trialNoVideo"},
 }
 
 type handler struct {
@@ -60,6 +62,9 @@ func Register(mux *http.ServeMux, service *application.Service, authenticate fun
 	mux.HandleFunc("GET /api/environments/{id}/revisions/{number}/calibrations", h.with(h.listEnvironment))
 	mux.HandleFunc("POST /api/environments/{id}/revisions/{number}/calibrations", h.with(h.createEnvironment))
 	mux.HandleFunc("GET /api/environments/{id}/revisions/{number}/calibration-status", h.with(h.environmentStatus))
+	mux.HandleFunc("GET /api/trials/{id}/calibrations", h.with(h.listTrial))
+	mux.HandleFunc("POST /api/trials/{id}/calibrations", h.with(h.createTrial))
+	mux.HandleFunc("GET /api/trials/{id}/calibration-status", h.with(h.trialStatus))
 }
 
 func (h handler) with(next func(http.ResponseWriter, *http.Request, access.Actor)) http.HandlerFunc {
@@ -116,6 +121,29 @@ func (h handler) createEnvironment(w http.ResponseWriter, r *http.Request, actor
 		return
 	}
 	httpjson.Write(w, http.StatusCreated, calibrationJSON(c))
+}
+
+func (h handler) createTrial(w http.ResponseWriter, r *http.Request, actor access.Actor) {
+	in, ok := h.decodeInput(w, r)
+	if !ok {
+		return
+	}
+	c, err := h.service.CalibrateTrial(r.Context(), actor, r.PathValue("id"), in)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	httpjson.Write(w, http.StatusCreated, calibrationJSON(c))
+}
+
+func (h handler) listTrial(w http.ResponseWriter, r *http.Request, actor access.Actor) {
+	list, err := h.service.TrialCalibrations(r.Context(), actor, r.PathValue("id"))
+	h.writeList(w, r, list, err)
+}
+
+func (h handler) trialStatus(w http.ResponseWriter, r *http.Request, actor access.Actor) {
+	view, err := h.service.TrialStatus(r.Context(), actor, r.PathValue("id"))
+	h.writeStatus(w, r, view, err)
 }
 
 // decodeInput reads a calibration request. referenceFrameUs is ignored for an
@@ -328,6 +356,8 @@ type calibrationJSONBody struct {
 	Scope                 string      `json:"scope"`
 	TestSubjectID         *string     `json:"testSubjectId"`
 	RecordingID           *string     `json:"recordingId"`
+	TrialID               *string     `json:"trialId"`
+	VideoAssetID          *string     `json:"videoAssetId"`
 	EnvironmentRevisionID string      `json:"environmentRevisionId"`
 	SupersedesID          *string     `json:"supersedesId"`
 	CameraID              string      `json:"cameraId"`
@@ -353,7 +383,8 @@ type calibrationJSONBody struct {
 
 func calibrationJSON(c domain.Calibration) calibrationJSONBody {
 	return calibrationJSONBody{
-		ID: c.ID, Scope: string(c.Scope()), TestSubjectID: nullable(c.TestSubjectID), RecordingID: nullable(c.RecordingID), EnvironmentRevisionID: c.EnvironmentRevisionID, SupersedesID: nullable(c.SupersedesID), CameraID: c.CameraID,
+		ID: c.ID, Scope: string(c.Scope()), TestSubjectID: nullable(c.TestSubjectID), RecordingID: nullable(c.RecordingID), TrialID: nullable(c.TrialID),
+		VideoAssetID: nullable(c.VideoAssetID), EnvironmentRevisionID: c.EnvironmentRevisionID, SupersedesID: nullable(c.SupersedesID), CameraID: c.CameraID,
 		FrameWidth: c.FrameWidth, FrameHeight: c.FrameHeight, Crop: cropJSON(c.Crop), ReferenceFrameUs: referenceFrame(c),
 		MeasurementPlane: string(c.Plane), FitPoints: pointsJSON(c.Fit), CheckPoints: pointsJSON(c.Check), Transform: c.Transform,
 		Zones: mapZones(c.Zones, func(z domain.Zone) zoneJSON {

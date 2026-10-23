@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-func trajectoryJSON(t *testing.T, run Run, duration int64, mutate func(map[string]any)) []byte {
+func trajectoryJSON(t *testing.T, run Job, duration int64, mutate func(map[string]any)) []byte {
 	t.Helper()
 	x, y := 10.0, 20.0
 	doc := map[string]any{

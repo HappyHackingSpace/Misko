@@ -392,7 +392,6 @@ export default {
       zone: "Zone",
       key: "Key",
       versions: "Versions",
-      automated: "Automated analysis",
       title: "Paradigms",
       intro:
         "Paradigms are the templates environments are created from. Each one defines the apparatus measurements, analysis and session settings it needs and the metrics it produces.",
@@ -477,9 +476,9 @@ export default {
       },
       qcRules: {
         min_tracking_confidence: "Minimum tracking confidence",
-        max_lost_frame_ratio: "Maximum share of lost frames",
+        max_lost_frame_ratio: "Maximum lost-frame ratio",
         max_calibration_error_cm: "Maximum calibration error",
-        max_event_time_uncertainty_s: "Maximum scoring time uncertainty",
+        max_event_time_uncertainty_s: "Maximum event timing uncertainty",
       },
     },
     reports: {
@@ -638,7 +637,7 @@ export default {
       sexMale: "Male",
       sexUnknown: "Unknown",
       title: "Subjects (Mice)",
-      subtitle: "Laboratory animals, with species and sex.",
+      subtitle: "Laboratory subjects, with species and sex.",
       code: "Code",
       sex: "Sex",
       male: "Male",

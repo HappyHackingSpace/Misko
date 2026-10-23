@@ -8,18 +8,22 @@ test("doses due today are recorded, weighing first when needed", async ({ page, 
   const { data, api } = await signIn(page, request);
   await page.goto(`/experiments/${data.experimentId}?tab=dosing`);
   await expect(page.getByTestId("study-day")).toHaveText("Day 3");
-  await expect(page.getByTestId("due-group")).toHaveCount(3);
+  // The healthy control receives no substance: it is never due a dose and is
+  // listed with its period instead.
+  await expect(page.getByTestId("due-group")).toHaveCount(2);
+  await expect(page.locator('[data-test="due-dose"][data-animal="M01"]')).toHaveCount(0);
+  await expect(page.locator('[data-test="undosed-group"][data-group="G1"]').getByTestId("undosed-text")).toHaveText("No substance: day 0 to 14");
 
-  // A planned dose: the vehicle of a healthy animal weighed four days ago.
-  const m01 = page.locator('[data-test="due-dose"][data-animal="M01"]');
-  await expect(m01).toHaveAttribute("data-state", "due");
-  await expect(m01).toContainText("10 mL/kg");
-  await m01.getByTestId("record-dose").click();
+  // A planned dose: the vehicle of a disease control animal weighed four days ago.
+  const m03 = page.locator('[data-test="due-dose"][data-animal="M03"]');
+  await expect(m03).toHaveAttribute("data-state", "due");
+  await expect(m03).toContainText("10 mL/kg");
+  await m03.getByTestId("record-dose").click();
   const dialog = page.getByTestId("dose-dialog");
   await expect(dialog.getByTestId("dose-planned")).toBeVisible();
   await expect(dialog.getByTestId("weight-needed")).toHaveCount(0);
   await dialog.getByTestId("dose-save").click();
-  await expect(m01).toHaveAttribute("data-state", "given");
+  await expect(m03).toHaveAttribute("data-state", "given");
 
   // The treated group was never weighed: its mg/kg dose asks for a weight,
   // records it, then gives the dose with it.
@@ -56,7 +60,7 @@ test("doses due today are recorded, weighing first when needed", async ({ page, 
   // Yesterday's doses that were never given show as missing.
   await page.getByTestId("day-previous").click();
   await expect(page.getByTestId("study-day")).toHaveText("Day 2");
-  await expect(page.locator('[data-test="due-dose"][data-animal="M01"]')).toHaveAttribute("data-state", "missing");
+  await expect(page.locator('[data-test="due-dose"][data-animal="M03"]')).toHaveAttribute("data-state", "missing");
   await page.getByTestId("day-today").click();
   await expect(page.getByTestId("study-day")).toHaveText("Day 3");
 });

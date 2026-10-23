@@ -40,7 +40,7 @@ ORDER BY CASE kind WHEN 'PRIMARY' THEN 0 ELSE 1 END, paradigm_key, metric_key, c
 -- value of one metric.
 -- name: ReportMeasurements :many
 SELECT rts.test_subject_id, rts.test_id, rts.allocation_id, rts.subject_id, rts.subject_code, rts.group_id, rts.excluded::boolean AS excluded,
-       rts.result_status, rts.result_run_id, rts.timepoint_id, rts.paradigm_version, rts.environment_name, rts.scheduled_at,
+       rts.result_status, rts.result_job_id, rts.timepoint_id, rts.paradigm_version, rts.environment_name, rts.scheduled_at,
        m.unit AS metric_unit, m.value AS metric_value, m.missing_reason, m.metric_engine_version
 FROM misko.report_test_subjects rts
 LEFT JOIN misko.report_accepted_metrics m ON m.test_subject_id = rts.test_subject_id AND m.metric_key = @metric_key::text

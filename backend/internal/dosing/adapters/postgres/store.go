@@ -23,6 +23,7 @@ var constraintErrors = map[string]error{
 	"administrations_group_fkey":          application.ErrAllocationNotFound,
 	"administrations_subject_fkey":        application.ErrAllocationNotFound,
 	"administrations_regimen_fkey":        application.ErrRegimenItemOtherGroup,
+	"administrations_no_substance":        application.ErrNoSubstanceItem,
 	"administrations_weight_fkey":         domain.ErrWeightOtherSubject,
 	"administrations_per_kg_weight_check": domain.ErrWeightRequired,
 	"administrations_substance_id_fkey":   application.ErrSubstanceNotFound,
@@ -67,8 +68,8 @@ func (s *Store) RegimenItem(ctx context.Context, experimentID, itemID string) (d
 	}
 	return domain.RegimenItem{
 		ID: r.ID, ExperimentID: r.ExperimentID, GroupID: r.GroupID, Purpose: domain.Purpose(r.Purpose),
-		SubstanceID: r.SubstanceID, SubstanceName: r.SubstanceName, Dose: domain.Dose{Micro: r.DoseMicro, Unit: domain.Unit(r.Unit)},
-		Route: domain.Route(r.Route), Frequency: domain.Frequency(r.Frequency), IntervalDays: interval(r.IntervalDays),
+		SubstanceID: value(r.SubstanceID), SubstanceName: value(r.SubstanceName), Dose: domain.Dose{Micro: micro(r.DoseMicro), Unit: domain.Unit(value(r.Unit))},
+		Route: domain.Route(value(r.Route)), Frequency: domain.Frequency(value(r.Frequency)), IntervalDays: interval(r.IntervalDays),
 		StartDay: int(r.StartDay), EndDay: int(r.EndDay),
 	}, nil
 }
@@ -180,8 +181,8 @@ func (s *Store) DueCandidates(ctx context.Context, experimentID string, day time
 			SubjectCode: r.SubjectCode, GroupCode: r.GroupCode, Cage: value(r.Cage), Excluded: r.Excluded,
 			Item: domain.RegimenItem{
 				ID: r.RegimenItemID, ExperimentID: r.ExperimentID, GroupID: r.GroupID, Purpose: domain.Purpose(r.Purpose),
-				SubstanceID: r.SubstanceID, SubstanceName: r.SubstanceName, Dose: domain.Dose{Micro: r.DoseMicro, Unit: domain.Unit(r.Unit)},
-				Route: domain.Route(r.Route), Frequency: domain.Frequency(r.Frequency), IntervalDays: interval(r.IntervalDays),
+				SubstanceID: value(r.SubstanceID), SubstanceName: r.SubstanceName, Dose: domain.Dose{Micro: micro(r.DoseMicro), Unit: domain.Unit(value(r.Unit))},
+				Route: domain.Route(value(r.Route)), Frequency: domain.Frequency(value(r.Frequency)), IntervalDays: interval(r.IntervalDays),
 				StartDay: int(r.StartDay), EndDay: int(r.EndDay),
 			},
 			Given: int(r.Given),
@@ -265,6 +266,14 @@ func interval(days *int32) int {
 		return 0
 	}
 	return int(*days)
+}
+
+// micro reads a dose that a no-substance period leaves NULL as 0.
+func micro(dose *int64) int64 {
+	if dose == nil {
+		return 0
+	}
+	return *dose
 }
 
 func mapRows[T, U any](rows []T, convert func(T) U) []U {

@@ -1,7 +1,7 @@
 export default {
   subjects: {
     title: "Subjects",
-    subtitle: "Laboratory animals, the group each one belongs to and its body weights.",
+    subtitle: "Laboratory subjects, the group each one belongs to and its body weights.",
     new: "New subject",
     edit: "Edit subject",
     details: "Details",
@@ -14,7 +14,7 @@ export default {
     sexNames: { FEMALE: "Female", MALE: "Male", UNKNOWN: "Unknown" },
     allSpecies: "All species",
     allSexes: "All sexes",
-    onlyUnallocated: "Only animals not in a group",
+    onlyUnallocated: "Only subjects not in a group",
     allocation: "Allocation",
     experiment: "Experiment",
     group: "Group",
@@ -23,7 +23,7 @@ export default {
     onStudy: "On study",
     excluded: "Excluded",
     unallocated: "Not allocated",
-    unallocatedHint: "This animal is not in any group yet. Animals are allocated to groups from an experiment.",
+    unallocatedHint: "This subject is not in any group yet. Subjects are allocated to groups from an experiment.",
     roles: {
       HEALTHY_CONTROL: "Healthy control",
       SHAM: "Sham",

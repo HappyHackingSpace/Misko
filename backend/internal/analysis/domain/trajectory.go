@@ -19,7 +19,7 @@ const (
 )
 
 var (
-	ErrInvalidTrajectory = errors.New("the trajectory must be misko.trajectory.v1 JSON for this run, attempt and recording duration, with equal-length sample arrays, strictly increasing times within the recording, confidences from 0 to 1, coordinates for tracked samples and inferred samples only among tracked ones")
+	ErrInvalidTrajectory = errors.New("the trajectory must be misko.trajectory.v1 JSON for this job, attempt and recording duration, with equal-length sample arrays, strictly increasing times within the recording, confidences from 0 to 1, coordinates for tracked samples and inferred samples only among tracked ones")
 	ErrMissingTrajectory = errors.New("a result needs exactly one TRAJECTORY artifact stored as application/json")
 )
 
@@ -61,8 +61,9 @@ type trajectoryFile struct {
 	} `json:"samples"`
 }
 
-// ParseTrajectory reads a stored trajectory of the run's current attempt.
-func ParseTrajectory(data []byte, r Run, durationUs int64) (Track, error) {
+// ParseTrajectory reads a stored trajectory of the job's current attempt.
+// The file names the job as runId, the name workers have always written.
+func ParseTrajectory(data []byte, r Job, durationUs int64) (Track, error) {
 	var f trajectoryFile
 	if err := json.Unmarshal(data, &f); err != nil {
 		return Track{}, fmt.Errorf("%w: %v", ErrInvalidTrajectory, err)
@@ -71,7 +72,7 @@ func ParseTrajectory(data []byte, r Run, durationUs int64) (Track, error) {
 	n := len(s.TUs)
 	switch {
 	case f.Schema != TrajectorySchema, f.RunID != r.ID, f.Attempt != r.Attempt:
-		return Track{}, fmt.Errorf("%w: schema, run or attempt", ErrInvalidTrajectory)
+		return Track{}, fmt.Errorf("%w: schema, job or attempt", ErrInvalidTrajectory)
 	case f.DurationUs != durationUs:
 		return Track{}, fmt.Errorf("%w: duration %d, recording %d", ErrInvalidTrajectory, f.DurationUs, durationUs)
 	case n > maxSamples, len(s.X) != n, len(s.Y) != n, len(s.Tracked) != n, len(s.Confidence) != n, s.Inferred != nil && len(s.Inferred) != n:
@@ -185,7 +186,8 @@ func holds(measured float64, operator string, limit float64) bool {
 // Interval and Point are events computed by the metric engine, in microseconds
 // from the recording start.
 type Interval struct {
-	Type           string
+	// Label is set when the paradigm's event type declares labels.
+	Type, Label    string
 	StartUs, EndUs int64
 }
 
@@ -207,13 +209,13 @@ type Computed struct {
 func (t Track) Events(c Computed) []Event {
 	out := make([]Event, 0, len(c.Intervals)+len(c.Points))
 	for _, i := range c.Intervals {
-		out = append(out, Event{Type: i.Type, Kind: "INTERVAL", StartUs: i.StartUs, EndUs: i.EndUs, Confidence: t.confidence(i.StartUs, i.EndUs)})
+		out = append(out, Event{Type: i.Type, Label: i.Label, Kind: "INTERVAL", StartUs: i.StartUs, EndUs: i.EndUs, Confidence: t.confidence(i.StartUs, i.EndUs)})
 	}
 	for _, p := range c.Points {
 		out = append(out, Event{Type: p.Type, Kind: "POINT", StartUs: p.AtUs, EndUs: p.AtUs, Confidence: t.confidence(p.AtUs, p.AtUs)})
 	}
 	slices.SortStableFunc(out, func(a, b Event) int {
-		return cmp.Or(cmp.Compare(a.StartUs, b.StartUs), strings.Compare(a.Type, b.Type))
+		return cmp.Or(cmp.Compare(a.StartUs, b.StartUs), strings.Compare(a.Type, b.Type), strings.Compare(a.Label, b.Label))
 	})
 	return out
 }

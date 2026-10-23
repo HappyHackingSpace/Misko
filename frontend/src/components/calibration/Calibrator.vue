@@ -14,7 +14,20 @@ import { NButton, NCollapse, NCollapseItem, NInput, NInputNumber, NRadioButton, 
 import { selectOption } from "../../composables/selectOptions.js";
 import { useExecutionFormat } from "../../composables/useExecutionFormat.js";
 import CalibrationStage from "./CalibrationStage.vue";
-import { clamp, complete, defaultPlane, emptyPoint, placed, presetPoints, presetSize, storedZone, zoneBody } from "./geometry.js";
+import {
+  SWAPPABLE_ZONES,
+  clamp,
+  complete,
+  defaultPlane,
+  emptyPoint,
+  generalPosition,
+  placed,
+  presetPoints,
+  presetSize,
+  storedZone,
+  zoneBody,
+  zoneTools,
+} from "./geometry.js";
 
 const props = defineProps({
   // The paradigm version's manifest: its key and zones (labels in the panel's language).
@@ -33,7 +46,7 @@ const props = defineProps({
   note: { type: String, default: "" },
 });
 const emit = defineEmits(["save", "cancel"]);
-const { t } = useI18n();
+const { t, te } = useI18n();
 const fmt = useExecutionFormat();
 
 const PLANES = ["ARENA_FLOOR", "WATER_SURFACE", "APPARATUS_TOP"];
@@ -56,7 +69,9 @@ const form = ref({
 });
 const time = ref(init?.referenceFrameUs ? init.referenceFrameUs / 1_000_000 : 0);
 const copyPoint = (p) => ({ ...emptyPoint(), pixelX: p.pixelX, pixelY: p.pixelY, worldX: p.worldX, worldY: p.worldY });
-const preset = () => presetPoints(paradigmKey.value, props.parameters, t);
+// The treadmill lane's wall height is not a parameter; it is typed here for the preset.
+const laneHeight = ref(null);
+const preset = () => presetPoints(paradigmKey.value, props.parameters, t, { laneHeight: laneHeight.value });
 const startPoints = () => {
   if (init?.fitPoints?.length) return { fit: init.fitPoints.map(copyPoint), check: (init.checkPoints || []).map(copyPoint) };
   return preset() || { fit: Array.from({ length: 4 }, () => emptyPoint()), check: Array.from({ length: 3 }, () => emptyPoint()) };
@@ -247,6 +262,19 @@ function redraw(shape) {
 }
 const shapesOf = (key) => shapes.value.filter((s) => s.key === key);
 
+// Counterbalanced sessions put the novel object on the other side: the pair's
+// shapes exchange their keys, so nothing has to be drawn again.
+const swaps = computed(() => SWAPPABLE_ZONES.filter(([a, b]) => zones.value.some((z) => z.key === a) && zones.value.some((z) => z.key === b)));
+function swapZones([a, b]) {
+  for (const shape of shapes.value) {
+    if (shape.key === a) shape.key = b;
+    else if (shape.key === b) shape.key = a;
+  }
+}
+
+// Short guidance per paradigm: where the camera goes and what to draw.
+const guide = computed(() => (paradigmKey.value && te(`calibration.guide.${paradigmKey.value}`) ? t(`calibration.guide.${paradigmKey.value}`) : ""));
+
 function applyPreset() {
   const p = preset();
   if (!p) return;
@@ -254,10 +282,20 @@ function applyPreset() {
   selected.value = { fit: 0, check: 0 };
   mode.value = "fit";
 }
+// A typed wall height fills in the preset points that sit at that height.
+watch(laneHeight, (value) => {
+  const h = Number(value) > 0 ? Number(value) : null;
+  for (const group of ["fit", "check"]) {
+    for (const p of points.value[group]) if (p.heightOf) p.worldY = h === null ? null : Math.round(h * p.heightOf * 100) / 100;
+  }
+});
+const presetKind = computed(() => presetSize(paradigmKey.value, props.parameters)?.kind || "");
 const presetHint = computed(() => {
   const size = presetSize(paradigmKey.value, props.parameters);
   if (!size) return "";
   if (size.kind === "tank") return t("calibration.presets.tank", { diameter: fmt.number(size.diameter, 1) });
+  if (size.kind === "pole") return size.length > 0 ? t("calibration.presets.pole", { length: fmt.number(size.length, 1) }) : "";
+  if (size.kind === "lane") return size.length > 0 ? t("calibration.presets.lane", { length: fmt.number(size.length, 1) }) : "";
   return t("calibration.presets.box", { width: fmt.number(size.width, 1), depth: fmt.number(size.depth, 1) });
 });
 const hasPreset = computed(() => !!preset());
@@ -310,6 +348,8 @@ const problems = computed(() => {
     const incomplete = own.map((p, i) => (complete(p) ? null : short(group, i))).filter(Boolean);
     if (incomplete.length) list.push(t("calibration.missing.points", { points: incomplete.join(", ") }));
   }
+  const fit = points.value.fit;
+  if (fit.length >= MIN.fit && fit.every(complete) && !generalPosition(fit)) list.push(t("calibration.missing.fitLine"));
   for (const zone of zones.value) {
     if (zone.required && !shapesOf(zone.key).length) list.push(t("calibration.missing.zone", { zone: zone.label }));
   }
@@ -348,6 +388,7 @@ const referenceSeconds = computed({
   <form class="calibrator" data-test="calibration-form" @submit.prevent="submit">
     <p class="muted" v-if="correcting" data-test="calibration-correcting">{{ $t("calibration.correcting") }}</p>
     <p class="muted" v-if="note" data-test="calibration-note">{{ note }}</p>
+    <p class="guide" v-if="guide" data-test="calibration-guide" :data-paradigm="paradigmKey">{{ guide }}</p>
 
     <div class="setup">
       <label class="fld">
@@ -468,7 +509,11 @@ const referenceSeconds = computed({
           <NButton size="tiny" quaternary data-test="calibration-clear-pixels" @click="clearPixels">{{ $t("calibration.points.clearPixels") }}</NButton>
         </div>
       </div>
-      <p class="muted hint">{{ presetHint || $t("calibration.presets.free") }}</p>
+      <p class="muted hint" data-test="calibration-preset-hint">{{ presetHint || $t("calibration.presets.free") }}</p>
+      <label class="num wide" v-if="presetKind === 'lane'">
+        <span>{{ $t("calibration.presets.laneHeight") }}</span>
+        <NInputNumber placeholder="" v-model:value="laneHeight" size="small" :min="0" :precision="1" :show-button="false" data-test="lane-height" />
+      </label>
       <div
         v-for="(p, index) in points[mode]"
         :key="`${mode}-${index}`"
@@ -533,11 +578,16 @@ const referenceSeconds = computed({
             {{ zone.required ? $t("calibration.zones.required") : $t("calibration.zones.optional") }}
           </NTag>
           <span class="spacer"></span>
-          <NButton size="tiny" secondary :type="drawing?.key === zone.key && drawing.tool === 'polygon' ? 'primary' : 'default'" data-test="zone-draw-polygon" @click="startDrawing(zone.key, 'polygon')">
-            {{ $t("calibration.zones.polygon") }}
-          </NButton>
-          <NButton size="tiny" secondary :type="drawing?.key === zone.key && drawing.tool === 'circle' ? 'primary' : 'default'" data-test="zone-draw-circle" @click="startDrawing(zone.key, 'circle')">
-            {{ $t("calibration.zones.circle") }}
+          <NButton
+            v-for="tool in zoneTools(zone.key)"
+            :key="tool"
+            size="tiny"
+            secondary
+            :type="drawing?.key === zone.key && drawing.tool === tool ? 'primary' : 'default'"
+            :data-test="`zone-draw-${tool}`"
+            @click="startDrawing(zone.key, tool)"
+          >
+            {{ $t(`calibration.zones.${tool}`) }}
           </NButton>
         </div>
         <div class="shapes" v-if="shapesOf(zone.key).length">
@@ -551,6 +601,18 @@ const referenceSeconds = computed({
             <NButton size="tiny" quaternary type="error" data-test="zone-delete" @click="removeShape(shape.id)">{{ $t("calibration.zones.delete") }}</NButton>
           </div>
         </div>
+      </div>
+      <div v-for="pair in swaps" :key="pair.join('/')" class="swap" data-test="zone-swap-row">
+        <NButton
+          size="tiny"
+          secondary
+          :disabled="!shapesOf(pair[0]).length && !shapesOf(pair[1]).length"
+          data-test="zone-swap"
+          @click="swapZones(pair)"
+        >
+          {{ $t("calibration.zones.swap", { a: zoneLabel(pair[0]), b: zoneLabel(pair[1]) }) }}
+        </NButton>
+        <span class="muted hint">{{ $t("calibration.zones.swapHint") }}</span>
       </div>
       <div v-if="drawing" class="drawing" data-test="zone-drawing-bar">
         <span class="muted">
@@ -607,6 +669,9 @@ const referenceSeconds = computed({
 .calibrator { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; min-width: 0; }
 .calibrator h5 { margin: 0; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
 .hint { margin: 0; font-size: 12px; }
+.guide { margin: 0; font-size: 13px; padding: 8px 10px; border-radius: 8px; border-left: 3px solid var(--accent); background: var(--panel2); }
+.swap { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.num.wide { width: 180px; }
 .small { margin: 0; font-size: 12px; }
 .err { margin: 0; color: var(--bad); font-size: 13px; }
 .setup { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
@@ -617,6 +682,8 @@ const referenceSeconds = computed({
 .name { font-size: 12px; overflow-wrap: anywhere; }
 .hidden { display: none; }
 .tools { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+/* Four tools do not fit a phone in one row. */
+.tools :deep(.n-radio-group) { display: flex; flex-wrap: wrap; max-width: 100%; height: auto; row-gap: 6px; }
 .panel { display: flex; flex-direction: column; gap: 8px; padding: 10px; border-radius: 9px; background: var(--panel2); }
 .row-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
 .row-actions { display: flex; gap: 6px; flex-wrap: wrap; }

@@ -89,15 +89,17 @@ directory.
 
 ### Analysis worker
 
-The worker is optional: without it, tests can still be recorded and the
-observer-scored paradigms (pole, treadmill, novel object) are scored in the
-panel, but the tracked paradigm is not analysed. It tracks the one tracked
-paradigm, `MWM` (Morris water maze), version 1. It has been tested on synthetic
-video only.
+The worker is optional: without it, tests can still be recorded, but nothing is
+analysed. Every paradigm is analysed automatically (there is no manual
+scoring): the worker tracks the subject in the water maze (`MWM`), novel object
+(`NOVEL_OBJECT`), pole (`POLE`) and treadmill (`TREADMILL`) tests, version 1,
+and Mişko computes the events and metrics; a person reviews the result. It has
+been tested on synthetic video only.
 
 1. Sign in as a lab manager or the administrator and register the worker with
-   model version `misko-tracker-bgsub 2.0.0` and the `MWM` capability at
-   version 1. Observer-scored paradigms cannot be capabilities.
+   model version `misko-tracker-bgsub 2.2.0` and the four paradigms at
+   version 1 as capabilities (register only the paradigms your worker build
+   supports; `worker/README.md` lists them).
 
    ```bash
    TOKEN=$(curl -s http://localhost:4000/api/auth/login \
@@ -107,9 +109,12 @@ video only.
      -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
      -d '{
     "name": "worker-1",
-    "modelVersion": "misko-tracker-bgsub 2.0.0",
+    "modelVersion": "misko-tracker-bgsub 2.2.0",
     "capabilities": [
-      {"paradigmKey": "MWM", "paradigmVersion": 1}
+      {"paradigmKey": "MWM", "paradigmVersion": 1},
+      {"paradigmKey": "NOVEL_OBJECT", "paradigmVersion": 1},
+      {"paradigmKey": "POLE", "paradigmVersion": 1},
+      {"paradigmKey": "TREADMILL", "paradigmVersion": 1}
     ]
   }'
    ```

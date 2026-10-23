@@ -104,7 +104,7 @@ func TestCalibrateOverridesTheArenaOnTheCurrentVideo(t *testing.T) {
 	}{
 		"no video yet":                    {&fakeStore{video: "NONE"}, func(*domain.Input) {}, ErrNoVideo},
 		"unverified video":                {&fakeStore{video: "PENDING"}, func(*domain.Input) {}, ErrVideoNotVerified},
-		"paradigm without calibration":    {&fakeStore{paradigm: "POLE"}, func(*domain.Input) {}, domain.ErrNotRequired},
+		"paradigm without calibration":    {&fakeStore{paradigm: "UNCALIBRATED"}, func(*domain.Input) {}, domain.ErrNotRequired},
 		"animal of another test":          {&fakeStore{missing: true}, func(*domain.Input) {}, ErrTestSubjectNotFound},
 		"second first calibration":        {&fakeStore{chain: []domain.Calibration{previous}}, func(*domain.Input) {}, domain.ErrStaleCorrection},
 		"a new video continues the chain": {&fakeStore{chain: []domain.Calibration{onOldVideo}}, func(*domain.Input) {}, domain.ErrStaleCorrection},
@@ -146,13 +146,13 @@ func TestSubjectStatusFollowsTheEffectiveCalibration(t *testing.T) {
 		source  domain.Source
 		current string
 	}{
-		"nothing calibrated":        {&fakeStore{}, Waiting, "", ""},
-		"arena default":             {&fakeStore{source: domain.SourceEnvironment, calibrationID: "c1", stored: valid}, Calibrated, domain.SourceEnvironment, "c1"},
-		"override":                  {&fakeStore{source: domain.SourceOverride, calibrationID: "c1", stored: valid}, Calibrated, domain.SourceOverride, "c1"},
-		"rejected override waits":   {&fakeStore{source: domain.SourceOverride}, Waiting, domain.SourceOverride, ""},
-		"no video yet":              {&fakeStore{video: "NONE", source: domain.SourceEnvironment, calibrationID: "c1", stored: valid}, WaitingForVideo, "", ""},
-		"unverified video":          {&fakeStore{video: "PENDING", source: domain.SourceEnvironment, calibrationID: "c1", stored: valid}, WaitingForVideo, "", ""},
-		"observation-only paradigm": {&fakeStore{paradigm: "POLE"}, NotRequired, "", ""},
+		"nothing calibrated":                 {&fakeStore{}, Waiting, "", ""},
+		"arena default":                      {&fakeStore{source: domain.SourceEnvironment, calibrationID: "c1", stored: valid}, Calibrated, domain.SourceEnvironment, "c1"},
+		"override":                           {&fakeStore{source: domain.SourceOverride, calibrationID: "c1", stored: valid}, Calibrated, domain.SourceOverride, "c1"},
+		"rejected override waits":            {&fakeStore{source: domain.SourceOverride}, Waiting, domain.SourceOverride, ""},
+		"no video yet":                       {&fakeStore{video: "NONE", source: domain.SourceEnvironment, calibrationID: "c1", stored: valid}, WaitingForVideo, "", ""},
+		"unverified video":                   {&fakeStore{video: "PENDING", source: domain.SourceEnvironment, calibrationID: "c1", stored: valid}, WaitingForVideo, "", ""},
+		"paradigm without calibration needs": {&fakeStore{paradigm: "UNCALIBRATED"}, NotRequired, "", ""},
 		// A calibration stored before its paradigm's zones were drawn cannot be analysed.
 		"required zone missing": {&fakeStore{paradigm: "ZONED", source: domain.SourceEnvironment, calibrationID: "c1", stored: valid}, Waiting, domain.SourceEnvironment, ""},
 		"zones drawn":           {&fakeStore{paradigm: "ZONED", source: domain.SourceOverride, calibrationID: "c1", stored: withZones}, Calibrated, domain.SourceOverride, "c1"},
@@ -181,13 +181,13 @@ func TestSubjectStatusFollowsTheEffectiveCalibration(t *testing.T) {
 	}
 }
 
-// fakeCatalog answers for MWM (bounded by its pool), POLE (no calibration)
-// and ZONED, a hypothetical paradigm with calibrated zones: no published
-// paradigm declares any, but the generic support for them is kept.
+// fakeCatalog answers for MWM (bounded by its pool), UNCALIBRATED (a
+// hypothetical paradigm without calibration: every published one needs it,
+// but the generic support is kept) and ZONED, a paradigm with calibrated zones.
 type fakeCatalog struct{}
 
 func (fakeCatalog) Requirement(key string, _ int, _ map[string]float64) (domain.Requirement, error) {
-	if key == "POLE" {
+	if key == "UNCALIBRATED" {
 		return domain.Requirement{}, nil
 	}
 	if key == "ZONED" {
@@ -331,7 +331,7 @@ func TestCalibrateEnvironmentStoresTheDefaultOfARevision(t *testing.T) {
 		want   error
 	}{
 		"unknown revision":             {&fakeStore{noRevision: true}, func(*domain.Input) {}, ErrRevisionNotFound},
-		"paradigm without calibration": {&fakeStore{paradigm: "POLE"}, func(*domain.Input) {}, domain.ErrNotRequired},
+		"paradigm without calibration": {&fakeStore{paradigm: "UNCALIBRATED"}, func(*domain.Input) {}, domain.ErrNotRequired},
 		"second first calibration":     {&fakeStore{envChain: []domain.Calibration{previous}}, func(*domain.Input) {}, domain.ErrStaleCorrection},
 		"correction from another camera": {&fakeStore{envChain: []domain.Calibration{previous}}, func(in *domain.Input) {
 			in.SupersedesID, in.CameraID = "e1", "cam-side-2"
@@ -374,8 +374,8 @@ func TestEnvironmentStatusUsesTheLatestDefault(t *testing.T) {
 	if err != nil || view.Status != Waiting || view.Source != domain.SourceEnvironment || view.Current != nil {
 		t.Fatalf("environment without its zones: %+v %v", view, err)
 	}
-	view, err = New(&fakeStore{paradigm: "POLE"}, fakeCatalog{}, clock).EnvironmentStatus(ctx, viewer, "env", 1)
+	view, err = New(&fakeStore{paradigm: "UNCALIBRATED"}, fakeCatalog{}, clock).EnvironmentStatus(ctx, viewer, "env", 1)
 	if err != nil || view.Status != NotRequired {
-		t.Fatalf("observation-only environment: %+v %v", view, err)
+		t.Fatalf("environment without calibration needs: %+v %v", view, err)
 	}
 }

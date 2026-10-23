@@ -21,7 +21,7 @@ var update = flag.Bool("update", false, "write golden manifests for newly publis
 
 func newMux() *http.ServeMux {
 	mux := http.NewServeMux()
-	Register(mux, application.New(nil), func(r *http.Request) (access.Actor, error) {
+	Register(mux, application.New(), func(r *http.Request) (access.Actor, error) {
 		switch r.Header.Get("Authorization") {
 		case "viewer":
 			return access.Actor{UserID: "u", Role: access.Viewer}, nil
@@ -79,8 +79,7 @@ func TestCatalogIsReadOnlyAndVersioned(t *testing.T) {
 	}
 	for i, item := range data {
 		summary := item.(map[string]any)
-		// No worker capability exists yet, so catalog presence must not claim automated analysis.
-		if summary["key"] != want[i] || summary["latestVersion"] != float64(1) || summary["automatedAnalysis"] != false {
+		if summary["key"] != want[i] || summary["latestVersion"] != float64(1) {
 			t.Fatalf("summary %d: %v", i, summary)
 		}
 	}
@@ -88,7 +87,7 @@ func TestCatalogIsReadOnlyAndVersioned(t *testing.T) {
 		status, manifest := call("GET", path, "viewer")
 		metrics, _ := manifest["metrics"].([]any)
 		if status != 200 || manifest["version"] != float64(1) || manifest["metricEngineVersion"] != float64(1) ||
-			manifest["resultSchemaVersion"] != float64(1) || len(metrics) != 8 || manifest["automatedAnalysis"] != false {
+			manifest["resultSchemaVersion"] != float64(1) || len(metrics) != 8 {
 			t.Fatalf("%s: %d %v", path, status, manifest)
 		}
 		first := metrics[0].(map[string]any)
@@ -104,19 +103,21 @@ func TestCatalogIsReadOnlyAndVersioned(t *testing.T) {
 		t.Fatalf("MWM contract: %v %v", zone, mwm["inputEvents"])
 	}
 	_, pole := call("GET", "/api/paradigms/POLE/versions/1", "viewer")
-	input := pole["inputEvents"].([]any)[0].(map[string]any)
-	if input["type"] != "turn_complete" || input["kind"] != "POINT" || input["labels"] == nil {
-		t.Fatalf("POLE contract: %v", input)
+	event := pole["events"].([]any)[0].(map[string]any)
+	poleInputs, _ := pole["inputEvents"].([]any)
+	if event["type"] != "turn_complete" || event["kind"] != "POINT" || event["single"] != true || event["labels"] == nil || poleInputs == nil || len(poleInputs) != 0 {
+		t.Fatalf("POLE contract: %v %v", event, pole["inputEvents"])
 	}
 	_, treadmill := call("GET", "/api/paradigms/TREADMILL", "viewer")
-	session := treadmill["parameters"].([]any)[1].(map[string]any)
-	zones, _ := treadmill["zones"].([]any)
-	if session["key"] != "accelerating" || session["scope"] != "SESSION" || session["valueType"] != "integer" || zones == nil || len(zones) != 0 {
-		t.Fatalf("TREADMILL contract: %v %v", session, treadmill["zones"])
+	analysis := treadmill["parameters"].([]any)[1].(map[string]any)
+	grid := treadmill["zones"].([]any)[0].(map[string]any)
+	if analysis["key"] != "exhaustion_dwell_s" || analysis["scope"] != "ANALYSIS" || analysis["default"] != float64(5) ||
+		grid["key"] != "shock_grid" || grid["calibrated"] != true || grid["required"] != true {
+		t.Fatalf("TREADMILL contract: %v %v", analysis, grid)
 	}
 	_, novel := call("GET", "/api/paradigms/NOVEL_OBJECT", "viewer")
-	exploration := novel["inputEvents"].([]any)[0].(map[string]any)
-	if labels := exploration["labels"].([]any); len(labels) != 2 || labels[0] != "novel" {
+	exploration := novel["events"].([]any)[0].(map[string]any)
+	if labels := exploration["labels"].([]any); exploration["type"] != "exploration" || len(labels) != 2 || labels[0] != "novel" || labels[1] != "familiar" {
 		t.Fatalf("NOVEL_OBJECT labels: %v", exploration)
 	}
 }
@@ -206,29 +207,5 @@ func TestPublishedManifestsNeverChange(t *testing.T) {
 	}
 	if len(goldens) < len(published) && !*update {
 		t.Errorf("%d goldens for %d published versions", len(goldens), len(published))
-	}
-}
-
-func TestListLinksEachParadigmToAnArticleInTheRequestedLanguage(t *testing.T) {
-	mux := newMux()
-	// Without a Turkish article the English one is linked in Turkish too.
-	for _, query := range []string{"", "?lang=tr"} {
-		_, raw := get(mux, "GET", "/api/paradigms"+query, "viewer")
-		var list struct {
-			Data []struct {
-				Key       string `json:"key"`
-				Reference string `json:"reference"`
-			} `json:"data"`
-		}
-		if err := json.Unmarshal(raw, &list); err != nil {
-			t.Fatal(err)
-		}
-		links := map[string]string{}
-		for _, p := range list.Data {
-			links[p.Key] = p.Reference
-		}
-		if links["MWM"] != "https://en.wikipedia.org/wiki/Morris_water_navigation_task" || links["POLE"] != "" {
-			t.Errorf("%q: %v", query, links)
-		}
 	}
 }

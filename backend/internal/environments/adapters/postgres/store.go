@@ -149,6 +149,22 @@ func (s *Store) Revision(ctx context.Context, environmentID string, number int) 
 	return toRevision(row)
 }
 
+func (s *Store) RevisionByID(ctx context.Context, id string) (application.NamedRevision, error) {
+	if !pgtx.ValidUUID(id) {
+		return application.NamedRevision{}, application.ErrRevisionNotFound
+	}
+	row, err := s.queries.GetRevisionByID(ctx, id)
+	if err != nil {
+		return application.NamedRevision{}, translate(err, application.ErrRevisionNotFound, "get revision")
+	}
+	revision, err := toRevision(sqlcgen.MiskoEnvironmentRevision{ID: row.ID, EnvironmentID: row.EnvironmentID, ParadigmKey: row.ParadigmKey,
+		ParadigmVersion: row.ParadigmVersion, Number: row.Number, Parameters: row.Parameters, Notes: row.Notes, CreatedBy: row.CreatedBy, CreatedAt: row.CreatedAt})
+	if err != nil {
+		return application.NamedRevision{}, err
+	}
+	return application.NamedRevision{Revision: revision, EnvironmentName: row.EnvironmentName}, nil
+}
+
 // translate maps a missing row to notFound and named constraint violations to
 // their errors. Other errors are wrapped so PostgreSQL codes stay inspectable.
 func translate(err, notFound error, operation string) error {

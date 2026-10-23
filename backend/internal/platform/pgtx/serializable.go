@@ -11,7 +11,13 @@ import (
 	"time"
 )
 
-const attempts = 5
+// attempts bounds the retries. Contending transactions (for example several
+// processes bootstrapping the first administrator at once) can conflict a few
+// times in a row; the growing, jittered backoff spreads them apart.
+const attempts = 10
+
+// maxBackoff caps the wait between two attempts.
+const maxBackoff = 200 * time.Millisecond
 
 // Serializable runs fn in a SERIALIZABLE transaction. Serialization failures
 // and deadlocks, including those raised at commit, are retried a bounded number
@@ -23,14 +29,20 @@ func Serializable(ctx context.Context, pool *pgxpool.Pool, fn func(pgx.Tx) error
 		if !retryable(err) || attempt == attempts {
 			return err
 		}
-		backoff := time.Duration(1+rand.IntN(attempt*20)) * time.Millisecond
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-time.After(backoff):
+		case <-time.After(backoff(attempt)):
 		}
 	}
 	return err
+}
+
+// backoff is a full-jitter exponential wait after the given attempt: a random
+// duration between 1 ms and min(maxBackoff, 5 ms x 2^(attempt-1)).
+func backoff(attempt int) time.Duration {
+	ceiling := min(maxBackoff, 5*time.Millisecond<<min(attempt-1, 16))
+	return time.Millisecond + time.Duration(rand.Int64N(int64(ceiling)))
 }
 
 func retryable(err error) bool {
