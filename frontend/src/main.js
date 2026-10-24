@@ -4,7 +4,6 @@ import { router } from "./router.js";
 import { i18n } from "./i18n/index.js";
 import { usePrefs } from "./stores/prefs.js";
 import App from "./App.vue";
-import "@fontsource-variable/sora";
 import "./style.css";
 
 const app = createApp(App);
