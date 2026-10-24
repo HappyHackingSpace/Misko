@@ -1,4 +1,9 @@
-# 🐭 Mişko
+<h1>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset=".github/assets/misko-logo-dark.svg" />
+    <img src=".github/assets/misko-logo-light.svg" alt="Mişko" height="96" />
+  </picture>
+</h1>
 
 Behavioral test management system for laboratory mice.
 

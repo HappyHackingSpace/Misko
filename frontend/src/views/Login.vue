@@ -5,6 +5,7 @@ import { useAuth } from "../stores/auth.js";
 import { useLab } from "../stores/lab.js";
 import ThemeToggle from "../components/ThemeToggle.vue";
 import LangSelect from "../components/LangSelect.vue";
+import MiskoLogo from "../components/MiskoLogo.vue";
 
 const auth = useAuth();
 const lab = useLab();
@@ -38,7 +39,7 @@ async function submit() {
         <ThemeToggle />
         <LangSelect />
       </div>
-      <div class="brand" style="font-size:22px;font-weight:800;margin-bottom:2px">{{ $t("app.name") }}</div>
+      <MiskoLogo class="brand" style="height:44px;margin-bottom:8px" />
       <p class="muted" v-if="lab.labName" style="margin:0 0 2px;font-weight:600">{{ lab.labName }}</p>
       <p class="muted" style="margin:0 0 10px">{{ $t("app.tagline") }}</p>
       <p class="muted">{{ $t("login.operatorLogin") }}</p>
