@@ -21,6 +21,7 @@ import (
 const AlgorithmVersion = "homography-dlt-normalized-v1"
 
 const maxPoints = 100
+const boundsEpsilonCm = 1e-6
 
 var (
 	ErrNotRequired             = errors.New("this paradigm does not use video calibration")
@@ -172,7 +173,6 @@ func New(in Input, req Requirement, createdBy string, now time.Time) (Calibratio
 		return Calibration{}, ErrInsufficientCheckPoints
 	}
 	all := append(append([]Correspondence{}, in.Fit...), in.Check...)
-	margin := req.ToleranceCm
 	for _, p := range all {
 		switch {
 		case !finite(p.PixelX) || !finite(p.PixelY) || !finite(p.WorldX) || !finite(p.WorldY):
@@ -180,8 +180,8 @@ func New(in Input, req Requirement, createdBy string, now time.Time) (Calibratio
 		case p.PixelX < float64(in.Crop.X) || p.PixelY < float64(in.Crop.Y) ||
 			p.PixelX > float64(in.Crop.X+in.Crop.Width) || p.PixelY > float64(in.Crop.Y+in.Crop.Height):
 			return Calibration{}, ErrPointOutsideCrop
-		case req.Bounds != nil && (p.WorldX < req.Bounds.MinX-margin || p.WorldY < req.Bounds.MinY-margin ||
-			p.WorldX > req.Bounds.MaxX+margin || p.WorldY > req.Bounds.MaxY+margin):
+		case req.Bounds != nil && (p.WorldX < req.Bounds.MinX-boundsEpsilonCm || p.WorldY < req.Bounds.MinY-boundsEpsilonCm ||
+			p.WorldX > req.Bounds.MaxX+boundsEpsilonCm || p.WorldY > req.Bounds.MaxY+boundsEpsilonCm):
 			return Calibration{}, ErrPointOutsideEnvironment
 		}
 	}

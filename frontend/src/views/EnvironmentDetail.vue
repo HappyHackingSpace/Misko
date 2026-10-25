@@ -90,9 +90,10 @@ async function save(number, body) {
   try {
     // A correction names the calibration it replaces, so a rejected attempt is
     // corrected rather than repeated from scratch.
-    await environments.calibrate(environmentId.value, number, { ...body, supersedesId: latestOf(number)?.id || "" });
+    const stored = await environments.calibrate(environmentId.value, number, { ...body, supersedesId: latestOf(number)?.id || "" });
     calibrating.value = 0;
-    message.success(t("environments.calibration.saved"));
+    if (stored.status === "VALID") message.success(t("environments.calibration.saved"));
+    else message.warning(t("environments.calibration.rejected"));
     await load();
   } catch (e) {
     error.value = e.message;
@@ -271,12 +272,36 @@ onUnmounted(() => crumb.clear());
       </NDescriptions>
 
       <div class="calibration" data-test="environment-calibration" :data-status="stateOf(revision.number).status">
-        <h4>{{ $t("environments.calibration.title") }}</h4>
+        <div class="calibration-heading">
+          <h4>{{ $t("environments.calibration.title") }}</h4>
+          <NTag
+            v-if="stateOf(revision.number).status && stateOf(revision.number).status !== 'NOT_REQUIRED'"
+            size="small"
+            round
+            :bordered="false"
+            :type="stateOf(revision.number).status === 'CALIBRATED' && latestOf(revision.number)?.status === 'VALID'
+              ? 'success'
+              : latestOf(revision.number)?.status === 'REJECTED' ? 'error' : 'warning'"
+            data-test="environment-default-badge"
+            :data-active="stateOf(revision.number).status === 'CALIBRATED' && latestOf(revision.number)?.status === 'VALID'"
+          >
+            {{ stateOf(revision.number).status === 'CALIBRATED' && latestOf(revision.number)?.status === 'VALID'
+              ? $t("environments.calibration.defaultActive")
+              : $t("environments.calibration.defaultInactive") }}
+          </NTag>
+        </div>
         <p class="muted" v-if="stateOf(revision.number).status === 'NOT_REQUIRED'" data-test="calibration-not-required">
           {{ $t("environments.calibration.notRequired") }}
         </p>
         <template v-else-if="stateOf(revision.number).status">
           <p class="muted">{{ $t("environments.calibration.intro") }}</p>
+          <p
+            v-if="stateOf(revision.number).status === 'CALIBRATED' && latestOf(revision.number)?.status === 'VALID'"
+            class="default-applied"
+            data-test="environment-default-applied"
+          >
+            {{ $t("environments.calibration.automatic") }}
+          </p>
 
           <CalibrationSummary
             v-if="latestOf(revision.number)"
@@ -333,7 +358,9 @@ onUnmounted(() => crumb.clear());
 .revisions { display: flex; flex-direction: column; gap: 16px; }
 .version { margin-left: 6px; font-size: 12px; }
 .calibration { margin-top: 18px; border-top: 1px solid var(--line); padding-top: 14px; }
-.calibration h4 { margin: 0 0 6px; font-size: 14px; }
+.calibration-heading { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.calibration h4 { margin: 0; font-size: 14px; }
+.default-applied { margin: 8px 0; padding: 8px 10px; border-radius: 8px; background: var(--panel2); }
 .hint { margin: 8px 0 0; }
 .calibrate-btn { margin-top: 10px; }
 </style>
