@@ -69,6 +69,9 @@ test("a study is designed, started and filled with animals", async ({ page, requ
   // No study starts without a healthy control; the checklist offers to add one
   // and opens the group dialog with the role chosen.
   await page.goto(`${studyUrl}?tab=overview`);
+  await page.getByTestId("readiness-unmet").locator('[data-rule="readiness.noGroups"]').getByRole("button", { name: "Add a group" }).click();
+  await expect(page.getByTestId("group-form")).toBeVisible();
+  await page.goto(`${studyUrl}?tab=overview`);
   await expect(page.getByTestId("readiness-unmet").locator('[data-rule="readiness.healthyControlMissing"]')).toContainText("Add a healthy control group");
   await page.getByTestId("readiness-add-healthy").click();
   await expect(page).toHaveURL(/tab=design/);

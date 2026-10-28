@@ -44,6 +44,7 @@ const ITEM_RULES = {
 };
 function ruleAction(problem) {
   const group = groups.value.find((g) => g.id === problem.groupId);
+  if (problem.rule === "readiness.noGroups") return { label: "addGroup", query: { addGroup: "" } };
   if (problem.rule === "readiness.healthyControlMissing") {
     return { label: "addHealthyControl", test: "readiness-add-healthy", query: { addGroup: "HEALTHY_CONTROL" } };
   }

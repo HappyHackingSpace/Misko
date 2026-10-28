@@ -114,6 +114,7 @@ export default {
       ready: "Tüm başlama kuralları sağlanıyor. Çalışma başlatılabilir.",
       notReadyHint: "Şu kurallar henüz sağlanmıyor:",
       fixIn: "{tab} sekmesinde düzelt",
+      addGroup: "Grup ekle",
       addHealthyControl: "Sağlıklı kontrol grubu ekle",
       addDiseaseControl: "Hastalık kontrolü grubu ekle",
       addTreatment: "Tedavi kalemini ekle",

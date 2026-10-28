@@ -114,6 +114,7 @@ export default {
       ready: "Every start rule is met. The study can start.",
       notReadyHint: "These rules are not met yet:",
       fixIn: "Fix in {tab}",
+      addGroup: "Add a group",
       addHealthyControl: "Add a healthy control group",
       addDiseaseControl: "Add a disease control group",
       addTreatment: "Add the treatment item",

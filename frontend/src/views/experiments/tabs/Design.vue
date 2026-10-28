@@ -125,18 +125,18 @@ async function deleteItem(item) {
 }
 
 // The readiness panel links here to fix one unmet rule:
-// ?addGroup=<role>[&diseaseModel=<id>], ?addItem=<groupId>[&purpose=<purpose>]
+// ?addGroup=[<role>][&diseaseModel=<id>], ?addItem=<groupId>[&purpose=<purpose>]
 // or ?editGroup=<groupId>. The request is consumed so a reload does not reopen it.
 const REQUEST_KEYS = ["addGroup", "diseaseModel", "addItem", "purpose", "editGroup"];
 function openRequested() {
   const q = route.query;
-  if (!REQUEST_KEYS.some((k) => q[k])) return;
+  if (!REQUEST_KEYS.some((k) => k in q)) return;
   const query = { ...q };
   REQUEST_KEYS.forEach((k) => delete query[k]);
   router.replace({ query });
   if (!editable.value) return;
   const group = groups.value.find((g) => g.id === (q.addItem || q.editGroup));
-  if (q.addGroup) addGroup(String(q.addGroup), q.diseaseModel ? String(q.diseaseModel) : null);
+  if ("addGroup" in q) addGroup(q.addGroup ? String(q.addGroup) : null, q.diseaseModel ? String(q.diseaseModel) : null);
   else if (q.addItem && group) addItem(group, q.purpose ? String(q.purpose) : null);
   else if (q.editGroup && group) editGroup(group);
 }
