@@ -68,27 +68,21 @@ const nextCode = computed(() => {
 const emptyText = (g) => t(g.role === "HEALTHY_CONTROL" ? "design.regimen.emptyNaive" : "design.regimen.empty");
 const addLabel = (g) => t(g.role === "SHAM" ? "design.regimen.addVehicle" : "design.regimen.add");
 
-// Group dialog. The readiness panel links here with ?addGroup=<role> to open
-// it with that role chosen.
+// Group dialog.
 const groupOpen = ref(false);
 const editingGroup = ref(null);
 const presetRole = ref(null);
-function addGroup(role = null) {
+const presetDiseaseModel = ref(null);
+function addGroup(role = null, diseaseModelId = null) {
   editingGroup.value = null;
   presetRole.value = role;
+  presetDiseaseModel.value = diseaseModelId;
   groupOpen.value = true;
-}
-function openRequestedGroup() {
-  const role = route.query.addGroup;
-  if (!role) return;
-  const query = { ...route.query };
-  delete query.addGroup;
-  router.replace({ query });
-  if (editable.value) addGroup(String(role));
 }
 function editGroup(g) {
   editingGroup.value = g;
   presetRole.value = null;
+  presetDiseaseModel.value = null;
   groupOpen.value = true;
 }
 async function deleteGroup(g) {
@@ -106,14 +100,17 @@ async function deleteGroup(g) {
 const itemOpen = ref(false);
 const itemGroup = ref(null);
 const editingItem = ref(null);
-function addItem(g) {
+const presetPurpose = ref(null);
+function addItem(g, purpose = null) {
   itemGroup.value = g;
   editingItem.value = null;
+  presetPurpose.value = purpose;
   itemOpen.value = true;
 }
 function editItem(g, item) {
   itemGroup.value = g;
   editingItem.value = item;
+  presetPurpose.value = null;
   itemOpen.value = true;
 }
 async function deleteItem(item) {
@@ -127,17 +124,35 @@ async function deleteItem(item) {
   }
 }
 
+// The readiness panel links here to fix one unmet rule:
+// ?addGroup=[<role>][&diseaseModel=<id>], ?addItem=<groupId>[&purpose=<purpose>]
+// or ?editGroup=<groupId>. The request is consumed so a reload does not reopen it.
+const REQUEST_KEYS = ["addGroup", "diseaseModel", "addItem", "purpose", "editGroup"];
+function openRequested() {
+  const q = route.query;
+  if (!REQUEST_KEYS.some((k) => k in q)) return;
+  const query = { ...q };
+  REQUEST_KEYS.forEach((k) => delete query[k]);
+  router.replace({ query });
+  if (!editable.value) return;
+  const group = groups.value.find((g) => g.id === (q.addItem || q.editGroup));
+  if ("addGroup" in q) addGroup(q.addGroup ? String(q.addGroup) : null, q.diseaseModel ? String(q.diseaseModel) : null);
+  else if (q.addItem && group) addItem(group, q.purpose ? String(q.purpose) : null);
+  else if (q.editGroup && group) editGroup(group);
+}
+
 async function onSaved(kind) {
   message.success(t(kind === "group" ? "design.groups.saved" : "design.regimen.saved"));
   await load();
 }
 
-onMounted(() => {
-  load();
-  openRequestedGroup();
+// Requests that name a group wait for the groups to load.
+onMounted(async () => {
+  await load();
+  openRequested();
 });
 watch(() => experiment.value?.status, load);
-watch(() => route.query.addGroup, openRequestedGroup);
+watch(() => REQUEST_KEYS.map((k) => route.query[k]), openRequested);
 </script>
 
 <template>
@@ -236,6 +251,7 @@ watch(() => route.query.addGroup, openRequestedGroup);
       :disease-models="diseaseModels"
       :next-code="nextCode"
       :role="presetRole"
+      :disease-model-id="presetDiseaseModel"
       @saved="onSaved('group')"
     />
     <RegimenForm
@@ -245,6 +261,7 @@ watch(() => route.query.addGroup, openRequestedGroup);
       :item="editingItem"
       :group-items="itemGroup ? itemsOf(itemGroup.id) : []"
       :substances="substances"
+      :purpose="presetPurpose"
       @saved="onSaved('item')"
     />
   </div>
