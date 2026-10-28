@@ -9,6 +9,9 @@ export default {
     revisionSaved: "Yeni revizyon oluşturuldu",
     calibration: {
       intro: "Düzenek kurulurken bir kez kalibre edin. Bu arenada test edilen her denek, testi elle kalibre edilmedikçe bunu kullanır.",
+      defaultActive: "Ortam varsayılanı etkin",
+      defaultInactive: "Ortam varsayılanı etkin değil",
+      automatic: "Aynı arenadaki diğer testler için bu kalibrasyon otomatik kullanılacaktır. Kamera ve arena konumunu sabit tutun; farklı çözünürlükteki veya başka kamerayla çekilen videolar için test üzerinde ayrıca kalibrasyon yapın.",
       waiting: "Henüz kalibre edilmedi. Kalibre edilene kadar bu arenada test edilen denekler santimetre cinsinden analiz edilemez.",
       rejected: "Reddedildi: kontrol noktaları toleranstan fazla sapıyor. Düzeltilene kadar bu arenadaki analizler bekler.",
       fixedCamera: "Bu, kamera ve arenanın yerinde kaldığını varsayar. Videosu uymayan bir denek, kendi testinden elle kalibre edilebilir.",

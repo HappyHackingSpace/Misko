@@ -36,6 +36,8 @@ test("an arena is created with its parameters, calibrated and revised", async ({
   await form.getByTestId("calibration-save").click();
   await expect(section).toHaveAttribute("data-status", "CALIBRATED", { timeout: 10_000 });
   await expect(section.getByTestId("calibration-summary")).toHaveAttribute("data-calibration-status", "VALID");
+  await expect(section.getByTestId("environment-default-badge")).toHaveAttribute("data-active", "true");
+  await expect(section.getByTestId("environment-default-applied")).toBeVisible();
   await expect(section.getByTestId("tolerance")).toContainText("2 cm");
 
   // A new revision changes the arena and keeps the first one.

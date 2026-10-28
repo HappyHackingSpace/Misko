@@ -8,6 +8,11 @@ export default {
       POLE: "Kamera direğin yanında, ortasıyla aynı yükseklikte durur ve tabandan tepeye tüm direği görür. Direğin tabanını ve tepesini, ayrıca direkten uzakta düzenek üzerinde en az iki işaret daha (örneğin arka panelde) yerleştirin; işaretlerin direğe uzaklığını ve tabandan yüksekliğini ölçün. Sonra deneğin tırmandığı yeri kapsayan direk bölgesini ve dibindeki zemini kapsayan taban bölgesini çizin.",
       TREADMILL: "Kamera kulvarın yanında, bant hizasında durur ve şok ızgarasından ön duvara kadar tüm kulvarı görür. Kulvar duvarının köşelerini yerleştirin: x kulvar boyunca ızgara ucundan (0) öne doğru, y banttan yukarı doğru ölçülür. Sonra kulvarın arkasındaki ızgaranın üzerine şok ızgarası bölgesini çizin.",
     },
+    applyDefault: "Varsayılan Kalibrasyonu Uygula",
+    applyDefaultHint: "Kayıtlı geçerli kalibrasyonun noktalarını ve bölgelerini yükler ({camera}, {width} × {height}). Yalnızca aynı kamera ve arena konumunu doğruladıysanız kullanın; kaydetme yine sunucuda doğrulanır.",
+    applyDefaultWaiting: "Uygulamadan önce video karesinin boyutu okunmalı.",
+    applyDefaultFrameMismatch: "Video çözünürlüğü varsayılan kalibrasyonla eşleşmiyor; kayıtlı noktalar uygulanamaz.",
+    applyDefaultCameraMismatch: "Kamera alanı varsayılan kalibrasyondaki “{camera}” ile aynı olmalı.",
     source: {
       local: "Kare için video",
       pick: "Video dosyası seç",
@@ -32,8 +37,8 @@ export default {
       zones: "Bölgeler",
     },
     toolHints: {
-      fit: "Seçili noktayı yerleştirmek için kareye tıklayın, sonra sürükleyerek düzeltin. Sonraki tıklamanın hangi noktayı yerleştireceğini seçmek için bir satıra tıklayın.",
-      check: "Kontrol noktaları uyum noktalarından farklı yerler olmalı. Seçili olanı yerleştirmek için kareye tıklayın.",
+      fit: "Seçili noktayı yerleştirmek için kareye tıklayın, sonra sürükleyerek düzeltin. Sonraki tıklamanın hangi noktayı yerleştireceğini seçmek için bir satıra tıklayın. Pixel X ve Pixel Y değerlerini aşağıdaki nokta satırından da yazabilirsiniz.",
+      check: "Kontrol noktaları uyum noktalarından farklı yerler olmalı. Seçili olanı kareye tıklayarak yerleştirin veya Pixel X ve Pixel Y değerlerini aşağıdaki nokta satırından yazın.",
       crop: "Bu arenanın çevresine bir dikdörtgen sürükleyin. Noktalar ve bölgeler bunun içinde kalmalı.",
       zones: "Bir bölge ve bir şekil seçip kare üzerine çizin. Bir şekli düzeltmek için tutamaçlarını sürükleyin.",
     },
@@ -90,7 +95,7 @@ export default {
     },
     zones: {
       title: "Bölgeler",
-      hint: "Paradigmanın her bölgesini kare üzerine çizin. Bir bölge birden çok şekil gerektirebilir, örneğin her kol için bir tane.",
+      hint: "Nesne bölgeleri için Daire çiz aracıyla başlayın; bölgeye tıklayıp merkeze basılı tutarak kenara sürükleyin. Çokgen gerekiyorsa Çokgen çiz'i seçin. Kalibrasyon ekranına ilk geçtiğinizde boş olan ilk daire bölgesi seçilir.",
       required: "Zorunlu",
       optional: "İsteğe bağlı",
       polygon: "Çokgen çiz",

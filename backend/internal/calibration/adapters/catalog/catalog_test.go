@@ -21,8 +21,8 @@ func TestRequirementsListThePublishedCalibratedZones(t *testing.T) {
 		zones      []domain.ZoneRequirement
 		bounds     *domain.Bounds
 	}{
-		"NOVEL_OBJECT": {map[string]float64{"arena_width_cm": 50, "arena_height_cm": 40},
-			[]domain.ZoneRequirement{{Key: "novel_object", Required: true}, {Key: "familiar_object", Required: true}}, &domain.Bounds{MaxX: 50, MaxY: 40}},
+		"NOVEL_OBJECT": {map[string]float64{"arena_width_cm": 40, "arena_height_cm": 60},
+			[]domain.ZoneRequirement{{Key: "novel_object", Required: true}, {Key: "familiar_object", Required: true}}, &domain.Bounds{MaxX: 40, MaxY: 60}},
 		"POLE":      {map[string]float64{"pole_length_cm": 50}, []domain.ZoneRequirement{{Key: "pole", Required: true}, {Key: "base", Required: true}}, nil},
 		"TREADMILL": {map[string]float64{"lane_length_cm": 40}, []domain.ZoneRequirement{{Key: "shock_grid", Required: true}}, nil},
 	} {

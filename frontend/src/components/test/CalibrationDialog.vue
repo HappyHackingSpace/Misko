@@ -18,15 +18,17 @@ const emit = defineEmits(["close", "saved"]);
 const { t } = useI18n();
 
 async function context() {
-  const [paradigm, revisions, link] = await Promise.all([
+  const [paradigm, revisions, link, defaultStatus] = await Promise.all([
     paradigmCatalog.version(props.test.paradigmKey, props.test.paradigmVersion),
     environments.revisions(props.subject.environmentId),
     props.status?.recordingId ? recordings.readUrl(props.test.id, props.status.recordingId) : null,
+    environments.calibrationStatus(props.subject.environmentId, props.subject.environmentRevision),
   ]);
   return {
     paradigm,
     parameters: (revisions.data || []).find((r) => r.number === props.subject.environmentRevision)?.parameters || {},
     videoUrl: link?.url || "",
+    referenceCalibration: defaultStatus.status === "CALIBRATED" ? defaultStatus.calibration : null,
   };
 }
 const chain = async () => (await calibration.overrides(props.test.id, props.subject.id)).data;

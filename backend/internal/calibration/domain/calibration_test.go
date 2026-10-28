@@ -114,16 +114,11 @@ func TestInvalidCalibrationsAreRefused(t *testing.T) {
 			t.Errorf("%s: err=%v want %v", name, err, tc.want)
 		}
 	}
-	// A point measured on the wall may sit up to the tolerance outside the bounds;
-	// the FIT point (1750, 1000) maps to x = 47.7 cm, 1.7 cm past a 46 cm edge.
+	// CHECK tolerance does not expand the physical arena bounds.
 	tight := arena()
 	tight.Bounds = &Bounds{MinX: 0, MinY: 0, MaxX: 46, MaxY: 40}
-	if c, err := New(input(), tight, "tech", now); err != nil || c.Status != Valid {
-		t.Fatalf("point within the tolerance of the edge: %+v %v", c, err)
-	}
-	tight.Bounds.MaxX = 45
 	if _, err := New(input(), tight, "tech", now); !errors.Is(err, ErrPointOutsideEnvironment) {
-		t.Fatalf("point beyond the tolerance of the edge: %v", err)
+		t.Fatalf("point outside the arena bounds: %v", err)
 	}
 	// Every measurement plane is accepted, including the side view of a pole or a treadmill lane.
 	for _, plane := range []Plane{ArenaFloor, WaterSurface, ApparatusTop, ApparatusSide} {
@@ -143,6 +138,55 @@ func TestInvalidCalibrationsAreRefused(t *testing.T) {
 		}
 	}), free, "tech", now); err != nil || c.Status != Valid {
 		t.Fatalf("calibrated-zone frame: %+v %v", c, err)
+	}
+}
+
+func TestNovelObjectArenaBoundsIncludeMeasuredEdges(t *testing.T) {
+	req := Requirement{Required: true, ToleranceCm: 2, Bounds: &Bounds{MinX: 0, MinY: 0, MaxX: 40, MaxY: 60}}
+	in := Input{
+		CameraID: "cam-top-1", FrameWidth: 1920, FrameHeight: 1080,
+		Crop: Rect{X: 0, Y: 0, Width: 1920, Height: 1080}, Plane: ArenaFloor,
+	}
+	pixel := func(x, y float64) (float64, float64) {
+		return 100 + 10*x + 2*y, 100 + 2*x + 10*y
+	}
+	correspondence := func(x, y float64) Correspondence {
+		px, py := pixel(x, y)
+		return Correspondence{PixelX: px, PixelY: py, WorldX: x, WorldY: y}
+	}
+	in.Fit = []Correspondence{
+		correspondence(0, 0), correspondence(40, 0),
+		correspondence(0, 60), correspondence(40, 60),
+	}
+	in.Check = []Correspondence{
+		correspondence(20, 60), correspondence(40, 30), correspondence(20, 0),
+	}
+	if c, err := New(in, req, "tech", now); err != nil || c.Status != Valid {
+		t.Fatalf("40x60 arena edge points: %+v %v", c, err)
+	}
+
+	withinFloatTolerance := in
+	withinFloatTolerance.Check = append([]Correspondence(nil), in.Check...)
+	withinFloatTolerance.Check[1].WorldX += boundsEpsilonCm / 2
+	if c, err := New(withinFloatTolerance, req, "tech", now); err != nil || c.Status != Valid {
+		t.Fatalf("point within the floating-point boundary tolerance: %+v %v", c, err)
+	}
+
+	for _, tc := range []struct {
+		name string
+		x, y float64
+	}{
+		{name: "x beyond width", x: 41, y: 0},
+		{name: "y beyond length", x: 0, y: 61},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			outside := in
+			outside.Check = append([]Correspondence(nil), in.Check...)
+			outside.Check[0] = correspondence(tc.x, tc.y)
+			if _, err := New(outside, req, "tech", now); !errors.Is(err, ErrPointOutsideEnvironment) {
+				t.Fatalf("got error %v, want %v", err, ErrPointOutsideEnvironment)
+			}
+		})
 	}
 }
 
