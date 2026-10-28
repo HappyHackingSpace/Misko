@@ -28,13 +28,22 @@ const ordered = computed(() =>
 );
 
 // "Movement 00:12-00:18" reads the same way in both languages.
-function clock(us) {
-  const total = Math.max(0, Math.round(us / 1_000_000));
-  return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+function clock(us, tenths = false) {
+  const scale = tenths ? 10 : 1;
+  const total = Math.max(0, Math.round((us / 1_000_000) * scale));
+  const seconds = Math.floor(total / scale);
+  const text = `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
+  return tenths ? `${text}.${total % scale}` : text;
+}
+// An interval shorter than a second gets tenths, or 00:36-00:36 would read as
+// zero length.
+function range(event) {
+  if (event.kind === "POINT") return clock(event.startUs);
+  const tenths = clock(event.startUs) === clock(event.endUs);
+  return `${clock(event.startUs, tenths)}-${clock(event.endUs, tenths)}`;
 }
 
 const label = (type) => props.labels[type] || (te(`events.${type}`) ? t(`events.${type}`) : type);
-const range = (event) => (event.kind === "POINT" ? clock(event.startUs) : `${clock(event.startUs)}-${clock(event.endUs)}`);
 const isSelected = (event) =>
   props.selected && props.selected.startUs === event.startUs && props.selected.type === event.type;
 </script>

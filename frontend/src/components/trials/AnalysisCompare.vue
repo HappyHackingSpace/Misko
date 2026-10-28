@@ -47,7 +47,7 @@ const rows = computed(() => {
     return { key, x, y, unit, diff: both ? y.value - x.value : null };
   });
 });
-const cell = (m) => (!m ? "–" : m.value === null ? t("analysis.missing") : fmt.metric(m.value, m.unit));
+const cell = (m) => (!m ? "–" : m.value === null ? t("analysis.missing") : fmt.metric(m.value, m.unit, m.key));
 </script>
 
 <template>
@@ -78,7 +78,7 @@ const cell = (m) => (!m ? "–" : m.value === null ? t("analysis.missing") : fmt
             <td>{{ metricLabel(row.key) }}</td>
             <td>{{ cell(row.x) }}</td>
             <td>{{ cell(row.y) }}</td>
-            <td :class="{ muted: !row.diff }">{{ row.diff == null ? "–" : fmt.signedMetric(row.diff, row.unit) }}</td>
+            <td :class="{ muted: !row.diff }">{{ row.diff == null ? "–" : fmt.signedMetric(row.diff, row.unit, row.key) }}</td>
           </tr>
         </tbody>
       </table>
