@@ -82,3 +82,18 @@ test("dashboard tiles open the lists they count", async ({ page, request }) => {
   await expect(page.getByTestId("experiment-status-filter")).toContainText("Running");
   await expect(page.getByTestId("experiment-link").filter({ hasText: draft.code })).toHaveCount(0);
 });
+
+test("an empty upcoming list says where sessions are planned", async ({ page, request }) => {
+  await signIn(page, request);
+  // The seeded lab always has planned sessions, so the summary is emptied here.
+  await page.route("**/dashboard/summary", async (route) => {
+    const summary = await (await route.fetch()).json();
+    await route.fulfill({ json: { ...summary, upcomingTests: [] } });
+  });
+  await page.goto("/dashboard");
+  const empty = page.getByTestId("upcoming-empty");
+  await expect(empty).toContainText("Sessions are planned on the Tests tab of a running study.");
+  await expect(empty.getByRole("link", { name: "How to plan a session" })).toHaveAttribute("href", /\/usage\/#planning-and-running-test-sessions$/);
+  await empty.getByTestId("upcoming-running").click();
+  await expect(page).toHaveURL(/\/experiments\?status=RUNNING$/);
+});
