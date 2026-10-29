@@ -27,7 +27,7 @@ test("results are rejected with a reason, accepted and switched to another run",
   await row(data.results.M03).click();
   await expect(detail).toHaveAttribute("data-test-subject", data.results.M03);
   await expect(detail.getByTestId("review-group")).toContainText("G2");
-  await expect(detail.getByTestId("review-metric-path_length_cm")).toContainText(/127[.,]36/);
+  await expect(detail.getByTestId("review-metric-path_length_cm")).toContainText(/127[.,]4 cm/);
   await expect(detail.getByTestId("review-reject")).toBeDisabled();
   await chooseValue(page, "review-reason", "TRACKING_LOST", { scope: detail });
   await fill(detail, "review-note", "Tail tracked instead of the body");

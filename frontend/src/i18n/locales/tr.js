@@ -472,6 +472,7 @@ export default {
         s: "sn",
         count: "adet",
         ratio: "%",
+        index: "indeks",
         boolean: "",
       },
       qcRules: {

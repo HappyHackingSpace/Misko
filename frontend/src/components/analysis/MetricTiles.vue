@@ -18,7 +18,7 @@ const fmt = useNumbers();
   <div class="kpis" :data-test="`${testPrefix}s`">
     <div v-for="metric in metrics" :key="metric.key" class="kpi" :class="{ missing: metric.value === null }" :data-test="`${testPrefix}-${metric.key}`">
       <span class="kpi-label">{{ label(metric.key) }}</span>
-      <span class="kpi-value">{{ metric.value === null ? $t("analysis.missing") : fmt.metric(metric.value, metric.unit) }}</span>
+      <span class="kpi-value">{{ metric.value === null ? $t("analysis.missing") : fmt.metric(metric.value, metric.unit, metric.key) }}</span>
       <span v-if="metric.value === null" class="kpi-note">{{ fmt.missingReason(metric.missingReason) }}</span>
     </div>
   </div>

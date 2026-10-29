@@ -472,6 +472,7 @@ export default {
         s: "s",
         count: "count",
         ratio: "%",
+        index: "index",
         boolean: "",
       },
       qcRules: {

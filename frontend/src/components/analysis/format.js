@@ -44,36 +44,44 @@ export function useParadigmText() {
   return { need, manifestOf, paradigmName, metricLabel, eventLabels };
 }
 
-// A count or a switch reads as the bare number.
-const BARE_UNITS = new Set(["count", "boolean"]);
+// A count, a switch or an index reads as the bare number.
+const BARE_UNITS = new Set(["count", "boolean", "index"]);
+// Distance reads to the millimetre; a short time or speed keeps two decimals
+// so it does not round to 0.
+const DIGITS = { cm: 1 };
+
+// A ratio is a share, shown in percent, except an index: it runs from -1 to +1,
+// so a percent would misread as a share. The manifest marks it with min -1, but
+// a metric value carries only its key and unit.
+export const metricUnit = (unit, key) => (unit === "ratio" && key?.endsWith("_index") ? "index" : unit);
 
 export function useNumbers() {
   const { locale, t, te } = useI18n();
-  const formatter = computed(() => new Intl.NumberFormat(locale.value, { maximumFractionDigits: 2 }));
-  const signed = computed(() => new Intl.NumberFormat(locale.value, { maximumFractionDigits: 1, signDisplay: "exceptZero" }));
+  // By fraction digits; "+" keeps the sign.
+  const formats = computed(() => {
+    const make = (digits, signDisplay = "auto") => new Intl.NumberFormat(locale.value, { maximumFractionDigits: digits, signDisplay });
+    return { 1: make(1), 2: make(2), "+1": make(1, "exceptZero"), "+2": make(2, "exceptZero") };
+  });
 
   // Units in the panel's language ("cm/sn" in Turkish), from the paradigm wording.
   const unitText = (unit) => {
     if (!unit || BARE_UNITS.has(unit)) return "";
     return te(`paradigms.units.${unit}`) ? t(`paradigms.units.${unit}`) : unit;
   };
-  const number = (value) => (typeof value === "number" && Number.isFinite(value) ? formatter.value.format(value) : "–");
-  // A ratio reads as a share in percent; other units follow the number.
-  function metric(value, unit) {
-    if (value === null || value === undefined) return "–";
-    if (unit === "ratio") return `${number(value * 100)}%`;
-    const text = unitText(unit);
-    return text ? `${number(value)} ${text}` : number(value);
-  }
-  // A difference keeps its sign: +10 cm, -60 cm.
-  const signedNumber = computed(() => new Intl.NumberFormat(locale.value, { maximumFractionDigits: 2, signDisplay: "exceptZero" }));
-  function signedMetric(value, unit) {
+  const number = (value) => (typeof value === "number" && Number.isFinite(value) ? formats.value[2].format(value) : "–");
+  function show(value, unit, key, sign) {
     if (typeof value !== "number" || !Number.isFinite(value)) return "–";
-    if (unit === "ratio") return `${signedNumber.value.format(value * 100)}%`;
-    const text = unitText(unit);
-    return text ? `${signedNumber.value.format(value)} ${text}` : signedNumber.value.format(value);
+    const shown = metricUnit(unit, key);
+    const format = formats.value[`${sign ? "+" : ""}${DIGITS[shown] || 2}`];
+    if (shown === "ratio") return `${format.format(value * 100)}%`;
+    const text = unitText(shown);
+    return text ? `${format.format(value)} ${text}` : format.format(value);
   }
-  const percent = (value) => (typeof value === "number" && Number.isFinite(value) ? `${signed.value.format(value)}%` : "–");
+  // Pass the metric key where known, so an index is not shown as a percent.
+  const metric = (value, unit, key) => show(value, unit, key, false);
+  // A difference keeps its sign: +10 cm, -60 cm.
+  const signedMetric = (value, unit, key) => show(value, unit, key, true);
+  const percent = (value) => (typeof value === "number" && Number.isFinite(value) ? `${formats.value["+1"].format(value)}%` : "–");
   // Doses are stored in millionths of the unit: 3000000 mg/kg is 3 mg/kg.
   const dose = (doseMicro, unit) => (doseMicro == null ? "" : `${number(doseMicro / 1_000_000)} ${unit || ""}`.trim());
   const dateTime = (iso) => (iso ? new Date(iso).toLocaleString(locale.value) : "");

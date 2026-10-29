@@ -16,8 +16,9 @@ test("the Results tab shows provisional numbers and exports them", async ({ page
   await expect(page.getByTestId("report-review-link")).toHaveAttribute("href", new RegExp(`experimentId=${data.experimentId}.*status=PENDING`));
   const section = page.getByTestId("report-section-PRIMARY");
   const group = (code) => section.locator(`[data-test="report-group"][data-group="${code}"]`);
-  await expect(group("G2")).toContainText(/127[.,]36/);
-  await expect(group("G3")).toContainText(/127[.,]36/);
+  // A distance shows to the millimetre; the export keeps full precision.
+  await expect(group("G2")).toContainText(/127[.,]4 cm/);
+  await expect(group("G3")).toContainText(/127[.,]4 cm/);
   // n counts accepted results only: one per group, the pending one waits.
   await expect(group("G2").locator("td").nth(1)).toHaveText("1");
   await expect(group("G3").locator("td").nth(1)).toHaveText("1");
@@ -32,6 +33,7 @@ test("the Results tab shows provisional numbers and exports them", async ({ page
   expect(file.suggestedFilename()).toMatch(/^E2E-.*\.csv$/);
   const csv = await readFile(await file.path(), "utf8");
   for (const code of ["M04", "M06", "M07"]) expect(csv).toContain(code);
+  expect(csv).toContain("127.36");
 
   await page.getByTestId("report-review-link").click();
   await expect(page).toHaveURL(/\/review\?/);

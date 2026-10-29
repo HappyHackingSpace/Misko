@@ -11,6 +11,7 @@ import { api } from "../api/client.js";
 import { useAuth } from "../stores/auth.js";
 import { useBreadcrumb } from "../stores/breadcrumb.js";
 import { useParameters } from "../composables/useParameters.js";
+import { metricUnit } from "../components/analysis/format.js";
 
 const { t, te, locale } = useI18n();
 const route = useRoute();
@@ -52,7 +53,7 @@ const allEvents = computed(() => {
     (event) => !seen.has(event.type) && seen.add(event.type),
   );
 });
-const metricUnit = (metric) => unit({ unit: metric.unit });
+const metricUnitText = (metric) => unit({ unit: metricUnit(metric.unit, metric.key) });
 const qcLabel = (rule) => (te(`paradigms.qcRules.${rule.key}`) ? t(`paradigms.qcRules.${rule.key}`) : rule.key);
 const category = (key) => t(`paradigms.categories.${String(key).toLowerCase()}`);
 const toggle = (key) => (open.value = { ...open.value, [key]: !open.value[key] });
@@ -138,7 +139,7 @@ onUnmounted(() => crumb.clear());
             <template v-for="metric in manifest.metrics" :key="metric.key">
               <tr>
                 <td><strong>{{ metric.label }}</strong></td>
-                <td class="muted nowrap">{{ metricUnit(metric) }}</td>
+                <td class="muted nowrap">{{ metricUnitText(metric) }}</td>
                 <td>
                   {{ metric.description }}
                   <a href="#" class="link small toggle" @click.prevent="toggle(metric.key)">{{ $t("paradigms.technical") }}</a>
