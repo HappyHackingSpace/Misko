@@ -174,7 +174,14 @@ const ICONS = {
             <span class="muted time" :title="fmt.dateTime(test.scheduledAt)">{{ relative(test.scheduledAt) }}</span>
           </li>
         </ul>
-        <p v-else class="muted empty">{{ $t("dashboard.noUpcoming") }}</p>
+        <div v-else class="empty" data-test="upcoming-empty">
+          <p class="muted">{{ $t("dashboard.noUpcoming") }}</p>
+          <p class="hint">{{ $t("dashboard.noUpcomingHint") }}</p>
+          <p class="empty-links">
+            <RouterLink class="link" to="/experiments?status=RUNNING" data-test="upcoming-running">{{ $t("dashboard.runningStudies") }}</RouterLink>
+            <a class="link" :href="$t('dashboard.planningDocs')" target="_blank" rel="noopener">{{ $t("dashboard.howToPlan") }}</a>
+          </p>
+        </div>
       </NCard>
     </div>
   </template>
@@ -222,4 +229,7 @@ const ICONS = {
 .dot-info { background: var(--accent); }
 .time { margin-left: auto; font-size: 12.5px; white-space: nowrap; }
 .empty { padding: 18px 8px; text-align: center; }
+.empty p { margin: 0 0 6px; }
+.empty .hint { font-size: 13px; }
+.empty-links { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 16px; font-size: 13px; }
 </style>
