@@ -22,6 +22,7 @@ import (
 // violation means, so the API answers with a code instead of a 500.
 var constraintErrors = map[string]error{
 	"analysis_workers_name_key":           application.ErrWorkerNameTaken,
+	"analysis_workers_token_key":          application.ErrWorkerTokenTaken,
 	"analysis_jobs_transition":            domain.ErrStaleAttempt,
 	"analysis_jobs_attempts_check":        domain.ErrStaleAttempt,
 	"analysis_job_outputs_fenced":         domain.ErrStaleAttempt,
