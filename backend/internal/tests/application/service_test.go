@@ -252,6 +252,7 @@ func TestListQueriesAreValidated(t *testing.T) {
 		"negative page":   {Page: -1},
 		"negative size":   {PageSize: -1},
 		"long search":     {Search: strings.Repeat("x", 101)},
+		"NUL in search":   {Search: "M\x0001"},
 	} {
 		store := newStore()
 		if _, err := New(store, allowAll{}, clock).ListAllTests(ctx, viewer, q); !errors.Is(err, ErrInvalidQuery) || len(store.calls) > 0 {

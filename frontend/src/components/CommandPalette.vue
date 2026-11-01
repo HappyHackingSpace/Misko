@@ -20,6 +20,7 @@ const query = ref("");
 const groups = ref([]);
 const active = ref(0);
 const loading = ref(false);
+const failed = ref(false);
 const input = ref(null);
 
 function onKey(e) {
@@ -48,30 +49,35 @@ watch(query, (text) => {
   const search = text.trim();
   latest++;
   loading.value = !!search;
+  failed.value = false;
   if (!search) groups.value = [];
   else timer = setTimeout(() => find(search, latest), 200);
 });
 
 async function find(search, ticket) {
+  const studyQuery = (status) => experiments.list({ search, status, pageSize: LIMIT, sort: "code", order: "asc" });
   const answers = await Promise.allSettled([
-    experiments.list({ search, pageSize: LIMIT, sort: "code", order: "asc" }),
+    studyQuery(),
+    // Reports are asked for apart, so matching drafts (no report yet) do not
+    // use up their places.
+    studyQuery("RUNNING"),
+    studyQuery("COMPLETED"),
     tests.worklist({ search, pageSize: LIMIT }),
     subjects.list({ search, pageSize: LIMIT, sort: "code", order: "asc" }),
   ]);
   if (ticket !== latest) return;
   // A list the user may not read just stays out of the results.
-  const [studies, sessions, animals] = answers.map((a) => (a.status === "fulfilled" ? a.value.data || [] : []));
+  const [studies, running, completed, sessions, animals] = answers.map((a) => (a.status === "fulfilled" ? a.value.data || [] : []));
+  failed.value = answers.every((a) => a.status === "rejected");
+  const reported = [...running, ...completed].sort((a, b) => a.code.localeCompare(b.code)).slice(0, LIMIT);
   groups.value = [
     {
       key: "studies",
       items: studies.map((e) => ({ id: `study-${e.id}`, title: e.code, detail: e.title, meta: t(`experiments.status.${e.status}`), to: `/experiments/${e.id}` })),
     },
     {
-      // A draft has no report yet.
       key: "reports",
-      items: studies
-        .filter((e) => e.status !== "DRAFT")
-        .map((e) => ({ id: `report-${e.id}`, title: e.code, detail: e.title, to: `/experiments/${e.id}?tab=results` })),
+      items: reported.map((e) => ({ id: `report-${e.id}`, title: e.code, detail: e.title, to: `/experiments/${e.id}?tab=results` })),
     },
     {
       key: "sessions",
@@ -109,7 +115,11 @@ function onInputKey(e) {
   const n = items.value.length;
   if (e.key === "ArrowDown" && n) active.value = (active.value + 1) % n;
   else if (e.key === "ArrowUp" && n) active.value = (active.value - 1 + n) % n;
-  else if (e.key === "Enter") go(items.value[active.value]);
+  // Until the answer for the current text arrives, the marked result belongs
+  // to the previous text.
+  else if (e.key === "Enter") {
+    if (!loading.value) go(items.value[active.value]);
+  }
   else return;
   e.preventDefault();
   nextTick(() => document.querySelector(".palette .item.active")?.scrollIntoView({ block: "nearest" }));
@@ -127,7 +137,7 @@ function onInputKey(e) {
   </button>
 
   <NModal v-model:show="open" :auto-focus="false" transform-origin="center">
-    <div class="palette" role="dialog" :aria-label="$t('search.open')" data-test="search-palette">
+    <div class="palette" role="dialog" aria-modal="true" :aria-label="$t('search.open')" data-test="search-palette">
       <div class="field">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true">
           <circle cx="11" cy="11" r="7" />
@@ -142,11 +152,12 @@ function onInputKey(e) {
           data-test="search-input"
           @keydown="onInputKey"
         />
-        <kbd>Esc</kbd>
+        <button type="button" class="close" :aria-label="$t('search.close')" :title="$t('search.close')" @click="open = false"><kbd>Esc</kbd></button>
       </div>
       <div class="results">
         <p v-if="!query.trim()" class="note">{{ $t("search.hint") }}</p>
         <p v-else-if="loading && !groups.length" class="note">{{ $t("search.searching") }}</p>
+        <p v-else-if="failed" class="note" data-test="search-failed">{{ $t("search.failed") }}</p>
         <p v-else-if="!groups.length" class="note" data-test="search-empty">{{ $t("search.empty", { query: query.trim() }) }}</p>
         <section v-for="group in groups" :key="group.key" :data-test="`search-${group.key}`">
           <h3>{{ $t(`search.groups.${group.key}`) }}</h3>
@@ -191,6 +202,7 @@ kbd {
 .field { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--line); color: var(--muted); }
 .field input { flex: 1; min-width: 0; border: none; outline: none; background: transparent; color: var(--txt); font: inherit; font-size: 15px; }
 .field input::-webkit-search-cancel-button { display: none; }
+.close { padding: 0; border: none; background: none; cursor: pointer; }
 .results { overflow-y: auto; padding: 6px; }
 .note { margin: 0; padding: 22px 12px; text-align: center; color: var(--muted); font-size: 13.5px; }
 h3 { margin: 8px 10px 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
@@ -206,6 +218,5 @@ h3 { margin: 8px 10px 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.
 @media (max-width: 860px) {
   .search-btn { min-width: 0; padding: 0 9px; border-color: transparent; background: transparent; }
   .search-btn .label, .search-btn kbd { display: none; }
-  .field kbd { display: none; }
 }
 </style>

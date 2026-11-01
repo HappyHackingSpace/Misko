@@ -23,6 +23,8 @@ export default {
       placeholder: "Çalışma, oturum ve denek ara",
       hint: "Bir çalışma kodu ya da başlığı, zaman noktası veya denek kodu yazın.",
       searching: "Aranıyor…",
+      failed: "Arama başarısız oldu. Birazdan yeniden deneyin.",
+      close: "Aramayı kapat",
       empty: "“{query}” ile eşleşen bir şey yok.",
       groups: { studies: "Çalışmalar", reports: "Raporlar", sessions: "Test oturumları", subjects: "Denekler" },
     },

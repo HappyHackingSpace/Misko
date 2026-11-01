@@ -34,4 +34,12 @@ test("one search finds studies, their reports, sessions and subjects", async ({ 
   await expect(palette.getByTestId("search-empty")).toContainText("no-such-record");
   await input.press("Escape");
   await expect(palette).toBeHidden();
+
+  // A search that could not run says so instead of "nothing matches".
+  await page.route(/\/api\/(experiments|tests|subjects)\?/, (route) => route.abort());
+  await page.getByTestId("search-open").click();
+  await input.fill("M07");
+  await expect(palette.getByTestId("search-failed")).toBeVisible();
+  await palette.getByRole("button", { name: "Close search" }).click();
+  await expect(palette).toBeHidden();
 });

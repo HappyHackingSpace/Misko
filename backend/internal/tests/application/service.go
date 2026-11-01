@@ -341,7 +341,8 @@ func (s *Service) ListAllTests(ctx context.Context, actor access.Actor, q TestQu
 
 func (s *Service) list(ctx context.Context, q TestQuery, newestFirst bool) (TestPage, error) {
 	f := TestFilter{ExperimentID: q.ExperimentID, TimepointID: q.TimepointID, SubjectID: q.SubjectID, ParadigmKey: q.ParadigmKey, Search: strings.TrimSpace(q.Search), NewestFirst: newestFirst}
-	if !utf8.ValidString(f.Search) || utf8.RuneCountInString(f.Search) > 100 {
+	// PostgreSQL text cannot hold NUL, so it would fail the query instead.
+	if !utf8.ValidString(f.Search) || utf8.RuneCountInString(f.Search) > 100 || strings.ContainsRune(f.Search, 0) {
 		return TestPage{}, ErrInvalidQuery
 	}
 	if q.Status != "" {

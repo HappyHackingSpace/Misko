@@ -23,6 +23,8 @@ export default {
       placeholder: "Search studies, sessions and subjects",
       hint: "Type a study code or title, a timepoint or a subject code.",
       searching: "Searching…",
+      failed: "Search failed. Try again in a moment.",
+      close: "Close search",
       empty: "Nothing matches “{query}”.",
       groups: { studies: "Studies", reports: "Reports", sessions: "Test sessions", subjects: "Subjects" },
     },
