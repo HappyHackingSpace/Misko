@@ -110,6 +110,13 @@ Panel ──► Go API ──► PostgreSQL (kayıtlar, metrikler, olaylar)
    Cloud Storage (orijinal video, analiz videosu, yörünge)
 ```
 
+Bir worker kimliği `bootstrap register-worker` ile (veya çalışan bir sistemde
+`POST /api/analysis/workers` ile) oluşturulur; token'ı bir kez gösterilir,
+token'ın yalnızca SHA-256 özeti saklanır ve worker devre dışı bırakılınca
+token iptal olur. Yerel geliştirme için `bootstrap setup`,
+`WORKER_BOOTSTRAP_TOKEN` değerinden bir `dev-worker` kaydeder;
+`APP_ENV=production` iken bunu reddeder.
+
 Analiz servisi "bu videoyu, bu paradigma sürümüyle, bu parametrelerle ve bu
 kalibrasyonla" analiz eder. Bir analiz işi, değişmeyen bir girdi kopyası
 (kaynak videonun sürümü ve klibi, çözümlenmiş parametreler, kırpma alanı,

@@ -96,18 +96,47 @@ scoring): the worker tracks the subject in the water maze (`MWM`), novel object
 and Mişko computes the events and metrics; a person reviews the result. It has
 been tested on synthetic video only.
 
-1. Sign in as a lab manager or the administrator and register the worker with
-   model version `misko-tracker-bgsub 2.2.0` and the four paradigms at
-   version 1 as capabilities (register only the paradigms your worker build
-   supports; `worker/README.md` lists them).
+**Local development: the seed token.** With `WORKER_BOOTSTRAP_TOKEN` set in
+`.env` (it is in `.env.example`, so `cp .env.example .env` is enough), the
+`setup` command also registers a `dev-worker` whose token is exactly that
+value, and the `worker` profile uses it when `MISKO_WORKER_TOKEN` is empty.
+Nothing else is needed:
 
-   ```bash
-   TOKEN=$(curl -s http://localhost:4000/api/auth/login \
-     -H 'Content-Type: application/json' \
-     -d '{"email": "admin@misko.local", "password": "YOUR_PASSWORD"}' | jq -r .token)
-   curl -s http://localhost:4000/api/analysis/workers \
-     -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
-     -d '{
+```bash
+docker compose --profile worker up -d worker
+```
+
+The seed value is public, so `setup` refuses it when `APP_ENV=production`;
+real deployments register workers one of the two ways below.
+
+**The `register-worker` command.** It registers the worker directly in the
+database - no admin JWT or curl - and prints the token (`mw_...`) **once**,
+like `setup` does the administrator password. Register only the paradigms your
+worker build supports; `worker/README.md` lists them.
+
+```bash
+docker compose --profile setup run --rm register-worker \
+  -name worker-1 -model-version "misko-tracker-bgsub 2.2.0" \
+  -paradigm MWM -paradigm NOVEL_OBJECT -paradigm POLE -paradigm TREADMILL
+```
+
+Put the token in `.env` as `MISKO_WORKER_TOKEN` and start the worker:
+
+```bash
+docker compose --profile worker up -d worker
+```
+
+**The API.** `POST /api/analysis/workers` (as a lab manager or the
+administrator) registers a worker on a running system and shows its token once
+in the response:
+
+```bash
+TOKEN=$(curl -s http://localhost:4000/api/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email": "admin@misko.local", "password": "YOUR_PASSWORD"}' | jq -r .token)
+curl -s http://localhost:4000/api/analysis/workers \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{
     "name": "worker-1",
     "modelVersion": "misko-tracker-bgsub 2.2.0",
     "capabilities": [
@@ -117,14 +146,7 @@ been tested on synthetic video only.
       {"paradigmKey": "TREADMILL", "paradigmVersion": 1}
     ]
   }'
-   ```
-
-2. The response shows the worker token (`mw_...`) once. Put it in `.env` as
-   `MISKO_WORKER_TOKEN` and start the worker:
-
-   ```bash
-   docker compose --profile worker up -d worker
-   ```
+```
 
 `GET /api/analysis/capabilities` lists what the enabled workers can analyse.
 The worker's own settings and limits are in `worker/README.md`.
@@ -199,7 +221,8 @@ for development only.
 | `JOB_INTERVAL` | `10s` | How often the jobs process queues analysis runs. |
 | `GCS_BUCKET` | empty | Private bucket for videos. When set it is used instead of local storage. |
 | `GCS_SIGNER_EMAIL` | empty | Service account that signs the upload and read URLs. |
-| `MISKO_WORKER_TOKEN` | empty | Only for the `worker` profile, after registering a worker in the API. |
+| `WORKER_BOOTSTRAP_TOKEN` | empty | Local development only: `setup` seeds a `dev-worker` with exactly this token, and the `worker` profile falls back to it. Refused when `APP_ENV=production`. |
+| `MISKO_WORKER_TOKEN` | empty | Only for the `worker` profile, after registering a worker with `register-worker` or in the API. Overrides the seed token. |
 
 In `docker-compose.yml` the backend also has `LOCAL_STORAGE_DIR=/data/videos` on
 the `local-videos` volume. Outside Docker, set `LOCAL_STORAGE_DIR` to any folder

@@ -1,131 +1,113 @@
 ---
-title: Entegrasyon (Mişko ↔ CV servisi)
-description: Birbirinden tamamen bağımsız iki sistem arasındaki kontrat.
+title: Entegrasyon (analiz işçileri)
+description: Bir analiz işçisinin işi nasıl aldığı, videoyu nasıl okuduğu, çıktılarını nasıl yüklediği ve sonucu API'nin nasıl hesapladığı.
 ---
 
-Bu belge **birbirinden tamamen bağımsız** iki sistemin nasıl konuştuğunu tanımlar.
-Amaç gevşek bağ: her taraf kendi veritabanına, sürüm döngüsüne ve dağıtımına
-sahiptir; yalnızca aşağıdaki sınır üzerinden haberleşirler.
+Video analizi **işçilerde** (worker) çalışır: Mişko API'sine kimlik doğrulayan,
+her seferinde bir iş alan ve ürettiklerini yükleyen süreçler. İşçinin kendi
+veritabanı yoktur ve API işçiyi hiç çağırmaz; işçi yalnızca aşağıdaki
+`/api/worker` yollarını çağırır. Paketle gelen işçi `worker/` klasöründedir
+(bkz. [Kurulum](../installation/#analiz-workerı)), ama bu protokolü izleyen her
+program onun yerini alabilir.
 
-## İki sistem ve sorumluluklar
+## İş nedir
 
-| | **Mişko** | **CV servisi** |
-|---|---|---|
-| Rol | Lab iş akışının system of record'u | Yakalama + inference + telemetri |
-| Stack | Node/Express/Prisma/**PostgreSQL** + Vue | Python/FastAPI/YOLOv8/ByteTrack/OpenCV |
-| Tuttuğu | user, subject, environment, scenario, **test + özet** | ham kare telemetrisi, event'ler, video |
-| Hacim | Küçük / ilişkisel | **Büyük** (kendi PostgreSQL'i) |
-| Sahiplik | Testin "ne / kim / ne zaman"ı | Testin "ölçüm / kanıt"ı |
+Bir iş, tek bir videoyu tek bir paradigma sürümü, onun parametreleri ve
+paradigma gerektiriyorsa bir kalibrasyonun kopyasıyla analiz eder. Girdileri
+hiç değişmez: yeniden analiz yeni bir iş açar, öncekiler kalır. İşi bir testin
+hayvanı ya da bir paradigma denemesi ister; iş hayvanın grubunu veya
+tedavisini hiç söylemez, bu yüzden işçi bunlardan etkilenemez.
 
-## Veri sahipliği
+`jobs` süreci, çalışma devam ediyor ya da tamamlanmışsa, hayvan dışlanmamışsa,
+testin videosu doğrulanmışsa ve hayvanın arenası gereken her bölgeyle
+kalibre edilmişse, testin her hayvanı için bir iş sıraya koyar. Paradigma
+denemeleri, videoları ve kalibrasyonları hazır olduğunda bir iş açar; deneme
+değiştirilmiş eşiklerle yeniden analiz edildiğinde bir tane daha.
 
-- **Mişko** → testin kimliği ve bağlamı, ayrıca **ortam-bazlı metrik sonuçları**
-  (`result` JSON).
-- **CV servisi** → ham çıktı: kare kare konum/poz telemetrisi, event satırları,
-  video dosyaları. Bunların hiçbiri Mişko'nun veritabanına girmez.
-- **Object storage** (MinIO/S3) → video ve büyük artefaktlar. İki taraf da
-  yalnızca **URL referansı** tutar, dosyanın kendisini değil.
+## İşçiyi kaydetme
 
-## Eşleme: Test ↔ capture session
+Bir laboratuvar yöneticisi (veya süper yönetici) işçiyi
+`POST /api/analysis/workers` ile kaydeder: adını, model sürümünü ve analiz
+edebildiği paradigma sürümlerini (yeteneklerini) verir. Paradigma kataloğunda
+olmayan sürümler `worker.unknownCapability` ile reddedilir. Yanıt işçinin
+belirtecini (token) **yalnızca bir kez** gösterir; onu işçinin gizli
+yapılandırmasında saklayın (paketle gelen işçi için `MISKO_WORKER_TOKEN`).
+`POST /api/analysis/workers/{id}/disable` belirteci iptal eder.
 
-Bir Mişko **Test**'i, CV tarafında bir **capture session**'a karşılık gelir;
-bağ iki şeyle kurulur:
+İşçinin her çağrısı `Authorization: Worker <token>` gönderir. Bu belirteç
+yalnızca `/api/worker` yollarında geçerlidir ve kullanıcı belirteçleri orada
+kabul edilmez.
 
-- `cameraId` / `cageId` — hangi kamera/kafes (CV her event'i bununla etiketler).
-- Zaman penceresi — Test'in `startedAt → endedAt` aralığı.
+## Protokol
 
-CV servisi sürekli çalışabilir; bir Test sadece o akıştan bir **dilimi**
-sahiplenir, böylece CV'nin Mişko'yu beklemesi gerekmez.
+1. **Alma.** `POST /api/worker/claim`, işçinin desteklediği paradigma sürümüne
+   ait en eski bekleyen işi kiralar (lease); iş yoksa `204` döner. Yanıtta iş
+   (video, klip, sabitlenmiş parametreler), paradigma kontratı, kalibrasyon
+   kopyası (kare boyutu, arenanın kırpımı, santimetreye homografi ve kalibre
+   edilmiş bölgeler), çıktı öneki ve üretilecek yörünge biçimi bulunur.
+   Ayrıca **deneme** (attempt) numarası gelir: sonraki her çağrı onu belirtir,
+   eski bir denemeyle yapılan çağrı `409` ile reddedilir.
+2. **Nabız.** `POST /api/worker/runs/{runId}/heartbeat` kiralamayı uzatır.
+   Kiralama 5 dakika sürer; paketle gelen işçi onu her 60 saniyede yeniler.
+3. **Videoyu okuma.** `POST /api/worker/runs/{runId}/source-url`, işin
+   sabitlediği video sürümüne kısa ömürlü imzalı bir URL döner.
+4. **Çıktıları yükleme.** Her çıktı için
+   `POST /api/worker/runs/{runId}/outputs` türünü, dosya adını, içerik türünü,
+   boyutunu ve CRC32C değerini bildirir ve denemenin önekinde
+   (`jobs/{jobId}/attempts/{attempt}/`) imzalı bir yükleme URL'si döner. Bir
+   sonuç tam olarak bir `TRAJECTORY` (`application/json`) ve bir
+   `ANALYZED_VIDEO` (`video/mp4` veya `video/webm`) ister; `THUMBNAIL` görseli
+   isteğe bağlıdır.
+5. **Gönderme.** `POST /api/worker/runs/{runId}/result` yüklenen çıktıları,
+   model sürümünü ve analiz edilmiş videonun özgün videoyla nasıl
+   hizalandığını (`pair`: kaydırmalar ve zaman eşleme sürümü) bildirir. İstek
+   ölçüm ya da olay içermez; API bunları reddeder.
+6. **Ya da başarısızlık.** `POST /api/worker/runs/{runId}/failure` bir neden ve
+   yeniden denenip denenemeyeceğini bildirir.
 
-## Test yaşam döngüsü
+Yörünge `misko.trajectory.v1` JSON'udur: iş kimliği, deneme, kayıt süresi ve
+eşit uzunlukta diziler: örnek zamanları (`tUs`, klip başından mikrosaniye),
+santimetre cinsinden konumlar (`xCm`, `yCm`), `tracked`, `confidence` (0 ile 1
+arası) ve `inferred`. İşçinin kendi tanılamaları gibi diğer alanlar saklanır
+ama okunmaz.
 
-Bir Test yalnızca **Senaryo + Denek**'ten oluşturulur. Senaryo ortamları
-(geometri/zones) ve paradigmalarını (metrikleri sabitler) zaten taşır -
-dolayısıyla bunları ne operatör ne de CV koşu anında seçer.
+## API sonuçla ne yapar
 
-```mermaid
-sequenceDiagram
-    participant Op as Operatör (Vue)
-    participant M as Mişko API
-    participant CV as CV servisi
-    participant S as Object storage
+- **Nesneleri doğrular.** Bildirilen her çıktı, bu iş ve deneme altında,
+  bildirilen boyut, sağlama toplamı ve içerik türüyle var olmalıdır.
+- **Yörüngeyi denetler.** Yörünge bu işe ve denemeye ait olmalı, kayıt
+  süresiyle uyuşmalı, zamanları kesin artan olmalı ve izlenen her örneğin
+  konumu bulunmalıdır. En fazla 64 MiB olabilir (30 fps'te yaklaşık dört saat).
+- **Kalite kurallarını uygular.** Paradigmanın `max_lost_frame_ratio` kuralı
+  izlenemeyen örneklere, `min_tracking_confidence` kuralı izlenen örneklerin
+  ortalama güvenine göre denetlenir. Çıkarımla konumlanan örnekler izlenmiş
+  sayılır ama güven ortalamasına girmez. Geçemeyen yörünge `QC_FAILED`
+  nedeniyle `FAILED` olur ve yeniden denenmez; kalite değerleri her durumda
+  saklanır.
+- **Sonucu hesaplar.** Go ölçüm motoru her ölçümü ve olayı, işin sabitlenmiş
+  parametreleri ve kalibrasyonuyla yörüngeden hesaplar. İzlemeyi ne üretmiş
+  olursa olsun, her ölçümün tek tanımı API'dedir. Bkz.
+  [Ölçüm mimarisi](../measurements/).
+- **Tek seferde yayımlar.** Ölçümler, olaylar, kalite ve çıktılar birlikte
+  görünür. Kabul edilmiş aynı sonucu yeniden göndermek, yeni bir şey
+  yayımlamadan işi döner.
 
-    Op->>M: POST /api/tests (scenario, subject, cameraId)
-    M-->>Op: Test (PENDING)
-    Op->>M: PATCH /api/tests/:id (status=RUNNING, startedAt)
-    Note over CV: CV zaten o kamerayı işliyor;<br/>event'ler camera_id ile DB'sine yazılıyor
-    Op->>M: PATCH /api/tests/:id (status=DONE, endedAt)
-    CV->>CV: [startedAt, endedAt] + cameraId için ortamın metriklerini hesapla
-    CV->>S: video + trajektori yükle
-    CV->>M: POST /api/tests/:id/result (servis auth) + metrics + artefakt URL'leri
-    M->>M: ortam başına doğrula + sakla
-    M-->>CV: 200 OK (idempotent)
-```
+Bir test hayvanının ilk başarılı sonucu insan incelemesini bekler; çalışma
+raporunda yalnızca incelemecinin kabul ettiği sonuçlar sayılır. Paradigma
+denemelerinin sonuçları incelemeye, raporlara veya panoya hiç girmez.
 
-## CV sonuç akışı (Mişko içinde)
+## Yeniden denemeler ve kiralamalar
 
-CV bir sonuç push ettiğinde Mişko sabit bir hat işletir:
+Bir iş 3 kez denenebilir. Yeniden denenebilir bir başarısızlık ya da nabızsız
+dolan bir kiralama, deneme hakkı kaldıkça işi sıraya geri koyar; sonuncudan
+sonra iş `FAILED` olur (dolan kiralama için `LEASE_EXPIRED`). Yeniden
+denenemeyen bir başarısızlık işi hemen bitirir. Her çağrı denemesini
+belirttiği için kiralamasını yitiren bir işçi, işi devralan işçinin
+çalışmasının üzerine yazamaz.
 
-1. **Servis auth** - `X-Service-Key`, `SERVICE_API_KEY` ile doğrulanır (operatör
-   JWT yok); aksi halde 401.
-2. **Idempotency** - bu `captureSessionId` daha önce kaydedildiyse, saklanan sonuç
-   no-op olarak döner. Yeniden denemek güvenli.
-3. **Kontratı çöz** - push, testin senaryosunun bir **ortamını** hedefler; o
-   ortamın **paradigması** + metrik sözlüğü yüklenir.
-4. **Doğrula** - `metrics` içindeki her anahtar o paradigmanın bilinen bir metriği
-   olmalı (bilinmeyen anahtarlar reddedilir); değerler `valueType`/`validRange`'e
-   uymalı (templated metrikler zone map'idir).
-5. **Sakla** - metrikler `Test.result.environments[envId].metrics`'e yazılır (JSON;
-   QC + artefakt URL'leri yanında). Ham video/telemetri Mişko'ya hiç girmez.
-6. **Sonlandır** - ortam DONE işaretlenir; hepsi bitince test DONE. **Geç/kal
-   verdikti yoktur** - sonuç veridir, analiz katmanında yorumlanır. QC metriklerin
-   yanında saklanır.
+## Depolama
 
-## Sınır API'si (kontrat)
-
-Yön: **CV → Mişko push**. CV ham verinin tek doğruluk kaynağıdır; metriği o üretir
-ve bildirir. Mişko, CV'yi sorgulamaz.
-
-```
-POST /api/tests/:id/result
-X-Service-Key: <SERVICE_API_KEY>
-Content-Type: application/json
-```
-
-```json
-{
-  "captureSessionId": "cv-9f3a...",
-  "cameraId": "cam-1",
-  "startedAt": "2026-06-01T15:00:00Z",
-  "endedAt":   "2026-06-01T15:05:00Z",
-  "metrics": {
-    "distance_cm": 1234.5,
-    "time_in_zone_s": 45.2,
-    "latency_to_platform_s": 12.0,
-    "events": { "ate": 3, "rest": 7 }
-  },
-  "artifacts": {
-    "videoUrl": "s3://misko/cam-1/2026-06-01/sess-9f3a.mp4",
-    "trajectoryUrl": "s3://misko/cam-1/2026-06-01/sess-9f3a.parquet"
-  }
-}
-```
-
-Mişko `metrics`'i ortamın paradigma sözlüğüne göre doğrular,
-`Test.result.environments[envId].metrics`'e saklar ve ortamı (hepsi bitince
-testi) `DONE` yapar. Geç/kal verdikti yoktur. `captureSessionId` daha önce
-işlendiyse çağrı no-op döner (idempotent).
-
-## Servis-servis kimlik doğrulama
-
-Operatör uç noktaları JWT kullanır (mevcut). Servis-servis çağrılar ayrı bir
-**servis anahtarı** kullanır: `X-Service-Key` header'ı, `SERVICE_API_KEY` ile
-doğrulanır. CV servisi operatör JWT'si taşımaz — kendi servis kimliğiyle gelir.
-
-## Dayanıklılık
-
-- **Idempotency:** `captureSessionId` ile tekrarlı gönderim güvenlidir.
-- **Retry:** Mişko erişilemezse CV exponential backoff ile yeniden dener ve
-  sonucu başarana kadar "gönderilmedi" işaretiyle tutar.
-- **Bağımsız ayakta kalma:** Mişko düşse CV yakalamaya devam eder ve sonradan
-  gönderir; CV düşse Mişko'nun domain yönetimi etkilenmez.
+Videolar ve çıktılar veritabanında değil, nesne depolamada durur: API'nin
+sunduğu yerel bir klasör (`LOCAL_STORAGE_DIR`) ya da özel bir Google Cloud
+Storage kovası (`GCS_BUCKET`). İşçiler yalnızca kısa ömürlü imzalı URL'ler
+görür; veritabanı nesnelere yalnızca referans tutar.
