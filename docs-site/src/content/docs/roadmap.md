@@ -127,7 +127,7 @@ physical rig is the `Environment`; calibration stays in Step 5.
 
 - Optional pose-estimation adapter: DeepLabCut, SLEAP or another open source model.
 - Behavior classifiers for rearing, grooming, freezing, risk assessment and head direction.
-- Automated detection of observer-scored events (pole test turns and falls, novel object exploration).
+- Pose-based event detection where the body centre is not enough (nose-directed novel object exploration, the pole turn from head direction).
 - Multi-animal support after single-animal workflows are stable.
 
 ## Step 10 - Live monitoring and sources

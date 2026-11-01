@@ -166,14 +166,29 @@ func TestCalibrationOverHTTP(t *testing.T) {
 		t.Fatalf("calibrated on the replacement: %v", s)
 	}
 
-	// An observation-only paradigm needs no calibration.
+	// The treadmill is filmed from the side and needs its shock grid drawn:
+	// a side view calibration without the zone is refused, one with it is
+	// accepted and calibrates the animal from the rig's default.
 	treadmill := seedTreadmillSubject(t, pool, study)
 	upload(treadmill.test, true)
-	if s := c.expect("treadmill status", c.call("GET", "/api/tests/"+treadmill.test+"/subjects/"+treadmill.subject+"/calibration-status", tokens["VIEWER"], nil), 200, "").body; s["status"] != "NOT_REQUIRED" {
-		t.Fatalf("observation-only paradigm: %v", s)
+	treadmillStatus := func() map[string]any {
+		return c.expect("treadmill status", c.call("GET", "/api/tests/"+treadmill.test+"/subjects/"+treadmill.subject+"/calibration-status", tokens["VIEWER"], nil), 200, "").body
 	}
-	c.expect("calibrate a treadmill animal", c.call("POST", "/api/tests/"+treadmill.test+"/subjects/"+treadmill.subject+"/calibrations", tokens["TECHNICIAN"], body("", 0)), 409, "calibration.notRequired")
-	c.expect("treadmill rig", c.call("POST", "/api/environments/"+treadmill.environment+"/revisions/1/calibrations", admin, body("", 0)), 409, "calibration.notRequired")
+	if s := treadmillStatus(); s["status"] != "WAITING_FOR_CALIBRATION" {
+		t.Fatalf("an uncalibrated treadmill: %v", s)
+	}
+	side := body("", 0)
+	side["measurementPlane"] = "APPARATUS_SIDE"
+	rig := "/api/environments/" + treadmill.environment + "/revisions/1/calibrations"
+	c.expect("treadmill rig without its grid", c.call("POST", rig, admin, side), 400, "calibration.missingZone")
+	side["zones"] = []any{map[string]any{"key": "shock_grid", "polygon": []any{
+		map[string]any{"x": 200, "y": 600}, map[string]any{"x": 400, "y": 600}, map[string]any{"x": 400, "y": 900}, map[string]any{"x": 200, "y": 900}}}}
+	if created := c.create(rig, admin, side); created["measurementPlane"] != "APPARATUS_SIDE" || len(created["zones"].([]any)) != 1 {
+		t.Fatalf("side view calibration: %v", created)
+	}
+	if s := treadmillStatus(); s["status"] != "CALIBRATED" || s["source"] != "ENVIRONMENT" {
+		t.Fatalf("a calibrated treadmill: %v", s)
+	}
 }
 
 type treadmillSubject struct{ test, subject, environment string }

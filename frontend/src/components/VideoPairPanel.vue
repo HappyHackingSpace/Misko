@@ -1,6 +1,6 @@
 <script setup>
-// Side panel that plays one analysis run: the original recording and the
-// analyzed video of that run, on the same timeline.
+// Side panel that plays one analysis job: the original recording and the
+// analysed video of that job, on the same timeline.
 //
 // Times come from the API as microseconds from the recording (clip) start. The
 // pair says how to map them: source time = sourceOffsetUs + recording time,
@@ -10,10 +10,10 @@
 // Signed URLs expire. When one does, the panel fetches a new pair and restores
 // the position it was at, so a refresh does not send the viewer back to zero.
 import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
-import { runs } from "../api/analysis.js";
+import { jobs } from "../api/analysis.js";
 
 const props = defineProps({
-  runId: { type: String, required: true },
+  jobId: { type: String, required: true },
   // The event to play, or null to leave the videos where they are.
   play: { type: Object, default: null },
 });
@@ -40,7 +40,7 @@ async function loadPair(keepPosition = false) {
   loading.value = true;
   unavailable.value = "";
   try {
-    pair.value = await runs.videoPair(props.runId);
+    pair.value = await jobs.videoPair(props.jobId);
     // Wait for the new sources to be on the elements. Before that the players
     // still hold the old ones, and a position set now would be thrown away.
     await nextTick();
@@ -123,9 +123,9 @@ async function playEvent(event) {
 }
 
 watch(
-  () => props.runId,
+  () => props.jobId,
   () => {
-    // Another run is another pair of videos: nothing of the last one carries over.
+    // Another job is another pair of videos: nothing of the last one carries over.
     stopAt = null;
     lastPosition = 0;
     loadPair();

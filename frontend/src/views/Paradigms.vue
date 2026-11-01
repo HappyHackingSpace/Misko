@@ -1,11 +1,10 @@
 <script setup>
 // The published paradigm catalog: the templates environments are created
-// from. The API returns the whole list at once in the chosen language, and
-// says which versions a worker can actually analyze.
+// from. The API returns the whole list at once in the chosen language.
 import { computed, h, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { RouterLink } from "vue-router";
-import { NAlert, NCard, NDataTable, NTag } from "naive-ui";
+import { NAlert, NCard, NDataTable } from "naive-ui";
 import { api } from "../api/client.js";
 import { useTableExport } from "../composables/useTableExport.js";
 import PageHead from "../components/PageHead.vue";
@@ -16,10 +15,6 @@ const paradigms = ref([]);
 const error = ref("");
 const search = ref("");
 const loading = ref(true);
-// The API answers in the chosen language and falls back to the English
-// article when no Turkish one exists; say so on the link.
-const referenceLabel = (url) =>
-  locale.value !== "en" && url.startsWith("https://en.") ? t("paradigms.referenceEnglish") : t("paradigms.reference");
 
 async function load() {
   try {
@@ -52,20 +47,10 @@ const columns = computed(() => [
       h("div", { class: "cell" }, [
         h(RouterLink, { class: "link", to: `/paradigms/${row.key}`, "data-test": `paradigm-${row.key}` }, () => row.name),
         h("small", { class: "muted" }, row.description),
-        row.reference &&
-          h("a", { class: "link small", href: row.reference, target: "_blank", rel: "noopener noreferrer", "data-test": `paradigm-reference-${row.key}` }, referenceLabel(row.reference)),
       ]),
   },
   { title: t("paradigms.category"), key: "category", sorter: "default", width: 170, render: (row) => category(row.category) },
   { title: t("paradigms.versions"), key: "versions", render: (row) => row.versions.join(", ") },
-  {
-    title: t("paradigms.automated"),
-    key: "automatedAnalysis",
-    render: (row) =>
-      h(NTag, { size: "small", round: true, bordered: false, type: row.automatedAnalysis ? "success" : "default" }, () =>
-        row.automatedAnalysis ? t("common.yes") : t("common.no"),
-      ),
-  },
 ]);
 
 const exportColumns = [
@@ -73,7 +58,6 @@ const exportColumns = [
   { key: "name", label: t("common.name") },
   { key: "category", label: t("paradigms.category"), value: (row) => category(row.category) },
   { key: "versions", label: t("paradigms.versions"), value: (row) => row.versions.join(", ") },
-  { key: "automatedAnalysis", label: t("paradigms.automated"), value: (row) => (row.automatedAnalysis ? t("common.yes") : t("common.no")) },
 ];
 const { exportCsv, exportPdf } = useTableExport({
   state: {

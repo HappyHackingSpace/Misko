@@ -14,7 +14,7 @@ func TestContractsComeFromThePublishedParadigmVersion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !c.CalibrationRequired || !c.TrajectoryAnalyzable || c.ObserverScored || c.MetricEngineVersion != 1 || c.ResultSchemaVersion != 1 || len(c.Metrics) != 8 || len(c.Events) != 2 {
+	if !c.CalibrationRequired || !c.TrajectoryAnalyzable || c.MetricEngineVersion != 1 || c.ResultSchemaVersion != 1 || len(c.Metrics) != 8 || len(c.Events) != 2 {
 		t.Fatalf("MWM contract: %+v", c)
 	}
 	crossings := c.Metrics[slices.IndexFunc(c.Metrics, func(m domain.MetricSpec) bool { return m.Key == "platform_crossings_count" })]
@@ -27,10 +27,15 @@ func TestContractsComeFromThePublishedParadigmVersion(t *testing.T) {
 	if !slices.Contains(c.QC, domain.QCRule{Key: "max_lost_frame_ratio", Operator: "<=", Value: 0.1}) {
 		t.Fatalf("QC rules: %+v", c.QC)
 	}
-	// Scored observations cannot come from a trajectory and need no calibration.
-	for _, key := range []string{"NOVEL_OBJECT", "POLE", "TREADMILL"} {
+	// Every paradigm is analysed from a calibrated trajectory.
+	for key, events := range map[string][]domain.EventSpec{
+		"NOVEL_OBJECT": {{Type: "exploration", Kind: "INTERVAL"}},
+		"POLE":         {{Type: "turn_complete", Kind: "POINT"}, {Type: "base_reached", Kind: "POINT"}, {Type: "fall", Kind: "POINT"}},
+		"TREADMILL":    {{Type: "exhaustion", Kind: "POINT"}, {Type: "shock", Kind: "POINT"}},
+	} {
 		other, err := New().Contract(key, 1)
-		if err != nil || other.TrajectoryAnalyzable || !other.ObserverScored || other.CalibrationRequired {
+		if err != nil || !other.TrajectoryAnalyzable || !other.CalibrationRequired || !slices.Equal(other.Events, events) ||
+			slices.Contains(other.MissingReasons, "NOT_SCORED") {
 			t.Errorf("%s: %+v %v", key, other, err)
 		}
 	}
@@ -88,13 +93,14 @@ func TestTheEngineComputesMetricsFromTheTrajectory(t *testing.T) {
 	}
 }
 
-// No published paradigm declares calibrated zones: the water maze derives its
-// zones from parameters, and scored-only paradigms are not analysed from a
-// trajectory at all. Zone shapes the paradigm does not declare are refused.
+// The water maze derives its zones from parameters; the other paradigms need
+// the zones drawn with their calibration, and the engine evaluates the
+// centimetre shapes of the pinned calibration. Zone shapes the paradigm does
+// not declare are refused.
 func TestCalibratedZonesComeFromTheCalibration(t *testing.T) {
-	for key, analyzable := range map[string]bool{"MWM": true, "NOVEL_OBJECT": false, "POLE": false, "TREADMILL": false} {
+	for key, zones := range map[string][]string{"MWM": nil, "NOVEL_OBJECT": {"novel_object", "familiar_object"}, "POLE": {"pole", "base"}, "TREADMILL": {"shock_grid"}} {
 		c, err := New().Contract(key, 1)
-		if err != nil || c.TrajectoryAnalyzable != analyzable || len(c.RequiredZones) != 0 {
+		if err != nil || !c.TrajectoryAnalyzable || !slices.Equal(c.RequiredZones, zones) {
 			t.Errorf("%s: %+v %v", key, c, err)
 		}
 	}
@@ -115,5 +121,32 @@ func TestCalibratedZonesComeFromTheCalibration(t *testing.T) {
 	square := domain.Shape{Polygon: []domain.Vertex{{X: 0, Y: 0}, {X: 20, Y: 0}, {X: 20, Y: 10}, {X: 0, Y: 10}}}
 	if _, err := New().Evaluate("MWM", 1, params, tr, []domain.Zone{{Key: "platform", Centimeters: square}}, 1_000_000); err == nil {
 		t.Fatal("a zone shape the water maze does not declare must not be evaluated")
+	}
+
+	// Novel object at (10, 10) r = 4 and a familiar square: 0.0-0.4 s at the
+	// novel object, out at 0.5 s; the bout [0, 0.5) carries its label.
+	novel := domain.Shape{Circle: &domain.Circle{X: 10, Y: 10, Radius: 4}}
+	familiar := domain.Shape{Polygon: []domain.Vertex{{X: 36, Y: 6}, {X: 44, Y: 6}, {X: 44, Y: 14}, {X: 36, Y: 14}}}
+	objects := []domain.Zone{{Key: "novel_object", Centimeters: novel}, {Key: "familiar_object", Centimeters: familiar}}
+	track := domain.Track{}
+	for i := range 6 {
+		x := 10.0
+		if i == 5 {
+			x = 30
+		}
+		track.Samples = append(track.Samples, domain.Sample{TUs: int64(i) * 100_000, X: x, Y: 10, Tracked: true, Confidence: 0.9})
+	}
+	nor, err := New().Evaluate("NOVEL_OBJECT", 1, map[string]float64{"arena_width_cm": 50, "arena_height_cm": 50}, track, objects, 1_000_000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(nor.Intervals) != 1 || nor.Intervals[0] != (domain.Interval{Type: "exploration", Label: "novel", StartUs: 0, EndUs: 500_000}) {
+		t.Fatalf("exploration: %+v", nor.Intervals)
+	}
+	if events := track.Events(nor); len(events) != 1 || events[0].Label != "novel" || events[0].Kind != "INTERVAL" {
+		t.Fatalf("published events: %+v", events)
+	}
+	if _, err := New().Evaluate("NOVEL_OBJECT", 1, map[string]float64{"arena_width_cm": 50, "arena_height_cm": 50}, track, objects[:1], 1_000_000); err == nil {
+		t.Fatal("a missing required zone must not be evaluated")
 	}
 }

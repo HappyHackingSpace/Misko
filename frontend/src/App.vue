@@ -12,6 +12,8 @@ import LangSelect from "./components/LangSelect.vue";
 import UserMenu from "./components/UserMenu.vue";
 import Breadcrumb from "./components/Breadcrumb.vue";
 import NavIcon from "./components/NavIcon.vue";
+import MiskoLogo from "./components/MiskoLogo.vue";
+import CommandPalette from "./components/CommandPalette.vue";
 
 const auth = useAuth();
 const lab = useLab();
@@ -81,6 +83,7 @@ const primaryOptions = computed(() => [
   { label: navLabel("nav.dashboard", "nav-dashboard"), key: "/dashboard", icon: navIcon("dashboard") },
   { label: navLabel("nav.experiments", "nav-experiments"), key: "/experiments", icon: navIcon("experiments") },
   { label: navLabel("nav.tests", "nav-tests"), key: "/tests", icon: navIcon("test") },
+  { label: navLabel("nav.trials", "nav-trials"), key: "/trials", icon: navIcon("trials") },
   { label: t("nav.subjects"), key: "/subjects", icon: navIcon("subjects") },
   { label: navLabel("nav.review", "nav-review"), key: "/review", icon: navIcon("test") },
   { label: navLabel("nav.reports", "nav-reports"), key: "/reports", icon: navIcon("reports") },
@@ -88,7 +91,8 @@ const primaryOptions = computed(() => [
 
 const managementOptions = computed(() => {
   const options = [
-    { label: t("nav.catalog"), key: "/catalog", icon: navIcon("paradigms") },
+    { label: navLabel("nav.substances", "nav-substances"), key: "/substances", icon: navIcon("substances") },
+    { label: navLabel("nav.diseaseModels", "nav-disease-models"), key: "/disease-models", icon: navIcon("diseaseModels") },
     { label: t("nav.paradigms"), key: "/paradigms", icon: navIcon("paradigms") },
     { label: t("nav.environments"), key: "/environments", icon: navIcon("environments") },
   ];
@@ -100,7 +104,7 @@ function onMenuSelect(key) {
   if (key && key !== route.path) router.push(key);
 }
 
-const topLevelKeys = ["/dashboard", "/experiments", "/tests", "/subjects", "/review", "/reports", "/catalog", "/paradigms", "/environments", "/users"];
+const topLevelKeys = ["/dashboard", "/experiments", "/tests", "/trials", "/subjects", "/review", "/reports", "/substances", "/disease-models", "/paradigms", "/environments", "/users"];
 const activeKey = computed(() => topLevelKeys.find((k) => route.path.startsWith(k)) ?? null);
 </script>
 
@@ -122,19 +126,11 @@ const activeKey = computed(() => topLevelKeys.find((k) => route.path.startsWith(
         >
           <div class="sider-inner">
             <RouterLink to="/dashboard" class="brand" :class="{ collapsed: railCollapsed }">
-              <!-- A running mouse reduced to four shapes: an ear and body sharing
-                   one fill so they read as one silhouette, a tail stroke, and an
-                   eye punched through in the badge's own background color. -->
-              <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true">
-                <rect width="32" height="32" rx="9" fill="var(--accent)" />
-                <path d="M22 19c3.4.5 6.1 3.1 6.7 6.5" stroke="var(--accent-fg)" stroke-width="1.8" fill="none" stroke-linecap="round" />
-                <circle cx="11" cy="10.2" r="4" fill="var(--accent-fg)" />
-                <ellipse cx="15.2" cy="17.2" rx="8.4" ry="6.2" transform="rotate(-10 15.2 17.2)" fill="var(--accent-fg)" />
-                <circle cx="8.7" cy="15.6" r="1.1" fill="var(--accent)" />
-              </svg>
+              <!-- Collapsed rail: the logo's head alone, as in the favicon. -->
+              <MiskoLogo v-if="railCollapsed" mark class="brand-initial" />
               <span v-if="!railCollapsed" class="brand-text">
-                <span class="brand-name">{{ $t("app.name") }}</span>
-                <span class="brand-lab" v-if="lab.labName">{{ lab.labName }}</span>
+                <MiskoLogo class="brand-name" />
+                <span class="brand-lab" v-if="lab.labName" :title="lab.labName">{{ lab.labName }}</span>
               </span>
             </RouterLink>
 
@@ -180,13 +176,14 @@ const activeKey = computed(() => topLevelKeys.find((k) => route.path.startsWith(
               </svg>
             </button>
             <div class="spacer"></div>
+            <CommandPalette />
             <ThemeToggle />
             <LangSelect />
             <UserMenu />
           </n-layout-header>
           <n-layout-content content-style="padding: 26px 30px;" class="app-content">
             <Breadcrumb />
-            <!-- Keyed by language: catalog wording and breadcrumbs come from the API
+            <!-- Keyed by language: paradigm wording and breadcrumbs come from the API
                  and from each page's setup, so a language switch rebuilds the page. -->
             <RouterView :key="locale" />
           </n-layout-content>
@@ -211,21 +208,27 @@ const activeKey = computed(() => topLevelKeys.find((k) => route.path.startsWith(
 
 .brand {
   display: flex; align-items: center; gap: 10px; min-width: 0;
-  padding: 16px 18px; height: 56px; flex-shrink: 0;
+  padding: 8px 18px; height: 56px; flex-shrink: 0;
 }
-.brand.collapsed { padding: 14px; justify-content: center; }
-.brand-mark { width: 30px; height: 30px; flex-shrink: 0; }
-.brand-text { display: flex; flex-direction: column; min-width: 0; gap: 2px; }
-.brand-name {
-  font-weight: 700; font-size: 18px; letter-spacing: -0.03em;
-  color: var(--txt); white-space: nowrap; line-height: 1.1;
-}
+.brand.collapsed { padding: 8px; justify-content: center; }
+.brand-text { display: flex; flex-direction: column; min-width: 0; gap: 4px; }
+.brand-name { height: 30px; }
+.brand-initial { width: 36px; height: 36px; flex-shrink: 0; }
 .brand-lab {
-  font-weight: 600; font-size: 10.5px; letter-spacing: 0.07em; text-transform: uppercase;
-  color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.1;
+  font-weight: 500; font-size: 12px; color: var(--muted); line-height: 1.2;
+  /* A long lab name wraps to a second line instead of being cut with "...". */
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2;
+  overflow: hidden; overflow-wrap: anywhere;
 }
 
-.sider-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 8px 0; }
+.sider-scroll { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 8px 0; scrollbar-gutter: auto; }
+/* Short viewports (100% zoom on a laptop): tighten vertical rhythm so the menu
+   fits without scrolling when possible; the scroll stays as a fallback. */
+@media (max-height: 940px) {
+  .sider-scroll :deep(.n-menu-item-content) { height: 38px; }
+  .section-label { margin-top: 10px; }
+  .section-label.first { margin-top: 12px; }
+}
 .section-label {
   margin: 14px 16px 6px; font-size: 11px; font-weight: 700;
   text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted);

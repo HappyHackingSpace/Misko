@@ -153,6 +153,40 @@ func (s *Store) FinishAsset(ctx context.Context, a domain.Asset) (domain.Asset, 
 	return toAsset(row), nil
 }
 
+func (s *Store) CreateFolderAsset(ctx context.Context, folder string, asset domain.Asset) (domain.Asset, error) {
+	row, err := s.queries.CreateFolderAsset(ctx, sqlcgen.CreateFolderAssetParams{
+		Bucket: asset.Bucket, Folder: folder, ContentType: asset.ContentType, FileName: optional(asset.FileName),
+		SizeBytes: asset.SizeBytes, Crc32c: int64(asset.CRC32C), CreatedBy: asset.CreatedBy,
+	})
+	if err != nil {
+		return domain.Asset{}, translate(err, nil, "create video asset")
+	}
+	return toAsset(row), nil
+}
+
+func (s *Store) Asset(ctx context.Context, id string) (domain.Asset, error) {
+	if !pgtx.ValidUUID(id) {
+		return domain.Asset{}, application.ErrAssetNotFound
+	}
+	row, err := s.queries.GetAsset(ctx, id)
+	if err != nil {
+		return domain.Asset{}, translate(err, application.ErrAssetNotFound, "get video asset")
+	}
+	return toAsset(row), nil
+}
+
+// LockAsset must run inside Transaction; the lock lasts until it ends.
+func (s *Store) LockAsset(ctx context.Context, id string) (domain.Asset, error) {
+	if !pgtx.ValidUUID(id) {
+		return domain.Asset{}, application.ErrAssetNotFound
+	}
+	row, err := s.queries.LockAsset(ctx, id)
+	if err != nil {
+		return domain.Asset{}, translate(err, application.ErrAssetNotFound, "lock video asset")
+	}
+	return toAsset(row), nil
+}
+
 // translate maps a missing row to notFound and named constraint violations to
 // their errors. Other errors are wrapped so PostgreSQL codes stay inspectable.
 func translate(err, notFound error, operation string) error {

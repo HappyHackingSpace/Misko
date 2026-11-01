@@ -20,6 +20,25 @@ var pure = map[string]bool{
 	"sort": true, "strconv": true, "strings": true, "time": true, "unicode": true, "unicode/utf8": true,
 }
 
+// experimentSide are the modules of experiments: their design, tests,
+// review and reports. Neither the analysis service nor paradigm trials may
+// depend on them.
+var experimentSide = []string{"experiments", "tests", "protocols", "dosing", "subjects", "subjectanalysis", "reports", "dashboard"}
+
+// forbidden names module pairs that must never meet, whatever the layer. The
+// general rule below already keeps modules apart; these pairs state the
+// boundaries of the analysis service explicitly so a future exception to
+// that rule cannot open them.
+var forbidden = map[string][]string{
+	"analysis": append([]string{"trials"}, experimentSide...),
+	"trials":   experimentSide,
+}
+
+// sharedKernel is the published paradigm catalog. Only a module's
+// adapters/catalog package may read it, so every module translates the
+// catalog into its own domain in one place.
+const sharedKernel = module + "/internal/paradigms/domain"
+
 func allowed(file, dependency string) bool {
 	parts := strings.Split(filepath.ToSlash(file), "/")
 	if len(parts) < 3 || parts[0] != "internal" {
@@ -28,6 +47,11 @@ func allowed(file, dependency string) bool {
 	owner := parts[1]
 	if owner == "bootstrap" {
 		return true
+	}
+	for _, other := range forbidden[owner] {
+		if dependency == module+"/internal/"+other || strings.HasPrefix(dependency, module+"/internal/"+other+"/") {
+			return false
+		}
 	}
 	if owner == "platform" {
 		return !strings.HasPrefix(dependency, module+"/internal/") || strings.HasPrefix(dependency, module+"/internal/platform/")
@@ -51,20 +75,20 @@ func allowed(file, dependency string) bool {
 		}
 		return layer == "application" && (dependency == prefix+"application" || strings.HasPrefix(dependency, prefix+"application/"))
 	case "adapters":
+		// Cross-module calls go through interfaces the consumer declares and
+		// bootstrap wires, so an adapter imports only its own module, the
+		// platform, the RBAC kernel and, from adapters/catalog, the catalog.
 		if !strings.HasPrefix(dependency, module+"/") {
 			return true
 		}
-		if strings.HasPrefix(dependency, module+"/internal/platform/") {
+		if strings.HasPrefix(dependency, module+"/internal/platform/") || dependency == module+"/internal/access/domain" {
 			return true
 		}
 		target := strings.Split(strings.TrimPrefix(dependency, module+"/"), "/")
-		if len(target) < 3 || target[0] != "internal" {
-			return false
-		}
-		if target[2] == "domain" || target[2] == "application" {
+		if len(target) >= 3 && target[0] == "internal" && target[1] == owner {
 			return true
 		}
-		return target[1] == owner && target[2] == "adapters"
+		return dependency == sharedKernel && len(parts) >= 4 && parts[3] == "catalog"
 	default:
 		return false
 	}

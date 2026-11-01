@@ -301,9 +301,10 @@ func (w *studyWorld) session(timepoint string, allocations ...string) (string, [
 	return test, subjects
 }
 
-// publish stores a succeeded run of one animal with a distance value (nil
-// for a missing value) the way the analysis context does, opens its result
-// and records the review status.
+// publish stores a succeeded job of one animal with a distance value (nil
+// for a missing value) the way the analysis service does, links it to the
+// animal the way the experiment side does, opens its result and records the
+// review status. It returns the job id.
 func (w *studyWorld) publish(testSubject string, value *float64, status string) string {
 	w.t.Helper()
 	ctx := context.Background()
@@ -313,58 +314,42 @@ func (w *studyWorld) publish(testSubject string, value *float64, status string) 
 		w.worker = w.id(`INSERT INTO misko.analysis_workers (name, model_version, token_sha256, created_by) VALUES ($1, 'fixture 1', $2, $3) RETURNING id`,
 			"fixture-"+w.exp, hash, studyAuthor)
 	}
-	var run string
+	var job string
 	err := pgx.BeginFunc(ctx, w.pool, func(tx pgx.Tx) error {
-		if err := tx.QueryRow(ctx, `INSERT INTO misko.analysis_runs (experiment_id, test_id, test_subject_id, recording_id, source_asset_id, source_generation, source_crc32c,
-				clip_start_us, clip_end_us, paradigm_key, paradigm_version, metric_engine_version, result_schema_version, parameters, trigger, status, attempt,
+		if err := tx.QueryRow(ctx, `INSERT INTO misko.analysis_jobs (requester_kind, requester_id, paradigm_key, paradigm_version, metric_engine_version,
+				result_schema_version, parameters, source_asset_id, source_generation, source_crc32c, clip_start_us, clip_end_us, trigger, status, attempt,
 				max_attempts, worker_id, lease_expires_at, available_at)
-			SELECT ts.experiment_id, ts.test_id, ts.id, r.id, a.id, a.generation, a.crc32c, r.clip_start_us, r.clip_end_us, 'MWM', 1, 1, 1, '{}', 'MANUAL',
+			SELECT 'TEST_SUBJECT', ts.id, 'MWM', 1, 1, 1, '{}', a.id, a.generation, a.crc32c, r.clip_start_us, r.clip_end_us, 'MANUAL',
 				'RUNNING', 1, 3, $2, now() + interval '1 hour', now()
 			FROM misko.test_subjects ts JOIN misko.current_recordings r ON r.test_id = ts.test_id JOIN misko.video_assets a ON a.id = r.video_asset_id
-			WHERE ts.id = $1 RETURNING id`, testSubject, w.worker).Scan(&run); err != nil {
+			WHERE ts.id = $1 RETURNING id`, testSubject, w.worker).Scan(&job); err != nil {
 			return err
 		}
-		object := "runs/" + run + "/attempts/1/overlay.mp4"
-		var asset string
-		for _, step := range []func() error{
-			func() error {
-				_, err := tx.Exec(ctx, `INSERT INTO misko.analysis_output_uploads (run_id, attempt, object_name, kind, content_type, size_bytes, crc32c)
-					VALUES ($1, 1, $2, 'ANALYZED_VIDEO', 'video/mp4', 10, 1)`, run, object)
-				return err
-			},
-			func() error {
-				return tx.QueryRow(ctx, `INSERT INTO misko.video_assets (kind, bucket, object_name, content_type, size_bytes, crc32c, status, generation, verified_at, created_by)
-					VALUES ('ANALYZED', 'misko-test-videos', $1, 'video/mp4', 10, 1, 'VERIFIED', 1, now(), $2) RETURNING id`, object, w.worker).Scan(&asset)
-			},
-			func() error {
-				_, err := tx.Exec(ctx, `INSERT INTO misko.analysis_artifacts (run_id, attempt, object_name, kind, bucket, generation, size_bytes, crc32c, content_type, video_asset_id)
-					VALUES ($1, 1, $2, 'ANALYZED_VIDEO', 'misko-test-videos', 1, 10, 1, 'video/mp4', $3)`, run, object, asset)
-				return err
-			},
-			func() error {
-				_, err := tx.Exec(ctx, `INSERT INTO misko.analysis_video_pairs (run_id, attempt, source_asset_id, source_generation, analyzed_asset_id, source_offset_us, output_offset_us, time_mapping_version)
-					SELECT id, 1, source_asset_id, source_generation, $2, 0, 0, 'identity-v1' FROM misko.analysis_runs WHERE id = $1`, run, asset)
-				return err
-			},
-			func() error {
-				var missing any
-				if value == nil {
-					missing = "NO_TRACKING"
-				}
-				_, err := tx.Exec(ctx, `INSERT INTO misko.metric_results (run_id, attempt, metric_key, unit, value, missing_reason) VALUES ($1, 1, 'path_length_cm', 'cm', $2, $3)`,
-					run, value, missing)
-				return err
-			},
-			func() error {
-				_, err := tx.Exec(ctx, `UPDATE misko.analysis_runs SET status = 'SUCCEEDED', model_version = 'fixture 1', lease_expires_at = NULL, finished_at = now() WHERE id = $1`, run)
-				return err
-			},
-			func() error {
-				_, err := tx.Exec(ctx, `INSERT INTO misko.subject_results (test_subject_id, run_id) VALUES ($1, $2) ON CONFLICT (test_subject_id) DO NOTHING`, testSubject, run)
-				return err
-			},
+		object := "jobs/" + job + "/attempts/1/overlay.mp4"
+		var missing any
+		if value == nil {
+			missing = "NO_TRACKING"
+		}
+		for _, step := range []struct {
+			sql  string
+			args []any
+		}{
+			{`INSERT INTO misko.analysis_job_uploads (job_id, attempt, object_name, kind, content_type, size_bytes, crc32c)
+				VALUES ($1, 1, $2, 'ANALYZED_VIDEO', 'video/mp4', 10, 1)`, []any{job, object}},
+			{`INSERT INTO misko.analysis_job_outputs (job_id, attempt, object_name, kind, bucket, generation, size_bytes, crc32c, content_type)
+				VALUES ($1, 1, $2, 'ANALYZED_VIDEO', 'misko-test-videos', 1, 10, 1, 'video/mp4')`, []any{job, object}},
+			{`INSERT INTO misko.analysis_job_pairs (job_id, attempt, analyzed_object_name, source_offset_us, output_offset_us, time_mapping_version)
+				VALUES ($1, 1, $2, 0, 0, 'identity-v1')`, []any{job, object}},
+			{`INSERT INTO misko.analysis_job_metrics (job_id, attempt, metric_key, unit, value, missing_reason) VALUES ($1, 1, 'path_length_cm', 'cm', $2, $3)`,
+				[]any{job, value, missing}},
+			{`UPDATE misko.analysis_jobs SET status = 'SUCCEEDED', model_version = 'fixture 1', lease_expires_at = NULL, finished_at = now() WHERE id = $1`,
+				[]any{job}},
+			{`INSERT INTO misko.test_subject_analyses (job_id, experiment_id, test_id, test_subject_id, recording_id, trigger)
+				SELECT $1, ts.experiment_id, ts.test_id, ts.id, r.id, 'MANUAL'
+				FROM misko.test_subjects ts JOIN misko.current_recordings r ON r.test_id = ts.test_id WHERE ts.id = $2`, []any{job, testSubject}},
+			{`INSERT INTO misko.subject_results (test_subject_id, job_id) VALUES ($1, $2) ON CONFLICT (test_subject_id) DO NOTHING`, []any{testSubject, job}},
 		} {
-			if err := step(); err != nil {
+			if _, err := tx.Exec(ctx, step.sql, step.args...); err != nil {
 				return err
 			}
 		}
@@ -382,7 +367,7 @@ func (w *studyWorld) publish(testSubject string, value *float64, status string) 
 	if err != nil {
 		w.t.Fatalf("publish %s: %v", testSubject, err)
 	}
-	return run
+	return job
 }
 
 func distance(v float64) *float64 { return &v }
@@ -436,7 +421,7 @@ func TestAnalysisOverHTTP(t *testing.T) {
 		if status != 200 {
 			t.Fatalf("claim: %d %v", status, body)
 		}
-		if body["run"].(map[string]any)["testSubjectId"] == subjects[0] {
+		if body["testSubject"].(map[string]any)["id"] == subjects[0] {
 			claim = body
 		}
 	}
@@ -447,7 +432,7 @@ func TestAnalysisOverHTTP(t *testing.T) {
 	runID, prefix := run["id"].(string), claim["outputPrefix"].(string)
 	calibration := claim["calibration"].(map[string]any)
 	subject := claim["testSubject"].(map[string]any)
-	if run["attempt"] != float64(1) || subject["id"] != subjects[0] || subject["environmentRevisionId"] != w.arenas[0] ||
+	if run["attempt"] != float64(1) || subject["id"] != subjects[0] || claim["requester"].(map[string]any)["kind"] != "TEST_SUBJECT" ||
 		calibration["id"] != run["calibrationId"] || calibration["crop"].(map[string]any)["width"] != float64(640) ||
 		len(claim["contract"].(map[string]any)["metrics"].([]any)) != 8 || claim["trajectorySchema"] != "misko.trajectory.v1" {
 		t.Fatalf("job: %v", claim)

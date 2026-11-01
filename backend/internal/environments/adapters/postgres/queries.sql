@@ -58,3 +58,10 @@ SELECT r.id, r.environment_id, e.name AS environment_name, r.paradigm_key, r.num
 FROM misko.environment_revisions r
 JOIN misko.environments e ON e.id = r.environment_id
 ORDER BY lower(e.name), e.id, r.number;
+
+-- name: GetRevisionByID :one
+SELECT r.id, r.environment_id, r.paradigm_key, r.paradigm_version, r.number, r.parameters, r.notes, r.created_by, r.created_at,
+       e.name AS environment_name
+FROM misko.environment_revisions r
+JOIN misko.environments e ON e.id = r.environment_id
+WHERE r.id = @id;

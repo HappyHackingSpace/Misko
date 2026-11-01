@@ -10,7 +10,7 @@ from typing import Any
 from . import ALGORITHM_VERSION, TRAJECTORY_SCHEMA, video
 from .geometry import to_arena, to_pixels
 from .overlay import Overlay
-from .paradigms import SUPPORTED, Layout, layout
+from .paradigms import BELT, POLE, SUPPORTED, WATER, Layout, layout
 from .tracking import Background, TrackerSettings, detect, luminance
 
 # Water: a lower base threshold plus each pixel's noise (see tracking).
@@ -19,6 +19,15 @@ WATER_NOISE_FACTOR = 4.0
 # Opaque water gives less contrast than a lit floor; this many grey levels
 # above the background count as full contrast there.
 WATER_FULL_CONTRAST = 50.0
+# Belt: the noise-aware threshold of water and a background toward the floor
+# (75th percentile from the subject's side): a subject resting for up to about
+# 70% of the clip stays foreground, while a dark stretch of belt texture still
+# needs 4 noise levels beyond it.
+BELT_THRESHOLD = 25
+BELT_NOISE_FACTOR = 4.0
+BELT_PERCENTILE = 75.0
+# Pole: a fall at about 2 m/s seen at 4 px/cm and 25 fps moves 30 px a frame.
+POLE_MAX_JUMP_FRACTION = 0.35
 
 
 class NonRetryable(Exception):
@@ -76,20 +85,43 @@ def check_supported(job: dict[str, Any]) -> None:
 
 
 def settings_for(apparatus: Layout, settings: TrackerSettings) -> TrackerSettings:
-    """Tracker settings tuned for the apparatus. Water gets a noise-aware
-    threshold and a median background: a swimming animal never rests long at
-    one spot, while a high percentile would take a shimmering reflection as
-    the background and turn the water around it into foreground."""
-    if apparatus.water and settings.noise_factor == 0:
+    """Tracker settings tuned for the apparatus; settings that already carry a
+    noise factor are taken as given.
+
+    - Water (MWM): a noise-aware threshold and a median background. A swimming
+      subject never rests long at one spot, while a high percentile would take a
+      shimmering reflection as the background and turn the water around it
+      into foreground.
+    - Belt (TREADMILL): the moving belt texture changes every pixel it covers,
+      so the threshold grows with each pixel's own noise as on water. The
+      background is the BELT_PERCENTILE percentile toward the floor (decided
+      once the polarity is known), so a subject resting on the grid for up to
+      about that share of the clip stays foreground.
+    - Pole (POLE): a fall moves the subject far between two frames, so a blob
+      farther from the previous position is still preferred over a larger one.
+    - Floor (NOVEL_OBJECT): the defaults. The objects never move, so they are
+      part of the background, and the 90th percentile keeps a subject resting
+      for most of the clip.
+    """
+    if settings.noise_factor != 0:
+        return settings
+    if apparatus.tracking == WATER:
         return replace(
             settings, threshold=min(settings.threshold, WATER_THRESHOLD), noise_factor=WATER_NOISE_FACTOR, background_percentile=50.0,
             full_contrast=min(settings.full_contrast, WATER_FULL_CONTRAST),
         )
+    if apparatus.tracking == BELT:
+        return replace(
+            settings, threshold=min(settings.threshold, BELT_THRESHOLD), noise_factor=BELT_NOISE_FACTOR,
+            background_percentile=min(settings.background_percentile, BELT_PERCENTILE),
+        )
+    if apparatus.tracking == POLE:
+        return replace(settings, max_jump_fraction=max(settings.max_jump_fraction, POLE_MAX_JUMP_FRACTION))
     return settings
 
 
 def analyze(source: Path, job: dict[str, Any], overlay_path: Path, settings: TrackerSettings = TrackerSettings()) -> Analysis:
-    """Measures the one animal of the job inside its arena's crop of the shared video."""
+    """Measures the one subject of the job inside its arena's crop of the shared video."""
     check_supported(job)
     run, calibration = job["run"], job.get("calibration")
     if calibration is None:

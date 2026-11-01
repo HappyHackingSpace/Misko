@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-func submission(run Run) Submission {
+func submission(run Job) Submission {
 	prefix := run.OutputPrefix()
 	return Submission{
 		WorkerID: run.WorkerID, Attempt: run.Attempt, ModelVersion: "mwm-tracker 1.4.0",
@@ -16,7 +16,7 @@ func submission(run Run) Submission {
 			{Kind: Trajectory, ObjectName: prefix + "trajectory.json"},
 			{Kind: Thumbnail, ObjectName: prefix + "thumb.png"},
 		},
-		Pair: PairInput{AnalyzedObjectName: prefix + "overlay.mp4", SourceOffsetUs: run.ClipStartUs, OutputOffsetUs: 0, TimeMappingVersion: "identity-v1"},
+		Pair: PairInput{AnalyzedObjectName: prefix + "overlay.mp4", SourceOffsetUs: run.Source.ClipStartUs, OutputOffsetUs: 0, TimeMappingVersion: "identity-v1"},
 	}
 }
 
@@ -44,7 +44,7 @@ func TestSubmissionsNameTheirOutputsAndPair(t *testing.T) {
 		"same object twice": {with(func(s *Submission) {
 			s.Artifacts[2] = ArtifactInput{Kind: Thumbnail, ObjectName: s.Artifacts[1].ObjectName}
 		}), ErrInvalidArtifact},
-		"artifact of another run": {with(func(s *Submission) { s.Artifacts[1].ObjectName = "runs/run-2/attempts/1/trajectory.json" }), ErrInvalidArtifact},
+		"artifact of another run": {with(func(s *Submission) { s.Artifacts[1].ObjectName = "jobs/job-2/attempts/1/trajectory.json" }), ErrInvalidArtifact},
 		"prefix only":             {with(func(s *Submission) { s.Artifacts[2].ObjectName = run.OutputPrefix() }), ErrInvalidArtifact},
 		"artifact of an old attempt": {with(func(s *Submission) {
 			s.Artifacts[1].ObjectName = strings.Replace(s.Artifacts[1].ObjectName, "/attempts/1/", "/attempts/0/", 1)
@@ -64,7 +64,7 @@ func TestSubmissionsNameTheirOutputsAndPair(t *testing.T) {
 
 	// A clip without an end takes the duration the worker measured.
 	open := queued()
-	open.ClipEndUs = nil
+	open.Source.ClipEndUs = nil
 	openRun, _ := open.Claim("worker-a", now, time.Minute)
 	s := submission(openRun)
 	if _, err := Validate(openRun, s); !errors.Is(err, ErrInvalidDuration) {

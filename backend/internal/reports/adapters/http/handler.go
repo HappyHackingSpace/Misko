@@ -125,7 +125,7 @@ func (h handler) fail(w http.ResponseWriter, r *http.Request, err error) {
 var animalHeader = []string{
 	"experimentCode", "endpointId", "endpointKind", "paradigmKey", "metricKey", "timepoint", "studyDay", "baseline",
 	"groupCode", "groupName", "groupRole", "diseaseModel", "substance", "dose", "doseUnit",
-	"subjectCode", "allocationId", "testSubjectId", "testId", "arena", "scheduledAt", "excluded", "resultStatus", "resultRunId",
+	"subjectCode", "allocationId", "testSubjectId", "testId", "arena", "scheduledAt", "excluded", "resultStatus", "resultJobId",
 	"value", "unit", "missingReason", "paradigmVersion", "metricEngineVersion",
 }
 
@@ -150,7 +150,7 @@ func animalRecords(d application.Data) ([]string, [][]string) {
 				cell(d.Report.Experiment.Code), e.ID, e.Kind, e.ParadigmKey, e.MetricKey, cell(tp.Name), strconv.Itoa(tp.StudyDay),
 				strconv.FormatBool(m.TimepointID == e.BaselineTimepointID), cell(g.Code), cell(g.Name), g.Role, cell(g.DiseaseModelName),
 				cell(g.SubstanceName), dose(g.DoseMicro), g.Unit, cell(m.SubjectCode), m.AllocationID, m.TestSubjectID, m.TestID, cell(m.Arena),
-				m.ScheduledAt.UTC().Format(time.RFC3339Nano), strconv.FormatBool(m.Excluded), m.ResultStatus, m.ResultRunID,
+				m.ScheduledAt.UTC().Format(time.RFC3339Nano), strconv.FormatBool(m.Excluded), m.ResultStatus, m.ResultJobID,
 				value, cell(m.Unit), cell(m.MissingReason), strconv.Itoa(m.ParadigmVersion), engine,
 			})
 		}

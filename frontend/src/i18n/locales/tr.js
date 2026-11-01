@@ -18,6 +18,16 @@ export default {
       menu: "Menü",
       collapse: "Daralt",
     },
+    search: {
+      open: "Ara",
+      placeholder: "Çalışma, oturum ve denek ara",
+      hint: "Bir çalışma kodu ya da başlığı, zaman noktası veya denek kodu yazın.",
+      searching: "Aranıyor…",
+      failed: "Arama başarısız oldu. Birazdan yeniden deneyin.",
+      close: "Aramayı kapat",
+      empty: "“{query}” ile eşleşen bir şey yok.",
+      groups: { studies: "Çalışmalar", reports: "Raporlar", sessions: "Test oturumları", subjects: "Denekler" },
+    },
     dashboard: {
       title: "Panel",
       intro: "Laboratuvarın şu anki durumu: bekleyen işler, son sonuçlar ve yaklaşan testler.",
@@ -392,7 +402,6 @@ export default {
       zone: "Bölge",
       key: "Anahtar",
       versions: "Sürümler",
-      automated: "Otomatik analiz",
       title: "Paradigmalar",
       intro:
         "Paradigmalar, ortamların oluşturulduğu hazır şablonlardır. Her paradigma girilecek düzenek ölçülerini, analiz ve seans ayarlarını ve üreteceği metrikleri tanımlar.",
@@ -473,6 +482,7 @@ export default {
         s: "sn",
         count: "adet",
         ratio: "%",
+        index: "indeks",
         boolean: "",
       },
       qcRules: {
@@ -638,7 +648,7 @@ export default {
       sexMale: "Erkek",
       sexUnknown: "Bilinmiyor",
       title: "Denekler (Fareler)",
-      subtitle: "Laboratuvar hayvanları; tür ve cinsiyet bilgileriyle.",
+      subtitle: "Laboratuvar denekleri; tür ve cinsiyet bilgileriyle.",
       code: "Kod",
       sex: "Cinsiyet",
       male: "Erkek",

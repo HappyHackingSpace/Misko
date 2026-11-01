@@ -1,16 +1,26 @@
-// API calls of the analysis area: runs of an animal, human review of results,
-// the study report and the dashboard summary.
+// API calls of the analysis area: analysis jobs, the runs of an animal, human
+// review of results, the study report and the dashboard summary.
 import { api, ApiError, getToken } from "./client.js";
 import { i18n } from "../i18n/index.js";
 
+// The analyses of the animals of a test, as the experiment side links them.
+// A run id is the id of the analysis job.
 export const runs = {
   // Runs of a test, newest first; with testSubjectId only that animal's runs.
   ofTest: (testId, testSubjectId) => api(`/tests/${testId}/analysis-runs`, { query: { testSubjectId } }),
-  // A run with its published metrics, events and artifacts once it succeeded.
-  get: (runId) => api(`/analysis-runs/${runId}`),
-  videoPair: (runId) => api(`/analysis-runs/${runId}/video-pair`),
   // A manual run of one animal with the current video and calibration.
   reanalyze: (testSubjectId) => api(`/analysis/test-subjects/${testSubjectId}/runs`, { method: "POST", body: {} }),
+};
+
+// Jobs of the analysis service, read the same way by the experiment screens
+// and by paradigm trials.
+export const jobs = {
+  // The job with what it published (metrics, events, artifacts, QC) once it succeeded.
+  get: (jobId) => api(`/analysis/jobs/${jobId}`),
+  // Signed reads of the original and the analysed video on one timeline.
+  videoPair: (jobId) => api(`/analysis/jobs/${jobId}/video-pair`),
+  // A signed read of one output: ANALYZED_VIDEO, TRAJECTORY or THUMBNAIL.
+  outputUrl: (jobId, kind) => api(`/analysis/jobs/${jobId}/outputs/${kind}/read-url`),
 };
 
 export const results = {

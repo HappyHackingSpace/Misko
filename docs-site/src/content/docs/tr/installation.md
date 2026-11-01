@@ -90,14 +90,17 @@ geçer.
 
 ### Analiz worker'ı
 
-Worker opsiyoneldir: o olmadan da testler kaydedilebilir ve gözlemci puanlamalı
-paradigmalar (direk, koşu bandı, yeni nesne) panelde puanlanır, ama takip
-edilen paradigma analiz edilmez. Worker takip edilen tek paradigmayı, `MWM`
-(Morris su labirenti) sürüm 1'i izler. Yalnızca sentetik videoyla test edildi.
+Worker opsiyoneldir: o olmadan da testler kaydedilebilir ama hiçbir şey analiz
+edilmez. Her paradigma otomatik analiz edilir (elle puanlama yoktur): worker
+su labirenti (`MWM`), yeni nesne (`NOVEL_OBJECT`), direk (`POLE`) ve koşu bandı
+(`TREADMILL`) testlerinin sürüm 1'inde deneği izler, Mişko olayları ve
+metrikleri hesaplar; bir kişi sonucu inceler. Yalnızca sentetik videoyla test
+edildi.
 
 1. Laboratuvar yöneticisi ya da yönetici olarak giriş yapın ve worker'ı
-   `misko-tracker-bgsub 2.0.0` model sürümüyle ve `MWM` yeteneğini
-   sürüm 1 olarak kaydedin. Gözlemci puanlamalı paradigmalar yetenek olamaz.
+   `misko-tracker-bgsub 2.2.0` model sürümüyle ve dört paradigmanın sürüm 1'ini
+   yetenek olarak kaydedin (yalnızca worker sürümünüzün desteklediği
+   paradigmaları kaydedin; `worker/README.md` bunları listeler).
 
    ```bash
    TOKEN=$(curl -s http://localhost:4000/api/auth/login \
@@ -107,9 +110,12 @@ edilen paradigma analiz edilmez. Worker takip edilen tek paradigmayı, `MWM`
      -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
      -d '{
     "name": "worker-1",
-    "modelVersion": "misko-tracker-bgsub 2.0.0",
+    "modelVersion": "misko-tracker-bgsub 2.2.0",
     "capabilities": [
-      {"paradigmKey": "MWM", "paradigmVersion": 1}
+      {"paradigmKey": "MWM", "paradigmVersion": 1},
+      {"paradigmKey": "NOVEL_OBJECT", "paradigmVersion": 1},
+      {"paradigmKey": "POLE", "paradigmVersion": 1},
+      {"paradigmKey": "TREADMILL", "paradigmVersion": 1}
     ]
   }'
    ```

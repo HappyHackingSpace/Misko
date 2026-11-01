@@ -40,8 +40,37 @@ SELECT * FROM misko.calibrations WHERE test_subject_id = @test_subject_id ORDER 
 
 -- name: ListEnvironmentCalibrations :many
 SELECT * FROM misko.calibrations
-WHERE environment_revision_id = @environment_revision_id AND test_subject_id IS NULL
+WHERE environment_revision_id = @environment_revision_id AND test_subject_id IS NULL AND trial_id IS NULL
 ORDER BY created_at, id;
+
+-- name: ListTrialCalibrations :many
+SELECT * FROM misko.calibrations WHERE trial_id = @trial_id ORDER BY created_at, id;
+
+-- A paradigm trial that is not deleted, with its arena's measurements and its
+-- current video.
+-- name: GetTrialRef :one
+SELECT t.id, t.environment_revision_id, t.paradigm_key, t.paradigm_version, e.parameters,
+       coalesce(t.video_asset_id::text, '')::text AS video_asset_id, coalesce(a.status, '')::text AS video_status
+FROM misko.paradigm_trials t
+JOIN misko.environment_revisions e ON e.id = t.environment_revision_id
+LEFT JOIN misko.video_assets a ON a.id = t.video_asset_id
+WHERE t.id = @id AND t.deleted_at IS NULL;
+
+-- The row lock serializes the calibrations of one trial and a concurrent
+-- video replacement. NO KEY UPDATE leaves rows referencing the trial unblocked.
+-- name: LockTrialRef :one
+SELECT t.id, t.environment_revision_id, t.paradigm_key, t.paradigm_version, e.parameters,
+       coalesce(t.video_asset_id::text, '')::text AS video_asset_id, coalesce(a.status, '')::text AS video_status
+FROM misko.paradigm_trials t
+JOIN misko.environment_revisions e ON e.id = t.environment_revision_id
+LEFT JOIN misko.video_assets a ON a.id = t.video_asset_id
+WHERE t.id = @id AND t.deleted_at IS NULL
+FOR NO KEY UPDATE OF t;
+
+-- name: GetTrialEffective :one
+SELECT coalesce(source, '')::text AS source, coalesce(calibration_id::text, '')::text AS calibration_id
+FROM misko.trial_effective_calibrations
+WHERE trial_id = @trial_id;
 
 -- name: GetCalibration :one
 SELECT * FROM misko.calibrations WHERE id = @id;
@@ -61,10 +90,10 @@ WHERE s.test_id = @test_id
 ORDER BY s.created_at, s.id;
 
 -- name: CreateCalibration :one
-INSERT INTO misko.calibrations (environment_revision_id, test_subject_id, recording_id, supersedes_id, camera_id, frame_width, frame_height,
+INSERT INTO misko.calibrations (environment_revision_id, test_subject_id, recording_id, trial_id, video_asset_id, supersedes_id, camera_id, frame_width, frame_height,
     crop_x, crop_y, crop_width, crop_height, reference_frame_us, measurement_plane, fit_points, check_points, transform,
     fit_rms_error_cm, check_rms_error_cm, check_max_error_cm, tolerance_cm, algorithm_version, status, rejection_reason, created_by)
-VALUES (@environment_revision_id, sqlc.narg(test_subject_id), sqlc.narg(recording_id), sqlc.narg(supersedes_id), @camera_id, @frame_width, @frame_height,
+VALUES (@environment_revision_id, sqlc.narg(test_subject_id), sqlc.narg(recording_id), sqlc.narg(trial_id), sqlc.narg(video_asset_id), sqlc.narg(supersedes_id), @camera_id, @frame_width, @frame_height,
     @crop_x, @crop_y, @crop_width, @crop_height, sqlc.narg(reference_frame_us), @measurement_plane, @fit_points, @check_points, @transform,
     @fit_rms_error_cm, @check_rms_error_cm, @check_max_error_cm, @tolerance_cm, @algorithm_version, @status, sqlc.narg(rejection_reason), @created_by)
 RETURNING *;

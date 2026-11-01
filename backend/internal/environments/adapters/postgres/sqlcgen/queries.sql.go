@@ -139,6 +139,45 @@ func (q *Queries) GetRevision(ctx context.Context, arg GetRevisionParams) (Misko
 	return i, err
 }
 
+const getRevisionByID = `-- name: GetRevisionByID :one
+SELECT r.id, r.environment_id, r.paradigm_key, r.paradigm_version, r.number, r.parameters, r.notes, r.created_by, r.created_at,
+       e.name AS environment_name
+FROM misko.environment_revisions r
+JOIN misko.environments e ON e.id = r.environment_id
+WHERE r.id = $1
+`
+
+type GetRevisionByIDRow struct {
+	ID              string
+	EnvironmentID   string
+	ParadigmKey     string
+	ParadigmVersion int32
+	Number          int32
+	Parameters      []byte
+	Notes           *string
+	CreatedBy       string
+	CreatedAt       time.Time
+	EnvironmentName string
+}
+
+func (q *Queries) GetRevisionByID(ctx context.Context, id string) (GetRevisionByIDRow, error) {
+	row := q.db.QueryRow(ctx, getRevisionByID, id)
+	var i GetRevisionByIDRow
+	err := row.Scan(
+		&i.ID,
+		&i.EnvironmentID,
+		&i.ParadigmKey,
+		&i.ParadigmVersion,
+		&i.Number,
+		&i.Parameters,
+		&i.Notes,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.EnvironmentName,
+	)
+	return i, err
+}
+
 const listAllRevisions = `-- name: ListAllRevisions :many
 SELECT r.id, r.environment_id, e.name AS environment_name, r.paradigm_key, r.number, r.paradigm_version
 FROM misko.environment_revisions r

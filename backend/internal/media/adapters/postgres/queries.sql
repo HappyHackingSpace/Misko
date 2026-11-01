@@ -70,3 +70,20 @@ UPDATE misko.video_assets
 SET status = @status, generation = @generation, rejection_reason = sqlc.narg(rejection_reason), verified_at = sqlc.narg(verified_at)
 WHERE id = @id AND status = 'PENDING'
 RETURNING *;
+
+-- CreateFolderAsset stores a pending original that belongs to no test, under
+-- the folder of the module that keeps it (for example a paradigm trial), named
+-- after its own id.
+-- name: CreateFolderAsset :one
+WITH new_asset AS (SELECT uuidv7() AS id)
+INSERT INTO misko.video_assets (id, kind, bucket, object_name, content_type, file_name, size_bytes, crc32c, created_by)
+SELECT n.id, 'ORIGINAL', @bucket::text, @folder::text || '/originals/' || n.id::text,
+       @content_type::text, sqlc.narg(file_name)::text, @size_bytes::bigint, @crc32c::bigint, @created_by::uuid
+FROM new_asset n
+RETURNING *;
+
+-- name: GetAsset :one
+SELECT * FROM misko.video_assets WHERE id = @id;
+
+-- name: LockAsset :one
+SELECT * FROM misko.video_assets WHERE id = @id FOR UPDATE;

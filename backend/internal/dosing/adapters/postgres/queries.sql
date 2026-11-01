@@ -9,11 +9,13 @@ JOIN misko.experiments e ON e.id = a.experiment_id
 JOIN misko.experiment_groups g ON g.experiment_id = a.experiment_id AND g.id = a.group_id
 WHERE a.experiment_id = @experiment_id AND a.id = @id;
 
+-- A no-substance period (purpose NONE) has no substance, dose, route or
+-- frequency; it is returned so the caller can refuse to administer it.
 -- name: GetRegimenItem :one
 SELECT r.id, r.experiment_id, r.group_id, r.purpose, r.substance_id, s.name AS substance_name, r.dose_micro, r.unit, r.route,
        r.frequency, r.interval_days, r.start_day, r.end_day
 FROM misko.regimen_items r
-JOIN misko.substances s ON s.id = r.substance_id
+LEFT JOIN misko.substances s ON s.id = r.substance_id
 WHERE r.experiment_id = @experiment_id AND r.id = @id;
 
 -- name: GetSubstanceName :one
@@ -100,7 +102,8 @@ FROM bounds b
 JOIN misko.allocations a ON a.experiment_id = @experiment_id
 JOIN misko.subjects sub ON sub.id = a.subject_id
 JOIN misko.experiment_groups g ON g.experiment_id = a.experiment_id AND g.id = a.group_id
-JOIN misko.regimen_items r ON r.experiment_id = a.experiment_id AND r.group_id = a.group_id
+-- A no-substance period (purpose NONE) is never due.
+JOIN misko.regimen_items r ON r.experiment_id = a.experiment_id AND r.group_id = a.group_id AND r.purpose <> 'NONE'
 JOIN misko.substances s ON s.id = r.substance_id
 LEFT JOIN LATERAL (
     SELECT wm.id, wm.body_milligrams, wm.measured_at

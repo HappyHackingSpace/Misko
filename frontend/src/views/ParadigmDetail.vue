@@ -11,6 +11,7 @@ import { api } from "../api/client.js";
 import { useAuth } from "../stores/auth.js";
 import { useBreadcrumb } from "../stores/breadcrumb.js";
 import { useParameters } from "../composables/useParameters.js";
+import { metricUnit } from "../components/analysis/format.js";
 
 const { t, te, locale } = useI18n();
 const route = useRoute();
@@ -22,12 +23,6 @@ const { unit, format, range } = useParameters();
 const canCreateEnvironment = computed(() => auth.can("apparatus:write"));
 
 const manifest = ref(null);
-// An introductory article; it is not part of a version's contract, so it
-// comes from the catalog list rather than the manifest.
-const reference = ref("");
-const referenceLabel = computed(() =>
-  locale.value !== "en" && reference.value.startsWith("https://en.") ? t("paradigms.referenceEnglish") : t("paradigms.reference"),
-);
 const error = ref("");
 const tab = ref("parameters");
 const open = ref({});
@@ -51,14 +46,14 @@ watch(tabs, (list) => {
   if (list.length && !list.some((entry) => entry.key === tab.value)) tab.value = list[0].key;
 });
 
-// Scored observations reappear among the derived events; each type is listed once.
+// Input events may reappear among the derived events; each type is listed once.
 const allEvents = computed(() => {
   const seen = new Set();
   return [...(manifest.value?.inputEvents || []), ...(manifest.value?.events || [])].filter(
     (event) => !seen.has(event.type) && seen.add(event.type),
   );
 });
-const metricUnit = (metric) => unit({ unit: metric.unit });
+const metricUnitText = (metric) => unit({ unit: metricUnit(metric.unit, metric.key) });
 const qcLabel = (rule) => (te(`paradigms.qcRules.${rule.key}`) ? t(`paradigms.qcRules.${rule.key}`) : rule.key);
 const category = (key) => t(`paradigms.categories.${String(key).toLowerCase()}`);
 const toggle = (key) => (open.value = { ...open.value, [key]: !open.value[key] });
@@ -68,8 +63,7 @@ async function load() {
   try {
     // GET /paradigms/{key} already returns the latest manifest in full, so it
     // is only fetched again when a specific version is asked for.
-    const [latest, list] = await Promise.all([api(`/paradigms/${route.params.key}`), api("/paradigms")]);
-    reference.value = (list.data || []).find((p) => p.key === route.params.key)?.reference || "";
+    const latest = await api(`/paradigms/${route.params.key}`);
     const asked = Number(route.query.version);
     manifest.value = asked && asked !== latest.version ? await api(`/paradigms/${route.params.key}/versions/${asked}`) : latest;
     crumb.set([{ label: t("paradigms.title"), to: "/paradigms" }, { label: manifest.value.name }]);
@@ -89,14 +83,10 @@ onUnmounted(() => crumb.clear());
     <div class="card">
       <h2 style="margin-top:0">{{ manifest.name }}</h2>
       <p>{{ manifest.description }}</p>
-      <p v-if="reference">
-        <a class="link" :href="reference" target="_blank" rel="noopener noreferrer" data-test="paradigm-reference">{{ referenceLabel }}</a>
-      </p>
       <p class="muted">
         {{ category(manifest.category) }} ·
         {{ $t("paradigms.trialTypes") }}: {{ manifest.trialTypes.map((tt) => tt.label).join(", ") }} ·
-        v{{ manifest.version }} ·
-        {{ $t("paradigms.automated") }}: {{ manifest.automatedAnalysis ? $t("common.yes") : $t("common.no") }}
+        v{{ manifest.version }}
       </p>
       <!-- A paradigm is a template. This is where it becomes a real apparatus
            the laboratory owns, with the physical values of its own setup. -->
@@ -149,7 +139,7 @@ onUnmounted(() => crumb.clear());
             <template v-for="metric in manifest.metrics" :key="metric.key">
               <tr>
                 <td><strong>{{ metric.label }}</strong></td>
-                <td class="muted nowrap">{{ metricUnit(metric) }}</td>
+                <td class="muted nowrap">{{ metricUnitText(metric) }}</td>
                 <td>
                   {{ metric.description }}
                   <a href="#" class="link small toggle" @click.prevent="toggle(metric.key)">{{ $t("paradigms.technical") }}</a>

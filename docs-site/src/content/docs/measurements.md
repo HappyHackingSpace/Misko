@@ -72,34 +72,54 @@ interface ParadigmManifest {
 Changing a calculation, a range or a default publishes a new paradigm version.
 Wording and help texts can be improved without a new version.
 
-## Tracked and observer-scored paradigms
+## Every paradigm is tracked
 
-Each of the four paradigms gets its inputs in one of two ways. The metric
-engine in `backend/internal/paradigms/domain` computes the metrics in both
-cases, so a measurement has one definition whatever produced its inputs.
+There is no manual analysis. A worker tracks the subject's centroid in the
+calibration's centimetre frame for every paradigm, and the metric engine in
+`backend/internal/paradigms/domain` derives every event and metric from the
+samples and the zones; the worker never decides events and the API never
+accepts metrics from it. A person only reviews the result (accepts or rejects
+it). The jobs process queues one run per subject once the test's video is
+verified, the calibration with every required zone is valid and an enabled
+worker has the paradigm version as a capability.
 
-| Paradigm | Method | Input | Zones |
+| Paradigm | Camera and frame | Zones | Derived events |
 |---|---|---|---|
-| `MWM` | Tracked (`AUTOMATED` run) | trajectory in tank-centred cm | from parameters (platform, target quadrant, wall zone) |
-| `POLE` | Observer scored (`SCORED` run) | `turn_complete`, `base_reached`, `fall` (points, each once) | none |
-| `TREADMILL` | Observer scored | `exhaustion` (point, once), `shock` (points) | none |
-| `NOVEL_OBJECT` | Observer scored | `exploration` (intervals labelled `novel` or `familiar`) | none |
+| `MWM` | Above the tank; tank-centred cm, x east, y north | from parameters (platform, target quadrant, wall zone) | `in_platform` intervals, `platform_entry` points |
+| `NOVEL_OBJECT` | Above the arena; origin at a floor corner, x right, y down the image | calibrated `novel_object`, `familiar_object` | `exploration` intervals labelled `novel` or `familiar` |
+| `POLE` | Side of the pole; x horizontal, y the height above the base | calibrated `pole`, `base` | `turn_complete`, `base_reached`, `fall` (points, each once) |
+| `TREADMILL` | Side of the lane; x from the shock grid end (0) to the front | calibrated `shock_grid` | `shock` points, `exhaustion` (point, once) |
 
-- **Tracked paradigms** are analysed by a worker. The jobs process queues one
-  `AUTOMATED` run per animal once the test's video is verified, the animal's
-  calibration is valid and an enabled worker has the paradigm version as a
-  capability. The worker uploads a trajectory in the calibration's centimetre
-  frame; the API never accepts metrics from it.
-- **Observer-scored paradigms** never get worker runs, and a worker cannot
-  register them as capabilities. A person marks the input events on the test's
-  current video; completing the scoring sheet runs the engine and stores a
-  `SCORED` run with the scorer and no worker, calibration or video pair. Event
-  times are microseconds from the clip start. An event type that was ticked as
-  scored but never occurred counts as not observed; an event type that was not
-  scored makes its metrics missing, not zero.
+Every rule threshold is an `ANALYSIS` parameter with a standard default, so a
+lab can tune it per environment:
 
-Both kinds of run feed the same per-animal result, which opens `PENDING` for
-human review; only accepted results enter the report.
+- **Novel object.** An exploration bout is a stay of the centroid in an
+  object's zone lasting at least `min_bout_s` (0.3 s); the zone is drawn
+  around the object to include the exploration distance (about 2 cm). Known
+  limit: the body centre, not the nose direction, decides, so sitting on the
+  object counts as exploration. Novel, familiar and total exploration time are
+  the sums of the bouts; the discrimination index is
+  (novel - familiar) / (novel + familiar), missing below
+  `min_total_exploration_s`.
+- **Pole.** The turn completes at the first sample on the pole
+  `turn_descent_cm` (2 cm) below the highest point so far. The base is reached
+  at the first sample in `base` after a sample on the pole. A fall is leaving
+  the pole (to the base or anywhere else) between two samples at most
+  `max_sample_gap_s` apart with a downward speed above `fall_speed_cm_s`
+  (80 cm/s); after a fall the base is not reached. Samples after
+  `max_trial_duration_s` are ignored.
+- **Treadmill.** Every stay on the shock grid lasting `min_shock_dwell_s`
+  (0.2 s) is a shock; the first stay lasting `exhaustion_dwell_s` (5 s) is
+  exhaustion. The run ends at exhaustion or, without it, at the end of the
+  clip, censored at `max_trial_duration_s`; the distance is the belt speed
+  integrated over the run.
+
+Missing metrics carry a reason instead of zero: `NO_VALID_INTERVALS`,
+`EVENT_NOT_OBSERVED`, `ZERO_DENOMINATOR`, `INCOMPLETE_RECORDING` and
+`BELOW_EXPLORATION_CRITERION`. There is no `NOT_SCORED` any more.
+
+Every run feeds the per-subject result, which opens `PENDING` for human
+review; only accepted results enter the report.
 
 ### Zone requirements
 
@@ -111,17 +131,20 @@ Zones come from one of two places:
   defined in: **tank-centred** ((0, 0) at the tank centre, x east, y north, so
   the wall points are (r, 0), (0, r), (-r, 0) and (0, -r) with
   r = tank diameter / 2).
-- **Calibrated.** A paradigm may declare calibrated zones; none of the current
-  catalog does, but the support stays. Such zones are drawn as circles or
-  polygons on the camera frame with the calibration, and a key may have
-  several shapes. Shapes are stored
-  as drawn in pixels and converted to centimetres with the calibration's fitted
-  transform; they must lie inside the frame and never change after the
-  calibration is saved (migration `014_calibration_zones.sql`). Until a valid
-  calibration with every required zone applies, the animal stays
-  `WAITING_FOR_CALIBRATION` and is not analysed. The worker limits tracking to
-  the convex hull of the zones (plus a margin), so areas between zones that
-  belong to no zone are still tracked.
+- **Calibrated.** The novel object, pole and treadmill zones carry the
+  apparatus geometry the video needs (objects, pole, base, shock grid). They
+  are drawn once as circles or polygons on the camera frame with the
+  environment's calibration; a per subject override on the test video changes
+  them when needed (for example the novel object on the other side), and a key
+  may have several shapes. Shapes are stored as drawn in pixels and converted
+  to centimetres with the calibration's fitted transform; they must lie inside
+  the frame and never change after the calibration is saved (migration
+  `014_calibration_zones.sql`). Until a valid calibration with every required
+  zone applies, the subject stays `WAITING_FOR_CALIBRATION` and is not
+  analysed. The novel object arena's calibration points lie in the arena
+  (0 to width, 0 to depth); the side views of the pole and the treadmill are
+  calibrated on the `APPARATUS_SIDE` plane with at least four non-collinear
+  points of the rig and choose their own frame.
 
 ### Inferred samples
 
@@ -142,9 +165,9 @@ data quality, not behavior.
 
 ## Event types and CV detection
 
-A run collects **events**; metrics are derived from them. The same event stream
-is produced by manual entry today and by the CV service later, so the event layer
-is the contract between Mişko and computer vision.
+A run collects **events**; metrics are derived from them. The metric engine
+derives the event stream from the CV service's trajectory and the calibrated
+zones, so the event layer is the contract between Mişko and computer vision.
 
 Each event type declares a `detect` spec describing how the CV service derives it
 from the trajectory and zones:
@@ -167,7 +190,8 @@ type DetectSpec =
 The generic kinds (`zone_transition`, `zone_first_enter`, `speed_below`) are
 **data-driven**: a paradigm that only uses them needs no new CV code, declaring
 the event types is enough. `custom` flags an event that needs a dedicated
-detector (e.g. a pole test turn, object exploration). Event types are exposed on
+detector. The published paradigms derive their events from zones and speeds in
+the metric engine, so none needs one. Event types are exposed on
 the paradigm detail API (`GET /api/paradigms/:key` -> `eventTypes`).
 
 ## Localization
@@ -230,7 +254,7 @@ Pixel values stay out of Mişko result metrics.
 | MWM | Escape latency, path length, swim speed, target quadrant time, platform crossings, thigmotaxis, mean distance to platform. |
 | Novel object | Novel object time, familiar object time, total exploration time, discrimination index. |
 | Pole | Time to turn, total time, descent time, descent speed, fall detected. |
-| Treadmill | Latency to exhaustion, run time, run distance, shock count. |
+| Treadmill | Time to exhaustion, running time, distance run, shock count. |
 
 ## MWM normalization
 
@@ -303,8 +327,7 @@ Inferred samples never raise or lower the confidence mean. The worker records
 their share in the trajectory's diagnostics (`worker.inferredRatio`), and a
 paradigm version may cap it with `max_inferred_ratio`; no published version sets
 that rule yet. A run that breaks a rule fails with a `QC_FAILED` reason and publishes
-nothing. Scored runs have no trajectory, so these tracking rules do not apply
-to them; the reviewer checks the scored events instead.
+nothing. The same rules apply to every paradigm.
 
 ## Result shape
 

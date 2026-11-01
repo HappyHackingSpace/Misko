@@ -6,11 +6,11 @@ export default {
       design: "Gruplar ve rejimler",
       timeline: "Zaman noktaları ve protokoller",
       endpoints: "Ölçütler",
-      animals: "Hayvanlar",
+      animals: "Denekler",
       dosing: "Dozlama",
       tests: "Testler",
       results: "Sonuçlar",
     },
   },
-  nav: { catalog: "Katalog", review: "Sonuç onayı" },
+  nav: { review: "Sonuç onayı" },
 };

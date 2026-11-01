@@ -12,10 +12,8 @@ const props = defineProps({
   reviewedRunId: { type: String, default: "" },
   loading: { type: Boolean, default: false },
 });
-const { t, te } = useI18n();
+const { t } = useI18n();
 const fmt = useNumbers();
-
-const failure = (reason) => (reason && te(`analysis.failureReasons.${reason}`) ? t(`analysis.failureReasons.${reason}`) : reason || "");
 
 const columns = computed(() => [
   {
@@ -33,7 +31,7 @@ const columns = computed(() => [
   { title: t("runs.attempts"), key: "attempt", render: (run) => `${run.attempt}/${run.maxAttempts}` },
   { title: t("runs.model"), key: "modelVersion", render: (run) => run.modelVersion || "–" },
   { title: t("runs.engine"), key: "metricEngineVersion" },
-  { title: t("runs.failure"), key: "failureReason", render: (run) => failure(run.failureReason) || "–" },
+  { title: t("runs.failure"), key: "failureReason", render: (run) => fmt.failure(run.failureReason) || "–" },
 ]);
 </script>
 

@@ -19,13 +19,15 @@ Tasarım:    Deney -> Gruplar (rol + hastalık modeli) -> Rejim kalemleri
 Yürütme:    Denek -> Atama (ömür boyu tek grup) -> Uygulamalar,
                                                    İndüksiyon sonucu
             Test (oturum: zaman noktası x protokol adımı, tek video)
-              -> Test denekleri (hayvan + arena) -> Denemeler
+              -> Test denekleri (denek + arena) -> Denemeler
                                                  -> Kalibrasyon (arena veya düzeltme, bölgelerle)
-                                                 -> Puanlama sayfaları (gözlemci puanlamalı paradigmalar)
-                                                 -> Analiz çalıştırmaları (AUTOMATED veya SCORED)
+                                                 -> Analiz işleri (worker takip eder, Mişko türetir)
                                                     -> Onaylanmış sonuç
 
-Rapor:      hayvan başına kabul edilmiş sonuçlar -> gruplar -> rol tabanlı karşılaştırmalar
+Paradigma testleri: Paradigma testi (paradigma + arena + kendi videosu, kendi kalibrasyonu)
+              -> Analiz işleri, değiştirilmiş eşiklerle karşılaştırılır (onaylanmaz)
+
+Rapor:      denek başına kabul edilmiş sonuçlar -> gruplar -> rol tabanlı karşılaştırmalar
 ```
 
 ## Kiracılık (tek kiracı, on-prem)
@@ -43,7 +45,7 @@ değil.
 
 Çalışmalar arasında yeniden kullanılan, laboratuvar genelindeki referans veri.
 
-- **Madde:** bir hayvana verilen her şey: etkin bir bileşik, referans ilaç,
+- **Madde:** bir deneğe verilen her şey: etkin bir bileşik, referans ilaç,
   taşıyıcı (serum fizyolojik, %0,5 CMC) ya da bir hastalık modelini indükleyen
   ajan (MPTP, LPS, skopolamin). `kind` (`COMPOUND`, `REFERENCE_DRUG`, `VEHICLE`,
   `INDUCER`) yalnızca seçim listelerine yardım eder; bir maddenin çalışmadaki
@@ -52,23 +54,23 @@ değil.
   `DIET`, `STRESS`, `OTHER`) ve serbest metin olarak nasıl doğrulandığı. Her
   model indüklenir.
 - **Paradigma:** düzenlenebilir bir veritabanı satırı değil, **kodda tanımlı**
-  bilimsel bir test türüdür: parametreler, bölgeler, puanlanan olaylar ve metrik
+  bilimsel bir test türüdür: parametreler, bölgeler, türetilen olaylar ve metrik
   tanımları, hiç değişmeyen yayınlanmış sürümler halinde. Kayıt defteri: `MWM`,
   `NOVEL_OBJECT`, `POLE`, `TREADMILL`.
 - **Ortam:** tek bir paradigmanın tek bir fiziksel düzeneği; örneğin belirli bir
   su tankı ya da tek kamera altındaki üç yeni nesne kutusundan biri. Ölçüleri
-  değişmeyen, numaralı revizyonlardır. Bir testte hayvan bir **arenaya** konur;
+  değişmeyen, numaralı revizyonlardır. Bir testte denek bir **arenaya** konur;
   arena, bir ortam revizyonudur.
 
 ## Denek
 
-Hayvan: kod, tür (`MOUSE`, `RAT`) ve cinsiyet. Bir denek bir çalışmaya
+Denek: kod, tür (`MOUSE`, `RAT`) ve cinsiyet. Bir denek bir çalışmaya
 katılmadan önce kaydedilebilir. Vücut ağırlıkları deneğe aittir, ölçüm zamanıyla
 kaydedilir ve hiç değişmez.
 
 ## Çalışma tasarımı
 
-Buradaki her şey hiçbir hayvana dokunulmadan önce kararlaştırılır ve çalışma
+Buradaki her şey hiçbir deneğe dokunulmadan önce kararlaştırılır ve çalışma
 başladığında dondurulur.
 
 - **Deney:** kod, başlık, açıklama, hipotez, randomizasyon yöntemi ve kör olup
@@ -90,7 +92,7 @@ başladığında dondurulur.
   günü. Bir grubun en fazla bir tedavi kalemi olur; böylece bir tedavi grubu tek
   bir maddeyi tek bir dozda alır. Aynı maddenin tedavi grupları doz yanıtını
   oluşturur.
-- **Zaman noktası:** hayvanların test edildiği an; gün 0'a göre çalışma günü
+- **Zaman noktası:** deneklerin test edildiği an; gün 0'a göre çalışma günü
   olarak (gün -1'de Baseline, gün 14'te Day 14).
 - **Protokol:** test bataryası; sıralı adımlardan oluşan, değişmeyen sürümleri
   vardır. Bir adım; paradigma sürümü, deneme türü, deneme sayısı ve oturum
@@ -107,35 +109,35 @@ hastalık kontrolü.
 
 ## Yürütme
 
-- **Atama:** bir hayvan **ömür boyu tam olarak bir gruba, dolayısıyla tek bir
-  çalışmaya** aittir. Hayvanlar elle atanabilir ya da hedef sayılarına kadar
+- **Atama:** bir denek **ömür boyu tam olarak bir gruba, dolayısıyla tek bir
+  çalışmaya** aittir. Denekler elle atanabilir ya da hedef sayılarına kadar
   gruplara rastgele dağıtılabilir. Taslakta atama taşınabilir veya kaldırılabilir;
   çalışma başladıktan sonra grup sabittir.
-- **Dışlama:** çalışmadan ayrılan bir hayvan (`DIED`, `HUMANE_ENDPOINT`,
+- **Dışlama:** çalışmadan ayrılan bir denek (`DIED`, `HUMANE_ENDPOINT`,
   `INDUCTION_FAILED`, `TECHNICAL`, `OTHER`) bir gerekçeyle dışlanır, asla
   silinmez. Raporda görünmeye devam eder ve yeniden test veya analiz edilmez.
 - **Uygulama:** gerçekten verilen her doz; hastalık indüksiyonu ve taşıyıcı
   dahil. İsteğe bağlı olarak karşıladığı rejim kalemine bağlanır. Kilogram başına
   bir doz, hesaplandığı ağırlığı kaydeder. Günlük doz takvimi rejim
   kalemlerinden ve gün 0'dan türetilir.
-- **İndüksiyon sonucu:** hayvanın hastalık modelinin doğrulanıp doğrulanmadığı;
+- **İndüksiyon sonucu:** deneğin hastalık modelinin doğrulanıp doğrulanmadığı;
   bir kez kaydedilir.
 
 ## Test (tek oturum)
 
 `Test`, çalışan bir deneyin tek bir oturumudur: bir zaman noktası, bir protokol
 adımı, **tek bir video**. Her biri kendi arenasında olan bir veya daha fazla
-hayvanı, yani **test deneklerini** kaydeder; genellikle bir, bazen tek kamera
+deneği, yani **test deneklerini** kaydeder; genellikle bir, bazen tek kamera
 altında en fazla üç arena.
 
 - Durum: `PLANNED -> IN_PROGRESS -> COMPLETED`, ya da gerekçeyle `CANCELLED`.
-- Hayvanlar yalnızca test planlıyken katılır veya ayrılır. Bir hayvan her zaman
+- Denekler yalnızca test planlıyken katılır veya ayrılır. Bir denek her zaman
   noktası ve protokol adımında en fazla bir kez test edilir ve her arena adımın
   paradigmasını çalıştırmalıdır.
-- Denemeler hayvan başına kaydedilir ve yalnızca eklenir; tekrarlanan bir deneme
+- Denemeler denek başına kaydedilir ve yalnızca eklenir; tekrarlanan bir deneme
   bir sonraki deneme numarasını alır.
-- Farklı gruplardaki hayvanlar aynı oturumu paylaşabilir. Bir ölçümün grubu her
-  zaman hayvanın atamasından gelir; grupla ilgili hiçbir şey teste kopyalanmaz.
+- Farklı gruplardaki denekler aynı oturumu paylaşabilir. Bir ölçümün grubu her
+  zaman deneğin atamasından gelir; grupla ilgili hiçbir şey teste kopyalanmaz.
 
 ## Video, kalibrasyon ve analiz
 
@@ -144,36 +146,51 @@ altında en fazla üç arena.
 - **Kalibrasyon:** pikselleri santimetreye çevirir. Varsayılan olarak her arena
   (ortam revizyonu) düzenek kurulurken bir kez kalibre edilir; kırpma alanı
   arenanın kamera karesindeki bölgesidir. Kamera veya arena kaydıysa güncel
-  videoda tek bir test deneğine elle bir **düzeltme** uygulanır. Bir paradigma
-  parametrelerden türetilmeyen bölgeler tanımlayabilir; bu **kalibre edilen
-  bölgeler** kalibrasyonla birlikte taşınır, kare üzerinde piksel olarak
-  çizilir ve santimetre olarak da saklanır (güncel katalogdaki hiçbir paradigma
-  bunu kullanmaz). Bir kalibrasyon ve bölgeleri asla değişmez. Gözlemci
-  puanlamalı paradigmalar kalibrasyon gerektirmez.
-- **Puanlama sayfası:** gözlemci puanlamalı bir paradigmada (`POLE`, `TREADMILL`,
-  `NOVEL_OBJECT`) bir kişinin güncel videoda bir test deneği için
-  işaretlediği olaylar, klip başlangıcından itibaren mikrosaniye cinsinden. Bir
-  sayfa puanlanırken `DRAFT`, puanlanan olay türleri ve kayıt uzunluğu
-  sabitlendiğinde `COMPLETED` olur; yeniden açmak bir sonraki sürümü başlatır ve
-  tamamlanmış sayfalar asla değişmez.
-- **Analiz çalıştırması:** test deneği başına bir tane. Bir worker hayvanı
-  arenasının kırpma alanında izleyip yörüngeyi yüklediğinde `method` alanı
-  `AUTOMATED` olur (`MWM`); tamamlanmış bir puanlama sayfasından
-  hesaplandığında ise puanlayanla birlikte, worker, kalibrasyon ve video çifti
-  olmadan `SCORED` olur. Her iki durumda da Mişko her metriği ve olayı kendisi
-  hesaplar. Girdiler sabitlenir; yeniden analiz ya da yeniden puanlama yeni bir
-  çalıştırmadır ve eski çalıştırmalar kalır.
-- **Onaylanmış sonuç:** her sonucu bir kişi onaylar. Bir hayvanın ilk başarılı
-  çalıştırması `PENDING` bir sonuç açar; inceleyen kişi kabul eder ya da bir
-  gerekçeyle reddeder. Kör bir çalışmada inceleyen kişi grubu, hastalığı, maddeyi
-  veya dozu görmez. İstatistiklere yalnızca kabul edilen sonuçlar girer.
+  videoda tek bir test deneğine elle bir **düzeltme** uygulanır. Parametrelerden
+  türetilmeyen bölgeler (yeni ve tanıdık nesne, direk ve tabanı, koşu bandının
+  şok ızgarası) **kalibre edilen bölgelerdir**: kalibrasyonla birlikte taşınır,
+  kare üzerinde piksel olarak çizilir ve santimetre olarak da saklanır. Yandan
+  görünüşler (direk, koşu bandı) `APPARATUS_SIDE` düzlemini kullanır. Bir
+  kalibrasyon ve bölgeleri asla değişmez. Her paradigma kalibrasyon gerektirir.
+  Bir kalibrasyon bir arenaya (varsayılan), bir test deneğine (düzeltme) veya
+  bir paradigma testine (kendi videosunda; arenanın varsayılanını asla
+  değiştirmez) aittir.
+- **Analiz işi:** analiz servisinin iş birimi: tek video, tek paradigma
+  sürümü, parametreleri ve kalibrasyonun bir kopyası; bir test deneği veya bir
+  paradigma testi tarafından istenir. Bir worker deneğin ağırlık merkezini
+  kalibrasyonun kırpma alanında izler ve yörüngeyi yükler; Mişko her olayı ve
+  metriği örneklerden ve bölgelerden kendisi türetir. Gözlemci puanlaması
+  yoktur: bir kişi yalnızca sonucu inceler. Girdiler asla değişmez; yeniden
+  analiz yeni bir iştir ve eski işler kalır.
+- **Bir deneğin analizi:** deney tarafı her işi analiz ettiği test deneğine
+  (kullandığı kayıt ve kalibrasyonla birlikte) bağlar. Denek doğrulanmış bir
+  videoya, gereken her bölgeyi içeren geçerli bir kalibrasyona sahip olduğunda
+  ve dışlanmadığında iş kendiliğinden gönderilir; bir kişi yenisini de
+  gönderebilir.
+- **Onaylanmış sonuç:** her sonucu bir kişi onaylar. Bir deneğin ilk başarılı
+  işi `PENDING` bir sonuç açar; inceleyen kişi kabul eder, bir gerekçeyle
+  reddeder ya da deneğin başarılı başka bir işini seçer. Kör bir çalışmada
+  inceleyen kişi grubu, hastalığı, maddeyi veya dozu görmez. İstatistiklere
+  yalnızca kabul edilen sonuçlar girer.
+
+## Paradigma testi
+
+Bir **paradigma testi**, bir paradigma sürümünü herhangi bir deney dışında,
+tek arenada tek videoda dener: yeni bir düzeneği, bir kamera konumunu veya bir
+eşiği kontrol etmek için. Bir adı, arenası (ortam revizyonu) ve kendi videosu
+vardır; arenanın varsayılanına dokunmadan bu videoda kalibre edilebilir.
+Videosu doğrulanıp hazır olduğunda kendiliğinden, istendiğinde de
+değiştirilmiş ANALYSIS eşikleriyle yeniden analiz edilir; önceki işler
+karşılaştırma için kalır. Paradigma testinin grubu, onayı ve raporu yoktur ve
+işleri hiçbir zaman bir deneye taşınmaz. Silinen bir paradigma testi gizlenir
+ama saklanır, çünkü işleri asla değişmez.
 
 Davranışsal sonuç **veridir, verdikt değil**: bir testin geçti veya kaldı sonucu
 yoktur.
 
 ## Rapor
 
-Deney birimi hayvandır. Her sonlanım noktası için rapor, dışlanmamış hayvanların
+Deney birimi denektir. Her sonlanım noktası için rapor, dışlanmamış deneklerin
 kabul edilmiş sonuçlarını alır ve grup başına n, ortalama, SD, SEM ve başlangıca
 göre değişimi, ayrıca grup rollerinden çıkan karşılaştırmaları verir:
 
@@ -220,6 +237,7 @@ yok):
 | `apparatus:write` (ortamlar, arena kalibrasyonu) | ✅ | ✅ | ✅ | - | - |
 | `test:write` (test planlama) | ✅ | ✅ | ✅ | - | - |
 | `test:run` (test çalıştırma, videolar, dozlar, onay) | ✅ | ✅ | ✅ | ✅ | - |
+| `trial:run` (paradigma testleri) | ✅ | ✅ | ✅ | ✅ | - |
 | `*:read`          | ✅ | ✅ | ✅ | ✅ | ✅ |
 
 Her kullanım senaryosu bir store'a dokunmadan önce izni kendisi kontrol eder

@@ -84,6 +84,12 @@ class Scene:
     floor: Mask | None = None
     surround_level: float = 120.0
     effects: Effects | None = None
+    # props(floor, rows, cols) paints static apparatus (objects, a pole, a
+    # shock grid) into the floor once; they never move.
+    props: Callable[[np.ndarray, np.ndarray, np.ndarray], None] | None = None
+    # backdrop(frame, t_s, rng) changes a frame in place before the subject is
+    # drawn, for moving surfaces under the subject (a treadmill belt).
+    backdrop: Effects | None = None
 
 
 def disc_mask(cm_to_px: np.ndarray, radius: float) -> Mask:
@@ -143,6 +149,8 @@ def render(
     # Pixels of the floor get the floor level, the surroundings stay darker.
     inside = scene.floor(rows, cols) if scene.floor else np.ones((HEIGHT, WIDTH), dtype=bool)
     floor[inside] = floor_level + texture[inside]
+    if scene.props:
+        scene.props(floor, rows, cols)
 
     container = av.open(str(path), mode="w", format="mp4")
     stream = container.add_stream("libx264", rate=25)
@@ -153,6 +161,8 @@ def render(
     for t in times_us:
         x, y, visible = trajectory(t / 1_000_000)
         frame = floor + rng.normal(0, noise, (HEIGHT, WIDTH))
+        if scene.backdrop:
+            scene.backdrop(frame, t / 1_000_000, rng)
         if visible:
             cx, cy = project(x, y, scene.cm_to_px)
             ex, ey = project(x + radius_cm, y, scene.cm_to_px)

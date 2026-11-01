@@ -28,9 +28,10 @@ func poolCalibration(zones []any) map[string]any {
 	return body
 }
 
-// No paradigm of the catalog declares calibrated zones: a water maze pool is
-// calibrated without any, drawn shapes are refused, and the claim carries an
-// empty zone list that the engine runs with.
+// The water maze derives its zones from parameters: a pool is calibrated
+// without any, drawn shapes are refused, and the claim carries an empty zone
+// list that the engine runs with. The other paradigms are covered by
+// tracked_paradigms_integration_test.go.
 func TestPoolWithoutCalibratedZonesOverHTTP(t *testing.T) {
 	ctx := context.Background()
 	objects := newStudyObjects()
@@ -99,7 +100,7 @@ func TestPoolWithoutCalibratedZonesOverHTTP(t *testing.T) {
 	run := claim["run"].(map[string]any)
 	claimed, ok := claim["calibration"].(map[string]any)["zones"].([]any)
 	required, _ := claim["contract"].(map[string]any)["requiredZones"].([]any)
-	if run["testSubjectId"] != subject || !ok || len(claimed) != 0 || len(required) != 0 {
+	if claim["testSubject"].(map[string]any)["id"] != subject || run["requester"].(map[string]any)["id"] != subject || !ok || len(claimed) != 0 || len(required) != 0 {
 		t.Fatalf("claimed zones: %v", claim)
 	}
 

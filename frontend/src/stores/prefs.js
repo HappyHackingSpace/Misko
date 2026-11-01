@@ -40,8 +40,16 @@ export const usePrefs = defineStore("prefs", {
     },
     setTheme(theme) {
       if (!THEMES.includes(theme)) return;
+      // Naive UI animates every color change (~0.3s) while our own variables
+      // swap at once, so the page passes through a washed-out gray mix. Turn
+      // transitions off for the repaint so the switch is instant.
+      const root = document.documentElement;
+      root.classList.add("theme-switching");
       this.theme = theme;
-      document.documentElement.setAttribute("data-theme", theme);
+      root.setAttribute("data-theme", theme);
+      requestAnimationFrame(() =>
+        requestAnimationFrame(() => root.classList.remove("theme-switching")),
+      );
       localStorage.setItem(THEME_KEY, theme);
     },
     toggleTheme() {

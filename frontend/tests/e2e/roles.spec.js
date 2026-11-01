@@ -17,9 +17,12 @@ test("a viewer signs in and sees no write controls", async ({ page, request }) =
   const none = async (...ids) => {
     for (const id of ids) await expect(page.getByTestId(id), id).toHaveCount(0);
   };
-  await page.goto("/catalog");
+  await page.goto("/substances");
   await expect(page.getByTestId("substance-row").first()).toBeVisible();
   await none("substance-new", "substance-edit-MPTP", "substance-delete-MPTP");
+  await page.goto("/disease-models");
+  await expect(page.getByTestId("disease-model-row").first()).toBeVisible();
+  await none("disease-model-new", "disease-model-edit-MPTP Parkinson", "disease-model-delete-MPTP Parkinson");
   await page.goto("/subjects");
   await expect(page.getByTestId("subject-row").first()).toBeVisible();
   await none("subject-new", "subject-edit-M01");
@@ -71,10 +74,10 @@ test("a technician doses, runs a session and uploads its video, but cannot plan"
   const study = `/experiments/${data.experimentId}`;
 
   await page.goto(`${study}?tab=dosing`);
-  const m02 = page.locator('[data-test="due-dose"][data-animal="M02"]');
-  await m02.getByTestId("record-dose").click();
+  const m04 = page.locator('[data-test="due-dose"][data-animal="M04"]');
+  await m04.getByTestId("record-dose").click();
   await page.getByTestId("dose-dialog").getByTestId("dose-save").click();
-  await expect(m02).toHaveAttribute("data-state", "given");
+  await expect(m04).toHaveAttribute("data-state", "given");
 
   await page.goto(`${study}?tab=tests`);
   await expect(page.getByTestId("session-link").first()).toBeVisible();

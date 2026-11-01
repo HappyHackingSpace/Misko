@@ -3,11 +3,12 @@
 // under review with the analysed video, quality checks, metrics and decision.
 // Self-contained so the test page only mounts it per animal:
 //   <SubjectResult :test-id="test.id" :test-subject-id="subject.id" />
-import { computed, onBeforeUnmount, ref, watch } from "vue";
+import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { NAlert, NButton, NCollapse, NCollapseItem, NSpin, useMessage } from "naive-ui";
 import { results, runs } from "../../api/analysis.js";
 import { useAuth } from "../../stores/auth.js";
+import { usePolling } from "../../composables/usePolling.js";
 import ReviewDetail from "./ReviewDetail.vue";
 import RunHistory from "./RunHistory.vue";
 
@@ -26,10 +27,11 @@ const item = ref(null);
 const loading = ref(false);
 const error = ref("");
 const queueing = ref(false);
-let timer = null;
 
 const active = computed(() => history.value.some((run) => run.status === "QUEUED" || run.status === "RUNNING"));
 const latest = computed(() => history.value[0] || null);
+// While a run is queued or running, look again every few seconds.
+const polling = usePolling(() => load(true), () => active.value);
 // Without a succeeded run there is nothing to review yet; say why.
 const waiting = computed(() => {
   if (item.value) return "";
@@ -52,14 +54,8 @@ async function load(quiet = false) {
     error.value = e.message;
   } finally {
     loading.value = false;
-    schedule();
+    polling.schedule();
   }
-}
-
-// While a run is queued or running, look again every few seconds.
-function schedule() {
-  clearTimeout(timer);
-  if (active.value) timer = setTimeout(() => load(true), 5000);
 }
 
 async function reanalyze() {
@@ -82,7 +78,6 @@ function onChanged(updated) {
 }
 
 watch(() => [props.testId, props.testSubjectId], () => load(), { immediate: true });
-onBeforeUnmount(() => clearTimeout(timer));
 </script>
 
 <template>
@@ -92,7 +87,7 @@ onBeforeUnmount(() => clearTimeout(timer));
         <p v-if="waiting" class="muted" data-test="result-waiting">{{ waiting }}</p>
         <span class="spacer"></span>
         <NButton
-          v-if="auth.can('test:run') && latest?.method !== 'SCORED'"
+          v-if="auth.can('test:run')"
           size="small"
           secondary
           :loading="queueing"

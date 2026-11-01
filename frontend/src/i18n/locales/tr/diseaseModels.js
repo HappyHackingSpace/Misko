@@ -1,0 +1,55 @@
+export default {
+  nav: { diseaseModels: "Hastalık modelleri" },
+  diseaseModels: {
+    title: "Hastalık modelleri",
+    subtitle: "Bir bozukluğun nasıl oluşturulduğu ve nasıl doğrulandığı. Deney grupları bunlardan birine bağlanır.",
+    new: "Yeni hastalık modeli",
+    edit: "Hastalık modelini düzenle",
+    name: "Ad",
+    description: "Açıklama",
+    searchName: "Ada göre ara",
+    inductionType: "Oluşturma yöntemi",
+    allTypes: "Tüm yöntemler",
+    confirmationCriterion: "Doğrulama ölçütü",
+    criterionPlaceholder: "Direk iniş süresi başlangıcın %150'sinin üzerinde",
+    namePlaceholder: "MPTP Parkinson modeli",
+    empty: "Henüz hastalık modeli yok.",
+    noMatch: "Bu filtrelere uyan kayıt yok.",
+    created: "{name} oluşturuldu",
+    updated: "{name} kaydedildi",
+    deleted: "{name} silindi",
+    confirmDelete: "{name} silinsin mi? Bu yalnızca hiçbir deney grubu kullanmıyorsa mümkündür.",
+    inductionTypes: {
+      CHEMICAL: "Kimyasal",
+      SURGICAL: "Cerrahi",
+      DIET: "Diyet",
+      STRESS: "Stres",
+      OTHER: "Diğer",
+    },
+  },
+  errors: {
+    common: {
+      invalidJSON: "İstek okunamadı",
+      bodyTooLarge: "İstek çok büyük",
+      serverError: "Sunucu hatası, lütfen tekrar deneyin",
+      noChanges: "Hiçbir şey değişmedi",
+      invalidQuery: "Bu filtreler geçerli değil",
+      invalidName: "Ad 1 ile 120 arasında yazdırılabilir karakter içermeli",
+      invalidDescription: "Açıklama en fazla 5000 karakter olabilir",
+    },
+    auth: {
+      unauthenticated: "Lütfen tekrar giriş yapın",
+      forbidden: "Bu işlem için yetkiniz yok",
+    },
+    // The API code is catalog.nameTaken for substances and disease models alike.
+    catalog: {
+      nameTaken: "Bu adla bir kayıt zaten var",
+    },
+    diseaseModel: {
+      notFound: "Hastalık modeli bulunamadı",
+      invalidInductionType: "Hastalığın nasıl oluşturulduğunu seçin",
+      invalidConfirmationCriterion: "Doğrulama ölçütü en fazla 2000 karakter olabilir",
+      inUse: "Bu hastalık modeli bir deney grubunda kullanılıyor, silinemez",
+    },
+  },
+};

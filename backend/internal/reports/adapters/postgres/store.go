@@ -85,7 +85,7 @@ func (s *Store) Measurements(ctx context.Context, experimentID, paradigmKey, met
 		m := domain.Measurement{
 			TestSubjectID: r.TestSubjectID, TestID: r.TestID, AllocationID: r.AllocationID, SubjectID: r.SubjectID, SubjectCode: r.SubjectCode,
 			GroupID: r.GroupID, TimepointID: r.TimepointID, Arena: r.EnvironmentName, ScheduledAt: r.ScheduledAt.UTC(), Excluded: r.Excluded,
-			ResultStatus: text(r.ResultStatus), ResultRunID: text(r.ResultRunID), ParadigmVersion: int(r.ParadigmVersion),
+			ResultStatus: text(r.ResultStatus), ResultJobID: text(r.ResultJobID), ParadigmVersion: int(r.ParadigmVersion),
 			// metric_results.unit is NOT NULL: a unit means the accepted run published the metric.
 			HasMetric: r.MetricUnit != nil, Unit: text(r.MetricUnit), Value: r.MetricValue, MissingReason: text(r.MissingReason),
 		}

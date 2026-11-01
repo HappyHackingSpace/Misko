@@ -11,7 +11,6 @@ import {
 } from "naive-ui";
 import { tests } from "../api/tests.js";
 import { calibration } from "../api/media.js";
-import { paradigms } from "../api/analysis.js";
 import { useAuth } from "../stores/auth.js";
 import { useBreadcrumb } from "../stores/breadcrumb.js";
 import { tagType, useExecutionFormat } from "../composables/useExecutionFormat.js";
@@ -23,7 +22,6 @@ import CalibrationDialog from "../components/test/CalibrationDialog.vue";
 import SessionAnimalsEditor from "../components/test/SessionAnimalsEditor.vue";
 import TestComments from "../components/test/TestComments.vue";
 import SubjectResult from "../components/analysis/SubjectResult.vue";
-import ScoringPlayer from "../components/scoring/ScoringPlayer.vue";
 
 const { t } = useI18n();
 const route = useRoute();
@@ -41,9 +39,6 @@ const cancelling = ref(false);
 const cancelReason = ref("");
 const editingAnimals = ref(false);
 const calibrating = ref(null); // the test subject being calibrated
-const scorable = ref(false); // observer scored: input events and nothing tracked
-const scoringSubject = ref(null);
-const resultsVersion = ref(0); // bumped after scoring so results load again
 
 const testId = computed(() => route.params.id);
 const status = computed(() => test.value?.status);
@@ -75,9 +70,6 @@ async function load() {
       { label: test.value.timepointName },
     ]);
     await loadCalibration();
-    paradigms.version(test.value.paradigmKey, test.value.paradigmVersion)
-      .then((m) => (scorable.value = (m.inputEvents || []).length > 0 && !(m.zones || []).length))
-      .catch(() => (scorable.value = false));
   } catch (e) {
     error.value = e.message;
   }
@@ -179,9 +171,7 @@ onUnmounted(() => crumb.clear());
           :subject="subject"
           :calibration="calibrationBySubject[subject.id]"
           :can-run="canRun"
-          :scorable="scorable && (test.status === 'IN_PROGRESS' || test.status === 'COMPLETED')"
           @changed="load"
-          @score="(s) => (scoringSubject = s)"
           @calibrate="(s) => (calibrating = s)"
         />
       </div>
@@ -192,7 +182,7 @@ onUnmounted(() => crumb.clear());
     <!-- Analysis results and runs, one block per animal. -->
     <NCard size="small" :bordered="true" :title="$t('execution.session.analysisTitle')" data-test="analysis-slot">
       <div class="analysis-list">
-        <SubjectResult v-for="s in test.subjects" :key="`${s.id}:${resultsVersion}`" :test-id="test.id" :test-subject-id="s.id" @changed="load" />
+        <SubjectResult v-for="s in test.subjects" :key="s.id" :test-id="test.id" :test-subject-id="s.id" @changed="load" />
       </div>
     </NCard>
 
@@ -213,16 +203,6 @@ onUnmounted(() => crumb.clear());
 
     <NModal v-model:show="editingAnimals" preset="card" :title="$t('execution.tests.editAnimals')" style="width: 520px; max-width: 94vw">
       <SessionAnimalsEditor :test="test" @updated="animalsUpdated" />
-    </NModal>
-
-    <NModal
-      :show="!!scoringSubject"
-      preset="card"
-      :title="scoringSubject ? $t('scoring.title', { animal: scoringSubject.subjectCode }) : ''"
-      style="width: 1100px; max-width: 96vw"
-      @update:show="(v) => !v && (scoringSubject = null)"
-    >
-      <ScoringPlayer v-if="scoringSubject" :test-id="test.id" :subject="scoringSubject" :can-run="canRun" @changed="resultsVersion++" />
     </NModal>
 
     <CalibrationDialog

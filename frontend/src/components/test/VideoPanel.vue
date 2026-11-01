@@ -4,9 +4,11 @@
 // once it is verified, and the earlier ones stay listed for provenance.
 import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
-import { NAlert, NButton, NCard, NCollapse, NCollapseItem, NPopconfirm, NProgress, NTag, useMessage } from "naive-ui";
+import { NAlert, NButton, NCard, NCollapse, NCollapseItem, NPopconfirm, NTag, useMessage } from "naive-ui";
 import { recordings, uploadVideo } from "../../api/media.js";
 import { tagType, useExecutionFormat } from "../../composables/useExecutionFormat.js";
+import { useVideoUpload } from "../../composables/useVideoUpload.js";
+import UploadProgress from "../UploadProgress.vue";
 
 const props = defineProps({
   test: { type: Object, required: true },
@@ -19,8 +21,8 @@ const fmt = useExecutionFormat();
 
 const list = ref([]); // oldest first
 const error = ref("");
-const stage = ref(""); // checksum | upload | verify while uploading
-const progress = ref(0);
+const sending = useVideoUpload((file, progress) => uploadVideo(props.test.id, file, progress));
+const { stage, progress } = sending;
 const playing = ref(null); // { recordingId, url }
 const input = ref(null);
 
@@ -50,23 +52,17 @@ async function upload(event) {
   event.target.value = "";
   if (!file) return;
   error.value = "";
-  progress.value = 0;
-  try {
-    const recording = await uploadVideo(props.test.id, file, {
-      onStage: (value) => (stage.value = value),
-      onProgress: (value) => (progress.value = value),
-    });
-    if (recording.video.status === "VERIFIED") message.success(t("execution.video.verified"));
-    else message.error(t("execution.video.rejected", { reason: t(`execution.video.reasons.${recording.video.rejectionReason || "UNKNOWN"}`) }));
-    playing.value = null;
+  const recording = await sending.start(file);
+  if (!recording) {
     await load();
-    emit("changed");
-  } catch (e) {
-    error.value = e.message;
-    await load();
-  } finally {
-    stage.value = "";
+    error.value = sending.error.value;
+    return;
   }
+  if (recording.video.status === "VERIFIED") message.success(t("execution.video.verified"));
+  else message.error(t("execution.video.rejected", { reason: t(`execution.video.reasons.${recording.video.rejectionReason || "UNKNOWN"}`) }));
+  playing.value = null;
+  await load();
+  emit("changed");
 }
 
 async function play(recording) {
@@ -102,10 +98,7 @@ defineExpose({ load });
 
     <p v-if="!started" class="muted" data-test="video-not-started">{{ $t("execution.video.notStarted") }}</p>
 
-    <div v-if="stage" class="progress" data-test="video-progress">
-      <NProgress type="line" :percentage="stage === 'upload' ? Math.round(progress * 100) : stage === 'verify' ? 100 : 0" :height="8" :processing="stage !== 'upload'" />
-      <span class="muted">{{ $t(`execution.video.stages.${stage}`, { percent: Math.round(progress * 100) }) }}</span>
-    </div>
+    <UploadProgress v-if="stage" :stage="stage" :progress="progress" />
 
     <div v-if="inUse" class="current" data-test="video-current" :data-recording="inUse.id">
       <div class="line">
@@ -145,7 +138,6 @@ defineExpose({ load });
 
 <style scoped>
 .hidden { display: none; }
-.progress { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
 .current { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; margin-bottom: 10px; }
 .line { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; min-width: 0; }
 .file { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }

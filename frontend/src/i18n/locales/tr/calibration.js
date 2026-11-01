@@ -2,6 +2,12 @@
 // kırpma ve paradigmanın kalibre edilen bölgeleri.
 export default {
   calibration: {
+    // Where the camera goes and what to draw, per paradigm.
+    guide: {
+      NOVEL_OBJECT: "Kamera arenanın üstünde, tam aşağı bakar ve tüm zemini görür. Arena zemininin dört köşesini yerleştirin, sonra her nesnenin çevresine yaklaşık 2 cm payı da içeren bir daire çizin: yeni nesne ve tanıdık nesne. Bir denekte yeni nesne öbür taraftaysa o deneğin kalibrasyonunda yer değiştirme düğmesini kullanın.",
+      POLE: "Kamera direğin yanında, ortasıyla aynı yükseklikte durur ve tabandan tepeye tüm direği görür. Direğin tabanını ve tepesini, ayrıca direkten uzakta düzenek üzerinde en az iki işaret daha (örneğin arka panelde) yerleştirin; işaretlerin direğe uzaklığını ve tabandan yüksekliğini ölçün. Sonra deneğin tırmandığı yeri kapsayan direk bölgesini ve dibindeki zemini kapsayan taban bölgesini çizin.",
+      TREADMILL: "Kamera kulvarın yanında, bant hizasında durur ve şok ızgarasından ön duvara kadar tüm kulvarı görür. Kulvar duvarının köşelerini yerleştirin: x kulvar boyunca ızgara ucundan (0) öne doğru, y banttan yukarı doğru ölçülür. Sonra kulvarın arkasındaki ızgaranın üzerine şok ızgarası bölgesini çizin.",
+    },
     source: {
       local: "Kare için video",
       pick: "Video dosyası seç",
@@ -40,6 +46,9 @@ export default {
       apply: "Düzenek noktalarını kullan",
       free: "Tıkladığınız her noktanın düzenek üzerindeki konumunu yazın.",
       box: "{width} × {depth} cm düzenek üzerindeki noktalar: x genişlik, y derinlik boyunca, (0, 0) başlangıç köşesinden ölçülür. Her birine sırayla karede tıklayın.",
+      pole: "{length} cm direğin yandan görünüşündeki noktalar: x direğe uzaklık, y tabandan yükseklik (taban 0, tepe {length}). Taban ve tepe aynı doğru üzerinde olduğundan direkten uzaktaki düzenek işaretlerinin konumunu ölçüp yazın.",
+      lane: "{length} cm kulvarın yandan görünüşündeki noktalar: x kulvar boyunca ızgara ucundan (0) öne ({length}), y banttan yukarı doğru. Üst noktaları doldurmak için kulvar duvarının yüksekliğini yazın.",
+      laneHeight: "Kulvar duvarı yüksekliği (cm)",
       tank: "{diameter} cm tankın duvarındaki noktalar, merkezinden ölçülür: x doğuya, y kuzeye doğru artar. Her birine sırayla karede tıklayın.",
       points: {
         cornerOrigin: "Başlangıç köşesi",
@@ -56,6 +65,20 @@ export default {
         northEast: "Kuzeydoğu duvarı",
         southEast: "Güneydoğu duvarı",
         southWest: "Güneybatı duvarı",
+        poleBase: "Direğin tabanı",
+        poleTop: "Direğin tepesi",
+        poleMiddle: "Direğin ortası",
+        rigMark1: "Düzenek işareti 1 (konumunu yazın)",
+        rigMark2: "Düzenek işareti 2 (konumunu yazın)",
+        rigMark3: "Düzenek işareti 3 (konumunu yazın)",
+        rigMark4: "Düzenek işareti 4 (konumunu yazın)",
+        gridBelt: "Izgara ucu, bant üzerinde",
+        frontBelt: "Ön uç, bant üzerinde",
+        frontTop: "Ön uç, duvarın üstü",
+        gridTop: "Izgara ucu, duvarın üstü",
+        middleBelt: "Kulvarın ortası, bant üzerinde",
+        middleTop: "Kulvarın ortası, duvarın üstü",
+        gridMiddle: "Izgara ucu, duvar yüksekliğinin yarısı",
       },
     },
     cropFull: "Tüm kare",
@@ -79,6 +102,8 @@ export default {
       undo: "Son köşeyi geri al",
       close: "Çokgeni kapat",
       stop: "Çizimi bitir",
+      swap: "Yer değiştir: {a} ve {b}",
+      swapHint: "Dengelenmiş bir oturum için: çizilen iki bölge yer değiştirir.",
       drawing: {
         polygon: "{zone} çiziliyor: her köşeye tıklayın, kapatmak için ilk köşeye yeniden tıklayın (şu ana kadar {count}).",
         circle: "{zone} çiziliyor: merkeze basıp kenara kadar sürükleyin.",
@@ -99,6 +124,7 @@ export default {
       points: "{points} için karedeki ve düzenekteki konumu girin.",
       zone: "{zone} bölgesini çizin.",
       openPolygon: "Çizilmekte olan çokgeni kapatın ya da geri alın.",
+      fitLine: "Uyum noktaları, herhangi üçü aynı doğru üzerinde olmayan dört düzenek konumu içermeli; bu doğrunun dışında düzenek işaretleri ekleyin.",
     },
     summary: {
       status: "Durum",
@@ -115,6 +141,15 @@ export default {
   environments: {
     calibration: {
       note: "Noktalar sabit kameranın bir karesinden okunur: tıklamak için bu kamerayla çekilmiş bir video seçin ya da değerleri yazın. Video bu bilgisayarda kalır.",
+    },
+  },
+  // Every paradigm is analysed automatically: no wording about scoring.
+  paradigms: {
+    scopeHints: {
+      ANALYSIS: "Videoların nasıl izlenip analiz edileceği. Ortamda tutulur; varsayılanlar çoğu düzenek için uygundur.",
+    },
+    qcRules: {
+      max_event_time_uncertainty_s: "Olay zamanı belirsizliği üst sınırı",
     },
   },
   errors: {

@@ -34,6 +34,7 @@ type study struct {
 	healthy, disease                       string
 	saline, mptp                           string
 	healthyVehicle, induction, sickVehicle string
+	healthyPeriod                          string
 	m1, m2, m3, m4                         string
 	a1, a2, a3, a4, draftAllocation        string
 }
@@ -55,7 +56,8 @@ func (s *study) exec(sql string, args ...any) {
 }
 
 // newStudy builds a study with day 0 on 1 March 2026 in a laboratory at UTC+3:
-// G1 healthy (saline 10 mL/kg daily on days 1 to 5) and G2 disease (MPTP
+// G1 healthy (no substance on days -5 to 30, and saline 10 mL/kg daily on days
+// 1 to 5 written before no-substance periods existed) and G2 disease (MPTP
 // 20 mg/kg once on day 0, saline daily on days 1 to 5).
 func newStudy(t *testing.T) *study {
 	s := &study{t: t, pool: pgtest.Database(t)}
@@ -73,7 +75,13 @@ func newStudy(t *testing.T) *study {
 		return s.id(`INSERT INTO misko.regimen_items (experiment_id, group_id, purpose, substance_id, dose_micro, unit, route, frequency, start_day, end_day)
 			VALUES ($1, $2, $3, $4, $5, $6, 'INTRAPERITONEAL', $7, $8, $9) RETURNING id`, s.exp, group, purpose, substance, dose, unit, frequency, start, end)
 	}
+	// A healthy control's vehicle from before migration 020: a started study
+	// keeps it and doses it, though no new one can be written.
+	s.exec(`ALTER TABLE misko.regimen_items DISABLE TRIGGER regimen_items_role`)
 	s.healthyVehicle = item(s.healthy, "VEHICLE", s.saline, 10_000_000, "mL/kg", "DAILY", 1, 5)
+	s.exec(`ALTER TABLE misko.regimen_items ENABLE TRIGGER regimen_items_role`)
+	s.healthyPeriod = s.id(`INSERT INTO misko.regimen_items (experiment_id, group_id, purpose, start_day, end_day)
+		VALUES ($1, $2, 'NONE', -5, 30) RETURNING id`, s.exp, s.healthy)
 	s.induction = item(s.disease, "INDUCTION", s.mptp, 20_000_000, "mg/kg", "ONCE", 0, 0)
 	s.sickVehicle = item(s.disease, "VEHICLE", s.saline, 10_000_000, "mL/kg", "DAILY", 1, 5)
 	animal := func(code string) string {
@@ -128,6 +136,9 @@ func TestDatabaseRulesMapToErrors(t *testing.T) {
 		{"allocation of another experiment", func(a *domain.Administration) { a.AllocationID = s.draftAllocation }, application.ErrAllocationNotFound},
 		{"group other than the allocation's", func(a *domain.Administration) { a.GroupID = s.healthy }, application.ErrAllocationNotFound},
 		{"regimen item of another group", func(a *domain.Administration) { a.RegimenItemID = s.healthyVehicle }, application.ErrRegimenItemOtherGroup},
+		{"no-substance period", func(a *domain.Administration) {
+			a.AllocationID, a.GroupID, a.SubjectID, a.RegimenItemID = s.a1, s.healthy, s.m1, s.healthyPeriod
+		}, application.ErrNoSubstanceItem},
 		{"per-kg dose without weight", func(a *domain.Administration) { a.Dose.Unit = domain.MilliliterPerKilogram }, domain.ErrWeightRequired},
 		{"weight of another animal", func(a *domain.Administration) {
 			a.WeightID = s.weight(s.m1, 25_000, "2026-02-28T08:00:00Z")
@@ -203,6 +214,11 @@ func TestRecordAndListThroughTheService(t *testing.T) {
 		RegimenItemID: s.healthyVehicle, AdministeredAt: at("2026-03-02T06:00:00Z"),
 	}); !errors.Is(err, domain.ErrWeightRequired) {
 		t.Fatalf("per-kg dose for an animal never weighed: %v", err)
+	}
+	if _, err := service.RecordAdministration(ctx, technician, s.exp, s.a1, application.AdministrationInput{
+		RegimenItemID: s.healthyPeriod, AdministeredAt: at("2026-03-02T06:00:00Z"),
+	}); !errors.Is(err, application.ErrNoSubstanceItem) {
+		t.Fatalf("dose of a no-substance period: %v", err)
 	}
 	if _, err := service.RecordAdministration(ctx, technician, s.exp, s.a3, application.AdministrationInput{
 		Purpose: "VEHICLE", SubstanceID: s.saline, Amount: "0.2", Unit: "mL", Route: "ORAL", AdministeredAt: at("2026-03-02T13:00:00Z"),

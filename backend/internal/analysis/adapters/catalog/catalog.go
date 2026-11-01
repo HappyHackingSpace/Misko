@@ -33,11 +33,8 @@ func (Catalog) Contract(key string, version int) (domain.Contract, error) {
 		MetricEngineVersion: paradigms.MetricEngineVersion, ResultSchemaVersion: paradigms.ResultSchemaVersion,
 		CalibrationRequired: needs.Required, MissingReasons: paradigms.MissingReasons(),
 		// A trajectory supplies samples and the pinned calibration supplies
-		// calibrated zone shapes. Observer-scored paradigms compute nothing
-		// from samples and stay worker-free; optional scored events of a
-		// tracked paradigm are left missing as unscored.
+		// calibrated zone shapes; the engine derives every event from both.
 		TrajectoryAnalyzable: tracked(p),
-		ObserverScored:       p.ObserverScored(),
 	}
 	for _, z := range p.Zones {
 		if z.Calibrated && z.Required {
@@ -95,7 +92,7 @@ func (Catalog) Evaluate(key string, version int, parameters map[string]float64, 
 		c.Metrics = append(c.Metrics, out)
 	}
 	for _, i := range r.Intervals {
-		c.Intervals = append(c.Intervals, domain.Interval{Type: i.Type, StartUs: i.StartUs, EndUs: i.EndUs})
+		c.Intervals = append(c.Intervals, domain.Interval{Type: i.Type, Label: i.Label, StartUs: i.StartUs, EndUs: i.EndUs})
 	}
 	for _, p := range r.Points {
 		c.Points = append(c.Points, domain.Point{Type: p.Type, AtUs: p.AtUs})

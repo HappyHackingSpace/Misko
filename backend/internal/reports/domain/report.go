@@ -77,7 +77,7 @@ type Measurement struct {
 	ScheduledAt                         time.Time
 	Excluded                            bool
 	ResultStatus                        string
-	ResultRunID                         string
+	ResultJobID                         string
 	ParadigmVersion                     int
 	HasMetric                           bool
 	Unit                                string

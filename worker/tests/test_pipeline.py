@@ -89,10 +89,10 @@ def test_positions_outside_the_tank_are_lost(tmp_path: Path) -> None:
 
 def test_low_contrast_lowers_confidence_but_keeps_the_timeline(tmp_path: Path) -> None:
     source = tmp_path / "faint.mp4"
-    truth = synthetic.render(source, synthetic.regular(6.0), subject_level=145)
+    truth = synthetic.render(source, synthetic.regular(6.0), subject_level=152)
     analysis = analyze(source, synthetic.job(), tmp_path / "overlay.mp4")
     assert len(analysis.samples) == len(truth) and analysis.lost_ratio == 0
-    # On water 50 grey levels count as full contrast; 40 gives about 0.65,
+    # On water 50 grey levels count as full contrast; 33 gives about 0.62,
     # below the paradigm's 0.7 QC rule.
     assert 0.3 < analysis.mean_confidence < 0.7
     assert np.mean(errors(analysis, truth)) <= 0.4
@@ -216,7 +216,6 @@ def test_unsupported_paradigms_are_refused_before_decoding(tmp_path: Path) -> No
     garbage = tmp_path / "garbage.mp4"
     garbage.write_bytes(b"not a video" * 200)
     job = synthetic.job()
-    # Observer-scored paradigms never reach a worker.
-    job["run"]["paradigmKey"] = "NOVEL_OBJECT"
-    with pytest.raises(NonRetryable, match="UNSUPPORTED_PARADIGM: NOVEL_OBJECT v1"):
+    job["run"]["paradigmKey"] = "ROTAROD"
+    with pytest.raises(NonRetryable, match="UNSUPPORTED_PARADIGM: ROTAROD v1"):
         analyze(garbage, job, tmp_path / "o.mp4")

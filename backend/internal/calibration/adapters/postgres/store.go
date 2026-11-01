@@ -24,7 +24,8 @@ var constraintErrors = map[string]error{
 	"calibrations_supersedes_fkey":  domain.ErrStaleCorrection,
 	"calibrations_crop_check":       domain.ErrInvalidCrop,
 	"calibrations_scope":            application.ErrInvalidScope,
-	"calibrations_override_check":   application.ErrInvalidScope,
+	"calibrations_owner_check":      application.ErrInvalidScope,
+	"calibrations_trial_fkey":       application.ErrTrialNotFound,
 	"calibration_zones_frame":       domain.ErrZoneOutsideFrame,
 	"calibration_zones_shape_check": domain.ErrInvalidZone,
 	"calibration_zones_frozen":      domain.ErrZonesFrozen,
@@ -132,15 +133,72 @@ func (s *Store) EnvironmentCalibrations(ctx context.Context, revisionID string) 
 }
 
 func (s *Store) Calibration(ctx context.Context, id string) (domain.Calibration, error) {
+	if !pgtx.ValidUUID(id) {
+		return domain.Calibration{}, application.ErrCalibrationNotFound
+	}
 	row, err := s.queries.GetCalibration(ctx, id)
 	if err != nil {
-		return domain.Calibration{}, fmt.Errorf("get calibration: %w", err)
+		return domain.Calibration{}, translate(err, application.ErrCalibrationNotFound, "get calibration")
 	}
 	list, err := s.toCalibrations(ctx, []sqlcgen.MiskoCalibration{row})
 	if err != nil {
 		return domain.Calibration{}, err
 	}
 	return list[0], nil
+}
+
+func (s *Store) Trial(ctx context.Context, id string) (application.TrialRef, error) {
+	if !pgtx.ValidUUID(id) {
+		return application.TrialRef{}, application.ErrTrialNotFound
+	}
+	row, err := s.queries.GetTrialRef(ctx, id)
+	if err != nil {
+		return application.TrialRef{}, translate(err, application.ErrTrialNotFound, "get trial")
+	}
+	return toTrialRef(row)
+}
+
+// LockTrial must run inside Transaction; the lock lasts until it ends.
+func (s *Store) LockTrial(ctx context.Context, id string) (application.TrialRef, error) {
+	if !pgtx.ValidUUID(id) {
+		return application.TrialRef{}, application.ErrTrialNotFound
+	}
+	row, err := s.queries.LockTrialRef(ctx, id)
+	if err != nil {
+		return application.TrialRef{}, translate(err, application.ErrTrialNotFound, "lock trial")
+	}
+	return toTrialRef(sqlcgen.GetTrialRefRow(row))
+}
+
+func (s *Store) TrialCalibrations(ctx context.Context, trialID string) ([]domain.Calibration, error) {
+	if !pgtx.ValidUUID(trialID) {
+		return nil, nil
+	}
+	rows, err := s.queries.ListTrialCalibrations(ctx, &trialID)
+	if err != nil {
+		return nil, fmt.Errorf("list trial calibrations: %w", err)
+	}
+	return s.toCalibrations(ctx, rows)
+}
+
+func (s *Store) TrialEffective(ctx context.Context, trialID string) (application.TrialEffective, error) {
+	if !pgtx.ValidUUID(trialID) {
+		return application.TrialEffective{}, application.ErrTrialNotFound
+	}
+	row, err := s.queries.GetTrialEffective(ctx, trialID)
+	if err != nil {
+		return application.TrialEffective{}, translate(err, application.ErrTrialNotFound, "get trial effective calibration")
+	}
+	return application.TrialEffective{Source: domain.Source(row.Source), CalibrationID: row.CalibrationID}, nil
+}
+
+func toTrialRef(r sqlcgen.GetTrialRefRow) (application.TrialRef, error) {
+	parameters, err := decodeParameters(r.Parameters)
+	if err != nil {
+		return application.TrialRef{}, err
+	}
+	return application.TrialRef{ID: r.ID, EnvironmentRevisionID: r.EnvironmentRevisionID, ParadigmKey: r.ParadigmKey, ParadigmVersion: int(r.ParadigmVersion),
+		Parameters: parameters, VideoAssetID: r.VideoAssetID, VideoStatus: r.VideoStatus}, nil
 }
 
 func (s *Store) Effective(ctx context.Context, testID string) ([]application.Effective, error) {
@@ -208,6 +266,7 @@ func (s *Store) CreateCalibration(ctx context.Context, c domain.Calibration) (do
 	}
 	row, err := s.queries.CreateCalibration(ctx, sqlcgen.CreateCalibrationParams{
 		EnvironmentRevisionID: c.EnvironmentRevisionID, TestSubjectID: optional(c.TestSubjectID), RecordingID: optional(c.RecordingID),
+		TrialID: optional(c.TrialID), VideoAssetID: optional(c.VideoAssetID),
 		SupersedesID: optional(c.SupersedesID), CameraID: c.CameraID,
 		FrameWidth: int32(c.FrameWidth), FrameHeight: int32(c.FrameHeight),
 		CropX: int32(c.Crop.X), CropY: int32(c.Crop.Y), CropWidth: int32(c.Crop.Width), CropHeight: int32(c.Crop.Height),
@@ -383,7 +442,8 @@ func toCalibration(r sqlcgen.MiskoCalibration) (domain.Calibration, error) {
 		return domain.Calibration{}, fmt.Errorf("calibration %s has %d transform values", r.ID, len(r.Transform))
 	}
 	c := domain.Calibration{
-		ID: r.ID, TestSubjectID: value(r.TestSubjectID), RecordingID: value(r.RecordingID), EnvironmentRevisionID: r.EnvironmentRevisionID, SupersedesID: value(r.SupersedesID), CameraID: r.CameraID,
+		ID: r.ID, TestSubjectID: value(r.TestSubjectID), RecordingID: value(r.RecordingID), TrialID: value(r.TrialID), VideoAssetID: value(r.VideoAssetID),
+		EnvironmentRevisionID: r.EnvironmentRevisionID, SupersedesID: value(r.SupersedesID), CameraID: r.CameraID,
 		FrameWidth: int(r.FrameWidth), FrameHeight: int(r.FrameHeight),
 		Crop:             domain.Rect{X: int(r.CropX), Y: int(r.CropY), Width: int(r.CropWidth), Height: int(r.CropHeight)},
 		ReferenceFrameUs: int64Value(r.ReferenceFrameUs), Plane: domain.Plane(r.MeasurementPlane), Fit: fit, Check: check,
@@ -410,9 +470,10 @@ func value(s *string) string {
 	return *s
 }
 
-// referenceFrame stores the video time only for overrides, which have a video.
+// referenceFrame stores the video time only for overrides and trial
+// calibrations, which have a video.
 func referenceFrame(c domain.Calibration) *int64 {
-	if c.RecordingID == "" {
+	if c.Video() == "" {
 		return nil
 	}
 	return &c.ReferenceFrameUs

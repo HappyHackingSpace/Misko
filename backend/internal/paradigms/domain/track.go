@@ -9,18 +9,18 @@ import (
 
 // Shared wording for trajectory-based definitions.
 var (
-	trackedPair = T("A counted interval is a pair of consecutive tracked samples with 0 < dt <= max_sample_gap_s.",
+	trackedPair = T("A counted interval is a pair of consecutive tracked samples separated by 0 < dt <= max_sample_gap_s.",
 		"Sayılan aralık, 0 < dt <= max_sample_gap_s olan iki ardışık izlenmiş örnekten oluşur.")
-	missingNoPairs = T("Missing (NO_VALID_INTERVALS) when there is no counted interval.",
+	missingNoPairs = T("Missing (NO_VALID_INTERVALS) when there are no counted intervals.",
 		"Sayılan aralık yoksa eksik (NO_VALID_INTERVALS).")
 )
 
 var gapParameter = Parameter{
 	Key: "max_sample_gap_s", Scope: AnalysisScope, Unit: Second, Min: 0.01, Max: 5, Default: 0.5,
-	Label: Text{"Tracking gap tolerance", "İzleme boşluğu toleransı"},
+	Label: Text{"Maximum tracking gap", "İzleme boşluğu toleransı"},
 	Help: Text{
-		"If the animal is lost for longer than this, the movement across the gap is not counted. Raise it only for low frame rate videos.",
-		"Hayvan bundan daha uzun süre kaybolursa, aradaki hareket hesaba katılmaz. Yalnızca düşük kare hızlı videolarda artırın.",
+		"Longest tracking dropout that is bridged; movement across a longer gap is excluded. Increase only for low-frame-rate videos.",
+		"Denek bundan daha uzun süre kaybolursa, aradaki hareket hesaba katılmaz. Yalnızca düşük kare hızlı videolarda artırın.",
 	},
 }
 
@@ -29,8 +29,6 @@ var trajectoryQC = []QCRule{
 	{Key: "max_lost_frame_ratio", Operator: "<=", Value: 0.1, Unit: Ratio},
 	{Key: "max_calibration_error_cm", Operator: "<=", Value: 2, Unit: Centimeter},
 }
-
-var scoringQC = []QCRule{{Key: "max_event_time_uncertainty_s", Operator: "<=", Value: 0.5, Unit: Second}}
 
 type zone struct {
 	key      string
@@ -120,7 +118,7 @@ func occupancyEvents(zones []Zone, keys ...string) []EventDefinition {
 		z := zoneByKey(zones, k)
 		out = append(out, EventDefinition{
 			Type: "in_" + k, Kind: IntervalEvent,
-			Definition: T("Contiguous counted intervals whose earlier sample is in "+k+".",
+			Definition: T("Run of contiguous counted intervals whose earlier sample lies in the "+strings.ToLower(z.Label.EN)+".",
 				"Önceki örneği "+lowerTR(z.Label.TR)+" içinde olan bitişik sayılan aralıklar."),
 			Label: T(z.Label.EN+" visit", z.Label.TR+" ziyareti"),
 		})
@@ -134,7 +132,7 @@ func entryEvents(zones []Zone, keys ...string) []EventDefinition {
 		z := zoneByKey(zones, k)
 		out = append(out, EventDefinition{
 			Type: k + "_entry", Kind: PointEvent,
-			Definition: T("Later sample time of a counted interval entering "+k+".",
+			Definition: T("Time of the later sample of a counted interval that enters the "+strings.ToLower(z.Label.EN)+".",
 				capitalTR(z.Label.TR)+" bölgesine giren sayılan aralığın sonraki örneğinin zamanı."),
 			Label: T(z.Label.EN+" entry", z.Label.TR+" girişi"),
 		})
@@ -201,19 +199,42 @@ func metric(key string, label, description Text, unit Unit, max float64, inputs 
 	return m
 }
 
-func firstEvent(events []ObservedEvent, typ string) (ObservedEvent, bool) {
-	i := slices.IndexFunc(events, func(e ObservedEvent) bool { return e.Type == typ })
-	if i < 0 {
-		return ObservedEvent{}, false
-	}
-	return events[i], true
+// calibratedZone is a required zone whose shapes are drawn with the
+// calibration, in its centimetre frame.
+func calibratedZone(key, role string, label, geometry Text) Zone {
+	return Zone{Key: key, Role: role, Label: label, Geometry: geometry, Calibrated: true, Required: true}
 }
 
-func echoPoints(events []ObservedEvent, types ...string) []Point {
-	var out []Point
-	for _, e := range events {
-		if slices.Contains(types, e.Type) {
-			out = append(out, Point{Type: e.Type, AtUs: e.StartUs})
+// validOnly tracks every valid sample; calibrated paradigms have no bounds
+// beyond the camera frame.
+func validOnly(s Sample) bool { return s.Valid }
+
+// shapeZone evaluates a calibrated zone: the union of its drawn shapes.
+func shapeZone(e evaluation, key string) zone {
+	shapes := e.zones[key]
+	return zone{key: key, contains: func(x, y float64) bool { return inAny(shapes, x, y) }}
+}
+
+// censor drops samples after the cut-off: the trial is stopped there, so
+// nothing later is part of it.
+func censor(samples []Sample, cutoffUs int64) []Sample {
+	end := len(samples)
+	for end > 0 && samples[end-1].TUs > cutoffUs {
+		end--
+	}
+	return samples[:end]
+}
+
+func microseconds(s float64) int64 { return int64(math.Round(s * 1e6)) }
+
+// runs returns the occupancy runs of one zone as computed by walk, in time
+// order: each covers contiguous counted intervals whose earlier sample lies in
+// the zone.
+func (t track) runs(key string) []Interval {
+	var out []Interval
+	for _, i := range t.intervals {
+		if i.Type == "in_"+key {
+			out = append(out, i)
 		}
 	}
 	return out

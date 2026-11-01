@@ -1,7 +1,7 @@
 // Package application contains calibration use cases. An environment's
 // calibration needs apparatus:write, a manual override for one animal of a
-// test needs test:run, and reading calibrations and the calibration status
-// needs *:read.
+// test needs test:run, a paradigm trial's calibration needs trial:run, and
+// reading calibrations and the calibration status needs *:read.
 //
 // Which calibration an animal of a test is analysed with comes from the
 // effective_calibrations view, so the status shown here, the analysis
@@ -82,7 +82,16 @@ type Store interface {
 	Overrides(ctx context.Context, testSubjectID string) ([]domain.Calibration, error)
 	// EnvironmentCalibrations lists a revision's default calibrations oldest first.
 	EnvironmentCalibrations(ctx context.Context, revisionID string) ([]domain.Calibration, error)
+	// Calibration returns ErrCalibrationNotFound for an unknown id.
 	Calibration(ctx context.Context, id string) (domain.Calibration, error)
+	// Trial returns ErrTrialNotFound for an unknown or deleted paradigm trial.
+	Trial(ctx context.Context, id string) (TrialRef, error)
+	// LockTrial serializes the calibrations of one trial.
+	LockTrial(ctx context.Context, id string) (TrialRef, error)
+	// TrialCalibrations lists a trial's own calibrations, oldest first.
+	TrialCalibrations(ctx context.Context, trialID string) ([]domain.Calibration, error)
+	// TrialEffective returns ErrTrialNotFound for an unknown or deleted trial.
+	TrialEffective(ctx context.Context, trialID string) (TrialEffective, error)
 	// Effective lists the effective calibration of every animal of a test.
 	Effective(ctx context.Context, testID string) ([]Effective, error)
 	CreateCalibration(ctx context.Context, c domain.Calibration) (domain.Calibration, error)

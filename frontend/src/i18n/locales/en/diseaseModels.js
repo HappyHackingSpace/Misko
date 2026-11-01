@@ -1,0 +1,55 @@
+export default {
+  nav: { diseaseModels: "Disease models" },
+  diseaseModels: {
+    title: "Disease models",
+    subtitle: "How a deficit is produced and how it is confirmed. Experiment groups point to one of these.",
+    new: "New disease model",
+    edit: "Edit disease model",
+    name: "Name",
+    description: "Description",
+    searchName: "Search by name",
+    inductionType: "Induction",
+    allTypes: "All induction types",
+    confirmationCriterion: "Confirmation criterion",
+    criterionPlaceholder: "Pole descent time above 150% of baseline",
+    namePlaceholder: "MPTP Parkinson model",
+    empty: "No disease models yet.",
+    noMatch: "Nothing matches these filters.",
+    created: "{name} was created",
+    updated: "{name} was saved",
+    deleted: "{name} was deleted",
+    confirmDelete: "Delete {name}? This is only possible while no experiment group uses it.",
+    inductionTypes: {
+      CHEMICAL: "Chemical",
+      SURGICAL: "Surgical",
+      DIET: "Diet",
+      STRESS: "Stress",
+      OTHER: "Other",
+    },
+  },
+  errors: {
+    common: {
+      invalidJSON: "The request could not be read",
+      bodyTooLarge: "The request is too large",
+      serverError: "Server error, please try again",
+      noChanges: "Nothing was changed",
+      invalidQuery: "These filters are not valid",
+      invalidName: "The name must contain 1 to 120 printable characters",
+      invalidDescription: "The description can contain at most 5000 characters",
+    },
+    auth: {
+      unauthenticated: "Please sign in again",
+      forbidden: "You do not have permission for this action",
+    },
+    // The API code is catalog.nameTaken for substances and disease models alike.
+    catalog: {
+      nameTaken: "An entry with this name already exists",
+    },
+    diseaseModel: {
+      notFound: "Disease model not found",
+      invalidInductionType: "Choose how the disease is induced",
+      invalidConfirmationCriterion: "The confirmation criterion can contain at most 2000 characters",
+      inUse: "This disease model is used by an experiment group and cannot be deleted",
+    },
+  },
+};

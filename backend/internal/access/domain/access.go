@@ -48,12 +48,14 @@ const (
 	ApparatusWrite Permission = "apparatus:write"
 	TestWrite      Permission = "test:write"
 	TestRun        Permission = "test:run"
-	Read           Permission = "*:read"
+	// TrialRun creates and runs paradigm trials outside any experiment.
+	TrialRun Permission = "trial:run"
+	Read     Permission = "*:read"
 )
 
 // Permissions returns every permission as a fresh slice.
 func Permissions() []Permission {
-	return []Permission{UserManage, LabConfigure, StudyWrite, SubjectWrite, WeightWrite, ApparatusWrite, TestWrite, TestRun, Read}
+	return []Permission{UserManage, LabConfigure, StudyWrite, SubjectWrite, WeightWrite, ApparatusWrite, TestWrite, TestRun, TrialRun, Read}
 }
 
 func ParsePermission(raw string) (Permission, error) {
@@ -76,7 +78,7 @@ func (r Role) Allows(p Permission) bool {
 	case Researcher:
 		return p != UserManage && p != LabConfigure
 	case Technician:
-		return p == WeightWrite || p == TestRun || p == Read
+		return p == WeightWrite || p == TestRun || p == TrialRun || p == Read
 	case Viewer:
 		return p == Read
 	default:

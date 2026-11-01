@@ -11,7 +11,7 @@ import (
 )
 
 const analysisStatusCounts = `-- name: AnalysisStatusCounts :many
-SELECT status, count(*) AS total FROM misko.analysis_runs
+SELECT status, count(*) AS total FROM misko.test_subject_jobs
 WHERE status IN ('QUEUED', 'RUNNING', 'FAILED')
 GROUP BY status
 `
@@ -21,6 +21,7 @@ type AnalysisStatusCountsRow struct {
 	Total  int64
 }
 
+// Jobs of animals of tests only: paradigm trials are not experiment work.
 func (q *Queries) AnalysisStatusCounts(ctx context.Context) ([]AnalysisStatusCountsRow, error) {
 	rows, err := q.db.Query(ctx, analysisStatusCounts)
 	if err != nil {
@@ -51,9 +52,9 @@ type ExperimentStatusCountsRow struct {
 	Total  int64
 }
 
-// Read-only aggregation across the experiments, tests, media, calibration and
-// analysis domains, same standing as the reports package: these queries never
-// write.
+// Read-only aggregation across the experiments, tests, media and calibration
+// domains and the test_subject_jobs view of analysed animals, same standing as
+// the reports package: these queries never write.
 func (q *Queries) ExperimentStatusCounts(ctx context.Context) ([]ExperimentStatusCountsRow, error) {
 	rows, err := q.db.Query(ctx, experimentStatusCounts)
 	if err != nil {
@@ -75,15 +76,15 @@ func (q *Queries) ExperimentStatusCounts(ctx context.Context) ([]ExperimentStatu
 }
 
 const recentSucceededRuns = `-- name: RecentSucceededRuns :many
-SELECT r.id, r.finished_at, r.paradigm_key, r.paradigm_version, r.test_id, r.test_subject_id,
+SELECT r.job_id AS id, r.finished_at, r.paradigm_key, r.paradigm_version, r.test_id, r.test_subject_id,
        s.code AS subject_code, e.code AS experiment_code
-FROM misko.analysis_runs r
+FROM misko.test_subject_jobs r
 JOIN misko.test_subjects ts ON ts.id = r.test_subject_id
 JOIN misko.allocations a ON a.id = ts.allocation_id
 JOIN misko.subjects s ON s.id = a.subject_id
 JOIN misko.experiments e ON e.id = r.experiment_id
 WHERE r.status = 'SUCCEEDED'
-ORDER BY r.finished_at DESC, r.id DESC
+ORDER BY r.finished_at DESC, r.job_id DESC
 LIMIT $1::integer
 `
 
