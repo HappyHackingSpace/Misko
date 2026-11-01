@@ -487,12 +487,17 @@ neyi analiz ettiği asla değişmez, bu yüzden yeniden analiz yeni bir iş olu�
 ve önceki işler kalır. İşleri bir test deneği (bir deney) veya bir paradigma
 testi ister; servisin kendisi deneyler hakkında hiçbir şey bilmez.
 
-- LAB_MANAGER bir worker'ı `POST /api/analysis/workers` ile kaydeder; adını, model
-  sürümünü ve desteklediği paradigma sürümlerini verir. Paketle gelen worker'ı
+- Bir worker adı, model sürümü ve desteklediği paradigma sürümleriyle
+  kaydedilir: `bootstrap register-worker` ile doğrudan veritabanına (token'ı
+  `setup`'ın yönetici parolasını gösterdiği gibi bir kez yazdırır) ya da çalışan
+  bir sistemde LAB_MANAGER olarak `POST /api/analysis/workers` ile. Yerel
+  geliştirme için `bootstrap setup`, `WORKER_BOOTSTRAP_TOKEN` değerinden bir
+  `dev-worker` kaydeder ve bu herkese açık token'ı `APP_ENV=production` iken
+  reddeder. Paketle gelen worker'ı
   desteklediği paradigmaların sürüm 1'iyle kaydedin (bkz.
   [Kurulum](../installation/)). Katalog dışındaki sürümler
-  `worker.unknownCapability` ile reddedilir. Yanıt
-  worker'ın token'ını yalnızca bir kez gösterir; bunu worker'ın gizli
+  `worker.unknownCapability` ile reddedilir. Her iki yolda da token'ın yalnızca
+  SHA-256 özeti saklanır; token'ın kendisini worker'ın gizli
   yapılandırmasında saklayın. `POST /api/analysis/workers/{id}/disable` token'ı iptal eder.
   Worker'ı `MISKO_WORKER_TOKEN` ayarlıyken başlatın, örneğin
   `docker compose --profile worker up -d worker`.

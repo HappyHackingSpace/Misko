@@ -477,13 +477,18 @@ it analyses never changes, so analysing again creates a new job and earlier
 jobs stay. Jobs are requested by an animal of a test (an experiment) or by a
 paradigm trial; the service itself knows nothing about experiments.
 
-- A lab manager registers a worker with `POST /api/analysis/workers`, giving its
-  name, model version and the paradigm versions it supports. Register the
-  bundled worker with the paradigms it supports at version 1 (see
+- A worker is registered with its name, model version and the paradigm
+  versions it supports: with `bootstrap register-worker` directly against the
+  database (it prints the token once, like `setup` does the administrator
+  password), or with `POST /api/analysis/workers` as a lab manager on a running
+  system. For local development, `bootstrap setup` seeds a `dev-worker` from
+  `WORKER_BOOTSTRAP_TOKEN` and refuses that public token when
+  `APP_ENV=production`. Register the bundled worker with the paradigms it
+  supports at version 1 (see
   [Installation](../installation/#analysis-worker)). Versions outside the
-  catalog are refused with `worker.unknownCapability`. The
-  response shows the worker's token only once; store it in the worker's secret
-  configuration.
+  catalog are refused with `worker.unknownCapability`. Either way only a
+  SHA-256 hash of the token is stored; store the token itself in the worker's
+  secret configuration.
   `POST /api/analysis/workers/{id}/disable` revokes it. Start the worker with
   `MISKO_WORKER_TOKEN` set, for example
   `docker compose --profile worker up -d worker`.

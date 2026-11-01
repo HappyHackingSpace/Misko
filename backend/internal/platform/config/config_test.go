@@ -80,6 +80,19 @@ func TestLoadSetup(t *testing.T) {
 	if err != nil || setup.LabTimezone != "UTC" || setup.BcryptCost != 12 || setup.AdminEmail != "admin@lab.io" || setup.LabName != "Lab" {
 		t.Fatalf("setup=%+v err=%v", setup, err)
 	}
+	if setup.WorkerSeedToken != "" || setup.Environment != "" {
+		t.Fatalf("worker seed defaults: %+v", setup)
+	}
+	values["WORKER_BOOTSTRAP_TOKEN"] = "short-token"
+	if _, err := LoadSetup(func(key string) string { return values[key] }); err == nil {
+		t.Error("short worker seed token accepted")
+	}
+	values["WORKER_BOOTSTRAP_TOKEN"] = " mw_dev_local_only_not_a_secret \n"
+	values["APP_ENV"] = "production"
+	setup, err = LoadSetup(func(key string) string { return values[key] })
+	if err != nil || setup.WorkerSeedToken != "mw_dev_local_only_not_a_secret" || setup.Environment != "production" {
+		t.Fatalf("worker seed: %+v err=%v", setup, err)
+	}
 }
 
 func TestLoadValidConfiguration(t *testing.T) {
