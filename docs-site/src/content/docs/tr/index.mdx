@@ -1,9 +1,9 @@
 ---
 title: Mişko
-description: Laboratuvar fareleri için davranış testi yönetim sistemi — deneklerin, ortamların, senaryoların ve sonuçların system of record'u.
+description: Laboratuvar kemirgenleri için davranış testi yönetimi; çalışmaların, hayvanların, test oturumlarının ve onaylanan sonuçların kayıt sistemi.
 template: splash
 hero:
-  tagline: Laboratuvar fareleri için davranış testi yönetimi. Senaryolar tanımlayın, denekleri izleyin, paradigmaları çalıştırın ve özet sonuçları saklayın — görü işi ise bağımsız bir serviste kalır.
+  tagline: Laboratuvar fareleri için davranış testi yönetimi. Çalışmaları tasarlayın, hayvanları ve dozları izleyin, test oturumlarını filme alın ve analiz edilen sonuçları onaylayın.
   image:
     alt: Mişko
     dark: ../../../assets/misko-logo-dark.svg
@@ -24,28 +24,30 @@ import { Card, CardGrid } from '@astrojs/starlight/components';
 ## Mişko nedir?
 
 Mişko, fareler üzerinde davranış testleri yürüten biyoloji laboratuvarları için
-**içeriden, on-prem bir SaaS**'tır. Lab iş akışının **system of record**'udur —
-denekler, ortamlar, senaryolar, testler ve özet sonuçlar — ağır görü işi (kare
-telemetrisi, takip, video) ise **ayrı, bağımsız bir serviste** durur.
+**kurum içinde çalışan bir sistemdir**. Bir çalışmanın **kayıt sistemidir**:
+tasarım, hayvanlar ve aldıkları, filme alınan test oturumları ve onaylanan
+sonuçlar. Video analizi ayrı **işçilerde** çalışır; API her ölçümü işçinin
+yüklediği yörüngeden hesaplar.
 
 <CardGrid stagger>
-  <Card title="Kod olarak paradigma" icon="seti:typescript">
-    Bilimsel test türleri (MWM, yeni nesne, direk testi, koşu bandı) kodda SOLID spec'ler
-    olarak salt okunur bir katalogda tanımlıdır. Lablar onlardan adlandırılmış
-    ortamlar oluşturur ve her ortam için apparatus değerlerini doldurur.
+  <Card title="Kod olarak paradigmalar" icon="seti:go">
+    Test türleri (Morris su labirenti, yeni nesne, direk testi, koşu bandı)
+    kodda, hiç değişmeyen yayımlanmış sürümler olarak; ölçümleri, olayları ve
+    kalite kurallarıyla tanımlıdır. Laboratuvarlar onlardan ortamlar oluşturur.
   </Card>
-  <Card title="Senaryo-merkezli alan modeli" icon="approve-check">
-    Bir senaryo bir veya birden çok ortamı (ve paradigmalarının metriklerini)
-    paketler; böylece deney bir kez tanımlanır, test denek seçip ortam ortam
-    koşturmaya iner. Sonuçlar veridir, geç/kal değil.
+  <Card title="Çalışma merkezli tasarım" icon="approve-check">
+    Bir deneyin rollü grupları, rejimleri, zaman noktaları, protokolleri ve
+    sonlanım noktaları vardır. Hayvanlar bir kez atanır, her gün dozlanır ve
+    filme alınan oturumlarda test edilir. Sonuçlar veridir, geçti/kaldı değil.
   </Card>
-  <Card title="İki bağımsız sistem" icon="puzzle">
-    Mişko özet metrikleri + artefakt URL'lerini tutar. CV servisi ham telemetri
-    ve videoyu kendi veritabanında tutar. İkisini ince bir kontrat bağlar.
+  <Card title="Her ölçümün tek tanımı" icon="puzzle">
+    İşçiler hayvanı izler, bir yörünge ve işaretlenmiş bir video yükler. API
+    onları doğrular, kalite kurallarını uygular ve her ölçümü ve olayı
+    hesaplar; her sonuç sayılmadan önce bir kişi onu onaylar.
   </Card>
-  <Card title="İçeriden SaaS, tek kiracı" icon="setting">
-    Kurulum başına bir laboratuvar. Public kayıt yoktur — superadmin açılışta
-    oluşturulur ve kullanıcıları içeriden yönetir.
+  <Card title="Kurulum başına tek laboratuvar" icon="setting">
+    Herkese açık kayıt yoktur: kurulum komutu süper yöneticiyi oluşturur, o da
+    diğer her kullanıcıyı bir rolle oluşturur.
   </Card>
 </CardGrid>
 
@@ -53,10 +55,10 @@ telemetrisi, takip, video) ise **ayrı, bağımsız bir serviste** durur.
 
 - **[Genel bakış](./overview/)**: sistem ne yapar, kimler için.
 - **[Kurulum](./installation/)**: Mişko'yu Docker ile veya yerel olarak çalıştırın.
-- **[Kullanım](./usage/)**: girişten test çalıştırmaya günlük iş akışı.
-- **[Mimari](./architecture/)**: katmanlar, yığın ve sistem sınırı.
-- **[Alan modeli](./domain/)**: yalın, senaryo-merkezli veri modeli.
+- **[Kullanım](./usage/)**: girişten çalışma raporuna günlük iş akışı.
+- **[Mimari](./architecture/)**: katmanlar, yığın ve analizin işleyişi.
+- **[Alan modeli](./domain/)**: çalışma modeli.
 - **[Ölçüm mimarisi](./measurements/)**: paradigma spec'leri, metrik
   tanımları, MWM normalizasyonu ve kalite kontrol.
-- **[Entegrasyon](./integration/)**: Mişko / CV servisi kontratı.
-- **[Yol haritası](./roadmap/)**: fazlı plan.
+- **[Entegrasyon](./integration/)**: analiz işçilerinin izlediği protokol.
+- **[Yol haritası](./roadmap/)**: neler bitti, sırada ne var.
