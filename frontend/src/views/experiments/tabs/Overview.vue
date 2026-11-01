@@ -1,7 +1,8 @@
 <script setup>
 // The study at a glance: its question, how animals are randomised and
 // blinded, its lifecycle, and what still keeps a draft from starting. Every
-// unmet start rule is written out and links to the tab that fixes it.
+// unmet start rule is written out with its own fix: a button that opens the
+// dialog that fixes it, or else a link to the tab that does.
 import { computed, inject, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
@@ -17,8 +18,6 @@ const fmt = useDesignFormat();
 const goTab = useTabLink();
 const route = useRoute();
 const router = useRouter();
-// Opens the Design tab with the group dialog set to a healthy control.
-const addHealthyControl = () => router.replace({ query: { ...route.query, tab: "design", addGroup: "HEALTHY_CONTROL" } });
 const { experiment, reload, id } = inject("study");
 
 const canWrite = computed(() => auth.can("study:write"));
@@ -34,6 +33,30 @@ const RULE_TAB = {
   "readiness.endpointMetricUnavailable": "endpoints",
 };
 const ruleTab = (rule) => RULE_TAB[rule] || "design";
+
+// Rules a single dialog on the Design tab fixes, and how to open it there
+// (see Design.vue). The label names the fix, so two rules on one group never
+// read alike.
+const ITEM_RULES = {
+  "readiness.treatmentItemMissing": ["addTreatment", "TREATMENT"],
+  "readiness.inductionItemMissing": ["addInduction", "INDUCTION"],
+  "readiness.vehicleItemMissing": ["addVehicle", "VEHICLE"],
+};
+function ruleAction(problem) {
+  const group = groups.value.find((g) => g.id === problem.groupId);
+  if (problem.rule === "readiness.noGroups") return { label: "addGroup", query: { addGroup: "" } };
+  if (problem.rule === "readiness.healthyControlMissing") {
+    return { label: "addHealthyControl", test: "readiness-add-healthy", query: { addGroup: "HEALTHY_CONTROL" } };
+  }
+  if (!group) return null;
+  if (problem.rule === "readiness.diseaseControlMissing") {
+    return { label: "addDiseaseControl", query: { addGroup: "DISEASE_CONTROL", diseaseModel: group.diseaseModelId || undefined } };
+  }
+  if (problem.rule === "readiness.targetSizeMissing") return { label: "setTargetSize", query: { editGroup: group.id } };
+  const item = ITEM_RULES[problem.rule];
+  return item ? { label: item[0], query: { addItem: group.id, purpose: item[1] } } : null;
+}
+const runAction = (action) => router.replace({ query: { ...route.query, tab: "design", ...action.query } });
 
 async function load() {
   loading.value = true;
@@ -159,14 +182,14 @@ watch(status, load);
                 <span class="dot" aria-hidden="true"></span>
                 <span class="rule-text">{{ ruleText(problem) }}</span>
                 <NButton
-                  v-if="problem.rule === 'readiness.healthyControlMissing' && canWrite"
+                  v-if="canWrite && ruleAction(problem)"
                   size="tiny"
                   secondary
                   type="primary"
-                  data-test="readiness-add-healthy"
-                  @click="addHealthyControl"
+                  :data-test="ruleAction(problem).test || 'readiness-action'"
+                  @click="runAction(ruleAction(problem))"
                 >
-                  {{ $t("design.overview.addHealthyControl") }}
+                  {{ $t(`design.overview.${ruleAction(problem).label}`) }}
                 </NButton>
                 <a v-else href="#" class="link" @click.prevent="goTab(ruleTab(problem.rule))">
                   {{ $t("design.overview.fixIn", { tab: $t(`experiments.tabs.${ruleTab(problem.rule)}`) }) }}

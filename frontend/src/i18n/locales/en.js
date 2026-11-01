@@ -18,6 +18,16 @@ export default {
       menu: "Menu",
       collapse: "Collapse",
     },
+    search: {
+      open: "Search",
+      placeholder: "Search studies, sessions and subjects",
+      hint: "Type a study code or title, a timepoint or a subject code.",
+      searching: "Searching…",
+      failed: "Search failed. Try again in a moment.",
+      close: "Close search",
+      empty: "Nothing matches “{query}”.",
+      groups: { studies: "Studies", reports: "Reports", sessions: "Test sessions", subjects: "Subjects" },
+    },
     dashboard: {
       title: "Dashboard",
       intro: "Where the lab's work stands right now: what's waiting, what just finished, and what's coming up.",
@@ -472,6 +482,7 @@ export default {
         s: "s",
         count: "count",
         ratio: "%",
+        index: "index",
         boolean: "",
       },
       qcRules: {
