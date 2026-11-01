@@ -1,13 +1,7 @@
 ---
-title: Go backend (preview)
+title: Go backend
 description: Install and use the Go backend, including sign-in, users, roles, the catalog, study design, dosing, test sessions, videos, calibration, analysis review and the study report.
 ---
-
-:::caution
-This page describes the unreleased Go backend. The Vue panel is still being
-moved to this API, so the Installation and Usage pages still describe the
-current release. Do not deploy it.
-:::
 
 ## What exists today
 
@@ -24,12 +18,12 @@ current release. Do not deploy it.
 | Paradigm catalog with metric definitions for four paradigms | Implemented |
 | Environments with measurement revisions and experiment test protocols | Implemented |
 | Tests as sessions with one or more animals in arenas, trials and comments | Implemented |
-| Video uploads to Google Cloud Storage, one current video per test | Implemented, live storage test pending |
+| Video uploads to a local folder or Google Cloud Storage, one current video per test | Implemented |
 | Calibration per arena with per-animal overrides | Implemented |
 | Analysis service (jobs) for animals of tests and paradigm trials, human review of every animal's result | Implemented for all four paradigms; the worker is tested on synthetic video only |
-| Paradigm trials: a paradigm tried on one video outside any experiment | Implemented in the API; panel pages pending |
+| Paradigm trials: a paradigm tried on one video outside any experiment | Implemented |
 | Study report with role-based comparisons, CSV export, dashboard | Implemented |
-| Vue panel on the new API | Scaffolded, not complete |
+| Vue panel on this API | Implemented |
 
 ## Installation
 

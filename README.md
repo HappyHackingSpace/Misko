@@ -181,8 +181,9 @@ Path-filtered GitHub Actions pipelines:
 
 ## Roadmap
 
-The phased plan is in [docs/ROADMAP.md](docs/ROADMAP.md), and the rebuild is
-tracked in [issue #123](https://github.com/HappyHackingSpace/Misko/issues/123).
+What is done and what comes next is on the
+[roadmap page](https://happyhackingspace.github.io/Misko/roadmap/); open work is
+tracked in [GitHub issues](https://github.com/HappyHackingSpace/Misko/issues).
 
 ## Star History
 
