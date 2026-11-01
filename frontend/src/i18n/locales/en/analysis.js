@@ -220,6 +220,10 @@ export default {
     upcomingSessions: "Upcoming sessions",
     noActivity: "No analysis result has been published yet.",
     noUpcoming: "No session is planned.",
+    noUpcomingHint: "Sessions are planned on the Tests tab of a running study.",
+    runningStudies: "Running studies",
+    howToPlan: "How to plan a session",
+    planningDocs: "https://happyhackingspace.github.io/Misko/usage/#planning-and-running-test-sessions",
   },
   errors: {
     analysis: {

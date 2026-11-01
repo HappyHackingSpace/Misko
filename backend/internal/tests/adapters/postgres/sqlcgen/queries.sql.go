@@ -16,6 +16,8 @@ const countTests = `-- name: CountTests :one
 WITH lab AS (SELECT coalesce((SELECT l.timezone FROM misko.laboratory l), 'UTC') AS timezone)
 SELECT count(*)
 FROM misko.tests t
+JOIN misko.experiments e ON e.id = t.experiment_id
+JOIN misko.timepoints tp ON tp.id = t.timepoint_id
 CROSS JOIN lab
 WHERE ($1::uuid IS NULL OR t.experiment_id = $1::uuid)
   AND ($2::uuid IS NULL OR t.timepoint_id = $2::uuid)
@@ -24,8 +26,11 @@ WHERE ($1::uuid IS NULL OR t.experiment_id = $1::uuid)
         WHERE ts.test_id = t.id AND a.subject_id = $3::uuid))
   AND (cardinality($4::text[]) = 0 OR t.status = ANY($4::text[]))
   AND ($5::text = '' OR t.paradigm_key = $5::text)
-  AND ($6::date IS NULL OR t.scheduled_at >= ($6::date)::timestamp AT TIME ZONE lab.timezone)
-  AND ($7::date IS NULL OR t.scheduled_at < ($7::date + 1)::timestamp AT TIME ZONE lab.timezone)
+  AND ($6::text = '' OR e.code ILIKE '%' || $6::text || '%' ESCAPE '\' OR tp.name ILIKE '%' || $6::text || '%' ESCAPE '\' OR EXISTS (
+        SELECT 1 FROM misko.test_subjects ts JOIN misko.allocations a ON a.id = ts.allocation_id JOIN misko.subjects s ON s.id = a.subject_id
+        WHERE ts.test_id = t.id AND s.code ILIKE '%' || $6::text || '%' ESCAPE '\'))
+  AND ($7::date IS NULL OR t.scheduled_at >= ($7::date)::timestamp AT TIME ZONE lab.timezone)
+  AND ($8::date IS NULL OR t.scheduled_at < ($8::date + 1)::timestamp AT TIME ZONE lab.timezone)
 `
 
 type CountTestsParams struct {
@@ -34,6 +39,7 @@ type CountTestsParams struct {
 	SubjectID    *string
 	Statuses     []string
 	ParadigmKey  string
+	Search       string
 	FromDate     pgtype.Date
 	ToDate       pgtype.Date
 }
@@ -45,6 +51,7 @@ func (q *Queries) CountTests(ctx context.Context, arg CountTestsParams) (int64, 
 		arg.SubjectID,
 		arg.Statuses,
 		arg.ParadigmKey,
+		arg.Search,
 		arg.FromDate,
 		arg.ToDate,
 	)
@@ -564,12 +571,15 @@ WHERE ($1::uuid IS NULL OR t.experiment_id = $1::uuid)
         WHERE ts.test_id = t.id AND a.subject_id = $3::uuid))
   AND (cardinality($4::text[]) = 0 OR t.status = ANY($4::text[]))
   AND ($5::text = '' OR t.paradigm_key = $5::text)
-  AND ($6::date IS NULL OR t.scheduled_at >= ($6::date)::timestamp AT TIME ZONE lab.timezone)
-  AND ($7::date IS NULL OR t.scheduled_at < ($7::date + 1)::timestamp AT TIME ZONE lab.timezone)
-ORDER BY CASE WHEN $8::boolean THEN t.scheduled_at END DESC,
-         CASE WHEN NOT $8::boolean THEN t.scheduled_at END,
+  AND ($6::text = '' OR e.code ILIKE '%' || $6::text || '%' ESCAPE '\' OR tp.name ILIKE '%' || $6::text || '%' ESCAPE '\' OR EXISTS (
+        SELECT 1 FROM misko.test_subjects ts JOIN misko.allocations a ON a.id = ts.allocation_id JOIN misko.subjects s ON s.id = a.subject_id
+        WHERE ts.test_id = t.id AND s.code ILIKE '%' || $6::text || '%' ESCAPE '\'))
+  AND ($7::date IS NULL OR t.scheduled_at >= ($7::date)::timestamp AT TIME ZONE lab.timezone)
+  AND ($8::date IS NULL OR t.scheduled_at < ($8::date + 1)::timestamp AT TIME ZONE lab.timezone)
+ORDER BY CASE WHEN $9::boolean THEN t.scheduled_at END DESC,
+         CASE WHEN NOT $9::boolean THEN t.scheduled_at END,
          t.id
-LIMIT $10 OFFSET $9
+LIMIT $11 OFFSET $10
 `
 
 type ListTestsParams struct {
@@ -578,6 +588,7 @@ type ListTestsParams struct {
 	SubjectID    *string
 	Statuses     []string
 	ParadigmKey  string
+	Search       string
 	FromDate     pgtype.Date
 	ToDate       pgtype.Date
 	NewestFirst  bool
@@ -621,6 +632,7 @@ func (q *Queries) ListTests(ctx context.Context, arg ListTestsParams) ([]ListTes
 		arg.SubjectID,
 		arg.Statuses,
 		arg.ParadigmKey,
+		arg.Search,
 		arg.FromDate,
 		arg.ToDate,
 		arg.NewestFirst,

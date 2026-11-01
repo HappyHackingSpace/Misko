@@ -94,7 +94,7 @@ func query(r *http.Request) application.TestQuery {
 	q := r.URL.Query()
 	return application.TestQuery{
 		ExperimentID: q.Get("experimentId"), TimepointID: q.Get("timepointId"), SubjectID: q.Get("subjectId"), Status: q.Get("status"),
-		ParadigmKey: q.Get("paradigmKey"), From: q.Get("from"), To: q.Get("to"), Order: q.Get("order"),
+		ParadigmKey: q.Get("paradigmKey"), From: q.Get("from"), To: q.Get("to"), Order: q.Get("order"), Search: q.Get("search"),
 		Page: httpjson.QueryInt(q.Get("page")), PageSize: httpjson.QueryInt(q.Get("pageSize")),
 	}
 }

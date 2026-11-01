@@ -117,4 +117,11 @@ func TestStoreTranslatesSchemaRules(t *testing.T) {
 	if _, err := store.CreateTrial(ctx, trial); !errors.Is(err, domain.ErrTestNotInProgress) {
 		t.Errorf("unplanned repetition: %v", err)
 	}
+	// Search matches the study code, the timepoint name or a subject code, and
+	// a wildcard is a literal character.
+	for search, want := range map[string]int{"": 1, "e1": 1, "day 7": 1, "m1": 1, "M2": 0, "%": 0} {
+		if tests, total, err := store.ListTests(ctx, application.TestFilter{Search: search, Limit: 10}); err != nil || len(tests) != want || total != want {
+			t.Errorf("search %q: %d of %d, %v", search, len(tests), total, err)
+		}
+	}
 }
