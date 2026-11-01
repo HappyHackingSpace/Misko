@@ -5,7 +5,7 @@ description: Paradigm specs, metric definitions, MWM normalization, and quality 
 
 Mişko needs stable measurement contracts, not loose result JSON. Every paradigm
 must define its parameters, zones, metrics, event types, and quality
-requirements before the CV service can produce results that are comparable
+requirements before a worker's tracking can produce results that are comparable
 across studies and laboratories.
 
 ## Architecture principle
@@ -14,12 +14,12 @@ Every result passes through four layers:
 
 | Layer | Purpose |
 |---|---|
-| `ParadigmSpec` | Code-owned contract for parameters, zones, metrics, event types (with CV detect specs), and result schema. |
+| `ParadigmSpec` | Code-owned contract for parameters, zones, metrics, event types and quality rules. |
 | `Apparatus` | Lab-owned physical rig definition: geometry, material, surface, and zones in cm. |
 | `Calibration` | Pixel-to-cm mapping for a fixed rig or a single test session. |
 | `MetricDefinition` | Code-owned definition of each metric key, unit, formula, normalization, and QC dependency. |
 
-CV tracks the animal. Mişko defines the scientific contract.
+A worker tracks the animal. Mişko defines the scientific contract and computes the result.
 
 ## Paradigms are templates
 
@@ -163,36 +163,16 @@ is interpretation, which belongs to the analysis layer, not to the recording
 system. Only QC (tracking reliability) has a pass/fail meaning, and that is about
 data quality, not behavior.
 
-## Event types and CV detection
+## Event types
 
-A run collects **events**; metrics are derived from them. The metric engine
-derives the event stream from the CV service's trajectory and the calibrated
-zones, so the event layer is the contract between Mişko and computer vision.
-
-Each event type declares a `detect` spec describing how the CV service derives it
-from the trajectory and zones:
-
-```ts
-interface EventTypeDef {
-  type: string;                       // e.g. "zone_enter", "immobile", "fall"
-  label: string;
-  payload?: Record<string, "number" | "text" | "zone">;
-  detect: DetectSpec;
-}
-
-type DetectSpec =
-  | { kind: "zone_transition"; edge: "enter" | "exit"; zone?: string }
-  | { kind: "zone_first_enter"; zone: string }
-  | { kind: "speed_below"; threshold_cm_s: number; min_duration_s?: number }
-  | { kind: "custom" };               // requires a dedicated detector/model
-```
-
-The generic kinds (`zone_transition`, `zone_first_enter`, `speed_below`) are
-**data-driven**: a paradigm that only uses them needs no new CV code, declaring
-the event types is enough. `custom` flags an event that needs a dedicated
-detector. The published paradigms derive their events from zones and speeds in
-the metric engine, so none needs one. Event types are exposed on
-the paradigm detail API (`GET /api/paradigms/:key` -> `eventTypes`).
+A result carries **events** next to its metrics. Both are computed by the Go
+metric engine from the worker's trajectory and the calibrated zones; a worker
+never sends events of its own. Each paradigm version declares its event types
+in code: a type, an `INTERVAL` or `POINT` kind, optional labels (for example
+`novel` and `familiar` for novel object exploration) and a definition in every
+supported language. Adding a kind of event means a new paradigm version with
+the code that derives it. Event types are listed by the paradigm version API
+(`GET /api/paradigms/{key}/versions/{version}` -> `events`).
 
 ## Localization
 

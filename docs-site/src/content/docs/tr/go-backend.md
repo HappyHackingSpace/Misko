@@ -1,13 +1,7 @@
 ---
-title: Go backend (önizleme)
+title: Go backend
 description: Go backend'in kurulumu ve kullanımı; giriş, kullanıcılar, roller, katalog, çalışma tasarımı, dozlama, test oturumları, videolar, kalibrasyon, analiz onayı ve çalışma raporu.
 ---
-
-:::caution
-Bu sayfa henüz yayınlanmamış Go backend'i anlatır. Vue paneli bu API'ye hâlâ
-taşınmaktadır; Kurulum ve Kullanım sayfaları mevcut sürümü anlatmaya devam eder.
-Canlıya almayın.
-:::
 
 ## Şu an neler var
 
@@ -24,12 +18,12 @@ Canlıya almayın.
 | Dört paradigmanın metrik tanımlarıyla paradigma kataloğu | Hazır |
 | Ölçüm revizyonlarıyla ortamlar ve deney test protokolleri | Hazır |
 | Arenalarda bir veya birden çok denekle oturum olarak testler, denemeler ve yorumlar | Hazır |
-| Google Cloud Storage'a video yükleme, test başına tek güncel video | Hazır, gerçek depolama testi bekliyor |
+| Yerel klasöre veya Google Cloud Storage'a video yükleme, test başına tek güncel video | Hazır |
 | Arena başına kalibrasyon ve denek başına düzeltme | Hazır |
 | Test denekleri ve paradigma testleri için analiz servisi (işler), her denek sonucunun insan onayı | Dört paradigma için hazır; worker yalnızca sentetik videoyla test edildi |
-| Paradigma testleri: bir paradigmanın herhangi bir deney dışında tek videoda denenmesi | API'de hazır; panel sayfaları bekliyor |
+| Paradigma testleri: bir paradigmanın herhangi bir deney dışında tek videoda denenmesi | Hazır |
 | Rol tabanlı karşılaştırmalarla çalışma raporu, CSV dışa aktarma, gösterge paneli | Hazır |
-| Yeni API üzerinde Vue paneli | İskeleti var, tamamlanmadı |
+| Bu API üzerinde Vue paneli | Hazır |
 
 ## Kurulum
 
