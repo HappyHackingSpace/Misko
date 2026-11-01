@@ -6,9 +6,10 @@ import math
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 from misko_worker import autocalibrate
-from tests import scenes, synthetic
+from tests import scenes, stress_arena, synthetic
 from tests.synthetic import HEIGHT, WIDTH, _homography
 
 # The NOVEL_OBJECT box of tests/scenes.py: a 40 x 40 cm floor seen by a tilted
@@ -64,6 +65,56 @@ def test_median_removes_the_moving_subject():
     detection = autocalibrate.detect_arena(arena_frames(ARENA_CORNERS, count=9, subject_level=0.0))
     assert detection is not None
     assert_corners_close(detection.corners, ARENA_CORNERS, 3.0)
+
+
+@pytest.mark.parametrize("name", list(stress_arena.CASES))
+def test_stress_case_corners_within_5px(name: str) -> None:
+    # Each case is one realistic lab degradation with ground-truth corners:
+    # the detector must stay within 5 px on every corner AND stay convincing
+    # (>= MIN_CONFIDENCE); a case it cannot solve must be rejected, never
+    # answered confidently wrong.
+    frames, truth = stress_arena.CASES[name]()
+    detection = autocalibrate.detect_arena(frames, expected_aspect=1.0)
+    assert detection is not None, name
+    assert detection.confidence >= autocalibrate.MIN_CONFIDENCE
+    error = stress_arena.max_corner_error(detection.corners, truth)
+    assert error <= 5.0, f"{name}: max corner error {error:.2f} px"
+
+
+def _plain_frames(paint, *, level: float = 120.0, noise: float = 2.0, count: int = 5) -> list[np.ndarray]:
+    rng = np.random.default_rng(2)
+    out = []
+    for _ in range(count):
+        frame = np.full((HEIGHT, WIDTH), level)
+        paint(frame)
+        frame += rng.normal(0, noise, (HEIGHT, WIDTH))
+        out.append(np.clip(frame, 0, 255).astype(np.uint8))
+    return out
+
+
+def test_rejects_round_arena():
+    # A circular tank has no corners to propose: wrong-but-confident is the
+    # one unacceptable outcome, so the answer must be None.
+    rows, cols = np.mgrid[0:HEIGHT, 0:WIDTH]
+    disc = np.hypot(cols - 160, rows - 120) <= 95
+
+    def paint(frame: np.ndarray) -> None:
+        frame[disc] = 185.0
+
+    frames = _plain_frames(paint, level=60.0)
+    assert autocalibrate.detect_arena(frames, expected_aspect=1.0) is None
+    assert autocalibrate.detect_arena(frames) is None
+
+
+@pytest.mark.parametrize("level", [250.0, 230.0])
+def test_rejects_lone_paper_of_the_wrong_aspect(level: float) -> None:
+    # A bright 2:1 sheet in an arena-free scene, saturated or not, must not be
+    # proposed as a square arena.
+    def paint(frame: np.ndarray) -> None:
+        frame[40:90, 30:130] = level
+
+    frames = _plain_frames(paint)
+    assert autocalibrate.detect_arena(frames, expected_aspect=1.0) is None
 
 
 def test_rejects_featureless_frames():
