@@ -109,6 +109,23 @@ func TestRegisteredWorkersGetATokenOnce(t *testing.T) {
 	}
 }
 
+// TestSeededWorkersStoreOnlyTheHashOfTheirToken covers the bootstrap seed path:
+// the supplied token is hashed like a generated one and the inputs face the
+// same validation as a registration.
+func TestSeededWorkersStoreOnlyTheHashOfTheirToken(t *testing.T) {
+	f := newFixture()
+	seeded, err := f.service().SeedWorker(ctx, WorkerInput{Name: "dev-worker", ModelVersion: "m 1", Capabilities: worker.Capabilities}, "token-1", "admin-id")
+	if err != nil || seeded.CreatedBy != "admin-id" || string(f.store.tokenHash) != "hash:token-1" {
+		t.Fatalf("seeded: %+v %v hash=%s", seeded, err, f.store.tokenHash)
+	}
+	f = newFixture()
+	_, err = f.service().SeedWorker(ctx, WorkerInput{Name: "dev-worker", ModelVersion: "m 1",
+		Capabilities: []domain.Capability{{ParadigmKey: "UNTRACKED", ParadigmVersion: 1}}}, "token-1", "admin-id")
+	if !errors.Is(err, ErrUnknownCapability) || f.store.tokenHash != nil {
+		t.Fatalf("unknown capability: %v", err)
+	}
+}
+
 func TestTickReturnsExpiredLeasesToTheQueue(t *testing.T) {
 	past := now.Add(-time.Second)
 	retry, last := running(), running()
