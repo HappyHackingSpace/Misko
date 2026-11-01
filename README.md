@@ -181,6 +181,10 @@ Path-filtered GitHub Actions pipelines:
 The phased plan is in [docs/ROADMAP.md](docs/ROADMAP.md), and the rebuild is
 tracked in [issue #123](https://github.com/HappyHackingSpace/Misko/issues/123).
 
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=HappyHackingSpace/Misko&type=Date)](https://star-history.com/#HappyHackingSpace/Misko&Date)
+
 ## License
 
 [MIT](LICENSE) © Happy Hacking Space
