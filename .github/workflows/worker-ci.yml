@@ -22,7 +22,7 @@ jobs:
         working-directory: worker
     steps:
       - uses: actions/checkout@v7.0.1
-      - uses: actions/setup-python@v7.0.0
+      - uses: actions/setup-python@v7.1.0
         with:
           python-version: '3.14.3'
       # Quoted: an unquoted ": " makes the step an invalid YAML mapping.

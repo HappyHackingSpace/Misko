@@ -6,6 +6,7 @@ import (
 	access "github.com/HappyHackingSpace/Misko/backend/internal/access/domain"
 	"github.com/HappyHackingSpace/Misko/backend/internal/tests/domain"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 )
@@ -250,6 +251,8 @@ func TestListQueriesAreValidated(t *testing.T) {
 		"reversed range":  {From: "2026-09-12", To: "2026-09-11"},
 		"negative page":   {Page: -1},
 		"negative size":   {PageSize: -1},
+		"long search":     {Search: strings.Repeat("x", 101)},
+		"NUL in search":   {Search: "M\x0001"},
 	} {
 		store := newStore()
 		if _, err := New(store, allowAll{}, clock).ListAllTests(ctx, viewer, q); !errors.Is(err, ErrInvalidQuery) || len(store.calls) > 0 {
@@ -262,7 +265,7 @@ func TestListQueriesAreValidated(t *testing.T) {
 	if err != nil || f.ExperimentID != "exp" || !slices.Equal(f.Statuses, []domain.Status{domain.Planned}) || f.From != "2026-09-01" || f.To != "2026-09-30" || f.NewestFirst || f.Limit != 100 || page.PageSize != 100 {
 		t.Fatalf("experiment list: %+v %+v %v", f, page, err)
 	}
-	if _, err := New(store, allowAll{}, clock).ListAllTests(ctx, viewer, TestQuery{TimepointID: "day7"}); err != nil || !store.filter.NewestFirst || store.filter.TimepointID != "day7" || store.filter.Limit != 20 {
+	if _, err := New(store, allowAll{}, clock).ListAllTests(ctx, viewer, TestQuery{TimepointID: "day7", Search: " M1 "}); err != nil || !store.filter.NewestFirst || store.filter.TimepointID != "day7" || store.filter.Search != "M1" || store.filter.Limit != 20 {
 		t.Fatalf("worklist: %+v %v", store.filter, err)
 	}
 	// Overdue work is planned or in progress; the worklist can ask for both,

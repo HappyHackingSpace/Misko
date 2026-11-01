@@ -65,6 +65,11 @@ sözle gösterilir. Silme her zaman onay ister. Birçok ekran filtrelerini adres
 çubuğunda tutar; böylece filtrelenmiş bir listeyi yer imine ekleyebilir veya
 paylaşabilirsiniz.
 
+Üst çubuktaki **Ara** (veya Ctrl+K, Mac'te Cmd+K) her sayfadan çalışmaları,
+raporlarını, test oturumlarını ve denekleri bulur. Bir çalışma kodu ya da
+başlığı, zaman noktası veya denek kodu yazın; ok tuşları ve Enter bir sonucu
+açar, Esc kapatır.
+
 ## Etken maddeler
 
 Menüden **Etken maddeler**'i açın (adres `/substances`). Bileşikler, referans
