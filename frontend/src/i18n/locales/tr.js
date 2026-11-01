@@ -18,6 +18,14 @@ export default {
       menu: "Menü",
       collapse: "Daralt",
     },
+    search: {
+      open: "Ara",
+      placeholder: "Çalışma, oturum ve denek ara",
+      hint: "Bir çalışma kodu ya da başlığı, zaman noktası veya denek kodu yazın.",
+      searching: "Aranıyor…",
+      empty: "“{query}” ile eşleşen bir şey yok.",
+      groups: { studies: "Çalışmalar", reports: "Raporlar", sessions: "Test oturumları", subjects: "Denekler" },
+    },
     dashboard: {
       title: "Panel",
       intro: "Laboratuvarın şu anki durumu: bekleyen işler, son sonuçlar ve yaklaşan testler.",
