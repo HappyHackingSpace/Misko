@@ -22,6 +22,7 @@ var failures = []httpjson.Failure{
 	{Err: application.ErrWorkerUnauthenticated, Status: http.StatusUnauthorized, Code: "worker.unauthenticated"},
 	{Err: application.ErrWorkerNotFound, Status: http.StatusNotFound, Code: "worker.notFound"},
 	{Err: application.ErrWorkerNameTaken, Status: http.StatusConflict, Code: "worker.nameTaken"},
+	{Err: application.ErrWorkerTokenTaken, Status: http.StatusConflict, Code: "worker.tokenTaken"},
 	{Err: application.ErrUnknownCapability, Status: http.StatusBadRequest, Code: "worker.unknownCapability"},
 	{Err: domain.ErrInvalidWorkerName, Status: http.StatusBadRequest, Code: "worker.invalidName"},
 	{Err: domain.ErrInvalidCapability, Status: http.StatusBadRequest, Code: "worker.invalidCapability"},

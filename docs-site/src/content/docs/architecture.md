@@ -110,6 +110,12 @@ Panel ──► Go API ──► PostgreSQL (records, metrics, events)
    Cloud Storage (original video, analyzed video, trajectory)
 ```
 
+A worker identity is created with `bootstrap register-worker` (or with
+`POST /api/analysis/workers` on a running system); its token is shown once,
+only the token's SHA-256 hash is stored, and disabling the worker revokes it.
+For local development `bootstrap setup` seeds a `dev-worker` from
+`WORKER_BOOTSTRAP_TOKEN`, which it refuses when `APP_ENV=production`.
+
 The analysis service analyses "this video, with this paradigm version, these
 parameters and this calibration". A job is an immutable input snapshot (the
 source video generation and clip, the resolved parameters, a copy of the

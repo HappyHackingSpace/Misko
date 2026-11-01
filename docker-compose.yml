@@ -34,6 +34,9 @@ services:
 
   # Run with `docker compose --profile setup run --rm setup` so the one-time
   # administrator password is printed to your terminal rather than a log.
+  # With WORKER_BOOTSTRAP_TOKEN set in .env (see .env.example) it also seeds
+  # the dev-worker from that token, so the worker profile needs no manual
+  # registration. The seed is refused when APP_ENV=production.
   setup:
     build: ./backend
     entrypoint: ["/bootstrap", "setup"]
@@ -42,6 +45,24 @@ services:
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@misko.local}
       LAB_NAME: ${LAB_NAME:-Misko Laboratory}
       LAB_TIMEZONE: ${LAB_TIMEZONE:-UTC}
+      WORKER_BOOTSTRAP_TOKEN: ${WORKER_BOOTSTRAP_TOKEN:-}
+      APP_ENV: ${APP_ENV:-}
+    depends_on:
+      db:
+        condition: service_healthy
+    profiles: [setup]
+
+  # Registers an analysis worker directly in the database and prints its token
+  # once; run it like setup, with `run --rm` and the worker's name, model
+  # version and paradigms as arguments:
+  #   docker compose --profile setup run --rm register-worker \
+  #     -name worker-1 -model-version "misko-tracker-bgsub 2.2.0" \
+  #     -paradigm MWM -paradigm NOVEL_OBJECT -paradigm POLE -paradigm TREADMILL
+  register-worker:
+    build: ./backend
+    entrypoint: ["/bootstrap", "register-worker"]
+    environment:
+      DATABASE_URL: *database-url
     depends_on:
       db:
         condition: service_healthy
@@ -89,15 +110,17 @@ services:
       db:
         condition: service_healthy
 
-  # Analysis worker for the tracked paradigm (MWM); start it with --profile worker after registering
-  # a worker and setting MISKO_WORKER_TOKEN. It reads sources and writes outputs
-  # through signed URLs, from local storage on the API or from GCS.
+  # Analysis worker; start it with --profile worker. Its token is
+  # MISKO_WORKER_TOKEN or, when that is unset, the WORKER_BOOTSTRAP_TOKEN the
+  # setup command seeded as dev-worker, so after a seeded setup it starts with
+  # no manual steps. It reads sources and writes outputs through signed URLs,
+  # from local storage on the API or from GCS.
   worker:
     build: ./worker
     profiles: [worker]
     environment:
       MISKO_API_URL: http://backend:4000
-      MISKO_WORKER_TOKEN: ${MISKO_WORKER_TOKEN:-}
+      MISKO_WORKER_TOKEN: ${MISKO_WORKER_TOKEN:-${WORKER_BOOTSTRAP_TOKEN:-}}
     depends_on:
       - backend
 

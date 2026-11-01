@@ -47,7 +47,8 @@ services:
 
   # One-time: creates the laboratory and the first administrator. Run it with
   # `run --rm` so the generated password reaches your terminal; it is shown once
-  # and never written to a log.
+  # and never written to a log. APP_ENV is pinned so the development worker
+  # seed (WORKER_BOOTSTRAP_TOKEN) is refused on this stack.
   setup:
     image: ghcr.io/${IMAGE_OWNER:-happyhackingspace}/misko-backend:${IMAGE_TAG:-latest}
     entrypoint: ["/bootstrap", "setup"]
@@ -56,6 +57,23 @@ services:
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@misko.local}
       LAB_NAME: ${LAB_NAME:-Misko Laboratory}
       LAB_TIMEZONE: ${LAB_TIMEZONE:-UTC}
+      APP_ENV: production
+    depends_on:
+      db:
+        condition: service_healthy
+    profiles: [setup]
+
+  # Registers an analysis worker directly in the database and prints its token
+  # once, like setup does the administrator password; no admin JWT is needed.
+  # Put the token in worker.env afterwards:
+  #   docker compose -f docker-compose.prod.yml --profile setup run --rm register-worker \
+  #     -name worker-1 -model-version "misko-tracker-bgsub 2.2.0" \
+  #     -paradigm MWM -paradigm NOVEL_OBJECT -paradigm POLE -paradigm TREADMILL
+  register-worker:
+    image: ghcr.io/${IMAGE_OWNER:-happyhackingspace}/misko-backend:${IMAGE_TAG:-latest}
+    entrypoint: ["/bootstrap", "register-worker"]
+    environment:
+      DATABASE_URL: *database-url
     depends_on:
       db:
         condition: service_healthy
@@ -130,8 +148,9 @@ services:
   # only builds backend/frontend), so this builds from the local `worker/`
   # source instead of pulling - the deploy workflow copies that folder next to
   # this file. Swap to a `ghcr.io/.../misko-worker:${IMAGE_TAG:-latest}` image
-  # once one is published. Register a worker first
-  # (`POST /api/analysis/workers`, needs `lab:configure`) to get its token.
+  # once one is published. Register a worker first to get its token: the
+  # register-worker service above (or `POST /api/analysis/workers`, needs
+  # `lab:configure`).
   # The token lives in `worker.env`, not `.env`: unlike the database password
   # and JWT secret, it is safe to overwrite on every deploy, so the workflow
   # renders it fresh each run instead of leaving it alone like it does `.env`.

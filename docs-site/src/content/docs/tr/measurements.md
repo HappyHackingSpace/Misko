@@ -4,10 +4,9 @@ description: Paradigma spec'leri, metrik tanımları, MWM normalizasyonu ve kali
 ---
 
 Mişko'nun gevşek sonuç JSON'u değil, kararlı ölçüm kontratları tutması gerekir.
-Her paradigma, CV servisinin çalışmalar ve laboratuvarlar arasında
-karşılaştırılabilir sonuç üretebilmesi için parametrelerini, bölgelerini,
-metriklerini, olay tiplerini (CV detect spec'leri ile) ve kalite
-gereksinimlerini önceden tanımlamalıdır.
+Her paradigma, bir işçinin izlemesinden çalışmalar ve laboratuvarlar arasında
+karşılaştırılabilir sonuçlar çıkabilmesi için parametrelerini, bölgelerini,
+metriklerini, olay tiplerini ve kalite gereksinimlerini önceden tanımlamalıdır.
 
 ## Mimari ilke
 
@@ -15,12 +14,12 @@ Her sonuç dört katmandan geçer:
 
 | Katman | Amaç |
 |---|---|
-| `ParadigmSpec` | Parametreler, bölgeler, metrikler, olay tipleri (CV detect spec'leri ile) ve sonuç şeması için kod sahipli kontrat. |
+| `ParadigmSpec` | Parametreler, bölgeler, metrikler, olay tipleri ve kalite kuralları için kod sahipli kontrat. |
 | `Apparatus` | Lab sahipli fiziksel düzenek tanımı: geometri, malzeme, yüzey ve cm cinsinden bölgeler. |
 | `Calibration` | Sabit düzenek veya tek test oturumu için pikselden cm'ye eşleme. |
 | `MetricDefinition` | Her metrik anahtarının birim, formül, normalizasyon ve QC bağımlılığını tanımlayan kod sahipli sözlük. |
 
-CV deneği takip eder. Bilimsel kontratı Mişko tanımlar.
+İşçi deneği takip eder. Bilimsel kontratı Mişko tanımlar ve sonucu hesaplar.
 
 ## Paradigmalar şablondur
 
@@ -163,38 +162,16 @@ olmadığı yorumdur, kayıt sistemine değil analiz katmanına aittir. Yalnızc
 (takip güvenilirliği) bir geçti/kaldı anlamı taşır, o da davranışla değil veri
 kalitesiyle ilgilidir.
 
-## Olay tipleri ve CV tespiti
+## Olay tipleri
 
-Bir koşu **olaylar** toplar; metrikler bu olaylardan türetilir (bkz.
-`docs/METRIC_ENGINE.md`). Metrik motoru olay akışını CV servisinin yörüngesinden
-ve kalibre edilen bölgelerden türetir, yani olay katmanı Mişko ile bilgisayarlı
-görü arasındaki kontrattır.
-
-Her olay tipi, CV servisinin onu trajectory ve bölgelerden nasıl türettiğini
-tanımlayan bir `detect` spec'i bildirir:
-
-```ts
-interface EventTypeDef {
-  type: string;                       // örn. "zone_enter", "immobile", "fall"
-  label: string;
-  payload?: Record<string, "number" | "text" | "zone">;
-  detect: DetectSpec;
-}
-
-type DetectSpec =
-  | { kind: "zone_transition"; edge: "enter" | "exit"; zone?: string }
-  | { kind: "zone_first_enter"; zone: string }
-  | { kind: "speed_below"; threshold_cm_s: number; min_duration_s?: number }
-  | { kind: "custom" };               // özel bir dedektör/model gerektirir
-```
-
-Jenerik türler (`zone_transition`, `zone_first_enter`, `speed_below`)
-**veri-güdümlüdür**: yalnızca bunları kullanan bir paradigma yeni CV kodu
-gerektirmez, olay tiplerini bildirmek yeterlidir. `custom`, özel bir dedektör
-gerektiren bir olayı işaretler. Yayımlanmış paradigmalar olaylarını metrik
-motorunda bölgelerden ve hızlardan türetir; hiçbiri buna ihtiyaç duymaz.
-Olay tipleri paradigma detay API'sinde sunulur
-(`GET /api/paradigms/:key` -> `eventTypes`).
+Bir sonuç, ölçümlerinin yanında **olaylar** taşır. İkisini de Go metrik motoru
+işçinin yörüngesinden ve kalibre edilen bölgelerden hesaplar; işçi kendi
+olaylarını hiç göndermez. Her paradigma sürümü olay tiplerini kodda bildirir:
+bir tip, `INTERVAL` ya da `POINT` türü, isteğe bağlı etiketler (örneğin yeni
+nesne keşfi için `novel` ve `familiar`) ve desteklenen her dilde bir tanım.
+Yeni bir olay türü eklemek, onu türeten kodla birlikte yeni bir paradigma
+sürümü demektir. Olay tipleri paradigma sürümü API'sinde listelenir
+(`GET /api/paradigms/{key}/versions/{version}` -> `events`).
 
 ## Lokalizasyon
 

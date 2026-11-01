@@ -1,130 +1,112 @@
 ---
-title: Integration (Mişko ↔ CV service)
-description: The contract between two fully independent systems.
+title: Integration (analysis workers)
+description: How an analysis worker claims a job, reads the video, uploads its outputs and has the API compute the result.
 ---
 
-This document defines how two **fully independent** systems talk to each other.
-The goal is loose coupling: each side owns its database, release cycle and
-deployment, and they communicate only over the boundary below.
+Video analysis runs in **workers**: processes that authenticate against the
+Mişko API, take one job at a time and upload what they produced. A worker has
+no database of its own and is never called by the API; it only calls the
+`/api/worker` routes below. The bundled worker lives in the `worker/` folder
+(see [Installation](../installation/#analysis-worker)), but any program that
+follows this protocol can take its place.
 
-## Two systems and responsibilities
+## What a job is
 
-| | **Mişko** | **CV service** |
-|---|---|---|
-| Role | System of record for the lab workflow | Capture + inference + telemetry |
-| Stack | Node/Express/Prisma/**PostgreSQL** + Vue | Python/FastAPI/YOLOv8/ByteTrack/OpenCV |
-| Holds | user, subject, environment, scenario, **test + summary** | raw frame telemetry, events, video |
-| Volume | Small / relational | **Large** (its own PostgreSQL) |
-| Owns | the test's "what / who / when" | the test's "measurement / evidence" |
+A job analyses one video with one paradigm version, its parameters and, when
+the paradigm needs one, a copy of a calibration. Its inputs never change:
+analysing again creates a new job and the earlier ones stay. A job is requested
+by an animal of a test or by a paradigm trial; the job never names the
+animal's group or treatment, so a worker cannot be biased by them.
 
-## Data ownership
+The `jobs` process queues a job for every animal of a test once the study is
+running or completed, the animal is not excluded, the test's video is verified
+and the animal's arena is calibrated with every zone it needs. Paradigm trials
+queue one when their video and calibration are ready, and again whenever
+someone analyses the trial with changed thresholds.
 
-- **Mişko** → the test's identity and context, plus its **per-environment metric
-  results** (`result` JSON).
-- **CV service** → the raw output: per-frame position/pose telemetry, event
-  rows, video files. None of this enters Mişko's database.
-- **Object storage** (MinIO/S3) → video and large artifacts. Both sides keep
-  only a **URL reference**, never the bytes.
+## Registering a worker
 
-## Mapping: Test ↔ capture session
+A lab manager (or superadmin) registers a worker with
+`POST /api/analysis/workers`, giving its name, model version and the paradigm
+versions it can analyse (its capabilities). Versions outside the paradigm
+catalog are refused with `worker.unknownCapability`. The answer contains the
+worker's token **once**; store it in the worker's secret configuration
+(`MISKO_WORKER_TOKEN` for the bundled worker).
+`POST /api/analysis/workers/{id}/disable` revokes the token.
 
-A Mişko **Test** corresponds to a CV **capture session**, linked by two things:
+Every worker call sends `Authorization: Worker <token>`. The token is accepted
+only on `/api/worker` routes, and user tokens are not accepted there.
 
-- `cameraId` / `cageId` — which camera/cage (CV tags every event with it).
-- The time window — the Test's `startedAt → endedAt` range.
+## The protocol
 
-The CV service can run continuously; a Test simply claims a **slice** of that
-stream, so CV never has to wait on Mişko.
+1. **Claim.** `POST /api/worker/claim` leases the oldest queued job whose
+   paradigm version the worker supports, or answers `204` when there is none.
+   The answer carries the job (video, clip, pinned parameters), the paradigm
+   contract, the calibration snapshot (frame size, the arena's crop, the
+   homography to centimeters and the calibrated zones), the output prefix and
+   the trajectory format to produce. It also carries the **attempt** number:
+   every later call names it, and a call with an old attempt is refused with
+   `409`.
+2. **Heartbeat.** `POST /api/worker/runs/{runId}/heartbeat` extends the lease.
+   A lease lasts 5 minutes; the bundled worker renews it every 60 seconds.
+3. **Read the video.** `POST /api/worker/runs/{runId}/source-url` returns a
+   short-lived signed URL to the exact video version the job pinned.
+4. **Upload the outputs.** For each output,
+   `POST /api/worker/runs/{runId}/outputs` declares its kind, file name,
+   content type, size and CRC32C, and returns a signed upload URL under the
+   attempt's prefix (`jobs/{jobId}/attempts/{attempt}/`). A result needs
+   exactly one `TRAJECTORY` (`application/json`) and one `ANALYZED_VIDEO`
+   (`video/mp4` or `video/webm`); a `THUMBNAIL` image is optional.
+5. **Submit.** `POST /api/worker/runs/{runId}/result` names the uploaded
+   outputs, the model version and how the analysed video lines up with the
+   original (`pair`: the offsets and the time mapping version). The request
+   has no metrics and no events; the API refuses them.
+6. **Or fail.** `POST /api/worker/runs/{runId}/failure` reports a reason and
+   whether it is retryable.
 
-## Test lifecycle
+The trajectory is `misko.trajectory.v1` JSON: the job id, the attempt, the
+recording duration and equal-length arrays of sample times (`tUs`,
+microseconds from the clip start), positions in centimeters (`xCm`, `yCm`),
+`tracked`, `confidence` (0 to 1) and `inferred`. Other members, such as the
+worker's own diagnostics, are kept but not read.
 
-A Test is created from a **Scenario + Subject** only. The scenario already carries
-the environments (geometry/zones) and their paradigms (which fix the metrics) - so
-neither the operator nor the CV picks those at run time.
+## What the API does with a result
 
-```mermaid
-sequenceDiagram
-    participant Op as Operator (Vue)
-    participant M as Mişko API
-    participant CV as CV service
-    participant S as Object storage
+- **Verifies the objects.** Each declared output must exist with the declared
+  size, checksum and content type, under this job and attempt.
+- **Checks the trajectory.** It must belong to this job and attempt, match the
+  recording duration, have strictly increasing times and positions for every
+  tracked sample. It may be at most 64 MiB (about four hours at 30 fps).
+- **Applies quality rules.** The paradigm's `max_lost_frame_ratio` is checked
+  against untracked samples and `min_tracking_confidence` against the mean
+  confidence of tracked samples. Inferred samples count as tracked but are
+  left out of the confidence mean. A trajectory that fails is `FAILED` with a
+  `QC_FAILED` reason and is not retried; the quality figures are kept either
+  way.
+- **Computes the result.** The Go metric engine computes every metric and event
+  from the trajectory with the job's pinned parameters and calibration. One
+  definition of each measurement lives in the API, whatever produced the
+  tracking. See [Measurement architecture](../measurements/).
+- **Publishes atomically.** Metrics, events, quality and outputs appear
+  together. Delivering the same accepted result again returns the job without
+  publishing anything new.
 
-    Op->>M: POST /api/tests (scenario, subject, cameraId)
-    M-->>Op: Test (PENDING)
-    Op->>M: PATCH /api/tests/:id (status=RUNNING, startedAt)
-    Note over CV: CV is already processing that camera;<br/>events are written to its DB by camera_id
-    Op->>M: PATCH /api/tests/:id (status=DONE, endedAt)
-    CV->>CV: compute the scenario's metrics for [startedAt, endedAt] + cameraId
-    CV->>S: upload video + trajectory
-    CV->>M: POST /api/tests/:id/result (service auth) + metrics + artifact URLs
-    M->>M: validate + store per environment
-    M-->>CV: 200 OK (idempotent)
-```
+A test animal's first successful result waits for human review; only results a
+reviewer accepts count in the study report. Paradigm trial results never reach
+review, reports or the dashboard.
 
-## CV result flow (inside Mişko)
+## Retries and leases
 
-When the CV pushes a result, Mişko runs a fixed pipeline:
+A job may be attempted 3 times. A retryable failure, or a lease that expires
+without a heartbeat, returns the job to the queue while attempts remain;
+after the last one the job is `FAILED` (`LEASE_EXPIRED` for an expired lease).
+A non-retryable failure ends the job at once. Because every call names its
+attempt, a worker that lost its lease cannot overwrite the work of the worker
+that took the job over.
 
-1. **Service auth** - validate `X-Service-Key` against `SERVICE_API_KEY` (no
-   operator JWT); 401 otherwise.
-2. **Idempotency** - if this `captureSessionId` was already recorded, return the
-   stored result as a no-op. Safe to retry.
-3. **Resolve the contract** - the push targets one **environment** of the test's
-   scenario; load that environment's **paradigm** + metric dictionary.
-4. **Validate** - every `metrics` key must be a known metric of that paradigm
-   (unknown keys rejected); values match `valueType`/`validRange` (templated
-   metrics are zone maps).
-5. **Store** - metrics go to `Test.result.environments[envId].metrics` (JSON, with
-   QC + artifact URLs alongside). Raw video/telemetry never enters Mişko.
-6. **Finalize** - mark the environment DONE; the test is DONE when all are. There
-   is **no pass/fail verdict** - the result is data, interpreted at the analysis
-   layer. QC is stored alongside the metrics.
+## Storage
 
-## Boundary API (contract)
-
-Direction: **CV → Mişko push**. CV is the single source of truth for raw data;
-it computes the metric and reports it. Mişko never queries CV.
-
-```
-POST /api/tests/:id/result
-X-Service-Key: <SERVICE_API_KEY>
-Content-Type: application/json
-```
-
-```json
-{
-  "captureSessionId": "cv-9f3a...",
-  "cameraId": "cam-1",
-  "startedAt": "2026-06-01T15:00:00Z",
-  "endedAt":   "2026-06-01T15:05:00Z",
-  "metrics": {
-    "distance_cm": 1234.5,
-    "time_in_zone_s": 45.2,
-    "latency_to_platform_s": 12.0,
-    "events": { "ate": 3, "rest": 7 }
-  },
-  "artifacts": {
-    "videoUrl": "s3://misko/cam-1/2026-06-01/sess-9f3a.mp4",
-    "trajectoryUrl": "s3://misko/cam-1/2026-06-01/sess-9f3a.parquet"
-  }
-}
-```
-
-Mişko validates `metrics` against the environment's paradigm dictionary, stores
-them at `Test.result.environments[envId].metrics`, and marks the environment (and,
-when all are done, the test) `DONE`. There is no pass/fail verdict. If
-`captureSessionId` was already processed, the call is a no-op (idempotent).
-
-## Service-to-service auth
-
-Operator endpoints use JWT (existing). Service-to-service calls use a separate
-**service key**: the `X-Service-Key` header, validated against `SERVICE_API_KEY`.
-The CV service carries no operator JWT — it arrives with its own service identity.
-
-## Resilience
-
-- **Idempotency:** repeated pushes are safe via `captureSessionId`.
-- **Retry:** if Mişko is unreachable, CV retries with exponential backoff and
-  keeps the result marked "unsent" until it succeeds.
-- **Independent survival:** if Mişko is down, CV keeps capturing and sends later;
-  if CV is down, Mişko's domain management is unaffected.
+Videos and outputs live in object storage, never in the database: a local
+folder served by the API (`LOCAL_STORAGE_DIR`) or a private Google Cloud
+Storage bucket (`GCS_BUCKET`). Workers only see short-lived signed URLs, and
+the database keeps references to the objects.
