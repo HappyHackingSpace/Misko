@@ -147,6 +147,25 @@ of the table above:
   Draw `shock_grid` over the grid and high enough to hold the body of a subject
   standing on it, since the centroid is what enters the zone.
 
+### Auto-calibration proposal (experimental)
+
+`misko_worker/autocalibrate.py` detects the rectangular arena floor of an
+overhead recording (the NOVEL_OBJECT box) as the largest high-contrast
+quadrilateral of a few frames sampled over the video, and prints the corner
+pixels with a confidence and a calibration proposal in the arena frame:
+
+```bash
+.venv/bin/python -m misko_worker.autocalibrate video.mp4 --width-cm 40 --height-cm 40
+```
+
+The output is a PROPOSAL for the existing calibration flow, never a saved
+calibration: the fit points pair the detected corners with the arena corners,
+and the derived check points come from those same corners, so they cannot
+validate the fit — a researcher confirms or re-measures every point in the
+calibration UI before saving. Exit code 1 and `NO_ARENA_DETECTED` mean no
+convincing rectangle was found (round arenas, side views, heavy occlusion).
+Tested on synthetic frames only; it does not model lens distortion.
+
 ## Known limits
 
 - One subject per crop, fixed camera, stable lighting, contrast of at least
@@ -186,9 +205,21 @@ of the table above:
 
 ## Run
 
-Register the worker as a lab manager with model version
-`misko-tracker-bgsub 2.2.0` and four capabilities, each at version 1: `MWM`,
-`NOVEL_OBJECT`, `POLE` and `TREADMILL`. A worker registered with the earlier
+Register the worker with model version `misko-tracker-bgsub 2.2.0` and four
+capabilities, each at version 1: `MWM`, `NOVEL_OBJECT`, `POLE` and `TREADMILL`.
+Either run `bootstrap register-worker` against the database (it prints the
+token once; no admin JWT needed):
+
+```bash
+cd backend && go run ./cmd/bootstrap register-worker -name worker-1 \
+  -model-version "misko-tracker-bgsub 2.2.0" \
+  -paradigm MWM -paradigm NOVEL_OBJECT -paradigm POLE -paradigm TREADMILL
+```
+
+or call `POST /api/analysis/workers` as a lab manager. For local development,
+setting `WORKER_BOOTSTRAP_TOKEN` before `bootstrap setup` instead seeds a
+`dev-worker` with that known token (refused when `APP_ENV=production`).
+A worker registered with the earlier
 model version (`2.0.0`, MWM only) keeps claiming only MWM runs: register it
 again (or update its model version and capabilities) after upgrading the
 image, since the model version is recorded with every result. Then:

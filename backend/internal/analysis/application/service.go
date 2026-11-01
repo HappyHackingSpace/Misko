@@ -22,6 +22,7 @@ var (
 	ErrWorkerUnauthenticated = errors.New("worker authentication required")
 	ErrWorkerNotFound        = errors.New("worker not found")
 	ErrWorkerNameTaken       = errors.New("worker name is already in use")
+	ErrWorkerTokenTaken      = errors.New("worker token is already in use")
 	ErrUnknownCapability     = errors.New("capability names a paradigm version outside the catalog or one that cannot be computed from a trajectory")
 	ErrJobNotFound           = errors.New("analysis job not found")
 	ErrSourceNotFound        = errors.New("source video not found")
@@ -226,16 +227,9 @@ func (s *Service) RegisterWorker(ctx context.Context, actor access.Actor, in Wor
 	if err := actor.Require(access.LabConfigure); err != nil {
 		return Registered{}, err
 	}
-	w, err := domain.NewWorker(in.Name, in.ModelVersion, in.Capabilities)
+	w, err := s.newWorker(in)
 	if err != nil {
 		return Registered{}, err
-	}
-	for _, c := range w.Capabilities {
-		// Catalog presence is not analysis support: a worker may only claim
-		// versions whose metrics the engine can compute from its trajectory.
-		if contract, err := s.catalog.Contract(c.ParadigmKey, c.ParadigmVersion); err != nil || !contract.TrajectoryAnalyzable {
-			return Registered{}, fmt.Errorf("%w: %s v%d", ErrUnknownCapability, c.ParadigmKey, c.ParadigmVersion)
-		}
 	}
 	token, hash, err := s.tokens.New()
 	if err != nil {
@@ -247,6 +241,35 @@ func (s *Service) RegisterWorker(ctx context.Context, actor access.Actor, in Wor
 		return Registered{}, err
 	}
 	return Registered{Worker: created, Token: token}, nil
+}
+
+// SeedWorker registers a worker under a caller-supplied token instead of a
+// generated one. Only the bootstrap setup command uses it, for the development
+// seed worker; no HTTP route reaches it. The token is validated like any input
+// and only its hash is stored, exactly as for generated tokens.
+func (s *Service) SeedWorker(ctx context.Context, in WorkerInput, token, createdBy string) (domain.Worker, error) {
+	w, err := s.newWorker(in)
+	if err != nil {
+		return domain.Worker{}, err
+	}
+	w.CreatedBy = createdBy
+	return s.store.CreateWorker(ctx, w, s.tokens.Hash(token))
+}
+
+// newWorker validates a registration against the domain rules and the catalog.
+func (s *Service) newWorker(in WorkerInput) (domain.Worker, error) {
+	w, err := domain.NewWorker(in.Name, in.ModelVersion, in.Capabilities)
+	if err != nil {
+		return domain.Worker{}, err
+	}
+	for _, c := range w.Capabilities {
+		// Catalog presence is not analysis support: a worker may only claim
+		// versions whose metrics the engine can compute from its trajectory.
+		if contract, err := s.catalog.Contract(c.ParadigmKey, c.ParadigmVersion); err != nil || !contract.TrajectoryAnalyzable {
+			return domain.Worker{}, fmt.Errorf("%w: %s v%d", ErrUnknownCapability, c.ParadigmKey, c.ParadigmVersion)
+		}
+	}
+	return w, nil
 }
 
 func (s *Service) Workers(ctx context.Context, actor access.Actor) ([]domain.Worker, error) {

@@ -1,154 +1,43 @@
 ---
 title: Yol haritası
-description: Video-only davranış testi platformu için adım adım mimari.
+description: Mişko bugün neler yapıyor ve sırada ne var.
 ---
 
-Mişko **video-only davranış testi platformu** olarak başlar. Core roadmap içinde
-sensör yoktur. Tüm ölçümler kamera karelerinden, kalibrasyondan, apparatus
-geometrisinden ve kod sahipli paradigma spec'lerinden türetilir.
+Mişko **yalnızca videoya dayanan** bir davranış testi platformudur: her ölçüm bir
+kayıttan, onun kalibrasyonundan ve kodda tanımlı bir paradigma sürümünden gelir.
+Planda sensör yoktur. Açık işler
+[GitHub issue'larında](https://github.com/HappyHackingSpace/Misko/issues) izlenir.
 
-```txt
-Kamera karesi
-  -> detection veya segmentation
-  -> tracking
-  -> pikselden cm'ye kalibrasyon
-  -> apparatus koordinatlarında trajectory
-  -> zone ve event metrikleri
-  -> kalite kontrol metrikleri
-  -> Mişko'da valide edilmiş özet sonuç
-```
+## Bitenler
 
-## Adım 0 - Kimlik ✅
+- **Laboratuvar ve erişim**: kurulum başına tek laboratuvar, kurulum komutuyla
+  oluşturulan süper yönetici, izin matrisiyle beş rol, kullanıcı yönetimi.
+- **Katalog**: etken maddeler, hastalık modelleri ve hiç değişmeyen
+  yayımlanmış sürümlerde dört paradigma (Morris su labirenti, yeni nesne,
+  direk testi, koşu bandı); parametreleri, bölgeleri, ölçümleri, olayları ve
+  kalite kuralları İngilizce ve Türkçe.
+- **Ortamlar**: ölçüm revizyonlarıyla tek paradigmalı düzenekler ve arena
+  başına kalibrasyon.
+- **Çalışma tasarımı**: rollü gruplar, rejimler, zaman noktaları, protokoller
+  ve sonlanım noktalarıyla deneyler; 0. günden önce denetlenen başlatma
+  kuralları.
+- **Yürütme**: atama ve dışlama, günlük dozlama ve indüksiyon sonuçları, tek
+  videolu ve arenalarında birden çok hayvanlı test oturumları, denemeler ve
+  yorumlar.
+- **Analiz**: işçilerin aldığı işler, doğrulanan ve kalite kurallarıyla
+  denetlenen yörüngeler, Go motorunun hesapladığı her ölçüm ve olay; herhangi
+  bir çalışmanın dışında paradigma denemeleri.
+- **Sonuçlar**: her sonucun insan onayı, grup rollerinden çıkan
+  karşılaştırmalarla çalışma raporu, CSV ve Excel dışa aktarma, gösterge
+  paneli ve genel arama.
 
-- Docker açılışında superadmin bootstrap.
-- Public kayıt kaldırıldı.
-- İçeriden kullanıcı yönetimi.
+## Sırada
 
-## Adım 1 - Lab temeli ✅
-
-- `Laboratory` singleton: kurulum başına bir lab. ✅
-- Kurulum sihirbazı lab ve `SUPERADMIN`'i birlikte oluşturur (CLI, Docker açılışı). ✅
-- İkinci laboratuvar oluşturulması reddedilir (singleton garantisi). ✅
-- Beş rol: `SUPERADMIN`, `LAB_MANAGER`, `RESEARCHER`, `TECHNICIAN`, `VIEWER`. ✅
-- `requirePermission(...)` ile kodda tanımlı izin matrisi. ✅
-- `Environment` instance'ları: bir paradigma template'inden oluşturulan isimli, kalıcı test düzenekleri (paradigma başına birden çok). ✅
-
-Tamamlandı: `Laboratory` singleton ve `Environment` modelleri + migration'lar; kurulum sihirbazı (`backend/prisma/bootstrap-admin.js`) lab + superadmin'i birlikte oluşturur. Lab API'si: `GET/PATCH /api/lab` (`lab:configure`). Paradigmalar salt-okunur, kod sahipli template'lerdir; `GET /api/paradigms` ve `GET /api/paradigms/:key` ile sunulur. Bir ortam (environment), bir paradigmanın isimli instance'ıdır; fiziksel değerleri kendine yeten bir snapshot'a (`{ paradigmKey, schemaVersion, apparatus, zones }`) çözülür, değerler kod tarafından sabit parametre aralıklarına göre doğrulanır ve testte kilitli kalır. Environment API'si: `GET /api/environments`, `GET /api/environments/:id`, `POST /api/environments`, `PATCH /api/environments/:id`, `DELETE /api/environments/:id` (yazma işlemleri `apparatus:write` ister). Bir lab, aynı paradigmadan birden çok ortam tutabilir (ör. iki ayrı Morris su tankı). Frontend bir Ortamlar menüsü sunar; Paradigmalar sayfası salt-okunur bir katalogdur ve her paradigma detay sayfası yeni bir ortam oluşturabilir.
-
-## Adım 2 - Bilimsel kontrat
-
-- Kod sahipli `ParadigmSpec` kayıt defteri (4 paradigma): `MWM`, `NOVEL_OBJECT`, `POLE`, `TREADMILL`. 2026-10-15 tarihinde katalog bu dördüne indirildi; diğer yedi paradigma kaldırıldı. ✅
-- [Ölçüm mimarisi](../measurements/) içindeki kod sahipli metrik sözlüğü. ✅
-- Kanonik birimler: sonuçlar `cm`, `cm_s`, `s`, `count`, `ratio`, `percent`, `deg`, `g`, `boolean` kullanır; apparatus parametreleri ek olarak `mm` ve `c` taşır. ✅
-- Paradigma başına parametreler, bölgeler, metrikler, QC gereksinimleri ve artefakt beklentileri. ✅
-- Metrik başına `valueType` / `validRange` / `templated` (zone-bazlı) - hem manuel giriş hem CV bu sözleşmeye göre doğrular. ✅
-- `schemaVersion` ile sonuç şema versiyonlama. ✅
-- Salt-okunur inceleme API'si: `GET /api/paradigms`, `GET /api/paradigms/:key`, `GET /api/paradigms/metrics`, `GET /api/paradigms/units`. ✅
-
-Tamamlandı: kayıt defterleri `backend/src/config/{units,metrics,paradigms}.js` içinde; `isKnownMetricKey(...)` Step 4'te tanımsız sonuç anahtarlarını reddetmeye hazır. Bekleyen: paradigma detay sayfalarının frontend'de gösterilmesi ve reddetme mantığının sonuç gönderimine bağlanması.
-
-Çıkış kriteri: her metriğin birimi, tanımı, input listesi ve aggregation davranışı vardır.
-
-## Adım 3 - Senaryo: merkezî deney tanımı ✅
-
-`Scenario`, bir deneyin eksiksiz ve yeniden kullanılabilir tanımıdır; böylece test
-başlatmak "denek seç ve başlat" kadar basit olur. Domain küçük kalır: **Denek**
-(fare, sade tutulur), **Paradigma** (salt-okunur katalog), **Ortam** (paradigmanın
-isimli instance'ı - fiziksel kurulum), **Senaryo** (merkezî nesne) ve **Test**
-(tek koşu).
-
-Bir senaryo bir veya birden çok `Environment`'a (N-N) referans verir; böylece bir
-veya birden çok paradigmayı kapsayabilir; her ortamın paradigması metriklerini
-sabitler. Senaryoda geç/kal kriteri **yoktur** - davranışsal sonuç **veridir,
-verdikt değil**.
-
-`Test`, `Denek + Senaryo`'dur ve **ortam ortam** koşulur (Başlat → metrik
-sonuçlarını gir → Bitir). Sonuç ortam başına saklanır
-(`result.environments[envId].metrics`), ortamın paradigma sözlüğüne göre
-doğrulanır - CV servisinin göndereceği şekille aynı.
-
-- Başlangıç `Scenario`'su (`POOL | MAZE | STICK | PATH`) isimli ortam paketine
-  dönüştürüldü (+ opsiyonel oturum param). ✅
-- `Test.result` ortam-bazlı yapısal JSON; **`passed`/verdikt yok**. ✅
-- **sinyal** (ham, CV) / **metrik** (tanım) / **metrik sonucu** (değer) ayrıldı. ✅
-- `Subject` sade başlangıç modeli olarak kalır. ✅
-
-Önceki plandan çıkarılanlar: zengin `Subject`, `WeightLog`,
-`DiseaseModel`/`Treatment`, `Study -> Group`, ayrı `Apparatus` modeli. Fiziksel
-düzenek `Environment`'tır; kalibrasyon Adım 5'te kalır.
-
-## Adım 4 - Fake CV ile video-only sınır
-
-- `X-Service-Key` ile `POST /api/tests/:id/result`.
-- `captureSessionId` ile idempotency.
-- Aktif paradigma spec'i ve metrik sözlüğüne göre sonuç validasyonu.
-- Kendi PostgreSQL'i ve `/health` endpoint'i olan `cv-service/` iskeleti.
-- Sahte ama geçerli metriklerle stub sonuç push.
-- Video ve artefaktlar için MinIO.
-
-## Adım 5 - Geometri ve kalibrasyon
-
-- Circle, rectangle, plus ve custom polygon için apparatus geometri editörü.
-- Platform, center, periphery, quadrant, wall annulus ve arm zone editörü.
-- Referans kareyle pikselden cm'ye kalibrasyon ve reprojection error.
-- Sabit apparatus kalibrasyonu ve test başına override.
-- Tank merkezli koordinatlar, ham cm değerleri ve normalize mesafelerle MWM normalizasyonu.
-
-## Adım 6 - Gerçek video CV MVP
-
-- Kamera adapter'ları: `local_usb`, yüklenen video dosyası ve sonra telefon stream'i.
-- Fare lokalizasyonu için detection veya segmentation modeli.
-- ByteTrack veya eşdeğer tracker.
-- OpenCV preprocessing ve homography.
-- Kare bazlı telemetri CV servisinde kalır.
-- Özet metrikler Mişko'ya push edilir.
-
-| Paradigma | MVP metrikleri |
-|---|---|
-| MWM | Escape latency, path length, swim speed, quadrant time, thigmotaxis, probe trial için platform crossings. |
-
-## Adım 7 - Kalite kontrol ve inceleme
-
-- Tracking confidence, dropped frame ratio, calibration error, occlusion ratio, out-of-bounds ratio, lighting warning ve contrast warning.
-- QC durumları: `PASS`, `WARN`, `REVIEW_REQUIRED`, `FAIL`.
-- QC, metrik sonuçlarının yanında saklanır (veriyi niteler, verdikt değildir).
-- Video, overlay, trajectory ve metrik özetiyle manuel inceleme ekranı.
-- Study export'ları düşük kaliteli koşuları varsayılan olarak filtreler.
-
-## Adım 8 - Analiz ve raporlama
-
-- Testlerini toplayan senaryo dashboard'ları; denek gruplarını (`Subject.groupName`) karşılaştırma.
-- Test'ler arası denek geçmişi.
-- MWM acquisition curve ve probe summary.
-- Yeni nesne, direk testi ve koşu bandı özetleri.
-- Metrik tanımları ve QC durumuyla CSV ve JSON export.
-
-## Adım 9 - Gelişmiş davranış modülleri
-
-- Opsiyonel pose-estimation adapter'ı: DeepLabCut, SLEAP veya başka açık kaynak model.
-- Rearing, grooming, freezing, risk assessment ve head direction classifier'ları.
-- Vücut merkezinin yetmediği yerlerde poza dayalı olay tespiti (burnu nesneye yönelik yeni nesne keşfi, baş yönünden direkte dönüş).
-- Single-animal iş akışları stabil olduktan sonra multi-animal desteği.
-
-## Adım 10 - Canlı izleme ve kaynaklar
-
-- WebSocket veya SSE ile CV'den Vue live paneline akış.
-- RTSP ve HTTP adapter'ları.
-- Telefon `getUserMedia` push adapter'ı.
-- Canlı QC uyarıları.
-
-## Adım 11 - Açık kaynak deployment
-
-- Mişko ve CV servisi için final lisans stratejisi.
-- Tüm local stack için Docker Compose profili.
-- GHCR image publishing.
-- GitHub Pages docs deploy.
-- Örnek dataset'ler, demo videolar ve örnek apparatus tanımları.
-
-## Non-goals
-
-- Core mimaride sensor fusion yok.
-- RFID, accelerometer, load cell veya IR beam bağımlılığı yok.
-- Mişko PostgreSQL içinde ham kare telemetrisi yok.
-- Bilimsel paradigma tanımları için editable DB row yok.
-- İlk mimaride cross-lab multi-tenant deployment yok.
+- **İzlemeyi gerçek kayıtlarla doğrulamak.** Paketle gelen işçi yalnızca
+  sentetik videoyla test edildi. Sonuçlar araştırmada kullanılmadan önce,
+  sayıları gerçek oturumların kör el ölçümleriyle karşılaştırılmalı ve hareketsiz
+  bir hayvanın mesafeye ve hareketsizliğe kattığı hata (izleme titreşimi)
+  ölçülmelidir.
+- **Ölçümleri yalnızca yeni sürümlerle değiştirmek.** Doğrulama yumuşatma ya da
+  başka değişiklikler gerektirirse, bunlar yeni bir paradigma sürümü olarak
+  gelir; böylece yayımlanmış sonuçlar hesaplandıkları tanımı korur.
