@@ -36,7 +36,7 @@ export default defineConfig({
           items: [
             { label: "Overview", translations: { tr: "Genel bakış" }, slug: "overview" },
             { label: "Installation", translations: { tr: "Kurulum" }, slug: "installation" },
-            { label: "Go backend (preview)", translations: { tr: "Go backend (önizleme)" }, slug: "go-backend" },
+            { label: "Go backend", translations: { tr: "Go backend" }, slug: "go-backend" },
             { label: "Usage", translations: { tr: "Kullanım" }, slug: "usage" },
             { label: "Architecture", translations: { tr: "Mimari" }, slug: "architecture" },
           ],
@@ -47,7 +47,7 @@ export default defineConfig({
           items: [
             { label: "Domain model", translations: { tr: "Alan modeli" }, slug: "domain" },
             { label: "Measurement architecture", translations: { tr: "Ölçüm mimarisi" }, slug: "measurements" },
-            { label: "Integration (CV)", translations: { tr: "Entegrasyon (CV)" }, slug: "integration" },
+            { label: "Integration (workers)", translations: { tr: "Entegrasyon (işçiler)" }, slug: "integration" },
             { label: "Roadmap", translations: { tr: "Yol haritası" }, slug: "roadmap" },
           ],
         },

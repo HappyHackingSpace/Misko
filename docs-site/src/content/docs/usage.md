@@ -47,20 +47,23 @@ hides buttons the API would refuse.
 
 | Role | What it can do |
 |---|---|
-| `SUPERADMIN`, `LAB_MANAGER` | Everything, including users and lab settings. |
-| `RESEARCHER` | Everything except users and lab settings: substances, disease models, subjects, environments, study design, planning sessions, dosing, running sessions, review. |
+| `SUPERADMIN`, `LAB_MANAGER` | Everything, including users. They also own the laboratory settings (name, code, time zone) and analysis workers, which are changed through the API; the panel has no screen for them. |
+| `RESEARCHER` | Everything except users, laboratory settings and workers: substances, disease models, subjects, environments, study design, planning sessions, dosing, running sessions, review. |
 | `TECHNICIAN` | The lab day: record doses and weights, start and complete sessions, record trials, upload videos, calibrate an animal on a video, run paradigm trials, review results. Cannot plan or cancel sessions or change a study. |
 | `VIEWER` | Reads everything, changes nothing. |
 
 When you create a user on the **Users** screen you may leave the password blank
 and let the system generate a strong one. It is shown only once, so copy it
-before closing.
+before closing. **Reset password** works the same way. The founding account
+(the superadmin created at setup) cannot be renamed, given another role, reset
+or deleted from this screen.
 
 ## Common controls
 
 Lists work the same everywhere: a search box, filters, sortable columns and
-paging at the bottom. New records and edits open in a side drawer or a dialog,
-a green message confirms a save, and an error is shown in words next to the
+paging at the bottom, and an **Export** menu saves the list as CSV or PDF. New
+records and edits open in a side drawer or a dialog (experiments, environments
+and users have full pages), a green message confirms a save, and an error is shown in words next to the
 form. Deleting always asks for confirmation. Many screens keep their filters in
 the address bar, so you can bookmark or share a filtered list.
 
@@ -138,9 +141,9 @@ environment**:
 **Default calibration.** A camera that does not move is calibrated once per
 arena, and every video filmed in that arena uses it. Calibration tells Mişko how
 camera pixels map to centimetres on the apparatus, and, for a paradigm that
-declares drawn zones, where those zones are. Every paradigm is calibrated,
-and the calibrator shows a short guide for the paradigm: where the camera goes
-and what to draw.
+declares drawn zones, where those zones are. Every paradigm is calibrated. For
+novel object, pole test and treadmill the calibrator shows a short guide: where
+the camera goes and what to draw.
 
 | Paradigm | Camera | Apparatus frame | Zones |
 |---|---|---|---|
@@ -208,7 +211,7 @@ and what to draw.
    error is above the tolerance is rejected; save it again with better points.
 
 Analyses in this arena wait until a valid calibration with every required zone
-exists. A saved calibration never changes: **Correct calibration** saves a new
+exists. A saved calibration never changes: **Correct the calibration** saves a new
 one that replaces it, and earlier calibrations are kept.
 
 **Revisions.** Measurements are never edited in place, so every test keeps the
@@ -226,7 +229,7 @@ is a **Draft**; its design can be changed until it starts.
 
 1. Click **Add group**. Give a code (G1, G2), a name, a role and a target number
    of animals. Every role except healthy control needs a disease model.
-2. On the group's card click **Add item** to say what the group receives: the
+2. On the group's card click **Add item** (**Add vehicle** on a sham group) to say what the group receives: the
    purpose (induction, vehicle or treatment), the substance, the dose and unit
    (for example 10 mg/kg), the route, how often (once, daily, twice daily,
    weekly or every N days) and the first and last study day. The purpose list
@@ -282,10 +285,14 @@ metric of a paradigm in the protocols, at a timepoint, optionally compared with
 a baseline timepoint, and which direction is better. Exactly one endpoint is
 **primary**; a second primary is refused.
 
-**Starting.** The **Overview** tab lists every start rule that is not met yet,
-each with a link to the tab that fixes it. When the healthy control is
-missing, **Add a healthy control group** opens the group dialog with that role
-already chosen. When the list says the study is
+**Starting.** The **Overview** tab lists every start rule that is not met yet.
+Besides the healthy control, every group needs a target size, and a sham,
+treatment or positive control group needs a disease control group with the
+same disease model. Each rule has its own action that opens the dialog that
+fixes it, already filled in: for example **Add a healthy control group**,
+**Add a disease control group**, **Add the treatment item** or **Set the
+target size**. A rule no single dialog can fix links to its tab instead. When
+the list says the study is
 ready, click **Start study**, choose day 0 (the date study days count from,
 usually the induction) and confirm. The study becomes **Running**: groups,
 regimens, timepoints and endpoints are now shown read-only. New protocol
@@ -302,10 +309,13 @@ On the **Subjects** tab:
    some groups). A cage can be added.
 4. Click **Allocate** or **Randomise**.
 
+Each row also has **Cage** to change the animal's cage and, while the study is
+a draft, **Move** to another group and **Remove** to make it unallocated again.
+
 The group cards at the top show how full each group is. An animal belongs to
 exactly one group and, once the study runs, never changes group. If an animal
 dies or must leave the study, click **Exclude**, choose the reason (died, humane
-endpoint, induction failed, technical problem, other) and add a note. Excluded
+endpoint, induction failed, technical problem, other), the time and a note. Excluded
 animals stay on the list with their reason and are left out of statistics.
 
 ## Daily dosing
@@ -341,7 +351,8 @@ filmed by one camera).
 
 **Planning** (researchers and above), on the experiment's **Tests** tab:
 
-1. Click **Plan a session**.
+1. Click **Plan a session**, or **+ Plan** on a timepoint to choose that
+   timepoint already.
 2. Choose the timepoint; the protocol, version and step are preselected.
 3. The time defaults to day 0 plus the timepoint's study day.
 4. Choose the first animal and its arena, then **Add subject** for each further
@@ -379,7 +390,7 @@ The view and filters are kept in the address.
    button stays disabled and the page says why.
 
 Comments at the bottom of the page let the lab note anything unusual. Anyone
-can comment; you can edit your own, and lab managers can delete any.
+can comment; you can edit and delete your own, and lab managers can delete any.
 
 ## Analysis and result review
 
@@ -401,8 +412,10 @@ review**:
    (pending, accepted, rejected, all). The filters are kept in the address.
 2. Click a row to open the analysed video, the quality checks and the metrics.
 3. Click **Accept**, or choose a reason (tracking lost, wrong animal, video
-   defect, protocol deviation, other), add a note and click **Reject**. The
-   drawer then moves to the next pending result.
+   defect, protocol deviation, other), add a note (required for other) and
+   click **Reject**. The drawer then moves to the next pending result. A
+   decided result can be sent back with **Send back to review**, or accepted
+   again with a new note.
 4. If an animal was analysed again, the checks say **A newer run is available**.
    Pick a run in the run list and click **Review this run instead**; the result
    goes back to pending with that run.
@@ -472,10 +485,13 @@ planned session is completed or cancelled. A completed study is read-only.
 The **Dashboard** is the home screen. Its tiles count results (pending,
 accepted, rejected), analysis (queued, running, failed, waiting for
 calibration), sessions (planned, in progress, completed, cancelled) and
-experiments (draft, running, completed). Click a tile to open the list it
-counts, already filtered: for example **Pending** opens the review queue and
-**In progress** opens the worklist of running sessions. Below the tiles are the
-latest results and the upcoming sessions.
+experiments (draft, running, completed). Most tiles open the list they count,
+already filtered: for example **Pending** opens the review queue and **In
+progress** opens the worklist of running sessions; the queued, running and
+failed run counts have no list. **Open the review queue** sits at the top.
+Below the tiles are the latest results and the upcoming sessions; when nothing
+is planned, the card links to the running studies and to
+[planning a session](#planning-and-running-test-sessions).
 
 ## Where the heavy data lives
 

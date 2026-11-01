@@ -47,20 +47,24 @@ reddedeceği düğmeleri gizler.
 
 | Rol | Neler yapabilir |
 |---|---|
-| `SUPERADMIN`, `LAB_MANAGER` | Kullanıcılar ve laboratuvar ayarları dahil her şey. |
-| `RESEARCHER` | Kullanıcılar ve laboratuvar ayarları dışında her şey: etken maddeler, hastalık modelleri, denekler, ortamlar, çalışma tasarımı, oturum planlama, dozlama, oturum yürütme, sonuç onayı. |
+| `SUPERADMIN`, `LAB_MANAGER` | Kullanıcılar dahil her şey. Laboratuvar ayarları (ad, kod, saat dilimi) ve analiz işçileri de onlarındır; bunlar API üzerinden değiştirilir, panelde ekranları yoktur. |
+| `RESEARCHER` | Kullanıcılar, laboratuvar ayarları ve işçiler dışında her şey: etken maddeler, hastalık modelleri, denekler, ortamlar, çalışma tasarımı, oturum planlama, dozlama, oturum yürütme, sonuç onayı. |
 | `TECHNICIAN` | Laboratuvar günü: doz ve ağırlık kaydı, oturumu başlatma ve tamamlama, deneme kaydı, video yükleme, bir deneği bir videoda kalibre etme, paradigma testi yürütme, sonuç onayı. Oturum planlayamaz, iptal edemez ve çalışmayı değiştiremez. |
 | `VIEWER` | Her şeyi okur, hiçbir şeyi değiştirmez. |
 
 **Kullanıcılar** ekranında kullanıcı oluştururken şifreyi boş bırakıp sistemin
 güçlü bir şifre üretmesine izin verebilirsiniz. Şifre yalnızca bir kez
-gösterilir; kapatmadan önce kopyalayın.
+gösterilir; kapatmadan önce kopyalayın. **Şifre sıfırla** da aynı şekilde
+çalışır. Kurucu hesap (kurulumda oluşturulan süper yönetici) bu ekrandan
+yeniden adlandırılamaz, başka bir role alınamaz, şifresi sıfırlanamaz ve
+silinemez.
 
 ## Ortak kontroller
 
 Listeler her yerde aynı çalışır: bir arama kutusu, filtreler, sıralanabilir
-sütunlar ve altta sayfalama. Yeni kayıtlar ve düzenlemeler yan çekmecede ya da
-bir pencerede açılır; yeşil bir mesaj kaydı onaylar, hata ise formun yanında
+sütunlar, altta sayfalama ve listeyi CSV ya da PDF olarak kaydeden bir **Dışa
+aktar** menüsü. Yeni kayıtlar ve düzenlemeler yan çekmecede ya da bir pencerede
+açılır (deneyler, ortamlar ve kullanıcılar tam sayfada açılır); yeşil bir mesaj kaydı onaylar, hata ise formun yanında
 sözle gösterilir. Silme her zaman onay ister. Birçok ekran filtrelerini adres
 çubuğunda tutar; böylece filtrelenmiş bir listeyi yer imine ekleyebilir veya
 paylaşabilirsiniz.
@@ -142,8 +146,9 @@ tıklayın:
 kalibre edilir ve o arenada çekilen her video bunu kullanır. Kalibrasyon,
 kamera piksellerinin düzenek üzerinde santimetreye nasıl karşılık geldiğini ve
 çizilen bölgeler tanımlayan bir paradigmada bu bölgelerin nerede olduğunu
-Mişko'ya söyler. Her paradigma kalibre edilir ve kalibratör paradigmaya göre
-kısa bir rehber gösterir: kameranın nereye konacağı ve neyin çizileceği.
+Mişko'ya söyler. Her paradigma kalibre edilir. Yeni nesne, direk testi ve koşu
+bandı için kalibratör kısa bir rehber gösterir: kameranın nereye konacağı ve
+neyin çizileceği.
 
 | Paradigma | Kamera | Düzenek çerçevesi | Bölgeler |
 |---|---|---|---|
@@ -228,7 +233,7 @@ doldurup kaydedin. Deney **Gruplar ve rejimler** sekmesinde açılır. Yeni bir
 
 1. **Grup ekle**'ye tıklayın. Bir kod (G1, G2), ad, rol ve hedef denek sayısı
    verin. Sağlıklı kontrol dışındaki her rol bir hastalık modeli ister.
-2. Grubun kartında **Kalem ekle**'ye tıklayarak grubun ne aldığını belirtin:
+2. Grubun kartında **Kalem ekle**'ye (sham grubunda **Taşıyıcı ekle**) tıklayarak grubun ne aldığını belirtin:
    amaç (indüksiyon, taşıyıcı veya tedavi), madde, doz ve birim (örneğin
    10 mg/kg), uygulama yolu, sıklık (bir kez, günlük, günde iki kez, haftalık
    veya N günde bir) ve ilk ile son çalışma günü. Amaç listesi yalnızca grubun
@@ -285,10 +290,14 @@ metriği, bir zaman noktasında, isteğe bağlı olarak bir başlangıç zaman
 noktasıyla karşılaştırmalı, ve hangi yönün daha iyi olduğu. Tam olarak bir ölçüt
 **birincil**'dir; ikinci bir birincil ölçüt reddedilir.
 
-**Başlatma.** **Genel bakış** sekmesi henüz karşılanmayan her başlatma kuralını,
-düzelteceği sekmeye bir bağlantıyla birlikte listeler. Sağlıklı kontrol
-eksikse **Sağlıklı kontrol grubu ekle** grup penceresini bu rol seçili olarak
-açar. Liste çalışmanın hazır
+**Başlatma.** **Genel bakış** sekmesi henüz karşılanmayan her başlatma kuralını
+listeler. Sağlıklı kontrolün yanında her grubun bir hedef büyüklüğü olmalı; sham,
+tedavi ya da pozitif kontrol grubunun da aynı hastalık modelli bir hastalık
+kontrolü grubu olmalıdır. Her kuralın, onu düzelten pencereyi önceden
+doldurulmuş olarak açan kendi eylemi vardır: örneğin **Sağlıklı kontrol grubu
+ekle**, **Hastalık kontrolü grubu ekle**, **Tedavi kalemini ekle** ya da
+**Hedef büyüklüğü gir**. Tek bir pencerenin düzeltemeyeceği bir kural ise kendi
+sekmesine bağlanır. Liste çalışmanın hazır
 olduğunu söylediğinde **Çalışmayı başlat**'a tıklayın, 0. günü (çalışma
 günlerinin sayıldığı tarih, genellikle indüksiyon) seçin ve onaylayın. Çalışma
 **Çalışıyor** olur: gruplar, rejimler, zaman noktaları ve ölçütler artık salt
@@ -306,11 +315,15 @@ okunur gösterilir. Yeni protokol sürümleri hâlâ eklenebilir.
    gruplara). Bir kafes eklenebilir.
 4. **Ata** veya **Rastgele dağıt**'a tıklayın.
 
+Her satırda ayrıca deneğin kafesini değiştiren **Kafes** ve çalışma taslakken
+başka bir gruba geçiren **Taşı** ile onu yeniden atanmamış yapan **Çıkar**
+bulunur.
+
 Üstteki grup kartları her grubun ne kadar dolu olduğunu gösterir. Bir denek tam
 olarak bir gruba aittir ve çalışma başladıktan sonra grubu değişmez. Bir denek
 ölürse ya da çalışmadan çıkması gerekirse **Dışla**'ya tıklayın, nedeni seçin
-(öldü, insani son nokta, indüksiyon başarısız, teknik sorun, diğer) ve bir not
-ekleyin. Dışlanan denekler nedenleriyle listede kalır ve istatistiklere
+(öldü, insani son nokta, indüksiyon başarısız, teknik sorun, diğer), zamanı ve
+bir not girin. Dışlanan denekler nedenleriyle listede kalır ve istatistiklere
 girmez.
 
 ## Günlük dozlama
@@ -347,7 +360,8 @@ kameranın çektiği üç yeni nesne kutusu).
 
 **Planlama** (araştırmacı ve üstü), deneyin **Testler** sekmesinde:
 
-1. **Oturum planla**'ya tıklayın.
+1. **Oturum planla**'ya ya da bir zaman noktasındaki **+ Planla**'ya
+   (o zaman noktası seçili gelir) tıklayın.
 2. Zaman noktasını seçin; protokol, sürüm ve adım önceden seçilidir.
 3. Zaman varsayılan olarak 0. gün artı zaman noktasının çalışma günüdür.
 4. İlk deneği ve arenasını seçin, ardından her ek denek için **Denek
@@ -388,7 +402,7 @@ Görünüm ve filtreler adreste tutulur.
    kadar düğme pasif kalır ve sayfa nedenini söyler.
 
 Sayfanın altındaki yorumlar, laboratuvarın olağan dışı her şeyi not etmesini
-sağlar. Herkes yorum yazabilir; kendi yorumunuzu düzenleyebilirsiniz,
+sağlar. Herkes yorum yazabilir; kendi yorumunuzu düzenleyip silebilirsiniz,
 laboratuvar yöneticileri herhangi bir yorumu silebilir.
 
 ## Analiz ve sonuç onayı
@@ -412,8 +426,10 @@ açın:
 2. Analiz edilmiş videoyu, kalite kontrollerini ve metrikleri açmak için bir
    satıra tıklayın.
 3. **Kabul et**'e tıklayın ya da bir neden seçin (takip kaybedildi, yanlış
-   denek, video kusuru, protokol sapması, diğer), not ekleyip **Reddet**'e
-   tıklayın. Çekmece ardından bir sonraki bekleyen sonuca geçer.
+   denek, video kusuru, protokol sapması, diğer), not ekleyip (diğer için
+   zorunlu) **Reddet**'e tıklayın. Çekmece ardından bir sonraki bekleyen sonuca
+   geçer. Karara bağlanmış bir sonuç **Yeniden incelemeye gönder** ile geri
+   gönderilebilir ya da yeni bir notla yeniden kabul edilebilir.
 4. Bir denek yeniden analiz edildiyse kontroller **Bu deneğin daha yeni bir
    çalıştırması var** der. Çalıştırma listesinden birini seçip **Bunun yerine bu
    çalıştırmayı incele**'ye tıklayın; sonuç o çalıştırmayla bekleyene döner.
@@ -486,10 +502,13 @@ Tamamlanan bir çalışma salt okunurdur.
 **Panel** ana ekrandır. Kutucukları sonuçları (bekleyen, kabul edilen,
 reddedilen), analizi (kuyrukta, çalışıyor, başarısız, kalibrasyon bekliyor),
 oturumları (planlı, sürüyor, tamamlandı, iptal edildi) ve deneyleri (taslak,
-çalışıyor, tamamlandı) sayar. Bir kutucuğa tıklamak saydığı listeyi filtrelenmiş
-olarak açar: örneğin **Bekliyor** onay kuyruğunu, **Sürüyor** ise süren
-oturumların iş listesini açar. Kutucukların altında son sonuçlar ve yaklaşan
-oturumlar yer alır.
+çalışıyor, tamamlandı) sayar. Çoğu kutucuk saydığı listeyi filtrelenmiş olarak
+açar: örneğin **Bekliyor** onay kuyruğunu, **Sürüyor** ise süren oturumların iş
+listesini açar; kuyruktaki, çalışan ve başarısız çalıştırma sayılarının listesi
+yoktur. En üstte **İnceleme kuyruğunu aç** bulunur. Kutucukların altında son
+sonuçlar ve yaklaşan oturumlar yer alır; planlı bir şey yoksa kart devam eden
+çalışmalara ve [oturum planlamaya](#test-oturumlarını-planlama-ve-yürütme)
+bağlanır.
 
 ## Ağır veri nerede durur
 

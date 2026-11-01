@@ -31,7 +31,7 @@ no data migration from earlier installations.
 ## Layout and boundaries
 
 - `cmd/api`: process entry, signals, exit status.
-- `cmd/bootstrap`: `migrate` installs the schema into an empty database or applies pending migrations; `setup` creates the laboratory and first administrator.
+- `cmd/bootstrap`: `migrate` installs the schema into an empty database or applies pending migrations; `setup` creates the laboratory, the first administrator and, with `WORKER_BOOTSTRAP_TOKEN` set (refused when `APP_ENV=production`), the dev-worker; `register-worker` registers an analysis worker directly and prints its token once.
 - `cmd/jobs`: the scheduler loop (lease expiry, automatic jobs of animals of tests and of paradigm trials); it serves no HTTP.
 - `internal/bootstrap`: composition root; constructor wiring of concrete adapters.
 - `internal/access/domain`: the shared RBAC kernel (roles, permission matrix, authenticated actor).
@@ -990,6 +990,15 @@ go run ./cmd/api
 go run ./cmd/jobs
 ```
 
+To run an analysis worker, register it first and keep the token it prints
+(shown exactly once, like the administrator password of `setup`):
+
+```sh
+go run ./cmd/bootstrap register-worker -name worker-1 \
+  -model-version "misko-tracker-bgsub 2.2.0" \
+  -paradigm MWM -paradigm NOVEL_OBJECT -paradigm POLE -paradigm TREADMILL
+```
+
 | Variable | Default | Used by | Meaning |
 |---|---|---|---|
 | `DATABASE_URL` | required | all | PostgreSQL URL with host and database |
@@ -1003,6 +1012,8 @@ go run ./cmd/jobs
 | `ADMIN_EMAIL` | required | setup | First administrator |
 | `LAB_NAME` | required | setup | Laboratory name |
 | `LAB_TIMEZONE` | `UTC` | setup | IANA time zone |
+| `WORKER_BOOTSTRAP_TOKEN` | empty | setup | Development only: seeds `dev-worker` with exactly this token (at least 16 characters); refused when `APP_ENV` is `production` |
+| `APP_ENV` | empty | setup | Set to `production` on real deployments so the worker seed is refused |
 | `JOB_INTERVAL` | `10s` | jobs | Time between analysis scheduler ticks, at least 1s |
 
 The processes do not load `.env` files or change the schema on startup. The API
