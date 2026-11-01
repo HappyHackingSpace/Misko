@@ -186,9 +186,21 @@ of the table above:
 
 ## Run
 
-Register the worker as a lab manager with model version
-`misko-tracker-bgsub 2.2.0` and four capabilities, each at version 1: `MWM`,
-`NOVEL_OBJECT`, `POLE` and `TREADMILL`. A worker registered with the earlier
+Register the worker with model version `misko-tracker-bgsub 2.2.0` and four
+capabilities, each at version 1: `MWM`, `NOVEL_OBJECT`, `POLE` and `TREADMILL`.
+Either run `bootstrap register-worker` against the database (it prints the
+token once; no admin JWT needed):
+
+```bash
+cd backend && go run ./cmd/bootstrap register-worker -name worker-1 \
+  -model-version "misko-tracker-bgsub 2.2.0" \
+  -paradigm MWM -paradigm NOVEL_OBJECT -paradigm POLE -paradigm TREADMILL
+```
+
+or call `POST /api/analysis/workers` as a lab manager. For local development,
+setting `WORKER_BOOTSTRAP_TOKEN` before `bootstrap setup` instead seeds a
+`dev-worker` with that known token (refused when `APP_ENV=production`).
+A worker registered with the earlier
 model version (`2.0.0`, MWM only) keeps claiming only MWM runs: register it
 again (or update its model version and capabilities) after upgrading the
 image, since the model version is recorded with every result. Then:
