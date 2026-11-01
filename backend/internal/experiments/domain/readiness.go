@@ -1,11 +1,14 @@
 package domain
 
+import "slices"
+
 // Rule codes name the start rules the database cannot express. They are
 // stable, translated by the panel, and reported with the group or endpoint
 // they concern.
 const (
 	RuleNoTimepoints            = "readiness.noTimepoints"
 	RuleNoGroups                = "readiness.noGroups"
+	RuleHealthyControlMissing   = "readiness.healthyControlMissing"
 	RuleTargetSizeMissing       = "readiness.targetSizeMissing"
 	RulePrimaryEndpointMissing  = "readiness.primaryEndpointMissing"
 	RuleEndpointMetricMissing   = "readiness.endpointMetricUnavailable"
@@ -14,6 +17,7 @@ const (
 	RuleInductionItemMissing    = "readiness.inductionItemMissing"
 	RuleInductionItemNotAllowed = "readiness.inductionItemNotAllowed"
 	RuleVehicleItemMissing      = "readiness.vehicleItemMissing"
+	RuleVehicleItemNotAllowed   = "readiness.vehicleItemNotAllowed"
 	RuleDiseaseControlMissing   = "readiness.diseaseControlMissing"
 )
 
@@ -49,6 +53,11 @@ func Readiness(d Design) []Problem {
 	}
 	if len(d.Groups) == 0 {
 		problems = append(problems, Problem{Rule: RuleNoGroups})
+	}
+	// Every analysis compares against a healthy control: model validity and
+	// rescue are measured from it, so a study without one cannot start.
+	if !slices.ContainsFunc(d.Groups, func(g Group) bool { return g.Role == HealthyControl }) {
+		problems = append(problems, Problem{Rule: RuleHealthyControlMissing})
 	}
 	primary := false
 	for _, e := range d.Endpoints {
@@ -111,6 +120,11 @@ func Readiness(d Design) []Problem {
 				add(RuleTreatmentItemNotAllowed)
 			}
 		case HealthyControl:
+			// A healthy control receives no substance at all; only periods
+			// without one (NoSubstance) belong to it, and it may have none.
+			if has[Vehicle] > 0 {
+				add(RuleVehicleItemNotAllowed)
+			}
 			if has[Induction] > 0 {
 				add(RuleInductionItemNotAllowed)
 			}

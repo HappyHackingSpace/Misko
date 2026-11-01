@@ -131,6 +131,10 @@ const (
 	Induction Purpose = "INDUCTION"
 	Vehicle   Purpose = "VEHICLE"
 	Treatment Purpose = "TREATMENT"
+	// NoSubstance marks a regimen item that is only a period without any
+	// substance (a healthy control). It is never due and never administered,
+	// so ParsePurpose does not accept it for a dose.
+	NoSubstance Purpose = "NONE"
 )
 
 func ParsePurpose(raw string) (Purpose, error) {

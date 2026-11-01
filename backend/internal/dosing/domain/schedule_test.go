@@ -66,6 +66,8 @@ func TestDosesDuePerFrequency(t *testing.T) {
 		{"every 2 days from a negative day", RegimenItem{Frequency: EveryNDays, IntervalDays: 2, StartDay: -3, EndDay: 1}, map[int]int{-3: 1, -1: 1, 1: 1}},
 		{"every n days without an interval", RegimenItem{Frequency: EveryNDays, StartDay: 0, EndDay: 5}, map[int]int{}},
 		{"unknown frequency", RegimenItem{Frequency: "HOURLY", StartDay: 0, EndDay: 5}, map[int]int{}},
+		{"no-substance period", RegimenItem{Purpose: NoSubstance, StartDay: 0, EndDay: 14}, map[int]int{}},
+		{"no-substance period with a stray frequency", RegimenItem{Purpose: NoSubstance, Frequency: Daily, StartDay: 0, EndDay: 14}, map[int]int{}},
 	} {
 		got := days(tc.item, -30, 30)
 		if len(got) != len(tc.want) {
@@ -94,6 +96,8 @@ func TestBuildScheduleGroupsDueDosesPerAnimal(t *testing.T) {
 		{Allocation: mouse("a1"), SubjectCode: "M1", Weight: weight, Item: drug, Given: 1},
 		{Allocation: mouse("a2"), SubjectCode: "M2", Item: mptp},
 		{Allocation: mouse("a2"), SubjectCode: "M2", Item: saline},
+		// A healthy control's no-substance period is never due.
+		{Allocation: mouse("a3"), SubjectCode: "M3", Item: RegimenItem{ID: "period", Purpose: NoSubstance, StartDay: -5, EndDay: 30}},
 	}
 
 	s := BuildSchedule(zero, date(t, "2026-03-28"), candidates)

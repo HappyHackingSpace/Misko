@@ -12,6 +12,8 @@ import LangSelect from "./components/LangSelect.vue";
 import UserMenu from "./components/UserMenu.vue";
 import Breadcrumb from "./components/Breadcrumb.vue";
 import NavIcon from "./components/NavIcon.vue";
+import MiskoLogo from "./components/MiskoLogo.vue";
+import CommandPalette from "./components/CommandPalette.vue";
 
 const auth = useAuth();
 const lab = useLab();
@@ -124,19 +126,11 @@ const activeKey = computed(() => topLevelKeys.find((k) => route.path.startsWith(
         >
           <div class="sider-inner">
             <RouterLink to="/dashboard" class="brand" :class="{ collapsed: railCollapsed }">
-              <!-- A running mouse reduced to four shapes: an ear and body sharing
-                   one fill so they read as one silhouette, a tail stroke, and an
-                   eye punched through in the badge's own background color. -->
-              <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true">
-                <rect width="32" height="32" rx="9" fill="var(--accent)" />
-                <path d="M22 19c3.4.5 6.1 3.1 6.7 6.5" stroke="var(--accent-fg)" stroke-width="1.8" fill="none" stroke-linecap="round" />
-                <circle cx="11" cy="10.2" r="4" fill="var(--accent-fg)" />
-                <ellipse cx="15.2" cy="17.2" rx="8.4" ry="6.2" transform="rotate(-10 15.2 17.2)" fill="var(--accent-fg)" />
-                <circle cx="8.7" cy="15.6" r="1.1" fill="var(--accent)" />
-              </svg>
+              <!-- Collapsed rail: the logo's head alone, as in the favicon. -->
+              <MiskoLogo v-if="railCollapsed" mark class="brand-initial" />
               <span v-if="!railCollapsed" class="brand-text">
-                <span class="brand-name">{{ $t("app.name") }}</span>
-                <span class="brand-lab" v-if="lab.labName">{{ lab.labName }}</span>
+                <MiskoLogo class="brand-name" />
+                <span class="brand-lab" v-if="lab.labName" :title="lab.labName">{{ lab.labName }}</span>
               </span>
             </RouterLink>
 
@@ -182,6 +176,7 @@ const activeKey = computed(() => topLevelKeys.find((k) => route.path.startsWith(
               </svg>
             </button>
             <div class="spacer"></div>
+            <CommandPalette />
             <ThemeToggle />
             <LangSelect />
             <UserMenu />
@@ -213,18 +208,17 @@ const activeKey = computed(() => topLevelKeys.find((k) => route.path.startsWith(
 
 .brand {
   display: flex; align-items: center; gap: 10px; min-width: 0;
-  padding: 16px 18px; height: 56px; flex-shrink: 0;
+  padding: 8px 18px; height: 56px; flex-shrink: 0;
 }
-.brand.collapsed { padding: 14px; justify-content: center; }
-.brand-mark { width: 30px; height: 30px; flex-shrink: 0; }
-.brand-text { display: flex; flex-direction: column; min-width: 0; gap: 2px; }
-.brand-name {
-  font-weight: 700; font-size: 18px; letter-spacing: -0.03em;
-  color: var(--txt); white-space: nowrap; line-height: 1.1;
-}
+.brand.collapsed { padding: 8px; justify-content: center; }
+.brand-text { display: flex; flex-direction: column; min-width: 0; gap: 4px; }
+.brand-name { height: 30px; }
+.brand-initial { width: 36px; height: 36px; flex-shrink: 0; }
 .brand-lab {
-  font-weight: 600; font-size: 10.5px; letter-spacing: 0.07em; text-transform: uppercase;
-  color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.1;
+  font-weight: 500; font-size: 12px; color: var(--muted); line-height: 1.2;
+  /* A long lab name wraps to a second line instead of being cut with "...". */
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2;
+  overflow: hidden; overflow-wrap: anywhere;
 }
 
 .sider-scroll { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 8px 0; scrollbar-gutter: auto; }

@@ -10,7 +10,13 @@ export default defineConfig({
     starlight({
       title: "Mişko",
       tagline: "Behavioral test management for laboratory mice",
-      logo: { src: "./src/assets/logo.svg", alt: "Mişko" },
+      // The logo is the name, so it stands in for the title text.
+      logo: {
+        light: "./src/assets/misko-logo-light.svg",
+        dark: "./src/assets/misko-logo-dark.svg",
+        alt: "Mişko",
+        replacesTitle: true,
+      },
       social: [
         {
           icon: "github",

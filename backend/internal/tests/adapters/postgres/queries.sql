@@ -112,6 +112,9 @@ WHERE (sqlc.narg(experiment_id)::uuid IS NULL OR t.experiment_id = sqlc.narg(exp
         WHERE ts.test_id = t.id AND a.subject_id = sqlc.narg(subject_id)::uuid))
   AND (cardinality(@statuses::text[]) = 0 OR t.status = ANY(@statuses::text[]))
   AND (@paradigm_key::text = '' OR t.paradigm_key = @paradigm_key::text)
+  AND (@search::text = '' OR e.code ILIKE '%' || @search::text || '%' ESCAPE '\' OR tp.name ILIKE '%' || @search::text || '%' ESCAPE '\' OR EXISTS (
+        SELECT 1 FROM misko.test_subjects ts JOIN misko.allocations a ON a.id = ts.allocation_id JOIN misko.subjects s ON s.id = a.subject_id
+        WHERE ts.test_id = t.id AND s.code ILIKE '%' || @search::text || '%' ESCAPE '\'))
   AND (sqlc.narg(from_date)::date IS NULL OR t.scheduled_at >= (sqlc.narg(from_date)::date)::timestamp AT TIME ZONE lab.timezone)
   AND (sqlc.narg(to_date)::date IS NULL OR t.scheduled_at < (sqlc.narg(to_date)::date + 1)::timestamp AT TIME ZONE lab.timezone)
 ORDER BY CASE WHEN @newest_first::boolean THEN t.scheduled_at END DESC,
@@ -123,6 +126,8 @@ LIMIT @page_limit OFFSET @page_offset;
 WITH lab AS (SELECT coalesce((SELECT l.timezone FROM misko.laboratory l), 'UTC') AS timezone)
 SELECT count(*)
 FROM misko.tests t
+JOIN misko.experiments e ON e.id = t.experiment_id
+JOIN misko.timepoints tp ON tp.id = t.timepoint_id
 CROSS JOIN lab
 WHERE (sqlc.narg(experiment_id)::uuid IS NULL OR t.experiment_id = sqlc.narg(experiment_id)::uuid)
   AND (sqlc.narg(timepoint_id)::uuid IS NULL OR t.timepoint_id = sqlc.narg(timepoint_id)::uuid)
@@ -131,6 +136,9 @@ WHERE (sqlc.narg(experiment_id)::uuid IS NULL OR t.experiment_id = sqlc.narg(exp
         WHERE ts.test_id = t.id AND a.subject_id = sqlc.narg(subject_id)::uuid))
   AND (cardinality(@statuses::text[]) = 0 OR t.status = ANY(@statuses::text[]))
   AND (@paradigm_key::text = '' OR t.paradigm_key = @paradigm_key::text)
+  AND (@search::text = '' OR e.code ILIKE '%' || @search::text || '%' ESCAPE '\' OR tp.name ILIKE '%' || @search::text || '%' ESCAPE '\' OR EXISTS (
+        SELECT 1 FROM misko.test_subjects ts JOIN misko.allocations a ON a.id = ts.allocation_id JOIN misko.subjects s ON s.id = a.subject_id
+        WHERE ts.test_id = t.id AND s.code ILIKE '%' || @search::text || '%' ESCAPE '\'))
   AND (sqlc.narg(from_date)::date IS NULL OR t.scheduled_at >= (sqlc.narg(from_date)::date)::timestamp AT TIME ZONE lab.timezone)
   AND (sqlc.narg(to_date)::date IS NULL OR t.scheduled_at < (sqlc.narg(to_date)::date + 1)::timestamp AT TIME ZONE lab.timezone);
 

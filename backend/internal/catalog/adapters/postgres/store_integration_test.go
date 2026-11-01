@@ -87,7 +87,9 @@ func TestSubstancesAreUniqueFilteredAndProtectedWhileUsed(t *testing.T) {
 
 	if _, err := pool.Exec(ctx, `
 		WITH e AS (INSERT INTO misko.experiments (code, title) VALUES ('E1', 'Study') RETURNING id),
-		     g AS (INSERT INTO misko.experiment_groups (experiment_id, code, name, role) SELECT e.id, 'G1', 'Healthy', 'HEALTHY_CONTROL' FROM e RETURNING id, experiment_id)
+		     m AS (INSERT INTO misko.disease_models (name, induction_type) VALUES ('Saline model', 'CHEMICAL') RETURNING id),
+		     g AS (INSERT INTO misko.experiment_groups (experiment_id, code, name, role, disease_model_id)
+		           SELECT e.id, 'G1', 'Disease', 'DISEASE_CONTROL', m.id FROM e, m RETURNING id, experiment_id)
 		INSERT INTO misko.regimen_items (experiment_id, group_id, purpose, substance_id, dose_micro, unit, route, frequency, start_day, end_day)
 		SELECT g.experiment_id, g.id, 'VEHICLE', $1, 10000000, 'mL/kg', 'ORAL', 'DAILY', 0, 14 FROM g`, saline.ID); err != nil {
 		t.Fatal(err)

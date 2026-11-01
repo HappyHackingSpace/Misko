@@ -27,6 +27,7 @@ var (
 	ErrGroupCodeTaken       = errors.New("another group of this experiment uses this code")
 	ErrGroupNameTaken       = errors.New("another group of this experiment uses this name")
 	ErrGroupInUse           = errors.New("group has allocated animals and cannot be deleted")
+	ErrGroupRegimenConflict = errors.New("the group's regimen items do not fit the new role; a healthy control has only periods without any substance and no other role has one")
 	ErrTimepointConflict    = errors.New("another timepoint of this experiment uses this name or position")
 	ErrTimepointInUse       = errors.New("timepoint is used by an endpoint or a test and cannot be deleted")
 	ErrTreatmentItemTaken   = errors.New("the group already has a treatment item")

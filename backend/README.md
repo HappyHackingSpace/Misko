@@ -229,13 +229,28 @@ completes.
   `TREATMENT`. Every group except a healthy control names a disease model; a
   healthy control has none (database check). The group list reports how many
   animals are allocated against the target.
-- **Regimen item**: what a group receives. `purpose` (`INDUCTION`, `VEHICLE`,
-  `TREATMENT`), substance, dose (decimal text, stored exactly in millionths),
+- **Regimen item**: what a group receives. `purpose` (`NONE`, `INDUCTION`,
+  `VEHICLE`, `TREATMENT`), substance, dose (decimal text, stored exactly in millionths),
   unit, route, `frequency` (`ONCE`, `DAILY`, `TWICE_DAILY`, `WEEKLY`,
   `EVERY_N_DAYS` with `intervalDays`) and `startDay`/`endDay` in study days
-  relative to day 0. A group has at most one `TREATMENT` item, so a treatment
-  group has one substance at one dose level; dose response is the set of
-  treatment groups that share a substance.
+  relative to day 0. A group has at most one `TREATMENT` item
+  (`regimen.treatmentTaken`), so a treatment group has one substance at one
+  dose level; dose response is the set of treatment groups that share a
+  substance. The purpose must suit the group's role, on create and update
+  (400 `regimen.purposeNotAllowed`): a healthy control receives no substance at
+  all and takes only `NONE` items, a sham only a `VEHICLE`, a disease control an
+  `INDUCTION` or a `VEHICLE`, a positive control and a treatment group any of
+  the three substance purposes. A `NONE` item is the period in which a healthy
+  control receives no substance: it has only `startDay` and `endDay` (start on
+  or before end); its substance, amount, unit, route, frequency and interval
+  are null, and sending any of them is 400 `regimen.noSubstanceFields`. A
+  healthy control may also have no item at all. The database enforces the
+  same: a named check (`regimen_items_substance_check`) ties `NONE` to the
+  empty fields, a trigger (`regimen_items_role`) keeps `NONE` items in healthy
+  controls and every other item out of them, and a role change that breaks
+  this is 409 `group.regimenConflict` (`experiment_groups_regimen_role`).
+  Vehicle items of healthy controls written before migration 020 are kept as
+  they are; in a draft they can only become a `NONE` item or be deleted.
 - **Timepoint**: name, `studyDay` (baseline days are negative or zero) and
   position, both unique in the experiment.
 - **Endpoint**: what the study is judged on: one metric of one paradigm at one
@@ -249,17 +264,20 @@ Lifecycle:
 
 - `GET {e}/readiness` lists the start rules the design breaks, each with a
   stable code (`readiness.noTimepoints`, `readiness.noGroups`,
-  `readiness.targetSizeMissing`, `readiness.primaryEndpointMissing`,
+  `readiness.healthyControlMissing`, `readiness.targetSizeMissing`, `readiness.primaryEndpointMissing`,
   `readiness.endpointMetricUnavailable`, `readiness.treatmentItemMissing`,
   `readiness.treatmentItemNotAllowed`, `readiness.inductionItemMissing`,
   `readiness.inductionItemNotAllowed`, `readiness.vehicleItemMissing`,
-  `readiness.diseaseControlMissing`) and the group or endpoint it concerns.
-  The rules: at least one timepoint and one group, a target size on every
+  `readiness.vehicleItemNotAllowed`, `readiness.diseaseControlMissing`) and
+  the group or endpoint it concerns.
+  The rules: at least one timepoint and one group, at least one healthy
+  control (the reference for model validity and rescue), a target size on every
   group, one primary endpoint, every endpoint metric available; treatment and
   positive control groups have exactly one `TREATMENT` item and an `INDUCTION`
   item; a disease control has an `INDUCTION` and a `VEHICLE` item and no
   treatment; a sham has a `VEHICLE` item and no induction or treatment; a
-  healthy control has no induction or treatment; every sham, treatment and
+  healthy control has only `NONE` items (no vehicle, induction or treatment);
+  every sham, treatment and
   positive control group has a disease control with the same disease model.
 - `POST {e}/start` with `dayZero` (a date) runs the same check and answers 422
   `experiment.notReady` with the unmet rules, or moves the experiment to
@@ -304,8 +322,9 @@ Records need a running experiment.
 - **Administration**: `POST {e}/allocations/{allocationId}/administrations`
   (`test:run`). With `regimenItemId` the purpose, substance, dose and route
   default to the item's, and a different actual amount or route may be given;
-  the item must belong to the animal's own group. An unplanned dose names all of
-  them. The time cannot lie in the future (5 minutes of clock skew are
+  the item must belong to the animal's own group, and a `NONE` item is never
+  administered (400 `administration.noSubstanceItem`, also a database trigger).
+  An unplanned dose names all of them. The time cannot lie in the future (5 minutes of clock skew are
   tolerated), before the allocation or after an exclusion.
 - Per-kilogram units (`mg/kg`, `ug/kg`, `mL/kg`, `IU/kg`) need a weight of the
   same animal measured within the 7 days before the dose: the named
@@ -316,6 +335,7 @@ Records need a running experiment.
 - `GET {e}/dosing?date=YYYY-MM-DD` (default: today in the laboratory's time
   zone) lists every dose due that day from the regimen items and day 0, per
   animal, with how many were given and the absolute dose for the latest weight.
+  `NONE` items are never due.
   `TWICE_DAILY` is due twice a day; `WEEKLY` and `EVERY_N_DAYS` are due on the
   start day and every 7 or `intervalDays` days after.
 - `GET {e}/administrations` and `GET /api/subjects/{id}/administrations` filter

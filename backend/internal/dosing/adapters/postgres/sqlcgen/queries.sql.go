@@ -206,7 +206,7 @@ const getRegimenItem = `-- name: GetRegimenItem :one
 SELECT r.id, r.experiment_id, r.group_id, r.purpose, r.substance_id, s.name AS substance_name, r.dose_micro, r.unit, r.route,
        r.frequency, r.interval_days, r.start_day, r.end_day
 FROM misko.regimen_items r
-JOIN misko.substances s ON s.id = r.substance_id
+LEFT JOIN misko.substances s ON s.id = r.substance_id
 WHERE r.experiment_id = $1 AND r.id = $2
 `
 
@@ -220,17 +220,19 @@ type GetRegimenItemRow struct {
 	ExperimentID  string
 	GroupID       string
 	Purpose       string
-	SubstanceID   string
-	SubstanceName string
-	DoseMicro     int64
-	Unit          string
-	Route         string
-	Frequency     string
+	SubstanceID   *string
+	SubstanceName *string
+	DoseMicro     *int64
+	Unit          *string
+	Route         *string
+	Frequency     *string
 	IntervalDays  *int32
 	StartDay      int32
 	EndDay        int32
 }
 
+// A no-substance period (purpose NONE) has no substance, dose, route or
+// frequency; it is returned so the caller can refuse to administer it.
 func (q *Queries) GetRegimenItem(ctx context.Context, arg GetRegimenItemParams) (GetRegimenItemRow, error) {
 	row := q.db.QueryRow(ctx, getRegimenItem, arg.ExperimentID, arg.ID)
 	var i GetRegimenItemRow
@@ -442,7 +444,7 @@ FROM bounds b
 JOIN misko.allocations a ON a.experiment_id = $1
 JOIN misko.subjects sub ON sub.id = a.subject_id
 JOIN misko.experiment_groups g ON g.experiment_id = a.experiment_id AND g.id = a.group_id
-JOIN misko.regimen_items r ON r.experiment_id = a.experiment_id AND r.group_id = a.group_id
+JOIN misko.regimen_items r ON r.experiment_id = a.experiment_id AND r.group_id = a.group_id AND r.purpose <> 'NONE'
 JOIN misko.substances s ON s.id = r.substance_id
 LEFT JOIN LATERAL (
     SELECT wm.id, wm.body_milligrams, wm.measured_at
@@ -475,12 +477,12 @@ type ListDueCandidatesRow struct {
 	Excluded         bool
 	RegimenItemID    string
 	Purpose          string
-	SubstanceID      string
+	SubstanceID      *string
 	SubstanceName    string
-	DoseMicro        int64
-	Unit             string
-	Route            string
-	Frequency        string
+	DoseMicro        *int64
+	Unit             *string
+	Route            *string
+	Frequency        *string
 	IntervalDays     *int32
 	StartDay         int32
 	EndDay           int32
@@ -494,6 +496,7 @@ type ListDueCandidatesRow struct {
 // excluded before it began. The day runs from midnight to midnight in the
 // laboratory's time zone; given counts that item's doses in that window and
 // the weight is the latest measured before the window ends.
+// A no-substance period (purpose NONE) is never due.
 func (q *Queries) ListDueCandidates(ctx context.Context, arg ListDueCandidatesParams) ([]ListDueCandidatesRow, error) {
 	rows, err := q.db.Query(ctx, listDueCandidates, arg.ExperimentID, arg.Day)
 	if err != nil {
