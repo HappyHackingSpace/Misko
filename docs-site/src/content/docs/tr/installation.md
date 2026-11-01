@@ -97,18 +97,46 @@ su labirenti (`MWM`), yeni nesne (`NOVEL_OBJECT`), direk (`POLE`) ve koşu band�
 metrikleri hesaplar; bir kişi sonucu inceler. Yalnızca sentetik videoyla test
 edildi.
 
-1. Laboratuvar yöneticisi ya da yönetici olarak giriş yapın ve worker'ı
-   `misko-tracker-bgsub 2.2.0` model sürümüyle ve dört paradigmanın sürüm 1'ini
-   yetenek olarak kaydedin (yalnızca worker sürümünüzün desteklediği
-   paradigmaları kaydedin; `worker/README.md` bunları listeler).
+**Yerel geliştirme: seed token.** `.env` içinde `WORKER_BOOTSTRAP_TOKEN`
+ayarlıyken (`.env.example` içinde hazır, yani `cp .env.example .env` yeterli)
+`setup` komutu tam bu değeri token'ı olan bir `dev-worker` da kaydeder ve
+`worker` profili `MISKO_WORKER_TOKEN` boşken bu değeri kullanır. Başka hiçbir
+şey gerekmez:
 
-   ```bash
-   TOKEN=$(curl -s http://localhost:4000/api/auth/login \
-     -H 'Content-Type: application/json' \
-     -d '{"email": "admin@misko.local", "password": "SIFRENIZ"}' | jq -r .token)
-   curl -s http://localhost:4000/api/analysis/workers \
-     -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
-     -d '{
+```bash
+docker compose --profile worker up -d worker
+```
+
+Seed değeri herkese açıktır; bu yüzden `setup`, `APP_ENV=production` iken onu
+reddeder; gerçek dağıtımlar worker'ları aşağıdaki iki yoldan biriyle kaydeder.
+
+**`register-worker` komutu.** Worker'ı doğrudan veritabanına kaydeder -
+yönetici JWT'si veya curl gerekmez - ve token'ı (`mw_...`) `setup`'ın yönetici
+parolasını gösterdiği gibi **bir kez** yazdırır. Yalnızca worker sürümünüzün
+desteklediği paradigmaları kaydedin; `worker/README.md` bunları listeler.
+
+```bash
+docker compose --profile setup run --rm register-worker \
+  -name worker-1 -model-version "misko-tracker-bgsub 2.2.0" \
+  -paradigm MWM -paradigm NOVEL_OBJECT -paradigm POLE -paradigm TREADMILL
+```
+
+Token'ı `.env` içine `MISKO_WORKER_TOKEN` olarak yazın ve worker'ı başlatın:
+
+```bash
+docker compose --profile worker up -d worker
+```
+
+**API.** `POST /api/analysis/workers` (laboratuvar yöneticisi ya da yönetici
+olarak) çalışan bir sisteme worker ekler ve token'ı yanıtta bir kez gösterir:
+
+```bash
+TOKEN=$(curl -s http://localhost:4000/api/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email": "admin@misko.local", "password": "SIFRENIZ"}' | jq -r .token)
+curl -s http://localhost:4000/api/analysis/workers \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{
     "name": "worker-1",
     "modelVersion": "misko-tracker-bgsub 2.2.0",
     "capabilities": [
@@ -118,14 +146,7 @@ edildi.
       {"paradigmKey": "TREADMILL", "paradigmVersion": 1}
     ]
   }'
-   ```
-
-2. Yanıt worker token'ını (`mw_...`) yalnızca bir kez gösterir. Bunu `.env`
-   içine `MISKO_WORKER_TOKEN` olarak yazın ve worker'ı başlatın:
-
-   ```bash
-   docker compose --profile worker up -d worker
-   ```
+```
 
 `GET /api/analysis/capabilities` etkin worker'ların neyi analiz edebildiğini
 listeler. Worker'ın kendi ayarları ve sınırları `worker/README.md` içindedir.
@@ -200,7 +221,8 @@ yığın yalnızca geliştirme içindir.
 | `JOB_INTERVAL` | `10s` | Jobs sürecinin analiz çalıştırmalarını kuyruklama sıklığı. |
 | `GCS_BUCKET` | boş | Videolar için özel bucket. Ayarlıysa yerel depolama yerine kullanılır. |
 | `GCS_SIGNER_EMAIL` | boş | Yükleme ve okuma URL'lerini imzalayan servis hesabı. |
-| `MISKO_WORKER_TOKEN` | boş | Yalnızca `worker` profili için, API'de bir worker kaydettikten sonra. |
+| `WORKER_BOOTSTRAP_TOKEN` | boş | Yalnızca yerel geliştirme: `setup` tam bu token'la bir `dev-worker` kaydeder ve `worker` profili ona geri döner. `APP_ENV=production` iken reddedilir. |
+| `MISKO_WORKER_TOKEN` | boş | Yalnızca `worker` profili için, `register-worker` ile ya da API'de bir worker kaydettikten sonra. Seed token'ının önüne geçer. |
 
 `docker-compose.yml` içinde backend ayrıca `local-videos` volume'unda
 `LOCAL_STORAGE_DIR=/data/videos` ile çalışır. Docker dışında videoları bir klasörde

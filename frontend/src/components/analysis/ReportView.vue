@@ -10,7 +10,7 @@ import { RouterLink } from "vue-router";
 import { NAlert, NButton, NDataTable, NDropdown, NEmpty, NSpin, NTabPane, NTabs, NTag, useMessage } from "naive-ui";
 import { report as reportApi } from "../../api/analysis.js";
 import GroupChart from "./GroupChart.vue";
-import { saveBlob, useNumbers, useParadigmText } from "./format.js";
+import { metricUnit, saveBlob, useNumbers, useParadigmText } from "./format.js";
 
 const props = defineProps({
   experimentId: { type: String, required: true },
@@ -53,7 +53,7 @@ const groupName = (id) => {
   return g ? `${g.code} ${g.name}` : "?";
 };
 const treatment = (g) => (g?.treatment ? `${g.treatment.substanceName} ${fmt.dose(g.treatment.doseMicro, g.treatment.unit)}` : "");
-const unitOf = (section) => section.versions[0]?.unit || "";
+const unitOf = (section) => metricUnit(section.versions[0]?.unit, section.endpoint.metricKey) || "";
 const metricName = (section) => text.metricLabel(section.endpoint.paradigmKey, section.endpoint.metricKey);
 const tabLabel = (section) =>
   `${t(`studyReport.kind.${section.endpoint.kind}`)} · ${metricName(section)} · ${timepointsById.value[section.endpoint.timepointId]?.name || ""}`;

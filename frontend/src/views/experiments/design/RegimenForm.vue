@@ -19,6 +19,9 @@ const props = defineProps({
   // The group's current regimen items, to offer a treatment only once.
   groupItems: { type: Array, default: () => [] },
   substances: { type: Array, default: () => [] },
+  // Purpose chosen up front for a new item, such as the vehicle the
+  // readiness panel asks for; ignored when the role cannot receive it.
+  purpose: { type: String, default: null },
 });
 const emit = defineEmits(["update:show", "saved"]);
 const { t } = useI18n();
@@ -61,9 +64,14 @@ watch(
           startDay: i.startDay,
           endDay: i.endDay,
         }
-      : { ...empty(), purpose: allowedPurposes.value.length === 1 ? allowedPurposes.value[0] : null };
+      : { ...empty(), purpose: newPurpose() };
   },
 );
+
+function newPurpose() {
+  if (props.purpose && allowedPurposes.value.includes(props.purpose)) return props.purpose;
+  return allowedPurposes.value.length === 1 ? allowedPurposes.value[0] : null;
+}
 
 const once = computed(() => form.value.frequency === "ONCE");
 watch(

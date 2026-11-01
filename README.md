@@ -1,4 +1,9 @@
-# 🐭 Mişko
+<h1>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset=".github/assets/misko-logo-dark.svg" />
+    <img src=".github/assets/misko-logo-light.svg" alt="Mişko" height="96" />
+  </picture>
+</h1>
 
 Behavioral test management system for laboratory mice.
 
@@ -37,7 +42,7 @@ Misko/
 │
 ├── backend/                 # Go API (modular monolith, clean architecture)
 │   ├── cmd/api              # the HTTP server
-│   ├── cmd/bootstrap        # migrate the schema, create the laboratory (one-time)
+│   ├── cmd/bootstrap        # migrate the schema, create the laboratory, register workers
 │   ├── cmd/jobs             # queues analysis runs, requeues expired leases
 │   ├── internal/<domain>/   # domain / application / adapters per domain
 │   ├── schema/              # numbered SQL migrations, applied in order and recorded
@@ -106,7 +111,10 @@ go run ./cmd/api                      # http://localhost:4000
 ```
 
 A worker started from source with `MISKO_API_URL=http://localhost:4000` reaches
-local storage through the same base URL.
+local storage through the same base URL. Get its token from
+`go run ./cmd/bootstrap register-worker` (printed once), or export
+`WORKER_BOOTSTRAP_TOKEN` before `setup` to seed a `dev-worker` with that known
+token (refused when `APP_ENV=production`).
 
 **Frontend** (a second terminal):
 
@@ -173,8 +181,13 @@ Path-filtered GitHub Actions pipelines:
 
 ## Roadmap
 
-The phased plan is in [docs/ROADMAP.md](docs/ROADMAP.md), and the rebuild is
-tracked in [issue #123](https://github.com/HappyHackingSpace/Misko/issues/123).
+What is done and what comes next is on the
+[roadmap page](https://happyhackingspace.github.io/Misko/roadmap/); open work is
+tracked in [GitHub issues](https://github.com/HappyHackingSpace/Misko/issues).
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=HappyHackingSpace/Misko&type=Date)](https://star-history.com/#HappyHackingSpace/Misko&Date)
 
 ## License
 

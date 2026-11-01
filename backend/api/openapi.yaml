@@ -1548,6 +1548,7 @@ paths:
         - {name: status, in: query, schema: {type: string}, description: 'One status or several separated by commas'}
         - {name: order, in: query, schema: {type: string, enum: [asc, desc]}, description: By scheduled time; earliest first by default}
         - {name: paradigmKey, in: query, schema: {$ref: '#/components/schemas/ConstantKey'}}
+        - {name: search, in: query, schema: {type: string, maxLength: 100}, description: Case-insensitive match on the study code, timepoint name or a subject code}
         - {name: from, in: query, schema: {type: string, format: date}, description: Inclusive first scheduled date in the laboratory's time zone}
         - {name: to, in: query, schema: {type: string, format: date}, description: Inclusive last scheduled date in the laboratory's time zone}
         - $ref: '#/components/parameters/Page'
@@ -1586,6 +1587,7 @@ paths:
         - {name: status, in: query, schema: {type: string}, description: 'One status or several separated by commas, for example PLANNED,IN_PROGRESS'}
         - {name: order, in: query, schema: {type: string, enum: [asc, desc]}, description: By scheduled time}
         - {name: paradigmKey, in: query, schema: {$ref: '#/components/schemas/ConstantKey'}}
+        - {name: search, in: query, schema: {type: string, maxLength: 100}, description: Case-insensitive match on the study code, timepoint name or a subject code}
         - {name: from, in: query, schema: {type: string, format: date}, description: Inclusive first scheduled date in the laboratory's time zone}
         - {name: to, in: query, schema: {type: string, format: date}, description: Inclusive last scheduled date in the laboratory's time zone}
         - $ref: '#/components/parameters/Page'

@@ -14,6 +14,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 var (
@@ -80,10 +81,12 @@ type Slot struct {
 // inclusive calendar dates in the laboratory's time zone.
 type TestFilter struct {
 	ExperimentID, TimepointID, SubjectID, ParadigmKey string
-	Statuses                                          []domain.Status
-	From, To                                          string
-	NewestFirst                                       bool
-	Limit, Offset                                     int
+	// Search matches the study code, the timepoint name or a subject code.
+	Search        string
+	Statuses      []domain.Status
+	From, To      string
+	NewestFirst   bool
+	Limit, Offset int
 }
 
 // Store persists tests. Scoped lookups return the matching not-found error for
@@ -309,8 +312,8 @@ func (s *Service) admit(ctx context.Context, tx Store, t domain.Test, participan
 // may list several statuses separated by commas; Order is asc or desc by
 // scheduled time and defaults to the caller's natural order.
 type TestQuery struct {
-	ExperimentID, TimepointID, SubjectID, Status, ParadigmKey, From, To, Order string
-	Page, PageSize                                                             int
+	ExperimentID, TimepointID, SubjectID, Status, ParadigmKey, From, To, Order, Search string
+	Page, PageSize                                                                     int
 }
 
 type TestPage struct {
@@ -337,7 +340,11 @@ func (s *Service) ListAllTests(ctx context.Context, actor access.Actor, q TestQu
 }
 
 func (s *Service) list(ctx context.Context, q TestQuery, newestFirst bool) (TestPage, error) {
-	f := TestFilter{ExperimentID: q.ExperimentID, TimepointID: q.TimepointID, SubjectID: q.SubjectID, ParadigmKey: q.ParadigmKey, NewestFirst: newestFirst}
+	f := TestFilter{ExperimentID: q.ExperimentID, TimepointID: q.TimepointID, SubjectID: q.SubjectID, ParadigmKey: q.ParadigmKey, Search: strings.TrimSpace(q.Search), NewestFirst: newestFirst}
+	// PostgreSQL text cannot hold NUL, so it would fail the query instead.
+	if !utf8.ValidString(f.Search) || utf8.RuneCountInString(f.Search) > 100 || strings.ContainsRune(f.Search, 0) {
+		return TestPage{}, ErrInvalidQuery
+	}
 	if q.Status != "" {
 		for _, raw := range strings.Split(q.Status, ",") {
 			status, err := domain.ParseStatus(strings.TrimSpace(raw))

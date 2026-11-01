@@ -80,12 +80,21 @@ type Setup struct {
 	LabName     string
 	LabTimezone string
 	BcryptCost  int
+	// WorkerSeedToken is the development-only worker token setup seeds as
+	// "dev-worker". Setup refuses it when Environment is production.
+	WorkerSeedToken string
+	// Environment is APP_ENV; only "production" (or "prod") has a meaning.
+	Environment string
 }
 
 func LoadSetup(getenv func(string) string) (Setup, error) {
-	s := Setup{AdminEmail: getenv("ADMIN_EMAIL"), LabName: getenv("LAB_NAME"), LabTimezone: withDefault(getenv("LAB_TIMEZONE"), "UTC")}
+	s := Setup{AdminEmail: getenv("ADMIN_EMAIL"), LabName: getenv("LAB_NAME"), LabTimezone: withDefault(getenv("LAB_TIMEZONE"), "UTC"),
+		WorkerSeedToken: strings.TrimSpace(getenv("WORKER_BOOTSTRAP_TOKEN")), Environment: strings.TrimSpace(getenv("APP_ENV"))}
 	if strings.TrimSpace(s.AdminEmail) == "" || strings.TrimSpace(s.LabName) == "" {
 		return Setup{}, errors.New("ADMIN_EMAIL and LAB_NAME are required for setup")
+	}
+	if s.WorkerSeedToken != "" && len(s.WorkerSeedToken) < 16 {
+		return Setup{}, errors.New("WORKER_BOOTSTRAP_TOKEN must contain at least 16 characters")
 	}
 	var err error
 	if s.BcryptCost, err = bcryptCost(getenv); err != nil {

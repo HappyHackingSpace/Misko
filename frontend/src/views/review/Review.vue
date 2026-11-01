@@ -159,7 +159,7 @@ const columns = computed(() => [
         "span",
         { class: "metric-cell" },
         headline(row).map((m) =>
-          h("span", { key: m.key }, [h("span", { class: "muted" }, `${text.metricLabel(row.paradigmKey, m.key)}: `), m.value === null ? t("analysis.missing") : fmt.metric(m.value, m.unit)]),
+          h("span", { key: m.key }, [h("span", { class: "muted" }, `${text.metricLabel(row.paradigmKey, m.key)}: `), m.value === null ? t("analysis.missing") : fmt.metric(m.value, m.unit, m.key)]),
         ),
       ),
   },
