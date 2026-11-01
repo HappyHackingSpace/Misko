@@ -18,6 +18,9 @@ const props = defineProps({
   // Role chosen up front for a new group, such as a healthy control the
   // readiness panel asks for.
   role: { type: String, default: null },
+  // Disease model chosen up front, such as the one a disease control must
+  // share with the group the readiness panel compares it to.
+  diseaseModelId: { type: String, default: null },
 });
 const emit = defineEmits(["update:show", "saved"]);
 const { t } = useI18n();
@@ -42,7 +45,13 @@ watch(
           targetSize: g.targetSize,
           description: g.description || "",
         }
-      : { ...empty(), code: props.nextCode, role: props.role, name: props.role ? t(`design.roles.${props.role}`) : "" };
+      : {
+          ...empty(),
+          code: props.nextCode,
+          role: props.role,
+          name: props.role ? t(`design.roles.${props.role}`) : "",
+          diseaseModelId: props.diseaseModelId,
+        };
   },
 );
 

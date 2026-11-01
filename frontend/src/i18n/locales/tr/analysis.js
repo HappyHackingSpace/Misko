@@ -220,6 +220,10 @@ export default {
     upcomingSessions: "Yaklaşan oturumlar",
     noActivity: "Henüz yayımlanmış bir analiz sonucu yok.",
     noUpcoming: "Planlanmış oturum yok.",
+    noUpcomingHint: "Oturumlar, devam eden bir çalışmanın Testler sekmesinden planlanır.",
+    runningStudies: "Devam eden çalışmalar",
+    howToPlan: "Oturum nasıl planlanır",
+    planningDocs: "https://happyhackingspace.github.io/Misko/tr/usage/#test-oturumlarını-planlama-ve-yürütme",
   },
   errors: {
     analysis: {

@@ -13,6 +13,7 @@ import UserMenu from "./components/UserMenu.vue";
 import Breadcrumb from "./components/Breadcrumb.vue";
 import NavIcon from "./components/NavIcon.vue";
 import MiskoLogo from "./components/MiskoLogo.vue";
+import CommandPalette from "./components/CommandPalette.vue";
 
 const auth = useAuth();
 const lab = useLab();
@@ -175,6 +176,7 @@ const activeKey = computed(() => topLevelKeys.find((k) => route.path.startsWith(
               </svg>
             </button>
             <div class="spacer"></div>
+            <CommandPalette />
             <ThemeToggle />
             <LangSelect />
             <UserMenu />

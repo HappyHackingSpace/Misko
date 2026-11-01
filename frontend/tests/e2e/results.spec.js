@@ -16,8 +16,9 @@ test("the Results tab shows provisional numbers and exports them", async ({ page
   await expect(page.getByTestId("report-review-link")).toHaveAttribute("href", new RegExp(`experimentId=${data.experimentId}.*status=PENDING`));
   const section = page.getByTestId("report-section-PRIMARY");
   const group = (code) => section.locator(`[data-test="report-group"][data-group="${code}"]`);
-  await expect(group("G2")).toContainText(/127[.,]36/);
-  await expect(group("G3")).toContainText(/127[.,]36/);
+  // A distance shows to the millimetre; the export keeps full precision.
+  await expect(group("G2")).toContainText(/127[.,]4 cm/);
+  await expect(group("G3")).toContainText(/127[.,]4 cm/);
   // n counts accepted results only: one per group, the pending one waits.
   await expect(group("G2").locator("td").nth(1)).toHaveText("1");
   await expect(group("G3").locator("td").nth(1)).toHaveText("1");
@@ -32,6 +33,7 @@ test("the Results tab shows provisional numbers and exports them", async ({ page
   expect(file.suggestedFilename()).toMatch(/^E2E-.*\.csv$/);
   const csv = await readFile(await file.path(), "utf8");
   for (const code of ["M04", "M06", "M07"]) expect(csv).toContain(code);
+  expect(csv).toContain("127.36");
 
   await page.getByTestId("report-review-link").click();
   await expect(page).toHaveURL(/\/review\?/);
@@ -79,4 +81,19 @@ test("dashboard tiles open the lists they count", async ({ page, request }) => {
   await expect(page.getByTestId("experiment-link").filter({ hasText: /^E2E$/ })).toBeVisible();
   await expect(page.getByTestId("experiment-status-filter")).toContainText("Running");
   await expect(page.getByTestId("experiment-link").filter({ hasText: draft.code })).toHaveCount(0);
+});
+
+test("an empty upcoming list says where sessions are planned", async ({ page, request }) => {
+  await signIn(page, request);
+  // The seeded lab always has planned sessions, so the summary is emptied here.
+  await page.route("**/dashboard/summary", async (route) => {
+    const summary = await (await route.fetch()).json();
+    await route.fulfill({ json: { ...summary, upcomingTests: [] } });
+  });
+  await page.goto("/dashboard");
+  const empty = page.getByTestId("upcoming-empty");
+  await expect(empty).toContainText("Sessions are planned on the Tests tab of a running study.");
+  await expect(empty.getByRole("link", { name: "How to plan a session" })).toHaveAttribute("href", /\/usage\/#planning-and-running-test-sessions$/);
+  await empty.getByTestId("upcoming-running").click();
+  await expect(page).toHaveURL(/\/experiments\?status=RUNNING$/);
 });

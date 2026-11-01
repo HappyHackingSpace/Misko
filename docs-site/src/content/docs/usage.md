@@ -64,6 +64,10 @@ a green message confirms a save, and an error is shown in words next to the
 form. Deleting always asks for confirmation. Many screens keep their filters in
 the address bar, so you can bookmark or share a filtered list.
 
+**Search** in the header (or Ctrl+K, Cmd+K on a Mac) finds studies, their
+reports, test sessions and subjects from any page. Type a study code or title,
+a timepoint or a subject code; arrow keys and Enter open a result, Esc closes.
+
 ## Substances
 
 Open **Substances** in the menu (address `/substances`). Substances are

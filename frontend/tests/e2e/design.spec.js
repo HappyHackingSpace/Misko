@@ -69,6 +69,9 @@ test("a study is designed, started and filled with animals", async ({ page, requ
   // No study starts without a healthy control; the checklist offers to add one
   // and opens the group dialog with the role chosen.
   await page.goto(`${studyUrl}?tab=overview`);
+  await page.getByTestId("readiness-unmet").locator('[data-rule="readiness.noGroups"]').getByRole("button", { name: "Add a group" }).click();
+  await expect(page.getByTestId("group-form")).toBeVisible();
+  await page.goto(`${studyUrl}?tab=overview`);
   await expect(page.getByTestId("readiness-unmet").locator('[data-rule="readiness.healthyControlMissing"]')).toContainText("Add a healthy control group");
   await page.getByTestId("readiness-add-healthy").click();
   await expect(page).toHaveURL(/tab=design/);
@@ -290,4 +293,48 @@ test("a treatment group is offered one treatment, a sham only a vehicle and a he
   // The API refuses what the form no longer offers.
   await expect(api("POST", `${base}/regimen-items`, { ...item("INDUCTION", "MPTP"), groupId: (await api("GET", `${base}/groups`)).data.find((g) => g.code === "S1").id }))
     .rejects.toThrow(/regimen.purposeNotAllowed/);
+});
+
+test("each unmet start rule offers its own fix", async ({ page, request }) => {
+  const { api } = await signIn(page, request);
+  const model = (await api("GET", "/catalog/disease-models")).data.find((m) => m.name === "MPTP Parkinson").id;
+  const experiment = await api("POST", "/experiments", { code: unique("FIXES"), title: "One fix per rule" });
+  // A treatment group misses its treatment and induction, a sham its vehicle;
+  // neither has a disease control to compare against or a target size.
+  await api("POST", `/experiments/${experiment.id}/groups`, { code: "T1", name: "Treated", role: "TREATMENT", diseaseModelId: model });
+  await api("POST", `/experiments/${experiment.id}/groups`, { code: "S1", name: "Sham", role: "SHAM", diseaseModelId: model });
+
+  const overview = `/experiments/${experiment.id}?tab=overview`;
+  const action = (rule) => page.getByTestId("readiness-unmet").locator(`[data-rule="readiness.${rule}"]`).getByTestId("readiness-action").first();
+  await page.goto(overview);
+  const fixes = {
+    vehicleItemMissing: "Add a vehicle item",
+    inductionItemMissing: "Add the induction item",
+    treatmentItemMissing: "Add the treatment item",
+    diseaseControlMissing: "Add a disease control group",
+    targetSizeMissing: "Set the target size",
+  };
+  for (const [rule, label] of Object.entries(fixes)) await expect(action(rule)).toHaveText(label);
+
+  // A missing item opens the group's regimen dialog with that purpose chosen
+  // among the three a treatment group may receive.
+  await action("inductionItemMissing").click();
+  await expect(page).toHaveURL(/tab=design/);
+  await expect(page.getByTestId("regimen-form")).toBeVisible();
+  await expect(page.getByTestId("regimen-purpose")).toContainText("Induction");
+  await closeRegimenForm(page);
+
+  // The missing disease control opens a new group with that role and the same disease model.
+  await page.goto(overview);
+  await action("diseaseControlMissing").click();
+  await expect(page.getByTestId("group-form")).toBeVisible();
+  await expect(page.getByTestId("group-role")).toContainText("Disease control");
+  await expect(page.getByTestId("group-disease")).toContainText("MPTP Parkinson");
+  await page.keyboard.press("Escape");
+
+  // The missing target size opens the group itself.
+  await page.goto(overview);
+  await page.getByTestId("readiness-unmet").locator('[data-rule="readiness.targetSizeMissing"]', { hasText: "S1 Sham" }).getByTestId("readiness-action").click();
+  await expect(page.getByTestId("group-form")).toBeVisible();
+  await expect(field(page, "group-code")).toHaveValue("S1");
 });
