@@ -10,7 +10,7 @@
 // through an object URL and never uploaded.
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
-import { NButton, NCollapse, NCollapseItem, NInput, NInputNumber, NRadioButton, NRadioGroup, NSelect, NTag } from "naive-ui";
+import { NAlert, NButton, NCollapse, NCollapseItem, NInput, NInputNumber, NRadioButton, NRadioGroup, NSelect, NTag } from "naive-ui";
 import { selectOption } from "../../composables/selectOptions.js";
 import { useExecutionFormat } from "../../composables/useExecutionFormat.js";
 import CalibrationStage from "./CalibrationStage.vue";
@@ -38,6 +38,8 @@ const props = defineProps({
   videoUrl: { type: String, default: "" },
   // Values carried over from the calibration this one replaces or starts from.
   initial: { type: Object, default: null },
+  // The calibration currently applied by the environment or an earlier video.
+  referenceCalibration: { type: Object, default: null },
   // An override names the video frame its points were read from.
   withReferenceFrame: { type: Boolean, default: false },
   correcting: { type: Boolean, default: false },
@@ -67,6 +69,22 @@ const form = ref({
   crop: init?.crop ? { ...init.crop } : { x: 0, y: 0, width: null, height: null },
   measurementPlane: init?.measurementPlane || defaultPlane(paradigmKey.value),
 });
+const videoFrame = ref(null);
+const referenceFrameMismatch = computed(() => {
+  const reference = props.referenceCalibration;
+  const frame = videoFrame.value;
+  return !!reference && !!frame && (frame.width !== reference.frameWidth || frame.height !== reference.frameHeight);
+});
+const referenceCameraMismatch = computed(() => {
+  const cameraId = form.value.cameraId.trim();
+  return !!props.referenceCalibration?.cameraId && !!cameraId && cameraId !== props.referenceCalibration.cameraId;
+});
+const canApplyReferenceCalibration = computed(() =>
+  props.referenceCalibration?.status === "VALID" &&
+  !!videoFrame.value &&
+  !referenceFrameMismatch.value &&
+  !referenceCameraMismatch.value,
+);
 const time = ref(init?.referenceFrameUs ? init.referenceFrameUs / 1_000_000 : 0);
 const copyPoint = (p) => ({ ...emptyPoint(), pixelX: p.pixelX, pixelY: p.pixelY, worldX: p.worldX, worldY: p.worldY });
 // The treadmill lane's wall height is not a parameter; it is typed here for the preset.
@@ -84,6 +102,27 @@ const shapes = ref(
     .filter((z) => z.pixels && zones.value.some((known) => known.key === z.key))
     .map((z) => ({ id: nextShape++, key: z.key, circle: z.pixels.circle ? { ...z.pixels.circle } : null, polygon: z.pixels.polygon ? z.pixels.polygon.map((p) => ({ ...p })) : null })),
 );
+
+function applyReferenceCalibration() {
+  const reference = props.referenceCalibration;
+  if (!canApplyReferenceCalibration.value || !reference) return;
+  form.value.cameraId = reference.cameraId;
+  form.value.frameWidth = reference.frameWidth;
+  form.value.frameHeight = reference.frameHeight;
+  form.value.crop = { ...reference.crop };
+  form.value.measurementPlane = reference.measurementPlane;
+  points.value = {
+    fit: (reference.fitPoints || []).map(copyPoint),
+    check: (reference.checkPoints || []).map(copyPoint),
+  };
+  shapes.value = (reference.zones || [])
+    .map(storedZone)
+    .filter((z) => z.pixels && zones.value.some((known) => known.key === z.key))
+    .map((z) => ({ id: nextShape++, key: z.key, circle: z.pixels.circle ? { ...z.pixels.circle } : null, polygon: z.pixels.polygon ? z.pixels.polygon.map((p) => ({ ...p })) : null }));
+  selected.value = { fit: 0, check: 0 };
+  mode.value = "fit";
+  time.value = 0;
+}
 
 // --- Frame source --------------------------------------------------------------
 const localUrl = ref("");
@@ -107,6 +146,7 @@ onBeforeUnmount(() => localUrl.value && URL.revokeObjectURL(localUrl.value));
 // The frame size is the video's own; a crop that no longer fits becomes the whole frame.
 function onMetadata({ width, height }) {
   if (!width || !height) return;
+  videoFrame.value = { width, height };
   form.value.frameWidth = width;
   form.value.frameHeight = height;
   fromVideo.value = true;
@@ -135,7 +175,13 @@ const modeOptions = computed(() => [
   ...(zones.value.length ? [{ value: "zones", label: t("calibration.tools.zones") }] : []),
 ]);
 watch(mode, (value) => {
-  if (value === "zones") return;
+  if (value === "zones") {
+    if (!drawing.value) {
+      const firstCircleZone = zones.value.find((zone) => zoneTools(zone.key).includes("circle") && !shapesOf(zone.key).length);
+      if (firstCircleZone) drawing.value = { key: firstCircleZone.key, tool: "circle", points: [] };
+    }
+    return;
+  }
   drawing.value = null;
   draft.value = null;
 });
@@ -389,6 +435,52 @@ const referenceSeconds = computed({
     <p class="muted" v-if="correcting" data-test="calibration-correcting">{{ $t("calibration.correcting") }}</p>
     <p class="muted" v-if="note" data-test="calibration-note">{{ note }}</p>
     <p class="guide" v-if="guide" data-test="calibration-guide" :data-paradigm="paradigmKey">{{ guide }}</p>
+    <div v-if="props.referenceCalibration?.status === 'VALID'" class="saved-calibration">
+      <NButton
+        size="small"
+        secondary
+        type="primary"
+        :disabled="!canApplyReferenceCalibration"
+        data-test="calibration-apply-default"
+        @click="applyReferenceCalibration"
+      >
+        {{ $t("calibration.applyDefault") }}
+      </NButton>
+      <p class="muted hint" data-test="calibration-apply-default-hint">
+        {{ $t("calibration.applyDefaultHint", { camera: props.referenceCalibration.cameraId, width: props.referenceCalibration.frameWidth, height: props.referenceCalibration.frameHeight }) }}
+      </p>
+      <p v-if="!videoFrame" class="muted hint" data-test="calibration-apply-default-waiting">
+        {{ $t("calibration.applyDefaultWaiting") }}
+      </p>
+      <p v-else-if="referenceFrameMismatch" class="err hint" data-test="calibration-apply-default-frame-mismatch">
+        {{ $t("calibration.applyDefaultFrameMismatch") }}
+      </p>
+      <p v-else-if="referenceCameraMismatch" class="err hint" data-test="calibration-apply-default-camera-mismatch">
+        {{ $t("calibration.applyDefaultCameraMismatch", { camera: props.referenceCalibration.cameraId }) }}
+      </p>
+    </div>
+    <NAlert
+      v-if="props.referenceCalibration && videoUrl"
+      type="warning"
+      :show-icon="true"
+      data-test="calibration-reference-warning"
+    >
+      <p v-if="referenceFrameMismatch" data-test="calibration-frame-mismatch">
+        {{ $t("execution.calibration.frameMismatch", {
+          reference: `${props.referenceCalibration.frameWidth} × ${props.referenceCalibration.frameHeight}`,
+          video: `${videoFrame.width} × ${videoFrame.height}`,
+        }) }}
+      </p>
+      <p v-else-if="videoFrame" data-test="calibration-frame-match">
+        {{ $t("execution.calibration.frameMatch", { width: videoFrame.width, height: videoFrame.height }) }}
+      </p>
+      <p v-if="referenceCameraMismatch" data-test="calibration-camera-mismatch">
+        {{ $t("execution.calibration.cameraMismatch", { reference: props.referenceCalibration.cameraId, camera: form.cameraId.trim() }) }}
+      </p>
+      <p v-else data-test="calibration-camera-unverified">
+        {{ $t("execution.calibration.cameraUnverified", { camera: props.referenceCalibration.cameraId }) }}
+      </p>
+    </NAlert>
 
     <div class="setup">
       <label class="fld">
@@ -670,6 +762,7 @@ const referenceSeconds = computed({
 .calibrator h5 { margin: 0; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
 .hint { margin: 0; font-size: 12px; }
 .guide { margin: 0; font-size: 13px; padding: 8px 10px; border-radius: 8px; border-left: 3px solid var(--accent); background: var(--panel2); }
+.saved-calibration { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .swap { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .num.wide { width: 180px; }
 .small { margin: 0; font-size: 12px; }

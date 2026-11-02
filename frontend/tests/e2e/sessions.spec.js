@@ -111,6 +111,7 @@ test("a session with two animals is planned, run and completed", async ({ page, 
   await expect(calibration.getByTestId("calibration-source")).toHaveAttribute("data-source", "ENVIRONMENT");
   await calibration.getByTestId("calibrate").click();
   const dialog = page.getByTestId("calibration-dialog");
+  await expect(dialog.getByTestId("calibration-reference-warning")).toBeVisible();
   await fillCalibration(dialog);
   await dialog.getByTestId("reference-frame").fill("0");
   await dialog.getByTestId("calibration-save").click();

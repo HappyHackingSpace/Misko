@@ -8,6 +8,11 @@ export default {
       POLE: "Camera at the side of the pole, level with its middle, with the whole pole from the base to the top in view. Place the base and the top of the pole and at least two more marks of the rig away from the pole (for example on the back panel), measured as distance from the pole and height above the base. Then draw the pole zone around the pole where the subject climbs and the base zone over the floor at its foot.",
       TREADMILL: "Camera at the side of the lane, level with the belt, with the whole lane from the shock grid to the front wall in view. Place the corners of the lane wall: x runs along the lane from the grid end (0) to the front, y up from the belt. Then draw the shock grid zone over the grid at the back of the lane.",
     },
+    applyDefault: "Apply default calibration",
+    applyDefaultHint: "Loads points and zones from the saved valid calibration ({camera}, {width} × {height}). Use only after confirming the same camera and arena position; saving is still validated by the server.",
+    applyDefaultWaiting: "Wait until the video frame dimensions have been read before applying.",
+    applyDefaultFrameMismatch: "Video resolution does not match the default calibration; saved points cannot be applied.",
+    applyDefaultCameraMismatch: "The camera field must match “{camera}” from the default calibration.",
     source: {
       local: "Video for the frame",
       pick: "Choose a video file",
@@ -32,8 +37,8 @@ export default {
       zones: "Zones",
     },
     toolHints: {
-      fit: "Click the frame to place the highlighted point, then drag to adjust. Click a row to choose which point the next click places.",
-      check: "Check points must be different places from the fit points. Click the frame to place the highlighted one.",
+      fit: "Click the frame to place the highlighted point, then drag to adjust. Click a row to choose which point the next click places. You can also type Pixel X and Pixel Y in the point row below.",
+      check: "Check points must be different places from the fit points. Click the frame to place the highlighted one, or type Pixel X and Pixel Y in the point row below.",
       crop: "Drag a rectangle around this arena. Points and zones must lie inside it.",
       zones: "Choose a zone and a shape, then draw it on the frame. Drag the handles to adjust a shape.",
     },
@@ -90,7 +95,7 @@ export default {
     },
     zones: {
       title: "Zones",
-      hint: "Draw every zone of the paradigm on the frame. A zone may need several shapes, for example one per arm.",
+      hint: "Start object zones with Draw circle: press at the centre and drag to the edge. Choose Draw polygon when needed. The first empty circle zone is selected when you enter the calibration zones tool.",
       required: "Required",
       optional: "Optional",
       polygon: "Draw polygon",

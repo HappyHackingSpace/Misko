@@ -15,7 +15,7 @@ func TestCalibrationRequirements(t *testing.T) {
 			true, &Bounds{-60, -60, 60, 60}},
 		// The arena frame starts at a corner of the floor; the side views of the
 		// pole and the lane choose their own frame.
-		"NOVEL_OBJECT": {map[string]float64{"arena_width_cm": 50, "arena_height_cm": 40}, true, &Bounds{0, 0, 50, 40}},
+		"NOVEL_OBJECT": {map[string]float64{"arena_width_cm": 40, "arena_height_cm": 60}, true, &Bounds{0, 0, 40, 60}},
 		"POLE":         {map[string]float64{"pole_length_cm": 50}, true, nil},
 		"TREADMILL":    {map[string]float64{"lane_length_cm": 40}, true, nil},
 	} {
