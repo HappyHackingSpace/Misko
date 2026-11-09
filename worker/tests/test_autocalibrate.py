@@ -6,6 +6,7 @@ import math
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 from misko_worker import autocalibrate
 from tests import scenes, synthetic
@@ -119,3 +120,32 @@ def test_cli_reports_no_arena(tmp_path: Path, capsys) -> None:
     code = autocalibrate.main([str(source), "--width-cm", "40", "--height-cm", "40"])
     assert code == 1
     assert "NO_ARENA_DETECTED" in capsys.readouterr().out
+
+
+# MWM: the rendered tank with ripples, glints and the experimenter's hand. The
+# frame is tank-centred with north up on screen, so each proposed wall point
+# must land near the true projection of its compass point.
+def test_run_tank_on_a_rendered_mwm_video(tmp_path: Path) -> None:
+    scene, _ = scenes.mwm()
+    source = tmp_path / "mwm.mp4"
+    synthetic.render(source, synthetic.regular(2.0), scenes.swim, scene=scene)
+
+    result = autocalibrate.run_tank(source, 2 * scenes.MWM_RADIUS, samples=5)
+    assert result is not None and result["confidence"] >= autocalibrate.MIN_CONFIDENCE
+    proposal = result["proposal"]
+    assert proposal["measurementPlane"] == "WATER_SURFACE"
+    for point in proposal["fitPoints"]:
+        ex, ey = synthetic.project(point["worldX"], point["worldY"], scenes.MWM_CM_TO_PX)
+        assert math.hypot(point["pixelX"] - ex, point["pixelY"] - ey) <= 5.0, point
+    assert [(p["worldX"], p["worldY"]) for p in proposal["fitPoints"]] == [(50, 0), (0, 50), (-50, 0), (0, -50)]
+
+
+def test_a_rectangular_arena_is_not_a_tank() -> None:
+    assert autocalibrate.detect_tank(arena_frames(ARENA_CORNERS)) is None
+
+
+def test_cli_needs_one_apparatus_size(capsys) -> None:
+    with pytest.raises(SystemExit):
+        autocalibrate.main(["v.mp4", "--width-cm", "40", "--height-cm", "40", "--tank-diameter-cm", "100"])
+    with pytest.raises(SystemExit):
+        autocalibrate.main(["v.mp4"])
