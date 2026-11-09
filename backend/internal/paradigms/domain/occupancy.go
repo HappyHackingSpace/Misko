@@ -45,7 +45,8 @@ func OccupancyOf(key string, version int, parameters map[string]float64, samples
 	cell := math.Max(width, height) / float64(cells)
 	o := Occupancy{Bounds: *b, CellCm: cell, Columns: int(math.Ceil(width / cell)), Rows: int(math.Ceil(height / cell))}
 	o.Us = make([]int64, o.Columns*o.Rows)
-	index := func(v, from float64, n int) int { return max(0, min(n-1, int((v-from)/cell))) }
+	// Clamped as a float: converting an out-of-range float to int is undefined.
+	index := func(v, from float64, n int) int { return int(max(0, min(float64(n-1), math.Floor((v-from)/cell)))) }
 	walk(samples, validOnly, nil, gapUs(params), func(a, _ Sample, dt int64) {
 		o.Us[index(a.Y, b.MinY, o.Rows)*o.Columns+index(a.X, b.MinX, o.Columns)] += dt
 	})

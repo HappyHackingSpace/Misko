@@ -10,10 +10,10 @@ import (
 //
 //	0.0-0.2 s at (2, 2): 0.2 s in cell (0, 0).
 //	0.2-0.3 s at (47, 48): 0.1 s in cell (9, 9).
-//	0.3-0.4 s at (60, -5), past the wall: 0.1 s in the edge cell (9, 0).
+//	0.3-0.4 s far past the wall at (1e300, -1e300): 0.1 s in the edge cell (9, 0).
 //	0.4 s lost, then 2.0 s after a gap longer than max_sample_gap_s: not counted.
 func TestOccupancyHandCalculated(t *testing.T) {
-	trajectory := []Sample{sample(0, 2, 2), sample(0.1, 2, 2), sample(0.2, 47, 48), sample(0.3, 60, -5), sample(0.4, 60, -5), lost(0.5), sample(2, 25, 25), sample(3, 25, 25)}
+	trajectory := []Sample{sample(0, 2, 2), sample(0.1, 2, 2), sample(0.2, 47, 48), sample(0.3, 1e300, -1e300), sample(0.4, 60, -5), lost(0.5), sample(2, 25, 25), sample(3, 25, 25)}
 	o, err := OccupancyOf("NOVEL_OBJECT", 1, nil, trajectory, 10)
 	if err != nil {
 		t.Fatal(err)

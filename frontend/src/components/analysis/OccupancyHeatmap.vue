@@ -26,9 +26,10 @@ watch(
     grid.value = null;
     error.value = "";
     try {
-      grid.value = await jobs.occupancy(id);
+      const loaded = await jobs.occupancy(id);
+      if (id === props.jobId) grid.value = loaded;
     } catch (e) {
-      if (e.code !== "analysis.noArenaFloor") error.value = e.message;
+      if (id === props.jobId && e.code !== "analysis.noArenaFloor") error.value = e.message;
     }
   },
   { immediate: true },

@@ -233,7 +233,7 @@ const groupDose = computed(() => (group.value?.doseMicro != null ? fmt.dose(grou
         v-if="viewRunId"
         class="heatmap"
         :job-id="viewRunId"
-        :zones="detail?.calibration?.zones || []"
+        :zones="detail?.id === viewRunId ? detail.calibration?.zones || [] : []"
         :zone-label="zoneLabel"
       />
       <NCollapse v-if="events.length" class="events">
