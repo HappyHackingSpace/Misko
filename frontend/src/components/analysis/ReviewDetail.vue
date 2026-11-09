@@ -11,6 +11,7 @@ import { jobs, results, runs } from "../../api/analysis.js";
 import { selectOption } from "../../composables/selectOptions.js";
 import EventTimeline from "../EventTimeline.vue";
 import MetricTiles from "./MetricTiles.vue";
+import OccupancyHeatmap from "./OccupancyHeatmap.vue";
 import VideoPairPanel from "../VideoPairPanel.vue";
 import { reviewTag, useNumbers, useParadigmText } from "./format.js";
 
@@ -48,6 +49,7 @@ const missing = computed(() => metrics.value.filter((m) => m.value === null));
 const manifest = computed(() => text.manifestOf(props.item.paradigmKey, props.item.paradigmVersion));
 const metricLabel = (key) => text.metricLabel(props.item.paradigmKey, key);
 const eventLabels = computed(() => text.eventLabels(props.item.paradigmKey));
+const zoneLabel = (key) => manifest.value?.zones?.find((z) => z.key === key)?.label || key;
 
 const runOptions = computed(() =>
   (props.item.runs || []).map((run) => {
@@ -227,6 +229,13 @@ const groupDose = computed(() => (group.value?.doseMicro != null ? fmt.dose(grou
         <MetricTiles class="metrics" :metrics="metrics" :label="metricLabel" test-prefix="review-metric" />
       </section>
       <VideoPairPanel v-if="viewRunId" :job-id="viewRunId" :play="playing" />
+      <OccupancyHeatmap
+        v-if="viewRunId"
+        class="heatmap"
+        :job-id="viewRunId"
+        :zones="detail?.calibration?.zones || []"
+        :zone-label="zoneLabel"
+      />
       <NCollapse v-if="events.length" class="events">
         <NCollapseItem :title="`${$t('analysis.events')} (${events.length})`" name="events">
           <EventTimeline :events="events" :selected="playing" :labels="eventLabels" @play="playing = $event" />
@@ -293,6 +302,7 @@ h4 { margin: 0 0 8px; font-size: 12px; color: var(--muted); text-transform: uppe
 .hint { margin: 6px 0 0; }
 .metrics { margin-bottom: 14px; }
 .events { margin-top: 12px; }
+.heatmap { margin-top: 12px; }
 .decide { display: flex; flex-direction: column; gap: 10px; border-top: 1px solid var(--line); padding-top: 14px; }
 .decide-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .spacer { flex: 1; }

@@ -5,6 +5,11 @@ export default {
     MANUAL: "Manual",
     missing: "Not measured",
     events: "Events",
+    heatmap: {
+      title: "Time spent",
+      cell: "cell size {size}",
+      aria: "Heatmap of the time spent on the arena floor, up to {max} in one cell",
+    },
     missingReasons: {
       NO_TRACKING: "no tracking",
       TRACKING_LOST: "tracking lost",
