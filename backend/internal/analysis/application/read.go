@@ -10,8 +10,19 @@ import (
 	"github.com/HappyHackingSpace/Misko/backend/internal/analysis/domain"
 )
 
-// ErrOutputNotFound means the job published no output of the requested kind.
-var ErrOutputNotFound = errors.New("the job has no published output of this kind")
+var (
+	// ErrOutputNotFound means the job published no output of the requested kind.
+	ErrOutputNotFound = errors.New("the job has no published output of this kind")
+	ErrNoArenaFloor   = errors.New("the paradigm has no arena floor to map occupancy on")
+)
+
+// Occupancy is the tracked time in each square cell of the arena floor, row
+// by row from (MinXCm, MinYCm).
+type Occupancy struct {
+	MinXCm, MinYCm, CellCm float64
+	Columns, Rows          int
+	Seconds                []float64
+}
 
 // JobDetail is one job with its stored result, for every screen that shows
 // analysis results.
@@ -87,6 +98,30 @@ func (s *Service) OutputURL(ctx context.Context, actor access.Actor, id, kind st
 		return ReadLink{URL: url, ExpiresAt: expires}, nil
 	}
 	return ReadLink{}, ErrOutputNotFound
+}
+
+// Occupancy reads the published trajectory of a succeeded job and maps it
+// onto the arena floor with the job's pinned parameters.
+func (s *Service) Occupancy(ctx context.Context, actor access.Actor, id string) (Occupancy, error) {
+	job, published, err := s.succeeded(ctx, actor, id)
+	if err != nil {
+		return Occupancy{}, err
+	}
+	for _, o := range published.Artifacts {
+		if o.Kind != domain.Trajectory {
+			continue
+		}
+		data, err := s.objects.Read(ctx, o.ObjectName, o.Generation, s.settings.MaxTrajectoryBytes)
+		if err != nil {
+			return Occupancy{}, fmt.Errorf("read trajectory: %w", err)
+		}
+		track, err := domain.ReadTrajectory(data, job)
+		if err != nil {
+			return Occupancy{}, err
+		}
+		return s.catalog.Occupancy(job.ParadigmKey, job.ParadigmVersion, job.Parameters, track)
+	}
+	return Occupancy{}, ErrOutputNotFound
 }
 
 // succeeded reads a job a user may sign reads for.

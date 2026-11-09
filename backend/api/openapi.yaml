@@ -2060,6 +2060,18 @@ paths:
         '404': {$ref: '#/components/responses/Problem'}
         '409': {$ref: '#/components/responses/Problem'}
         '503': {$ref: '#/components/responses/Problem'}
+  /api/analysis/jobs/{jobId}/occupancy:
+    parameters:
+      - {name: jobId, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      operationId: getAnalysisOccupancy
+      summary: Tracked time per cell of the arena floor from the published trajectory, for the heatmap; 409 analysis.noArenaFloor for side views (*:read)
+      responses:
+        '200': {description: Occupancy grid, content: {application/json: {schema: {$ref: '#/components/schemas/Occupancy'}}}}
+        '401': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+        '503': {$ref: '#/components/responses/Problem'}
   /api/analysis-runs/{jobId}:
     parameters:
       - {name: jobId, in: path, required: true, schema: {type: string, format: uuid}}
@@ -3573,6 +3585,17 @@ components:
         notes: {type: [string, 'null']}
         recordedBy: {type: string, format: uuid}
         createdAt: {type: string, format: date-time}
+    Occupancy:
+      type: object
+      description: Square cells of cellCm from (minXCm, minYCm), row by row along y. Time is counted as zone time is, so a zone's cells add up to its time in the zone.
+      required: [minXCm, minYCm, cellCm, columns, rows, seconds]
+      properties:
+        minXCm: {type: number}
+        minYCm: {type: number}
+        cellCm: {type: number}
+        columns: {type: integer}
+        rows: {type: integer}
+        seconds: {type: array, items: {type: number}, description: columns x rows values}
     TrialInput:
       type: object
       additionalProperties: false

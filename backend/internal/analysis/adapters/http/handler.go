@@ -30,6 +30,7 @@ var failures = []httpjson.Failure{
 	{Err: application.ErrJobNotFound, Status: http.StatusNotFound, Code: "analysis.jobNotFound"},
 	{Err: application.ErrJobNotSucceeded, Status: http.StatusConflict, Code: "analysis.jobNotSucceeded"},
 	{Err: application.ErrOutputNotFound, Status: http.StatusNotFound, Code: "analysis.outputNotFound"},
+	{Err: application.ErrNoArenaFloor, Status: http.StatusConflict, Code: "analysis.noArenaFloor"},
 	{Err: application.ErrSourceNotFound, Status: http.StatusNotFound, Code: "analysis.sourceNotFound"},
 	{Err: application.ErrUnknownOutput, Status: http.StatusBadRequest, Code: "analysis.unknownOutput"},
 	{Err: application.ErrOutputNotVerified, Status: http.StatusConflict, Code: "analysis.outputNotVerified"},
@@ -61,6 +62,7 @@ func Register(mux *http.ServeMux, service *application.Service, authenticate fun
 	mux.HandleFunc("GET /api/analysis/jobs/{jobId}", h.user(h.job))
 	mux.HandleFunc("GET /api/analysis/jobs/{jobId}/video-pair", h.user(h.videoPair))
 	mux.HandleFunc("GET /api/analysis/jobs/{jobId}/outputs/{kind}/read-url", h.user(h.outputURL))
+	mux.HandleFunc("GET /api/analysis/jobs/{jobId}/occupancy", h.user(h.occupancy))
 	// Deprecated names of the two job reads, kept while the panel moves to the job routes.
 	mux.HandleFunc("GET /api/analysis-runs/{jobId}", h.user(h.job))
 	mux.HandleFunc("GET /api/analysis-runs/{jobId}/video-pair", h.user(h.videoPair))
@@ -144,6 +146,11 @@ func (h handler) videoPair(w http.ResponseWriter, r *http.Request, actor access.
 func (h handler) outputURL(w http.ResponseWriter, r *http.Request, actor access.Actor) {
 	link, err := h.service.OutputURL(r.Context(), actor, r.PathValue("jobId"), r.PathValue("kind"))
 	h.respond(w, r, http.StatusOK, readLinkJSON{link.URL, link.ExpiresAt}, err)
+}
+
+func (h handler) occupancy(w http.ResponseWriter, r *http.Request, actor access.Actor) {
+	o, err := h.service.Occupancy(r.Context(), actor, r.PathValue("jobId"))
+	h.respond(w, r, http.StatusOK, occupancyJSON{o.MinXCm, o.MinYCm, o.CellCm, o.Columns, o.Rows, o.Seconds}, err)
 }
 
 type attemptBody struct {
