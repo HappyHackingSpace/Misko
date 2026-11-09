@@ -166,6 +166,24 @@ calibration UI before saving. Exit code 1 and `NO_ARENA_DETECTED` mean no
 convincing rectangle was found (round arenas, side views, heavy occlusion).
 Tested on synthetic frames only; it does not model lens distortion.
 
+### Tracking jitter report
+
+`misko_worker/jitter.py` measures what the tracker counts as movement while the
+subject is still (issue #242). Save the job with
+`GET /api/analysis/jobs/{jobId}`, pick a stretch of at least 10 s where the
+subject is visibly still (in seconds from the clip start), and run:
+
+```bash
+.venv/bin/python -m misko_worker.jitter video.mp4 job.json --still 42 55
+```
+
+It prints JSON per centroid method (`weighted`, the published one; `plain`,
+the unweighted blob centroid; `median3`, the median of the last three
+positions): step-length percentiles and histogram, apparent path in cm per
+minute and speed, and zone changes per zone. Pick a stretch near a zone edge to
+count false zone changes. The job names the recording, clip and calibration,
+so the report can be repeated.
+
 ## Known limits
 
 - One subject per crop, fixed camera, stable lighting, contrast of at least
