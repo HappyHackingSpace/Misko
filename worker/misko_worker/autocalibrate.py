@@ -16,6 +16,12 @@ where a researcher confirms or adjusts every point before anything is saved.
 The derived CHECK points come from the same four corners, so they cannot
 validate the fit; the researcher must re-measure them (see propose).
 
+The MWM tank is a circle of tank_diameter_cm, an ellipse in the image: the
+largest region of either polarity, its ellipse from the region's second
+moments, scored by how closely the boundary follows that ellipse (a rectangle
+scores low). The proposal pairs the ellipse's right, top, left and bottom
+points with the wall at east, north, west and south of the tank-centred frame.
+
 Detection uses only the dependencies the worker already has (numpy, scipy, av);
 there is no OpenCV here.
 """
@@ -87,6 +93,64 @@ def detect_arena(images: Sequence[np.ndarray]) -> ArenaDetection | None:
     return best
 
 
+@dataclass(frozen=True)
+class TankDetection:
+    """The detected MWM tank: the ellipse the circular tank projects to, as its
+    centre and its extreme points along the image axes (right, top, left,
+    bottom), in full-frame pixels.
+
+    roundness falls with the boundary's mean deviation from the fitted ellipse
+    (a rectangle scores low), border_clearance is the share of boundary pixels
+    away from the frame edge. confidence is their product.
+    """
+
+    center: Point
+    extremes: tuple[Point, Point, Point, Point]
+    confidence: float
+    roundness: float
+    border_clearance: float
+
+
+def detect_tank(images: Sequence[np.ndarray]) -> TankDetection | None:
+    """The circular tank in a set of frames of one video, or None when no
+    candidate is convincing; the frames are read as in detect_arena."""
+    if not images:
+        return None
+    smooth = ndimage.gaussian_filter(_static_background(images), 2.0)
+    threshold = _otsu(smooth)
+    candidates = [_tank_in_mask(mask) for mask in (smooth > threshold, smooth <= threshold)]
+    best = max((c for c in candidates if c is not None), key=lambda c: c.confidence, default=None)
+    if best is None or best.confidence < MIN_CONFIDENCE:
+        return None
+    return best
+
+
+def propose_tank(detection: TankDetection, diameter_cm: float) -> dict:
+    """The calibration proposal for a tank of the given diameter in the MWM
+    frame: origin at the tank centre, east (r, 0) at the right of the image and
+    north (0, r) at its top. Under perspective the ellipse's extremes are only
+    close to the wall's compass points, so the researcher confirms or moves
+    every point, and enters the platform in the same frame.
+
+    derivedCheckPoints are the wall at 45 degrees projected through the
+    homography of the four fit points, so they cannot validate it.
+    """
+    if not math.isfinite(diameter_cm) or diameter_cm <= 0:
+        raise ValueError("diameter_cm must be positive")
+    r = diameter_cm / 2
+    world = ((r, 0.0), (0.0, r), (-r, 0.0), (0.0, -r))
+    cm_to_px = _homography(world, detection.extremes)
+    diagonal = r / math.sqrt(2)
+    checks = ((diagonal, diagonal), (-diagonal, diagonal), (-diagonal, -diagonal), (diagonal, -diagonal))
+    return {
+        "measurementPlane": "WATER_SURFACE",
+        "confidence": detection.confidence,
+        "fitPoints": [_point(px, w) for px, w in zip(detection.extremes, world)],
+        "derivedCheckPoints": [_point(_project(cm_to_px, x, y), (x, y)) for x, y in checks],
+        "warning": "derivedCheckPoints share the proposed wall points and cannot validate them; confirm or re-measure every point before saving",
+    }
+
+
 def propose(detection: ArenaDetection, width_cm: float, height_cm: float) -> dict:
     """The calibration proposal for the detected corners of an arena floor of
     the given physical size: the paradigm's frame has its origin at the
@@ -130,6 +194,24 @@ def run(video: Path, width_cm: float, height_cm: float, samples: int = 9) -> dic
         "solidity": detection.solidity,
         "borderClearance": detection.border_clearance,
         "proposal": propose(detection, width_cm, height_cm),
+    }
+
+
+def run_tank(video: Path, diameter_cm: float, samples: int = 9) -> dict | None:
+    """Detects the MWM tank on frames sampled from the video and returns the
+    detection with its proposal, or None."""
+    info = probe(video)
+    detection = detect_tank(sample_frames(video, samples))
+    if detection is None:
+        return None
+    return {
+        "frameWidth": info.width,
+        "frameHeight": info.height,
+        "center": {"x": detection.center[0], "y": detection.center[1]},
+        "confidence": detection.confidence,
+        "roundness": detection.roundness,
+        "borderClearance": detection.border_clearance,
+        "proposal": propose_tank(detection, diameter_cm),
     }
 
 
@@ -207,6 +289,44 @@ def _detect_in_mask(mask: np.ndarray) -> ArenaDetection | None:
     )
 
 
+def _tank_in_mask(mask: np.ndarray) -> TankDetection | None:
+    """The ellipse of the largest region from its second moments: a filled
+    ellipse has covariance M / 4, where M is the shape matrix of its boundary
+    (p - c)^T M^-1 (p - c) = 1."""
+    filled = ndimage.binary_fill_holes(mask)
+    labels, count = ndimage.label(filled)
+    if count == 0:
+        return None
+    sizes = ndimage.sum_labels(np.ones_like(labels), labels, index=np.arange(1, count + 1))
+    region = labels == (int(np.argmax(sizes)) + 1)
+    if sizes.max() < MIN_AREA_FRACTION * mask.size:
+        return None
+    rows, cols = np.nonzero(region)
+    xs, ys = cols + 0.5, rows + 0.5
+    cx, cy = float(xs.mean()), float(ys.mean())
+    shape = 4 * np.cov(np.vstack([xs, ys]))
+    try:
+        inverse = np.linalg.inv(shape)
+    except np.linalg.LinAlgError:
+        return None
+    boundary = region & ~ndimage.binary_erosion(region)
+    by, bx = np.nonzero(boundary)
+    d = np.vstack([bx + 0.5 - cx, by + 0.5 - cy])
+    radius = np.sqrt(np.einsum("ij,ik,kj->j", d, inverse, d))
+    roundness = max(0.0, 1.0 - 8.0 * float(np.mean(np.abs(radius - 1.0))))
+    height, width = mask.shape
+    edge = np.count_nonzero((bx < _BORDER_PX) | (by < _BORDER_PX) | (bx >= width - _BORDER_PX) | (by >= height - _BORDER_PX))
+    clearance = 1.0 - edge / len(bx)
+
+    def extreme(axis: np.ndarray) -> Point:
+        step = shape @ axis / math.sqrt(float(axis @ shape @ axis))
+        return cx + float(step[0]), cy + float(step[1])
+
+    right, top = extreme(np.array([1.0, 0.0])), extreme(np.array([0.0, -1.0]))
+    left, bottom = extreme(np.array([-1.0, 0.0])), extreme(np.array([0.0, 1.0]))
+    return TankDetection((cx, cy), (right, top, left, bottom), roundness * clearance, roundness, clearance)
+
+
 def _pruned(hull: Sequence[Point]) -> list[Point]:
     """At most _MAX_HULL_VERTICES hull vertices: the vertex whose removal loses
     the least area goes first, repeatedly, so the spanning corners survive."""
@@ -281,12 +401,20 @@ def main(argv: Sequence[str] | None = None) -> int:
         description="Detect the rectangular arena in a video and print a calibration proposal as JSON.",
     )
     parser.add_argument("video", type=Path, help="path of the video file")
-    parser.add_argument("--width-cm", type=float, required=True, help="internal arena width, along the horizontal image axis")
-    parser.add_argument("--height-cm", type=float, required=True, help="internal arena depth, along the vertical image axis")
+    parser.add_argument("--width-cm", type=float, help="NOVEL_OBJECT: internal arena width, along the horizontal image axis")
+    parser.add_argument("--height-cm", type=float, help="NOVEL_OBJECT: internal arena depth, along the vertical image axis")
+    parser.add_argument("--tank-diameter-cm", type=float, help="MWM: internal tank diameter, instead of the arena size")
     parser.add_argument("--samples", type=int, default=9, help="frames sampled over the video (default: 9)")
     args = parser.parse_args(argv)
+    box = args.width_cm is not None and args.height_cm is not None
+    if box == (args.tank_diameter_cm is not None):
+        parser.error("give either --width-cm and --height-cm, or --tank-diameter-cm")
+    samples = max(args.samples, 1)
     try:
-        result = run(args.video, args.width_cm, args.height_cm, max(args.samples, 1))
+        if box:
+            result = run(args.video, args.width_cm, args.height_cm, samples)
+        else:
+            result = run_tank(args.video, args.tank_diameter_cm, samples)
     except (CorruptVideo, ValueError, OSError) as error:
         json.dump({"error": str(error)}, sys.stdout)
         print()
