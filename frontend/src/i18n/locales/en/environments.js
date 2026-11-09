@@ -9,6 +9,9 @@ export default {
     revisionSaved: "The new revision was created",
     calibration: {
       intro: "Calibrate once when the rig is set up. Every subject tested in this arena uses it, unless its test is calibrated by hand.",
+      defaultActive: "Environment default active",
+      defaultInactive: "Environment default inactive",
+      automatic: "This calibration will be used automatically for other tests in the same arena. Keep the camera and arena position fixed; calibrate a test separately when its video uses another camera or resolution.",
       waiting: "Not calibrated yet. Subjects tested in this arena cannot be analysed into centimetres until it is.",
       rejected: "Rejected: the check points deviate by more than the tolerance. Analyses in this arena wait until it is corrected.",
       fixedCamera: "This assumes the camera and the arena stay where they were. A subject whose video does not match can be calibrated by hand from its test.",

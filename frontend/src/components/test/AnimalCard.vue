@@ -161,6 +161,13 @@ const canCalibrate = computed(() => props.canRun && props.calibration && props.c
           </template>
         </template>
       </p>
+      <p
+        v-if="calibrationStatus === 'CALIBRATED' && source === 'ENVIRONMENT'"
+        class="muted small"
+        data-test="environment-default-applied"
+      >
+        {{ $t("execution.calibration.environmentDefaultApplied") }}
+      </p>
       <NButton v-if="canCalibrate" size="small" secondary data-test="calibrate" @click="emit('calibrate', subject)">
         {{ source === "OVERRIDE" ? $t("execution.calibration.correct") : $t("execution.calibration.override") }}
       </NButton>

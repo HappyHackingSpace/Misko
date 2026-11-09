@@ -36,6 +36,7 @@ const calibrations = ref([]);
 const paradigm = ref(null);
 const parameters = ref({});
 const videoUrl = ref("");
+const referenceCalibration = ref(null);
 const loading = ref(true);
 const saving = ref(false);
 const error = ref("");
@@ -80,6 +81,7 @@ onMounted(async () => {
     paradigm.value = loaded.paradigm;
     parameters.value = loaded.parameters || {};
     videoUrl.value = loaded.videoUrl || "";
+    referenceCalibration.value = loaded.referenceCalibration || (props.fallback?.scope === "ENVIRONMENT" ? props.fallback : null);
   } catch (e) {
     error.value = e.message;
   } finally {
@@ -107,6 +109,7 @@ onMounted(async () => {
         :parameters="parameters"
         :video-url="videoUrl"
         :initial="initial"
+        :reference-calibration="referenceCalibration"
         :correcting="!!latest"
         :with-reference-frame="true"
         :saving="saving"
