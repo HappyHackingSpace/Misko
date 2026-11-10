@@ -77,8 +77,11 @@ def detect_arena(images: Sequence[np.ndarray]) -> ArenaDetection | None:
     background = _static_background(images)
     smooth = ndimage.gaussian_filter(background, 2.0)
     threshold = _otsu(smooth)
+    texture = _local_deviation(background, max(5, round(min(background.shape) / 100)))
     best = None
-    for mask in (smooth > threshold, smooth <= threshold):
+    # Bedding on a real floor is as bright as the walls but far more textured,
+    # so the textured region is a candidate next to the bright and dark ones.
+    for mask in (smooth > threshold, smooth <= threshold, texture > _otsu(texture)):
         candidate = _detect_in_mask(mask)
         if candidate is not None and (best is None or candidate.confidence > best.confidence):
             best = candidate
@@ -152,6 +155,11 @@ def sample_frames(video: Path, count: int) -> list[np.ndarray]:
 def _static_background(images: Sequence[np.ndarray]) -> np.ndarray:
     grays = [image.mean(axis=2) if image.ndim == 3 else image.astype(np.float64) for image in images]
     return np.median(np.stack(grays), axis=0)
+
+
+def _local_deviation(image: np.ndarray, window: int) -> np.ndarray:
+    mean = ndimage.uniform_filter(image, window)
+    return np.sqrt(np.clip(ndimage.uniform_filter(image * image, window) - mean * mean, 0, None))
 
 
 def _otsu(image: np.ndarray) -> float:
