@@ -119,3 +119,26 @@ def test_cli_reports_no_arena(tmp_path: Path, capsys) -> None:
     code = autocalibrate.main([str(source), "--width-cm", "40", "--height-cm", "40"])
     assert code == 1
     assert "NO_ARENA_DETECTED" in capsys.readouterr().out
+
+
+# Bedding: the floor is as bright as its surroundings and only its texture
+# sets it apart, as on a real open-field box with litter.
+def test_detects_a_textured_floor_as_bright_as_its_surround():
+    cm_to_px = _homography([(0, 0), (SIDE_CM, 0), (SIDE_CM, SIDE_CM), (0, SIDE_CM)], ARENA_CORNERS)
+    to_cm = np.linalg.inv(cm_to_px)
+    rows, cols = np.mgrid[0:HEIGHT, 0:WIDTH]
+    px, py = cols + 0.5, rows + 0.5
+    w = to_cm[2, 0] * px + to_cm[2, 1] * py + to_cm[2, 2]
+    x = (to_cm[0, 0] * px + to_cm[0, 1] * py + to_cm[0, 2]) / w
+    y = (to_cm[1, 0] * px + to_cm[1, 1] * py + to_cm[1, 2]) / w
+    inside = (x >= 0) & (x <= SIDE_CM) & (y >= 0) & (y <= SIDE_CM)
+    rng = np.random.default_rng(5)
+    litter = rng.normal(0, 35, (HEIGHT, WIDTH))
+    frames = []
+    for _ in range(5):
+        frame = 140 + rng.normal(0, 2, (HEIGHT, WIDTH))
+        frame[inside] += litter[inside]
+        frames.append(np.clip(frame, 0, 255).astype(np.uint8))
+    found = autocalibrate.detect_arena(frames)
+    assert found is not None
+    assert_corners_close(found.corners, ARENA_CORNERS, 6.0)

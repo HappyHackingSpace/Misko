@@ -164,7 +164,13 @@ and the derived check points come from those same corners, so they cannot
 validate the fit — a researcher confirms or re-measures every point in the
 calibration UI before saving. Exit code 1 and `NO_ARENA_DETECTED` mean no
 convincing rectangle was found (round arenas, side views, heavy occlusion).
-Tested on synthetic frames only; it does not model lens distortion.
+Besides synthetic frames, it was checked on one real recording: the top-view
+open field `Videos/01022023_001_16236-62756.mp4` of Zenodo record
+[11235915](https://zenodo.org/records/11235915) (CC BY 4.0, 1280 x 1024, a
+box with bedding and a wide-angle lens). Its corners land within 13 to 18 px
+of the floor corners read by hand, about 1 to 1.5 cm; bedding as bright as the
+walls is found by its texture. It does not model lens distortion, so mid-edge
+check points stay the researcher's to measure.
 
 ## Known limits
 
