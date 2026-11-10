@@ -44,6 +44,8 @@ func (s *proposalStore) LockProposal(c context.Context, id string) (domain.Propo
 	return s.Proposal(c, id)
 }
 
+func (s *proposalStore) FailExpiredProposals(context.Context, time.Time) error { return nil }
+
 func (s *proposalStore) ClaimNextProposal(_ context.Context, _ []domain.Capability, _ time.Time) (domain.Proposal, error) {
 	if !s.queued {
 		return domain.Proposal{}, ErrNoJob

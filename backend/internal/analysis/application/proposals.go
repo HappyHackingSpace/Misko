@@ -52,6 +52,10 @@ func (s *Service) Proposal(ctx context.Context, actor access.Actor, id string) (
 // ClaimProposal leases the oldest proposal for a paradigm version the worker supports.
 func (s *Service) ClaimProposal(ctx context.Context, w domain.Worker) (domain.Proposal, error) {
 	now := s.clock()
+	// Outside the claim's transaction, which rolls back when nothing is claimable.
+	if err := s.store.FailExpiredProposals(ctx, now); err != nil {
+		return domain.Proposal{}, err
+	}
 	var out domain.Proposal
 	err := s.store.Transaction(ctx, func(tx Store) error {
 		p, err := tx.ClaimNextProposal(ctx, w.Capabilities, now)

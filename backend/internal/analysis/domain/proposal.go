@@ -11,7 +11,7 @@ import (
 const (
 	// MaxProposalFrameBytes keeps a base64 frame inside one API request.
 	MaxProposalFrameBytes = 700 << 10
-	// MaxProposalAttempts is how often an expired proposal lease is retried.
+	// MaxProposalAttempts is how many times a proposal is claimed in total.
 	MaxProposalAttempts = 3
 	maxProposalResult   = 64 << 10
 )

@@ -112,7 +112,7 @@ when no job is queued, a worker leases a proposal for a paradigm version it
 supports with `POST /api/worker/proposals/claim` (the frame comes in the
 answer) and returns the detection with
 `POST /api/worker/proposals/{id}/result`, naming its attempt. A lease lasts 2
-minutes; an expired one is claimed again, at most 3 times. A proposal is only
+minutes; an expired one is claimed again, at most 3 claims in total. A proposal is only
 a suggestion: the researcher confirms every point and saves through the
 calibration routes. Proposals are deleted after a day.
 
