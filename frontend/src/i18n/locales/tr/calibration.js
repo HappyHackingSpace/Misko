@@ -20,6 +20,7 @@ export default {
         NO_ARENA_DETECTED: "Bu karede arena bulunamadı. Zeminin tamamının göründüğü bir kare seçin ya da noktaları elle yerleştirin.",
         UNSUPPORTED_APPARATUS: "Bu düzenek için algılama henüz yok.",
         UNREADABLE_FRAME: "Kare okunamadı.",
+        FRAME_TOO_LARGE: "Kare analiz için çok büyük.",
       },
     },
     source: {

@@ -20,6 +20,7 @@ export default {
         NO_ARENA_DETECTED: "No arena was found on this frame. Pick a frame where the whole floor is in view, or place the points by hand.",
         UNSUPPORTED_APPARATUS: "Detection is not available for this apparatus yet.",
         UNREADABLE_FRAME: "The frame could not be read.",
+        FRAME_TOO_LARGE: "The frame is too large to analyse.",
       },
     },
     source: {
