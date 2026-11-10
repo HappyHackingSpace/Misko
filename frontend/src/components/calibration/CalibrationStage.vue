@@ -99,7 +99,25 @@ watch(svg, (el) => {
   }
 });
 onBeforeUnmount(() => observer?.disconnect());
-defineExpose({ scale });
+// The frame shown, as a JPEG at most maxSide pixels wide or tall and under
+// maxBytes, for a calibration proposal. A video from storage is read with
+// CORS (the bucket allows the panel's origin), so the canvas stays readable.
+async function capture(maxSide = 1920, maxBytes = 700 * 1024) {
+  const v = video.value;
+  if (!v || !v.videoWidth) throw new Error("no frame");
+  const shrink = Math.min(1, maxSide / Math.max(v.videoWidth, v.videoHeight));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(v.videoWidth * shrink);
+  canvas.height = Math.round(v.videoHeight * shrink);
+  canvas.getContext("2d").drawImage(v, 0, 0, canvas.width, canvas.height);
+  for (const quality of [0.85, 0.7, 0.5]) {
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", quality));
+    if (blob && blob.size <= maxBytes) return blob;
+  }
+  throw new Error("frame too large");
+}
+
+defineExpose({ scale, capture });
 </script>
 
 <template>
@@ -109,6 +127,7 @@ defineExpose({ scale });
         v-if="src"
         ref="video"
         :src="src"
+        crossorigin="anonymous"
         class="video"
         preload="auto"
         muted

@@ -8,6 +8,20 @@ export default {
       POLE: "Kamera direğin yanında, ortasıyla aynı yükseklikte durur ve tabandan tepeye tüm direği görür. Direğin tabanını ve tepesini, ayrıca direkten uzakta düzenek üzerinde en az iki işaret daha (örneğin arka panelde) yerleştirin; işaretlerin direğe uzaklığını ve tabandan yüksekliğini ölçün. Sonra deneğin tırmandığı yeri kapsayan direk bölgesini ve dibindeki zemini kapsayan taban bölgesini çizin.",
       TREADMILL: "Kamera kulvarın yanında, bant hizasında durur ve şok ızgarasından ön duvara kadar tüm kulvarı görür. Kulvar duvarının köşelerini yerleştirin: x kulvar boyunca ızgara ucundan (0) öne doğru, y banttan yukarı doğru ölçülür. Sonra kulvarın arkasındaki ızgaranın üzerine şok ızgarası bölgesini çizin.",
     },
+    detect: {
+      button: "Düzeneği algıla",
+      proposed: "Uyum noktaları önerildi (%{confidence} güven). Her birini karede kontrol edip taşıyın ya da onaylayın, sonra kontrol noktalarını kendiniz ölçün.",
+      proposedTag: "Önerilen",
+      confirm: "Onayla",
+      confirmPending: "Önerilen {count} uyum noktasını taşıyın veya onaylayın",
+      notFound: "Düzenek bu karede bulunamadı. Noktaları elle yerleştirin.",
+      noWorker: "Hiçbir işçi yanıt vermedi. Noktaları elle yerleştirin ya da daha sonra yeniden deneyin.",
+      reasons: {
+        NO_ARENA_DETECTED: "Bu karede arena bulunamadı. Zeminin tamamının göründüğü bir kare seçin ya da noktaları elle yerleştirin.",
+        UNSUPPORTED_APPARATUS: "Bu düzenek için algılama henüz yok.",
+        UNREADABLE_FRAME: "Kare okunamadı.",
+      },
+    },
     source: {
       local: "Kare için video",
       pick: "Video dosyası seç",
