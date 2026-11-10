@@ -23,6 +23,8 @@ there is no OpenCV here.
 from __future__ import annotations
 
 import argparse
+import base64
+import io
 import itertools
 import json
 import math
@@ -31,6 +33,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+import av
 import numpy as np
 from scipy import ndimage
 
@@ -121,9 +124,34 @@ def run(video: Path, width_cm: float, height_cm: float, samples: int = 9) -> dic
     detection = detect_arena(sample_frames(video, samples))
     if detection is None:
         return None
+    return _arena_result(info.width, info.height, detection, width_cm, height_cm)
+
+
+def propose_from_frame(proposal: dict) -> dict:
+    """The answer to a calibration proposal the API queued: detection on the
+    one reference frame the panel uploaded, in that frame's pixels (the panel
+    scales them to the video). {"detected": false, "reason": ...} when the
+    apparatus is not found or has no detector."""
+    try:
+        with av.open(io.BytesIO(base64.b64decode(proposal["frame"]))) as container:
+            image = next(container.decode(video=0)).to_ndarray(format="rgb24")
+    except (av.error.FFmpegError, StopIteration, KeyError, ValueError):
+        return {"detected": False, "reason": "UNREADABLE_FRAME"}
+    height, width = image.shape[:2]
+    parameters = proposal.get("parameters") or {}
+    if proposal.get("paradigmKey") == "NOVEL_OBJECT":
+        box = parameters.get("arena_width_cm"), parameters.get("arena_height_cm")
+        detection = detect_arena([image]) if all(box) else None
+        if detection is None:
+            return {"detected": False, "reason": "NO_ARENA_DETECTED"}
+        return {"detected": True, **_arena_result(width, height, detection, *box)}
+    return {"detected": False, "reason": "UNSUPPORTED_APPARATUS"}
+
+
+def _arena_result(frame_width: int, frame_height: int, detection: ArenaDetection, width_cm: float, height_cm: float) -> dict:
     return {
-        "frameWidth": info.width,
-        "frameHeight": info.height,
+        "frameWidth": frame_width,
+        "frameHeight": frame_height,
         "corners": [{"x": x, "y": y} for x, y in detection.corners],
         "confidence": detection.confidence,
         "rectangularity": detection.rectangularity,
