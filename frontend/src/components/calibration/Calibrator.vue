@@ -12,6 +12,7 @@ import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { NButton, NCollapse, NCollapseItem, NInput, NInputNumber, NRadioButton, NRadioGroup, NSelect, NTag } from "naive-ui";
 import { selectOption } from "../../composables/selectOptions.js";
+import { calibration } from "../../api/media.js";
 import { useExecutionFormat } from "../../composables/useExecutionFormat.js";
 import CalibrationStage from "./CalibrationStage.vue";
 import {
@@ -159,6 +160,65 @@ function setPixel(group, index, { x, y }) {
   const p = points.value[group][index];
   p.pixelX = Math.round(x * 10) / 10;
   p.pixelY = Math.round(y * 10) / 10;
+  p.proposed = false;
+}
+
+// --- Detection -----------------------------------------------------------------
+// A worker detects the apparatus on the frame shown and proposes the fit
+// points. They stay marked as proposed until the researcher moves or confirms
+// each one; check points are never proposed, since points derived from the
+// same detection cannot validate it.
+const DETECTABLE = ["NOVEL_OBJECT"];
+const POLL_MS = 1000;
+const POLL_LIMIT = 90;
+const detecting = ref(false);
+const detectMessage = ref("");
+const canDetect = computed(() => DETECTABLE.includes(paradigmKey.value) && fromVideo.value && W.value > 0);
+const proposedCount = computed(() => points.value.fit.filter((p) => p.proposed).length);
+
+const base64 = (blob) =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(",")[1]);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function detect() {
+  detecting.value = true;
+  detectMessage.value = "";
+  try {
+    const frame = await base64(await stage.value.capture());
+    let proposal = await calibration.propose({ paradigmKey: paradigmKey.value, paradigmVersion: props.paradigm.version, parameters: props.parameters, frame });
+    for (let i = 0; i < POLL_LIMIT && (proposal.status === "QUEUED" || proposal.status === "RUNNING"); i++) {
+      await wait(POLL_MS);
+      proposal = await calibration.proposal(proposal.id);
+    }
+    const result = proposal.result;
+    if (proposal.status !== "SUCCEEDED") detectMessage.value = t("calibration.detect.noWorker");
+    else if (!result?.detected) detectMessage.value = te(`calibration.detect.reasons.${result?.reason}`) ? t(`calibration.detect.reasons.${result.reason}`) : t("calibration.detect.notFound");
+    else applyProposal(result);
+  } catch (e) {
+    detectMessage.value = e.message;
+  } finally {
+    detecting.value = false;
+  }
+}
+
+// The worker answers in the pixels of the frame it got, which may be scaled down.
+function applyProposal(result) {
+  const sx = W.value / result.frameWidth;
+  const sy = H.value / result.frameHeight;
+  const round = (v) => Math.round(v * 10) / 10;
+  points.value = {
+    fit: result.proposal.fitPoints.map((p) => ({ ...emptyPoint(), pixelX: round(p.pixelX * sx), pixelY: round(p.pixelY * sy), worldX: p.worldX, worldY: p.worldY, proposed: true })),
+    check: Array.from({ length: MIN.check }, () => emptyPoint()),
+  };
+  if (result.proposal.measurementPlane) form.value.measurementPlane = result.proposal.measurementPlane;
+  selected.value = { fit: 0, check: 0 };
+  mode.value = "fit";
+  detectMessage.value = t("calibration.detect.proposed", { confidence: Math.round(result.confidence * 100) });
 }
 
 function press(e) {
@@ -354,6 +414,7 @@ const problems = computed(() => {
     if (zone.required && !shapesOf(zone.key).length) list.push(t("calibration.missing.zone", { zone: zone.label }));
   }
   if (drawing.value?.points?.length) list.push(t("calibration.missing.openPolygon"));
+  if (proposedCount.value) list.push(t("calibration.detect.confirmPending", { count: proposedCount.value }));
   return list;
 });
 
@@ -505,10 +566,20 @@ const referenceSeconds = computed({
       <div class="row-head">
         <h5>{{ $t(`calibration.${mode}Points`) }}</h5>
         <div class="row-actions">
+          <NButton
+            v-if="mode === 'fit' && canDetect"
+            size="tiny"
+            secondary
+            type="primary"
+            :loading="detecting"
+            data-test="calibration-detect"
+            @click="detect"
+          >{{ $t("calibration.detect.button") }}</NButton>
           <NButton v-if="hasPreset" size="tiny" secondary data-test="calibration-preset" @click="applyPreset">{{ $t("calibration.presets.apply") }}</NButton>
           <NButton size="tiny" quaternary data-test="calibration-clear-pixels" @click="clearPixels">{{ $t("calibration.points.clearPixels") }}</NButton>
         </div>
       </div>
+      <p v-if="mode === 'fit' && detectMessage" class="hint" data-test="calibration-detect-message">{{ detectMessage }}</p>
       <p class="muted hint" data-test="calibration-preset-hint">{{ presetHint || $t("calibration.presets.free") }}</p>
       <label class="num wide" v-if="presetKind === 'lane'">
         <span>{{ $t("calibration.presets.laneHeight") }}</span>
@@ -522,6 +593,10 @@ const referenceSeconds = computed({
         @click="selected[mode] = index"
       >
         <NTag size="small" round :bordered="false" :type="placed(p) ? (mode === 'fit' ? 'info' : 'success') : 'default'">{{ short(mode, index) }}</NTag>
+        <template v-if="p.proposed">
+          <NTag size="small" round :bordered="false" type="warning" data-test="point-proposed">{{ $t("calibration.detect.proposedTag") }}</NTag>
+          <NButton size="tiny" secondary :data-test="`${mode}-${index}-confirm`" @click.stop="p.proposed = false">{{ $t("calibration.detect.confirm") }}</NButton>
+        </template>
         <span class="label muted" v-if="p.label">{{ p.label }}</span>
         <label class="num">
           <span>{{ $t("calibration.pixel") }} X</span>
