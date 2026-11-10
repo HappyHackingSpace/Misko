@@ -8,6 +8,21 @@ export default {
       POLE: "Camera at the side of the pole, level with its middle, with the whole pole from the base to the top in view. Place the base and the top of the pole and at least two more marks of the rig away from the pole (for example on the back panel), measured as distance from the pole and height above the base. Then draw the pole zone around the pole where the subject climbs and the base zone over the floor at its foot.",
       TREADMILL: "Camera at the side of the lane, level with the belt, with the whole lane from the shock grid to the front wall in view. Place the corners of the lane wall: x runs along the lane from the grid end (0) to the front, y up from the belt. Then draw the shock grid zone over the grid at the back of the lane.",
     },
+    detect: {
+      button: "Detect apparatus",
+      proposed: "Fit points proposed ({confidence}% confidence). Check each one on the frame, move or confirm it, then measure the check points yourself.",
+      proposedTag: "Proposed",
+      confirm: "Confirm",
+      confirmPending: "Move or confirm {count} proposed fit point(s)",
+      notFound: "The apparatus was not found on this frame. Place the points by hand.",
+      noWorker: "No worker answered. Place the points by hand, or try again later.",
+      reasons: {
+        NO_ARENA_DETECTED: "No arena was found on this frame. Pick a frame where the whole floor is in view, or place the points by hand.",
+        UNSUPPORTED_APPARATUS: "Detection is not available for this apparatus yet.",
+        UNREADABLE_FRAME: "The frame could not be read.",
+        FRAME_TOO_LARGE: "The frame is too large to analyse.",
+      },
+    },
     source: {
       local: "Video for the frame",
       pick: "Choose a video file",
