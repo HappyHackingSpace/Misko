@@ -105,6 +105,17 @@ denenemeyen bir başarısızlık işi hemen bitirir. Her çağrı denemesini
 belirttiği için kiralamasını yitiren bir işçi, işi devralan işçinin
 çalışmasının üzerine yazamaz.
 
+## Kalibrasyon önerileri
+
+İşçiler kalibrasyon önerilerini de yanıtlar. Panel tek bir referans kareyi
+(JPEG veya PNG, en fazla 700 KiB) `POST /api/calibration-proposals` ile
+yükler; sırada iş yoksa işçi desteklediği bir paradigma sürümüne ait öneriyi
+`POST /api/worker/proposals/claim` ile kiralar (kare yanıtta gelir) ve tespiti
+denemesini belirterek `POST /api/worker/proposals/{id}/result` ile döner.
+Kiralama 2 dakika sürer; dolan kiralama en fazla 3 kez yeniden alınır. Öneri
+yalnızca bir öneridir: araştırmacı her noktayı onaylar ve kalibrasyon
+yollarıyla kaydeder. Öneriler bir gün sonra silinir.
+
 ## Depolama
 
 Videolar ve çıktılar veritabanında değil, nesne depolamada durur: API'nin
