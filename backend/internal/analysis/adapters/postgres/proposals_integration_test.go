@@ -34,6 +34,9 @@ func TestProposalsQueueLeaseAndExpire(t *testing.T) {
 	}
 
 	claim := func(at time.Time) (domain.Proposal, error) {
+		if err := store.FailExpiredProposals(ctx, at); err != nil {
+			return domain.Proposal{}, err
+		}
 		p, err := store.ClaimNextProposal(ctx, w.Capabilities, at)
 		if err != nil {
 			return p, err

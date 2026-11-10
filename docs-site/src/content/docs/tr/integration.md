@@ -112,7 +112,7 @@ belirttiği için kiralamasını yitiren bir işçi, işi devralan işçinin
 yükler; sırada iş yoksa işçi desteklediği bir paradigma sürümüne ait öneriyi
 `POST /api/worker/proposals/claim` ile kiralar (kare yanıtta gelir) ve tespiti
 denemesini belirterek `POST /api/worker/proposals/{id}/result` ile döner.
-Kiralama 2 dakika sürer; dolan kiralama en fazla 3 kez yeniden alınır. Öneri
+Kiralama 2 dakika sürer; dolan kiralama yeniden alınır, toplamda en fazla 3 kez. Öneri
 yalnızca bir öneridir: araştırmacı her noktayı onaylar ve kalibrasyon
 yollarıyla kaydeder. Öneriler bir gün sonra silinir.
 

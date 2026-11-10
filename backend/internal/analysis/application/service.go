@@ -176,8 +176,10 @@ type Store interface {
 	// Proposal and LockProposal return ErrProposalNotFound for an unknown id.
 	Proposal(ctx context.Context, id string) (domain.Proposal, error)
 	LockProposal(ctx context.Context, id string) (domain.Proposal, error)
-	// ClaimNextProposal fails proposals out of attempts, then locks the oldest
-	// claimable one for the capabilities, or returns ErrNoJob.
+	// FailExpiredProposals ends proposals whose last attempt's lease expired.
+	FailExpiredProposals(ctx context.Context, now time.Time) error
+	// ClaimNextProposal locks the oldest claimable proposal for the
+	// capabilities, or returns ErrNoJob.
 	ClaimNextProposal(ctx context.Context, capabilities []domain.Capability, now time.Time) (domain.Proposal, error)
 	UpdateProposal(ctx context.Context, p domain.Proposal) (domain.Proposal, error)
 }

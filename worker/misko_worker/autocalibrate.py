@@ -46,6 +46,8 @@ MIN_AREA_FRACTION = 0.05
 # Detections scoring below this are discarded: the frame holds no convincing
 # rectangle (round arenas, heavy occlusion, featureless frames).
 MIN_CONFIDENCE = 0.6
+# The panel sends frames of at most 1920 px; this leaves room for a 4K frame.
+MAX_FRAME_PIXELS = 3840 * 2160
 # Hull vertices kept before the exhaustive corner search.
 _MAX_HULL_VERTICES = 12
 # Hull points this close to the frame edge count as cut off by the camera.
@@ -134,7 +136,11 @@ def propose_from_frame(proposal: dict) -> dict:
     apparatus is not found or has no detector."""
     try:
         with av.open(io.BytesIO(base64.b64decode(proposal["frame"]))) as container:
-            image = next(container.decode(video=0)).to_ndarray(format="rgb24")
+            frame = next(container.decode(video=0))
+            # A small file can declare huge dimensions; checked before the pixels are allocated.
+            if frame.width * frame.height > MAX_FRAME_PIXELS:
+                return {"detected": False, "reason": "FRAME_TOO_LARGE"}
+            image = frame.to_ndarray(format="rgb24")
     except (av.error.FFmpegError, StopIteration, KeyError, ValueError):
         return {"detected": False, "reason": "UNREADABLE_FRAME"}
     height, width = image.shape[:2]

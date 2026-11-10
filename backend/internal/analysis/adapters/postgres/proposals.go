@@ -55,10 +55,14 @@ func (s *Store) LockProposal(ctx context.Context, id string) (domain.Proposal, e
 	return toProposal(row)
 }
 
-func (s *Store) ClaimNextProposal(ctx context.Context, capabilities []domain.Capability, now time.Time) (domain.Proposal, error) {
+func (s *Store) FailExpiredProposals(ctx context.Context, now time.Time) error {
 	if err := s.queries.FailExpiredProposals(ctx, now); err != nil {
-		return domain.Proposal{}, fmt.Errorf("fail expired proposals: %w", err)
+		return fmt.Errorf("fail expired proposals: %w", err)
 	}
+	return nil
+}
+
+func (s *Store) ClaimNextProposal(ctx context.Context, capabilities []domain.Capability, now time.Time) (domain.Proposal, error) {
 	row, err := s.queries.ClaimNextProposal(ctx, sqlcgen.ClaimNextProposalParams{Now: now, Capabilities: capabilityKeys(capabilities)})
 	if err != nil {
 		return domain.Proposal{}, translate(err, application.ErrNoJob, "claim proposal")
