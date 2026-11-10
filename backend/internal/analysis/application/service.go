@@ -34,6 +34,7 @@ var (
 	ErrObjectNotFound        = errors.New("stored object not found")
 	ErrInvalidOutput         = errors.New("outputs need a known kind, a video or data content type, a size within the limit and a base64 CRC32C")
 	ErrStorageNotConfigured  = errors.New("video storage is not configured")
+	ErrProposalNotFound      = errors.New("calibration proposal not found")
 )
 
 type SignedRequest struct {
@@ -170,6 +171,17 @@ type Store interface {
 	RecordQC(ctx context.Context, j domain.Job, qc QC) error
 	// Published returns the stored results of the jobs by id.
 	Published(ctx context.Context, jobIDs []string) (map[string]Published, error)
+	CreateProposal(ctx context.Context, p domain.Proposal) (domain.Proposal, error)
+	DeleteProposalsBefore(ctx context.Context, before time.Time) error
+	// Proposal and LockProposal return ErrProposalNotFound for an unknown id.
+	Proposal(ctx context.Context, id string) (domain.Proposal, error)
+	LockProposal(ctx context.Context, id string) (domain.Proposal, error)
+	// FailExpiredProposals ends proposals whose last attempt's lease expired.
+	FailExpiredProposals(ctx context.Context, now time.Time) error
+	// ClaimNextProposal locks the oldest claimable proposal for the
+	// capabilities, or returns ErrNoJob.
+	ClaimNextProposal(ctx context.Context, capabilities []domain.Capability, now time.Time) (domain.Proposal, error)
+	UpdateProposal(ctx context.Context, p domain.Proposal) (domain.Proposal, error)
 }
 
 type Settings struct {

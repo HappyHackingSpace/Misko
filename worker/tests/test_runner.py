@@ -4,13 +4,16 @@ Storage signed URLs. This proves the protocol, not real GCS behavior."""
 from __future__ import annotations
 
 import base64
+import io
 import json
 import logging
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+import av
 import google_crc32c
+import numpy as np
 import pytest
 
 from misko_worker import ALGORITHM_VERSION, storage
@@ -28,6 +31,8 @@ class FakeCloud:
         self.objects: dict[str, bytearray] = {}
         self.results: list[dict] = []
         self.failures: list[dict] = []
+        self.proposals: list[dict] = []
+        self.proposal_results: list[tuple[str, dict]] = []
         self.heartbeats = 0
         self.stale = False
         self.source_status = 0
@@ -95,7 +100,15 @@ class FakeCloud:
                     return
                 body = json.loads(raw)
                 parts = self.path.strip("/").split("/")
-                if self.path == "/api/worker/claim":
+                if self.path == "/api/worker/proposals/claim":
+                    if server.proposals:
+                        self.reply(200, server.proposals.pop(0))
+                    else:
+                        self.reply(204)
+                elif self.path.startswith("/api/worker/proposals/"):
+                    server.proposal_results.append((parts[3], body))
+                    self.reply(200, {"status": "SUCCEEDED"})
+                elif self.path == "/api/worker/claim":
                     if server.jobs:
                         self.reply(200, server.jobs.pop(0))
                     else:
@@ -264,3 +277,41 @@ def test_uploads_resume_in_chunks(tmp_path: Path, monkeypatch) -> None:
     storage.upload(signed, path)
     assert bytes(cloud.objects["blob"]) == data
     assert storage.crc32c_base64(path) == crc(data)
+
+
+def test_without_jobs_a_calibration_proposal_is_answered(tmp_path: Path) -> None:
+    cloud = FakeCloud(b"", [])
+    frame = arena_jpeg()
+    cloud.proposals = [
+        {"id": "p-1", "attempt": 2, "paradigmKey": "NOVEL_OBJECT", "paradigmVersion": 1,
+         "parameters": {"arena_width_cm": 40, "arena_height_cm": 40}, "frameType": "image/jpeg", "frame": base64.b64encode(frame).decode()},
+        {"id": "p-2", "attempt": 1, "paradigmKey": "POLE", "paradigmVersion": 1, "parameters": {}, "frameType": "image/jpeg",
+         "frame": base64.b64encode(frame).decode()},
+        {"id": "p-3", "attempt": 1, "paradigmKey": "NOVEL_OBJECT", "paradigmVersion": 1, "parameters": {"arena_width_cm": 40, "arena_height_cm": 40},
+         "frameType": "image/png", "frame": base64.b64encode(b"not an image").decode()},
+    ]
+    api = WorkerApi(f"http://127.0.0.1:{cloud.port}", TOKEN)
+    assert [run_once(api, tmp_path) for _ in range(4)] == [True, True, True, False]
+    (first, detected), (_, pole), (_, broken) = cloud.proposal_results
+    assert first == "p-1" and detected["attempt"] == 2
+    result = detected["result"]
+    assert result["detected"] and (result["frameWidth"], result["frameHeight"]) == (synthetic.WIDTH, synthetic.HEIGHT)
+    assert [p["worldX"] for p in result["proposal"]["fitPoints"]] == [0, 40, 40, 0]
+    assert pole["result"] == {"detected": False, "reason": "UNSUPPORTED_APPARATUS"}
+    assert broken["result"] == {"detected": False, "reason": "UNREADABLE_FRAME"}
+
+
+def arena_jpeg() -> bytes:
+    """The tilted bright arena of the autocalibrate tests as one JPEG frame."""
+    from tests.test_autocalibrate import ARENA_CORNERS, arena_frames
+
+    image = arena_frames(ARENA_CORNERS, count=1)[0]
+    buffer = io.BytesIO()
+    with av.open(buffer, "w", format="image2pipe") as container:
+        stream = container.add_stream("mjpeg")
+        stream.width, stream.height, stream.pix_fmt = image.shape[1], image.shape[0], "yuvj420p"
+        for packet in stream.encode(av.VideoFrame.from_ndarray(np.dstack([image] * 3), format="rgb24")):
+            container.mux(packet)
+        for packet in stream.encode():
+            container.mux(packet)
+    return buffer.getvalue()

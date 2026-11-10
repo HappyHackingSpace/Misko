@@ -23,6 +23,8 @@ there is no OpenCV here.
 from __future__ import annotations
 
 import argparse
+import base64
+import io
 import itertools
 import json
 import math
@@ -31,6 +33,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+import av
 import numpy as np
 from scipy import ndimage
 
@@ -43,6 +46,8 @@ MIN_AREA_FRACTION = 0.05
 # Detections scoring below this are discarded: the frame holds no convincing
 # rectangle (round arenas, heavy occlusion, featureless frames).
 MIN_CONFIDENCE = 0.6
+# The panel sends frames of at most 1920 px; this leaves room for a 4K frame.
+MAX_FRAME_PIXELS = 3840 * 2160
 # Hull vertices kept before the exhaustive corner search.
 _MAX_HULL_VERTICES = 12
 # Hull points this close to the frame edge count as cut off by the camera.
@@ -121,9 +126,38 @@ def run(video: Path, width_cm: float, height_cm: float, samples: int = 9) -> dic
     detection = detect_arena(sample_frames(video, samples))
     if detection is None:
         return None
+    return _arena_result(info.width, info.height, detection, width_cm, height_cm)
+
+
+def propose_from_frame(proposal: dict) -> dict:
+    """The answer to a calibration proposal the API queued: detection on the
+    one reference frame the panel uploaded, in that frame's pixels (the panel
+    scales them to the video). {"detected": false, "reason": ...} when the
+    apparatus is not found or has no detector."""
+    try:
+        with av.open(io.BytesIO(base64.b64decode(proposal["frame"]))) as container:
+            frame = next(container.decode(video=0))
+            # A small file can declare huge dimensions; checked before the pixels are allocated.
+            if frame.width * frame.height > MAX_FRAME_PIXELS:
+                return {"detected": False, "reason": "FRAME_TOO_LARGE"}
+            image = frame.to_ndarray(format="rgb24")
+    except (av.error.FFmpegError, StopIteration, KeyError, ValueError):
+        return {"detected": False, "reason": "UNREADABLE_FRAME"}
+    height, width = image.shape[:2]
+    parameters = proposal.get("parameters") or {}
+    if proposal.get("paradigmKey") == "NOVEL_OBJECT":
+        box = parameters.get("arena_width_cm"), parameters.get("arena_height_cm")
+        detection = detect_arena([image]) if all(box) else None
+        if detection is None:
+            return {"detected": False, "reason": "NO_ARENA_DETECTED"}
+        return {"detected": True, **_arena_result(width, height, detection, *box)}
+    return {"detected": False, "reason": "UNSUPPORTED_APPARATUS"}
+
+
+def _arena_result(frame_width: int, frame_height: int, detection: ArenaDetection, width_cm: float, height_cm: float) -> dict:
     return {
-        "frameWidth": info.width,
-        "frameHeight": info.height,
+        "frameWidth": frame_width,
+        "frameHeight": frame_height,
         "corners": [{"x": x, "y": y} for x, y in detection.corners],
         "confidence": detection.confidence,
         "rectangularity": detection.rectangularity,

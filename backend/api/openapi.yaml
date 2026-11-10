@@ -2536,6 +2536,76 @@ paths:
         '401': {$ref: '#/components/responses/Problem'}
         '404': {$ref: '#/components/responses/Problem'}
         '409': {$ref: '#/components/responses/Problem'}
+  /api/worker/proposals/claim:
+    post:
+      operationId: claimCalibrationProposal
+      summary: Lease the oldest calibration proposal for a supported paradigm version, with its frame (worker token)
+      description: Answers 204 when none is queued. A lease lasts 2 minutes; an expired one is claimed again, at most 3 attempts.
+      security: [{worker: []}]
+      requestBody: {required: true, content: {application/json: {schema: {type: object, additionalProperties: false}}}}
+      responses:
+        '200': {description: Claimed, content: {application/json: {schema: {$ref: '#/components/schemas/ClaimedCalibrationProposal'}}}}
+        '204': {description: Nothing to claim}
+        '401': {$ref: '#/components/responses/Problem'}
+  /api/worker/proposals/{id}/result:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    post:
+      operationId: completeCalibrationProposal
+      summary: Store the detection result of the current attempt (worker token)
+      security: [{worker: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [attempt, result]
+              properties:
+                attempt: {type: integer, minimum: 1}
+                result: {type: object, description: 'The detection as JSON, at most 64 KiB; {"detected": false, "reason": ...} when nothing was found'}
+      responses:
+        '200': {description: Stored, content: {application/json: {schema: {$ref: '#/components/schemas/CalibrationProposal'}}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/calibration-proposals:
+    post:
+      operationId: requestCalibrationProposal
+      summary: Queue apparatus detection on a reference frame (apparatus:write, test:run or trial:run)
+      description: >-
+        A worker proposes calibration points for the frame. The proposal is never saved as a calibration: the
+        researcher confirms every point and saves through the calibration routes. Proposals are deleted after a day.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [paradigmKey, paradigmVersion, frame]
+              properties:
+                paradigmKey: {type: string}
+                paradigmVersion: {type: integer, minimum: 1}
+                parameters: {type: object, additionalProperties: {type: number}}
+                frame: {type: string, format: byte, description: Base64 JPEG or PNG of at most 700 KiB}
+      responses:
+        '202': {description: Queued, content: {application/json: {schema: {$ref: '#/components/schemas/CalibrationProposal'}}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+  /api/calibration-proposals/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      operationId: getCalibrationProposal
+      summary: A calibration proposal with the worker's result once done (*:read)
+      responses:
+        '200': {description: Proposal, content: {application/json: {schema: {$ref: '#/components/schemas/CalibrationProposal'}}}}
+        '401': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
   /api/experiments/{id}/report:
     parameters:
       - $ref: '#/components/parameters/ID'
@@ -3573,6 +3643,29 @@ components:
         notes: {type: [string, 'null']}
         recordedBy: {type: string, format: uuid}
         createdAt: {type: string, format: date-time}
+    CalibrationProposal:
+      type: object
+      required: [id, paradigmKey, paradigmVersion, status, result, failureReason, createdAt, finishedAt]
+      properties:
+        id: {type: string, format: uuid}
+        paradigmKey: {type: string}
+        paradigmVersion: {type: integer}
+        status: {type: string, enum: [QUEUED, RUNNING, SUCCEEDED, FAILED]}
+        result: {type: [object, 'null'], description: The worker's detection once SUCCEEDED}
+        failureReason: {type: [string, 'null']}
+        createdAt: {type: string, format: date-time}
+        finishedAt: {type: [string, 'null'], format: date-time}
+    ClaimedCalibrationProposal:
+      type: object
+      required: [id, attempt, paradigmKey, paradigmVersion, parameters, frameType, frame]
+      properties:
+        id: {type: string, format: uuid}
+        attempt: {type: integer, minimum: 1}
+        paradigmKey: {type: string}
+        paradigmVersion: {type: integer}
+        parameters: {type: object, additionalProperties: {type: number}}
+        frameType: {type: string, enum: [image/jpeg, image/png]}
+        frame: {type: string, format: byte}
     TrialInput:
       type: object
       additionalProperties: false

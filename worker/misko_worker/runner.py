@@ -10,6 +10,7 @@ from typing import Any
 
 from . import ALGORITHM_VERSION, TIME_MAPPING_VERSION
 from .api import ApiError, WorkerApi
+from .autocalibrate import propose_from_frame
 from .pipeline import NonRetryable, analyze, check_supported, trajectory_document
 from .storage import StorageError, crc32c_base64, download, upload
 from .tracking import TrackerSettings
@@ -46,10 +47,11 @@ class _Heartbeat(threading.Thread):
 
 
 def run_once(api: WorkerApi, work_dir: Path, heartbeat_s: float = 60.0, settings: TrackerSettings = TrackerSettings()) -> bool:
-    """Processes one job. Returns False when there was nothing to claim."""
+    """Processes one job, or one calibration proposal when no job is queued.
+    Returns False when there was nothing to claim."""
     job = api.claim()
     if job is None:
-        return False
+        return propose_once(api)
     run = job["run"]
     run_id, attempt = run["id"], run["attempt"]
     subject = (job.get("testSubject") or {}).get("id")
@@ -82,6 +84,26 @@ def run_once(api: WorkerApi, work_dir: Path, heartbeat_s: float = 60.0, settings
         _report(api, run_id, attempt, f"WORKER_ERROR: {type(error).__name__}", retryable=True)
     finally:
         beat.stop()
+    return True
+
+
+def propose_once(api: WorkerApi) -> bool:
+    """Detects the apparatus for one calibration proposal. A proposal whose
+    answer is refused (a lost lease) is left to its next attempt."""
+    proposal = api.claim_proposal()
+    if proposal is None:
+        return False
+    proposal_id, attempt = proposal["id"], proposal["attempt"]
+    try:
+        result = propose_from_frame(proposal)
+    except Exception as error:  # noqa: BLE001 - a crash is an answer the researcher can act on
+        log.exception("proposal crashed", extra={"run": proposal_id, "attempt": attempt})
+        result = {"detected": False, "reason": f"WORKER_ERROR: {type(error).__name__}"}
+    try:
+        api.complete_proposal(proposal_id, attempt, result)
+        log.info("proposal finished", extra={"run": proposal_id, "attempt": attempt, "status": result.get("reason", "DETECTED")})
+    except ApiError as error:
+        log.warning("proposal answer refused", extra={"run": proposal_id, "attempt": attempt, "code": error.code})
     return True
 
 

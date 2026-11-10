@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import base64
+import io
 import math
 from pathlib import Path
 
+import av
 import numpy as np
 
 from misko_worker import autocalibrate
@@ -119,3 +122,15 @@ def test_cli_reports_no_arena(tmp_path: Path, capsys) -> None:
     code = autocalibrate.main([str(source), "--width-cm", "40", "--height-cm", "40"])
     assert code == 1
     assert "NO_ARENA_DETECTED" in capsys.readouterr().out
+
+
+def test_a_frame_declaring_huge_dimensions_is_refused_before_decoding() -> None:
+    buffer = io.BytesIO()
+    with av.open(buffer, "w", format="image2pipe") as container:
+        stream = container.add_stream("png")
+        stream.width, stream.height, stream.pix_fmt = 4000, 2400, "gray"
+        for packet in stream.encode(av.VideoFrame.from_ndarray(np.zeros((2400, 4000), np.uint8), format="gray")):
+            container.mux(packet)
+    frame = base64.b64encode(buffer.getvalue()).decode()
+    result = autocalibrate.propose_from_frame({"paradigmKey": "NOVEL_OBJECT", "parameters": {"arena_width_cm": 40, "arena_height_cm": 40}, "frame": frame})
+    assert result == {"detected": False, "reason": "FRAME_TOO_LARGE"}

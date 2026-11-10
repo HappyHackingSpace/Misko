@@ -51,6 +51,12 @@ class WorkerApi:
     def fail(self, run_id: str, attempt: int, reason: str, retryable: bool) -> dict[str, Any]:
         return self._post(f"/api/worker/runs/{run_id}/failure", {"attempt": attempt, "reason": reason[:2000], "retryable": retryable})
 
+    def claim_proposal(self) -> dict[str, Any] | None:
+        return self._post("/api/worker/proposals/claim", {})
+
+    def complete_proposal(self, proposal_id: str, attempt: int, result: dict[str, Any]) -> dict[str, Any]:
+        return self._post(f"/api/worker/proposals/{proposal_id}/result", {"attempt": attempt, "result": result})
+
     def _post(self, path: str, body: dict[str, Any]) -> Any:
         request = urllib.request.Request(
             self._base + path,

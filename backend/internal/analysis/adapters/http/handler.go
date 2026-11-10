@@ -29,6 +29,9 @@ var failures = []httpjson.Failure{
 	{Err: application.ErrStorageNotConfigured, Status: http.StatusServiceUnavailable, Code: "media.storageNotConfigured"},
 	{Err: application.ErrJobNotFound, Status: http.StatusNotFound, Code: "analysis.jobNotFound"},
 	{Err: application.ErrJobNotSucceeded, Status: http.StatusConflict, Code: "analysis.jobNotSucceeded"},
+	{Err: application.ErrProposalNotFound, Status: http.StatusNotFound, Code: "analysis.proposalNotFound"},
+	{Err: domain.ErrInvalidProposal, Status: http.StatusBadRequest, Code: "analysis.invalidProposal"},
+	{Err: domain.ErrInvalidProposalResult, Status: http.StatusBadRequest, Code: "analysis.invalidProposalResult"},
 	{Err: application.ErrOutputNotFound, Status: http.StatusNotFound, Code: "analysis.outputNotFound"},
 	{Err: application.ErrSourceNotFound, Status: http.StatusNotFound, Code: "analysis.sourceNotFound"},
 	{Err: application.ErrUnknownOutput, Status: http.StatusBadRequest, Code: "analysis.unknownOutput"},
@@ -61,6 +64,8 @@ func Register(mux *http.ServeMux, service *application.Service, authenticate fun
 	mux.HandleFunc("GET /api/analysis/jobs/{jobId}", h.user(h.job))
 	mux.HandleFunc("GET /api/analysis/jobs/{jobId}/video-pair", h.user(h.videoPair))
 	mux.HandleFunc("GET /api/analysis/jobs/{jobId}/outputs/{kind}/read-url", h.user(h.outputURL))
+	mux.HandleFunc("POST /api/calibration-proposals", h.user(h.requestProposal))
+	mux.HandleFunc("GET /api/calibration-proposals/{id}", h.user(h.proposal))
 	// Deprecated names of the two job reads, kept while the panel moves to the job routes.
 	mux.HandleFunc("GET /api/analysis-runs/{jobId}", h.user(h.job))
 	mux.HandleFunc("GET /api/analysis-runs/{jobId}/video-pair", h.user(h.videoPair))
@@ -71,6 +76,8 @@ func Register(mux *http.ServeMux, service *application.Service, authenticate fun
 	mux.HandleFunc("POST /api/worker/runs/{runId}/outputs", h.worker(h.output))
 	mux.HandleFunc("POST /api/worker/runs/{runId}/result", h.worker(h.submit))
 	mux.HandleFunc("POST /api/worker/runs/{runId}/failure", h.worker(h.fail))
+	mux.HandleFunc("POST /api/worker/proposals/claim", h.worker(h.claimProposal))
+	mux.HandleFunc("POST /api/worker/proposals/{id}/result", h.worker(h.completeProposal))
 }
 
 func (h handler) user(next func(http.ResponseWriter, *http.Request, access.Actor)) http.HandlerFunc {
