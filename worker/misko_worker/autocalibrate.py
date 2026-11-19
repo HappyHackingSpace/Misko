@@ -406,8 +406,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--tank-diameter-cm", type=float, help="MWM: internal tank diameter, instead of the arena size")
     parser.add_argument("--samples", type=int, default=9, help="frames sampled over the video (default: 9)")
     args = parser.parse_args(argv)
-    box = args.width_cm is not None and args.height_cm is not None
-    if box == (args.tank_diameter_cm is not None):
+    sizes = (args.width_cm, args.height_cm)
+    box = all(v is not None for v in sizes)
+    partial = any(v is not None for v in sizes) and not box
+    if partial or box == (args.tank_diameter_cm is not None):
         parser.error("give either --width-cm and --height-cm, or --tank-diameter-cm")
     samples = max(args.samples, 1)
     try:

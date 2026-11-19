@@ -149,3 +149,5 @@ def test_cli_needs_one_apparatus_size(capsys) -> None:
         autocalibrate.main(["v.mp4", "--width-cm", "40", "--height-cm", "40", "--tank-diameter-cm", "100"])
     with pytest.raises(SystemExit):
         autocalibrate.main(["v.mp4"])
+    with pytest.raises(SystemExit):
+        autocalibrate.main(["v.mp4", "--width-cm", "40", "--tank-diameter-cm", "100"])
