@@ -89,6 +89,9 @@ type Catalog interface {
 	// parameters and the snapshot's zones; samples the engine rejects are
 	// domain.ErrInvalidTrajectory.
 	Evaluate(key string, version int, parameters map[string]float64, t domain.Track, zones []domain.Zone, durationUs int64) (domain.Computed, error)
+	// Occupancy maps a trajectory onto a grid of the arena floor; paradigms
+	// without one are ErrNoArenaFloor.
+	Occupancy(key string, version int, parameters map[string]float64, t domain.Track) (Occupancy, error)
 }
 
 // Tokens issues worker tokens and hashes them for storage and lookup.
