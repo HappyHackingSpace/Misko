@@ -158,13 +158,45 @@ pixels with a confidence and a calibration proposal in the arena frame:
 .venv/bin/python -m misko_worker.autocalibrate video.mp4 --width-cm 40 --height-cm 40
 ```
 
+For the MWM tank, give the diameter instead; the proposal pairs the tank's
+right, top, left and bottom wall points with east (r, 0), north (0, r), west
+and south of the tank-centred frame, north up on screen:
+
+```bash
+.venv/bin/python -m misko_worker.autocalibrate video.mp4 --tank-diameter-cm 120
+```
+
 The output is a PROPOSAL for the existing calibration flow, never a saved
 calibration: the fit points pair the detected corners with the arena corners,
 and the derived check points come from those same corners, so they cannot
 validate the fit — a researcher confirms or re-measures every point in the
 calibration UI before saving. Exit code 1 and `NO_ARENA_DETECTED` mean no
-convincing rectangle was found (round arenas, side views, heavy occlusion).
-Tested on synthetic frames only; it does not model lens distortion.
+convincing rectangle (or tank) was found (side views, heavy occlusion).
+Besides synthetic frames, it was checked on one real recording: the top-view
+open field `Videos/01022023_001_16236-62756.mp4` of Zenodo record
+[11235915](https://zenodo.org/records/11235915) (CC BY 4.0, 1280 x 1024, a
+box with bedding and a wide-angle lens). Its corners land within 13 to 18 px
+of the floor corners read by hand, about 1 to 1.5 cm; bedding as bright as the
+walls is found by its texture. It does not model lens distortion, so mid-edge
+check points stay the researcher's to measure.
+
+### Tracking jitter report
+
+`misko_worker/jitter.py` measures what the tracker counts as movement while the
+subject is still (issue #242). Save the job with
+`GET /api/analysis/jobs/{jobId}`, pick a stretch of at least 10 s where the
+subject is visibly still (in seconds from the clip start), and run:
+
+```bash
+.venv/bin/python -m misko_worker.jitter video.mp4 job.json --still 42 55
+```
+
+It prints JSON per centroid method (`weighted`, the published one; `plain`,
+the unweighted blob centroid; `median3`, the median of the last three
+positions): step-length percentiles and histogram, apparent path in cm per
+minute and speed, and zone changes per zone. Pick a stretch near a zone edge to
+count false zone changes. The job names the recording, clip and calibration,
+so the report can be repeated.
 
 ## Known limits
 

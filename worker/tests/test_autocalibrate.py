@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import base64
+import io
 import math
 from pathlib import Path
 
+import av
 import numpy as np
+import pytest
 
 from misko_worker import autocalibrate
 from tests import scenes, synthetic
@@ -119,3 +123,86 @@ def test_cli_reports_no_arena(tmp_path: Path, capsys) -> None:
     code = autocalibrate.main([str(source), "--width-cm", "40", "--height-cm", "40"])
     assert code == 1
     assert "NO_ARENA_DETECTED" in capsys.readouterr().out
+
+
+# MWM: the rendered tank with ripples, glints and the experimenter's hand. The
+# frame is tank-centred with north up on screen, so each proposed wall point
+# must land near the true projection of its compass point.
+def test_run_tank_on_a_rendered_mwm_video(tmp_path: Path) -> None:
+    scene, _ = scenes.mwm()
+    source = tmp_path / "mwm.mp4"
+    synthetic.render(source, synthetic.regular(2.0), scenes.swim, scene=scene)
+
+    result = autocalibrate.run_tank(source, 2 * scenes.MWM_RADIUS, samples=5)
+    assert result is not None and result["confidence"] >= autocalibrate.MIN_CONFIDENCE
+    proposal = result["proposal"]
+    assert proposal["measurementPlane"] == "WATER_SURFACE"
+    for point in proposal["fitPoints"]:
+        ex, ey = synthetic.project(point["worldX"], point["worldY"], scenes.MWM_CM_TO_PX)
+        assert math.hypot(point["pixelX"] - ex, point["pixelY"] - ey) <= 5.0, point
+    assert [(p["worldX"], p["worldY"]) for p in proposal["fitPoints"]] == [(50, 0), (0, 50), (-50, 0), (0, -50)]
+
+
+def test_a_rectangular_arena_is_not_a_tank() -> None:
+    assert autocalibrate.detect_tank(arena_frames(ARENA_CORNERS)) is None
+
+
+def test_cli_needs_one_apparatus_size(capsys) -> None:
+    with pytest.raises(SystemExit):
+        autocalibrate.main(["v.mp4", "--width-cm", "40", "--height-cm", "40", "--tank-diameter-cm", "100"])
+    with pytest.raises(SystemExit):
+        autocalibrate.main(["v.mp4"])
+    with pytest.raises(SystemExit):
+        autocalibrate.main(["v.mp4", "--width-cm", "40", "--tank-diameter-cm", "100"])
+
+
+# Bedding: the floor is as bright as its surroundings and only its texture
+# sets it apart, as on a real open-field box with litter.
+def test_detects_a_textured_floor_as_bright_as_its_surround():
+    cm_to_px = _homography([(0, 0), (SIDE_CM, 0), (SIDE_CM, SIDE_CM), (0, SIDE_CM)], ARENA_CORNERS)
+    to_cm = np.linalg.inv(cm_to_px)
+    rows, cols = np.mgrid[0:HEIGHT, 0:WIDTH]
+    px, py = cols + 0.5, rows + 0.5
+    w = to_cm[2, 0] * px + to_cm[2, 1] * py + to_cm[2, 2]
+    x = (to_cm[0, 0] * px + to_cm[0, 1] * py + to_cm[0, 2]) / w
+    y = (to_cm[1, 0] * px + to_cm[1, 1] * py + to_cm[1, 2]) / w
+    inside = (x >= 0) & (x <= SIDE_CM) & (y >= 0) & (y <= SIDE_CM)
+    rng = np.random.default_rng(5)
+    litter = rng.normal(0, 35, (HEIGHT, WIDTH))
+    frames = []
+    for _ in range(5):
+        frame = 140 + rng.normal(0, 2, (HEIGHT, WIDTH))
+        frame[inside] += litter[inside]
+        frames.append(np.clip(frame, 0, 255).astype(np.uint8))
+    found = autocalibrate.detect_arena(frames)
+    assert found is not None
+    assert_corners_close(found.corners, ARENA_CORNERS, 6.0)
+
+
+def test_a_frame_declaring_huge_dimensions_is_refused_before_decoding() -> None:
+    buffer = io.BytesIO()
+    with av.open(buffer, "w", format="image2pipe") as container:
+        stream = container.add_stream("png")
+        stream.width, stream.height, stream.pix_fmt = 4000, 2400, "gray"
+        for packet in stream.encode(av.VideoFrame.from_ndarray(np.zeros((2400, 4000), np.uint8), format="gray")):
+            container.mux(packet)
+    frame = base64.b64encode(buffer.getvalue()).decode()
+    result = autocalibrate.propose_from_frame({"paradigmKey": "NOVEL_OBJECT", "parameters": {"arena_width_cm": 40, "arena_height_cm": 40}, "frame": frame})
+    assert result == {"detected": False, "reason": "FRAME_TOO_LARGE"}
+
+
+def test_a_tank_frame_gets_an_mwm_proposal() -> None:
+    rows, cols = np.mgrid[0:HEIGHT, 0:WIDTH]
+    image = np.where((cols + 0.5 - 160) ** 2 / 100**2 + (rows + 0.5 - 120) ** 2 / 90**2 <= 1, 70, 190).astype(np.uint8)
+    buffer = io.BytesIO()
+    with av.open(buffer, "w", format="image2pipe") as container:
+        stream = container.add_stream("png")
+        stream.width, stream.height, stream.pix_fmt = WIDTH, HEIGHT, "gray"
+        for packet in stream.encode(av.VideoFrame.from_ndarray(image, format="gray")):
+            container.mux(packet)
+    frame = base64.b64encode(buffer.getvalue()).decode()
+    result = autocalibrate.propose_from_frame({"paradigmKey": "MWM", "parameters": {"tank_diameter_cm": 120}, "frame": frame})
+    assert result["detected"] and result["proposal"]["measurementPlane"] == "WATER_SURFACE"
+    right = result["proposal"]["fitPoints"][0]
+    assert (right["worldX"], right["worldY"]) == (60, 0) and abs(right["pixelX"] - 260) < 3
+    assert autocalibrate.propose_from_frame({"paradigmKey": "MWM", "parameters": {}, "frame": frame}) == {"detected": False, "reason": "NO_TANK_DETECTED"}
