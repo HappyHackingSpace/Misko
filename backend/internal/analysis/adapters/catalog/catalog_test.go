@@ -150,3 +150,15 @@ func TestCalibratedZonesComeFromTheCalibration(t *testing.T) {
 		t.Fatal("a missing required zone must not be evaluated")
 	}
 }
+
+// Occupancy is reported in seconds over the paradigm's arena floor; side views have none.
+func TestOccupancyMapsTheArenaFloor(t *testing.T) {
+	track := domain.Track{Samples: []domain.Sample{{TUs: 0, X: 1, Y: 1, Tracked: true}, {TUs: 250_000, X: 1, Y: 1, Tracked: true}}}
+	o, err := New().Occupancy("NOVEL_OBJECT", 1, map[string]float64{"arena_width_cm": 80, "arena_height_cm": 40}, track)
+	if err != nil || o.CellCm != 2 || o.Columns != 40 || o.Rows != 20 || o.Seconds[0] != 0.25 {
+		t.Fatalf("%+v %v", o, err)
+	}
+	if _, err := New().Occupancy("POLE", 1, nil, track); !errors.Is(err, application.ErrNoArenaFloor) {
+		t.Fatalf("pole: %v", err)
+	}
+}
