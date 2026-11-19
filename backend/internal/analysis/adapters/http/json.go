@@ -326,6 +326,15 @@ func toVideoPair(l application.VideoPairLinks) videoPairJSON {
 		l.Pair.SourceOffsetUs, l.Pair.OutputOffsetUs, l.Pair.TimeMappingVersion}
 }
 
+type occupancyJSON struct {
+	MinXCm  float64   `json:"minXCm"`
+	MinYCm  float64   `json:"minYCm"`
+	CellCm  float64   `json:"cellCm"`
+	Columns int       `json:"columns"`
+	Rows    int       `json:"rows"`
+	Seconds []float64 `json:"seconds"`
+}
+
 type readLinkJSON struct {
 	URL       string    `json:"url"`
 	ExpiresAt time.Time `json:"expiresAt"`

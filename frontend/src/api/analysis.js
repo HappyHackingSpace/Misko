@@ -21,6 +21,8 @@ export const jobs = {
   videoPair: (jobId) => api(`/analysis/jobs/${jobId}/video-pair`),
   // A signed read of one output: ANALYZED_VIDEO, TRAJECTORY or THUMBNAIL.
   outputUrl: (jobId, kind) => api(`/analysis/jobs/${jobId}/outputs/${kind}/read-url`),
+  // Tracked seconds per cell of the arena floor, for the heatmap.
+  occupancy: (jobId) => api(`/analysis/jobs/${jobId}/occupancy`),
 };
 
 export const results = {
