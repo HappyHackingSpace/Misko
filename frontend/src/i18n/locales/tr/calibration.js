@@ -18,6 +18,7 @@ export default {
       noWorker: "Hiçbir işçi yanıt vermedi. Noktaları elle yerleştirin ya da daha sonra yeniden deneyin.",
       reasons: {
         NO_ARENA_DETECTED: "Bu karede arena bulunamadı. Zeminin tamamının göründüğü bir kare seçin ya da noktaları elle yerleştirin.",
+        NO_TANK_DETECTED: "Bu karede havuz bulunamadı. Havuzun tamamının göründüğü bir kare seçin ya da noktaları elle yerleştirin.",
         UNSUPPORTED_APPARATUS: "Bu düzenek için algılama henüz yok.",
         UNREADABLE_FRAME: "Kare okunamadı.",
         FRAME_TOO_LARGE: "Kare analiz için çok büyük.",

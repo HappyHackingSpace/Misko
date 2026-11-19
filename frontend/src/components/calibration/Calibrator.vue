@@ -168,7 +168,7 @@ function setPixel(group, index, { x, y }) {
 // points. They stay marked as proposed until the researcher moves or confirms
 // each one; check points are never proposed, since points derived from the
 // same detection cannot validate it.
-const DETECTABLE = ["NOVEL_OBJECT"];
+const DETECTABLE = ["NOVEL_OBJECT", "MWM"];
 const POLL_MS = 1000;
 const POLL_LIMIT = 90;
 const detecting = ref(false);
