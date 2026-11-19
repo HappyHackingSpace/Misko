@@ -158,12 +158,20 @@ pixels with a confidence and a calibration proposal in the arena frame:
 .venv/bin/python -m misko_worker.autocalibrate video.mp4 --width-cm 40 --height-cm 40
 ```
 
+For the MWM tank, give the diameter instead; the proposal pairs the tank's
+right, top, left and bottom wall points with east (r, 0), north (0, r), west
+and south of the tank-centred frame, north up on screen:
+
+```bash
+.venv/bin/python -m misko_worker.autocalibrate video.mp4 --tank-diameter-cm 120
+```
+
 The output is a PROPOSAL for the existing calibration flow, never a saved
 calibration: the fit points pair the detected corners with the arena corners,
 and the derived check points come from those same corners, so they cannot
 validate the fit — a researcher confirms or re-measures every point in the
 calibration UI before saving. Exit code 1 and `NO_ARENA_DETECTED` mean no
-convincing rectangle was found (round arenas, side views, heavy occlusion).
+convincing rectangle (or tank) was found (side views, heavy occlusion).
 Tested on synthetic frames only; it does not model lens distortion.
 
 ## Known limits
