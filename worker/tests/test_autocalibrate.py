@@ -189,3 +189,20 @@ def test_a_frame_declaring_huge_dimensions_is_refused_before_decoding() -> None:
     frame = base64.b64encode(buffer.getvalue()).decode()
     result = autocalibrate.propose_from_frame({"paradigmKey": "NOVEL_OBJECT", "parameters": {"arena_width_cm": 40, "arena_height_cm": 40}, "frame": frame})
     assert result == {"detected": False, "reason": "FRAME_TOO_LARGE"}
+
+
+def test_a_tank_frame_gets_an_mwm_proposal() -> None:
+    rows, cols = np.mgrid[0:HEIGHT, 0:WIDTH]
+    image = np.where((cols + 0.5 - 160) ** 2 / 100**2 + (rows + 0.5 - 120) ** 2 / 90**2 <= 1, 70, 190).astype(np.uint8)
+    buffer = io.BytesIO()
+    with av.open(buffer, "w", format="image2pipe") as container:
+        stream = container.add_stream("png")
+        stream.width, stream.height, stream.pix_fmt = WIDTH, HEIGHT, "gray"
+        for packet in stream.encode(av.VideoFrame.from_ndarray(image, format="gray")):
+            container.mux(packet)
+    frame = base64.b64encode(buffer.getvalue()).decode()
+    result = autocalibrate.propose_from_frame({"paradigmKey": "MWM", "parameters": {"tank_diameter_cm": 120}, "frame": frame})
+    assert result["detected"] and result["proposal"]["measurementPlane"] == "WATER_SURFACE"
+    right = result["proposal"]["fitPoints"][0]
+    assert (right["worldX"], right["worldY"]) == (60, 0) and abs(right["pixelX"] - 260) < 3
+    assert autocalibrate.propose_from_frame({"paradigmKey": "MWM", "parameters": {}, "frame": frame}) == {"detected": False, "reason": "NO_TANK_DETECTED"}

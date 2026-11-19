@@ -218,6 +218,12 @@ def propose_from_frame(proposal: dict) -> dict:
         if detection is None:
             return {"detected": False, "reason": "NO_ARENA_DETECTED"}
         return {"detected": True, **_arena_result(width, height, detection, *box)}
+    if proposal.get("paradigmKey") == "MWM":
+        diameter = parameters.get("tank_diameter_cm")
+        tank = detect_tank([image]) if diameter else None
+        if tank is None:
+            return {"detected": False, "reason": "NO_TANK_DETECTED"}
+        return {"detected": True, **_tank_result(width, height, tank, diameter)}
     return {"detected": False, "reason": "UNSUPPORTED_APPARATUS"}
 
 
@@ -241,9 +247,13 @@ def run_tank(video: Path, diameter_cm: float, samples: int = 9) -> dict | None:
     detection = detect_tank(sample_frames(video, samples))
     if detection is None:
         return None
+    return _tank_result(info.width, info.height, detection, diameter_cm)
+
+
+def _tank_result(frame_width: int, frame_height: int, detection: TankDetection, diameter_cm: float) -> dict:
     return {
-        "frameWidth": info.width,
-        "frameHeight": info.height,
+        "frameWidth": frame_width,
+        "frameHeight": frame_height,
         "center": {"x": detection.center[0], "y": detection.center[1]},
         "confidence": detection.confidence,
         "roundness": detection.roundness,
