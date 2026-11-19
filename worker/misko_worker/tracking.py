@@ -68,6 +68,8 @@ class Detection:
     py: float | None
     confidence: float
     area: int
+    # The blob's unweighted centroid, kept to compare centroid methods (jitter.py).
+    plain: tuple[float, float] | None = None
 
 
 def luminance(rgb: np.ndarray) -> np.ndarray:
@@ -182,6 +184,7 @@ def detect(
     blob = labels == best
     weights = np.where(blob, diff, 0).astype(np.float64)
     row, column = ndimage.center_of_mass(weights)
+    plain_row, plain_column = ndimage.center_of_mass(blob)
     contrast = float(diff[blob].mean())
     confidence = min(1.0, contrast / settings.full_contrast) * (area / float(areas.sum()))
-    return Detection(x0 + column + 0.5, y0 + row + 0.5, confidence, area)
+    return Detection(x0 + column + 0.5, y0 + row + 0.5, confidence, area, (x0 + plain_column + 0.5, y0 + plain_row + 0.5))

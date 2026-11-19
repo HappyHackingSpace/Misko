@@ -180,6 +180,24 @@ of the floor corners read by hand, about 1 to 1.5 cm; bedding as bright as the
 walls is found by its texture. It does not model lens distortion, so mid-edge
 check points stay the researcher's to measure.
 
+### Tracking jitter report
+
+`misko_worker/jitter.py` measures what the tracker counts as movement while the
+subject is still (issue #242). Save the job with
+`GET /api/analysis/jobs/{jobId}`, pick a stretch of at least 10 s where the
+subject is visibly still (in seconds from the clip start), and run:
+
+```bash
+.venv/bin/python -m misko_worker.jitter video.mp4 job.json --still 42 55
+```
+
+It prints JSON per centroid method (`weighted`, the published one; `plain`,
+the unweighted blob centroid; `median3`, the median of the last three
+positions): step-length percentiles and histogram, apparent path in cm per
+minute and speed, and zone changes per zone. Pick a stretch near a zone edge to
+count false zone changes. The job names the recording, clip and calibration,
+so the report can be repeated.
+
 ## Known limits
 
 - One subject per crop, fixed camera, stable lighting, contrast of at least
