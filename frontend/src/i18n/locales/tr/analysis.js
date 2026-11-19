@@ -5,6 +5,11 @@ export default {
     MANUAL: "Elle",
     missing: "Ölçülemedi",
     events: "Olaylar",
+    heatmap: {
+      title: "Geçirilen süre",
+      cell: "hücre boyu {size}",
+      aria: "Arena zemininde geçirilen sürenin ısı haritası, bir hücrede en fazla {max}",
+    },
     missingReasons: {
       NO_TRACKING: "izleme yok",
       TRACKING_LOST: "izleme kayboldu",

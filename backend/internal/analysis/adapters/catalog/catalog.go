@@ -64,10 +64,6 @@ func tracked(p paradigms.Paradigm) bool {
 // parameters and the centimetre shapes of its calibration's zones. Samples the
 // engine rejects are ErrInvalidTrajectory.
 func (Catalog) Evaluate(key string, version int, parameters map[string]float64, t domain.Track, zones []domain.Zone, durationUs int64) (domain.Computed, error) {
-	samples := make([]paradigms.Sample, len(t.Samples))
-	for i, s := range t.Samples {
-		samples[i] = paradigms.Sample{TUs: s.TUs, X: s.X, Y: s.Y, Valid: s.Tracked}
-	}
 	var shapes map[string][]paradigms.Shape
 	for _, z := range zones {
 		if shapes == nil {
@@ -75,7 +71,7 @@ func (Catalog) Evaluate(key string, version int, parameters map[string]float64, 
 		}
 		shapes[z.Key] = append(shapes[z.Key], toShape(z.Centimeters))
 	}
-	r, err := paradigms.Evaluate(key, version, paradigms.Input{Parameters: parameters, Samples: samples, Zones: shapes, DurationUs: durationUs})
+	r, err := paradigms.Evaluate(key, version, paradigms.Input{Parameters: parameters, Samples: samples(t), Zones: shapes, DurationUs: durationUs})
 	if errors.Is(err, paradigms.ErrInvalidSample) {
 		return domain.Computed{}, fmt.Errorf("%w: %v", domain.ErrInvalidTrajectory, err)
 	}
@@ -98,6 +94,32 @@ func (Catalog) Evaluate(key string, version int, parameters map[string]float64, 
 		c.Points = append(c.Points, domain.Point{Type: p.Type, AtUs: p.AtUs})
 	}
 	return c, nil
+}
+
+// occupancyCells is the grid resolution along the longer side of the arena.
+const occupancyCells = 40
+
+func (Catalog) Occupancy(key string, version int, parameters map[string]float64, t domain.Track) (application.Occupancy, error) {
+	o, err := paradigms.OccupancyOf(key, version, parameters, samples(t), occupancyCells)
+	if errors.Is(err, paradigms.ErrNoArenaFloor) {
+		return application.Occupancy{}, application.ErrNoArenaFloor
+	}
+	if err != nil {
+		return application.Occupancy{}, fmt.Errorf("occupancy %s v%d: %w", key, version, err)
+	}
+	seconds := make([]float64, len(o.Us))
+	for i, us := range o.Us {
+		seconds[i] = float64(us) / 1e6
+	}
+	return application.Occupancy{MinXCm: o.Bounds.MinX, MinYCm: o.Bounds.MinY, CellCm: o.CellCm, Columns: o.Columns, Rows: o.Rows, Seconds: seconds}, nil
+}
+
+func samples(t domain.Track) []paradigms.Sample {
+	out := make([]paradigms.Sample, len(t.Samples))
+	for i, s := range t.Samples {
+		out[i] = paradigms.Sample{TUs: s.TUs, X: s.X, Y: s.Y, Valid: s.Tracked}
+	}
+	return out
 }
 
 func toShape(s domain.Shape) paradigms.Shape {
