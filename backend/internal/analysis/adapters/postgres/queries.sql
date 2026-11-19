@@ -158,3 +158,38 @@ WHERE p.job_id = ANY(@job_ids::uuid[]);
 -- name: ListQC :many
 SELECT job_id, samples, tracked, inferred, lost_ratio, inferred_ratio, mean_confidence, passed FROM misko.analysis_job_qc
 WHERE job_id = ANY(@job_ids::uuid[]);
+
+-- name: InsertProposal :one
+INSERT INTO misko.calibration_proposals (paradigm_key, paradigm_version, parameters, frame, frame_type, status, created_by)
+VALUES (@paradigm_key, @paradigm_version, @parameters, @frame, @frame_type, 'QUEUED', @created_by)
+RETURNING *;
+
+-- name: DeleteProposalsBefore :exec
+DELETE FROM misko.calibration_proposals WHERE created_at < @before::timestamptz;
+
+-- name: GetProposal :one
+SELECT * FROM misko.calibration_proposals WHERE id = @id;
+
+-- name: LockProposal :one
+SELECT * FROM misko.calibration_proposals WHERE id = @id FOR UPDATE;
+
+-- A proposal whose lease expired is claimable again while attempts remain.
+-- name: ClaimNextProposal :one
+SELECT * FROM misko.calibration_proposals p
+WHERE (p.status = 'QUEUED' OR (p.status = 'RUNNING' AND p.lease_expires_at <= @now::timestamptz AND p.attempt < 3))
+  AND (p.paradigm_key || '@' || p.paradigm_version::text) = ANY(@capabilities::text[])
+ORDER BY p.created_at, p.id
+LIMIT 1
+FOR UPDATE SKIP LOCKED;
+
+-- name: FailExpiredProposals :exec
+UPDATE misko.calibration_proposals
+SET status = 'FAILED', lease_expires_at = NULL, failure_reason = 'LEASE_EXPIRED', finished_at = @now::timestamptz
+WHERE status = 'RUNNING' AND lease_expires_at <= @now::timestamptz AND attempt >= 3;
+
+-- name: UpdateProposal :one
+UPDATE misko.calibration_proposals
+SET status = @status, attempt = @attempt, worker_id = sqlc.narg(worker_id), lease_expires_at = sqlc.narg(lease_expires_at),
+    result = sqlc.narg(result), failure_reason = sqlc.narg(failure_reason), finished_at = sqlc.narg(finished_at)
+WHERE id = @id
+RETURNING *;
