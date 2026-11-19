@@ -27,4 +27,7 @@ export const calibration = {
   overrides: (testId, testSubjectId) => api(`/tests/${testId}/subjects/${testSubjectId}/calibrations`),
   createOverride: (testId, testSubjectId, body) =>
     api(`/tests/${testId}/subjects/${testSubjectId}/calibrations`, { method: "POST", body }),
+  // A worker's detection of the apparatus on one frame: { paradigmKey, paradigmVersion, parameters, frame (base64) }.
+  propose: (body) => api("/calibration-proposals", { method: "POST", body }),
+  proposal: (id) => api(`/calibration-proposals/${id}`),
 };

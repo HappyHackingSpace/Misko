@@ -189,6 +189,24 @@ type MiskoCalibration struct {
 	ChainID               string
 }
 
+type MiskoCalibrationProposal struct {
+	ID              string
+	ParadigmKey     string
+	ParadigmVersion int32
+	Parameters      []byte
+	Frame           []byte
+	FrameType       string
+	Status          string
+	Attempt         int32
+	WorkerID        *string
+	LeaseExpiresAt  pgtype.Timestamptz
+	Result          []byte
+	FailureReason   *string
+	CreatedBy       string
+	CreatedAt       time.Time
+	FinishedAt      pgtype.Timestamptz
+}
+
 type MiskoCalibrationZone struct {
 	CalibrationID string
 	ZoneKey       string

@@ -104,6 +104,18 @@ A non-retryable failure ends the job at once. Because every call names its
 attempt, a worker that lost its lease cannot overwrite the work of the worker
 that took the job over.
 
+## Calibration proposals
+
+Workers also answer calibration proposals. The panel uploads one reference
+frame (JPEG or PNG, at most 700 KiB) with `POST /api/calibration-proposals`;
+when no job is queued, a worker leases a proposal for a paradigm version it
+supports with `POST /api/worker/proposals/claim` (the frame comes in the
+answer) and returns the detection with
+`POST /api/worker/proposals/{id}/result`, naming its attempt. A lease lasts 2
+minutes; an expired one is claimed again, at most 3 claims in total. A proposal is only
+a suggestion: the researcher confirms every point and saves through the
+calibration routes. Proposals are deleted after a day.
+
 ## Storage
 
 Videos and outputs live in object storage, never in the database: a local
