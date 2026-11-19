@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from misko_worker import jitter
 from misko_worker.geometry import Shape
 from tests import scenes, synthetic
@@ -48,3 +50,12 @@ def test_still_subject_report(tmp_path: Path):
     # A running median cannot step further than the raw positions it follows.
     assert result["methods"]["median3"]["pathCm"] <= result["methods"]["weighted"]["pathCm"]
     assert jitter.main([str(source), str(job_file), "--still", "5", "10"]) == 0
+    with pytest.raises(ValueError, match="no frames"):
+        jitter.report(source, job, 20.0, 25.0)
+
+
+def test_a_malformed_job_is_a_json_error(tmp_path: Path, capsys):
+    job_file = tmp_path / "job.json"
+    job_file.write_text(json.dumps({"run": {"paradigmKey": "NOVEL_OBJECT", "clipStartUs": 0, "clipEndUs": None}, "calibration": {"id": "c", "crop": None}}))
+    assert jitter.main([str(tmp_path / "none.mp4"), str(job_file), "--still", "1", "2"]) == 2
+    assert "error" in json.loads(capsys.readouterr().out)

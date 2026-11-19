@@ -137,6 +137,8 @@ def report(source: Path, job: dict[str, Any], still_start_s: float, still_end_s:
     if end_us <= start_us:
         raise ValueError("the still stretch must end after it starts")
     times, tracks = positions(source, job, start_us, end_us)
+    if not times:
+        raise ValueError("no frames in the still stretch")
     zones = zones_of(job)
     run = job["run"]
     return {
@@ -163,7 +165,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         result = report(args.video, json.loads(args.job.read_text()), *args.still)
-    except (video.CorruptVideo, ValueError, KeyError, OSError) as error:
+    except (video.CorruptVideo, ValueError, KeyError, TypeError, OSError) as error:
         json.dump({"error": str(error)}, sys.stdout)
         print()
         return 2
