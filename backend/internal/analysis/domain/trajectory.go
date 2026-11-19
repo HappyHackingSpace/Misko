@@ -64,17 +64,28 @@ type trajectoryFile struct {
 // ParseTrajectory reads a stored trajectory of the job's current attempt.
 // The file names the job as runId, the name workers have always written.
 func ParseTrajectory(data []byte, r Job, durationUs int64) (Track, error) {
+	return parseTrajectory(data, r, &durationUs)
+}
+
+// ReadTrajectory reads a published trajectory, whose duration was checked
+// against the recording when the result was accepted and is not stored apart.
+func ReadTrajectory(data []byte, r Job) (Track, error) {
+	return parseTrajectory(data, r, nil)
+}
+
+func parseTrajectory(data []byte, r Job, recordingUs *int64) (Track, error) {
 	var f trajectoryFile
 	if err := json.Unmarshal(data, &f); err != nil {
 		return Track{}, fmt.Errorf("%w: %v", ErrInvalidTrajectory, err)
 	}
 	s := f.Samples
 	n := len(s.TUs)
+	durationUs := f.DurationUs
 	switch {
 	case f.Schema != TrajectorySchema, f.RunID != r.ID, f.Attempt != r.Attempt:
 		return Track{}, fmt.Errorf("%w: schema, job or attempt", ErrInvalidTrajectory)
-	case f.DurationUs != durationUs:
-		return Track{}, fmt.Errorf("%w: duration %d, recording %d", ErrInvalidTrajectory, f.DurationUs, durationUs)
+	case recordingUs != nil && durationUs != *recordingUs:
+		return Track{}, fmt.Errorf("%w: duration %d, recording %d", ErrInvalidTrajectory, durationUs, *recordingUs)
 	case n > maxSamples, len(s.X) != n, len(s.Y) != n, len(s.Tracked) != n, len(s.Confidence) != n, s.Inferred != nil && len(s.Inferred) != n:
 		return Track{}, fmt.Errorf("%w: sample arrays", ErrInvalidTrajectory)
 	}

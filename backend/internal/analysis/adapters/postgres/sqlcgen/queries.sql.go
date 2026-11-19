@@ -119,6 +119,44 @@ func (q *Queries) ClaimNext(ctx context.Context, arg ClaimNextParams) (MiskoAnal
 	return i, err
 }
 
+const claimNextProposal = `-- name: ClaimNextProposal :one
+SELECT id, paradigm_key, paradigm_version, parameters, frame, frame_type, status, attempt, worker_id, lease_expires_at, result, failure_reason, created_by, created_at, finished_at FROM misko.calibration_proposals p
+WHERE (p.status = 'QUEUED' OR (p.status = 'RUNNING' AND p.lease_expires_at <= $1::timestamptz AND p.attempt < 3))
+  AND (p.paradigm_key || '@' || p.paradigm_version::text) = ANY($2::text[])
+ORDER BY p.created_at, p.id
+LIMIT 1
+FOR UPDATE SKIP LOCKED
+`
+
+type ClaimNextProposalParams struct {
+	Now          time.Time
+	Capabilities []string
+}
+
+// A proposal whose lease expired is claimable again while attempts remain.
+func (q *Queries) ClaimNextProposal(ctx context.Context, arg ClaimNextProposalParams) (MiskoCalibrationProposal, error) {
+	row := q.db.QueryRow(ctx, claimNextProposal, arg.Now, arg.Capabilities)
+	var i MiskoCalibrationProposal
+	err := row.Scan(
+		&i.ID,
+		&i.ParadigmKey,
+		&i.ParadigmVersion,
+		&i.Parameters,
+		&i.Frame,
+		&i.FrameType,
+		&i.Status,
+		&i.Attempt,
+		&i.WorkerID,
+		&i.LeaseExpiresAt,
+		&i.Result,
+		&i.FailureReason,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.FinishedAt,
+	)
+	return i, err
+}
+
 const createEvent = `-- name: CreateEvent :exec
 INSERT INTO misko.analysis_job_events (job_id, attempt, event_type, label, kind, start_us, end_us, confidence)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
@@ -471,6 +509,15 @@ func (q *Queries) CreateWorker(ctx context.Context, arg CreateWorkerParams) (Cre
 	return i, err
 }
 
+const deleteProposalsBefore = `-- name: DeleteProposalsBefore :exec
+DELETE FROM misko.calibration_proposals WHERE created_at < $1::timestamptz
+`
+
+func (q *Queries) DeleteProposalsBefore(ctx context.Context, before time.Time) error {
+	_, err := q.db.Exec(ctx, deleteProposalsBefore, before)
+	return err
+}
+
 const disableWorker = `-- name: DisableWorker :one
 UPDATE misko.analysis_workers
 SET disabled_at = coalesce(disabled_at, $1::timestamptz)
@@ -504,6 +551,17 @@ func (q *Queries) DisableWorker(ctx context.Context, arg DisableWorkerParams) (D
 		&i.CreatedAt,
 	)
 	return i, err
+}
+
+const failExpiredProposals = `-- name: FailExpiredProposals :exec
+UPDATE misko.calibration_proposals
+SET status = 'FAILED', lease_expires_at = NULL, failure_reason = 'LEASE_EXPIRED', finished_at = $1::timestamptz
+WHERE status = 'RUNNING' AND lease_expires_at <= $1::timestamptz AND attempt >= 3
+`
+
+func (q *Queries) FailExpiredProposals(ctx context.Context, now time.Time) error {
+	_, err := q.db.Exec(ctx, failExpiredProposals, now)
+	return err
 }
 
 const getJob = `-- name: GetJob :one
@@ -546,6 +604,78 @@ func (q *Queries) GetJob(ctx context.Context, id string) (MiskoAnalysisJob, erro
 		&i.LeaseExpiresAt,
 		&i.AvailableAt,
 		&i.ModelVersion,
+		&i.FailureReason,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.FinishedAt,
+	)
+	return i, err
+}
+
+const getProposal = `-- name: GetProposal :one
+SELECT id, paradigm_key, paradigm_version, parameters, frame, frame_type, status, attempt, worker_id, lease_expires_at, result, failure_reason, created_by, created_at, finished_at FROM misko.calibration_proposals WHERE id = $1
+`
+
+func (q *Queries) GetProposal(ctx context.Context, id string) (MiskoCalibrationProposal, error) {
+	row := q.db.QueryRow(ctx, getProposal, id)
+	var i MiskoCalibrationProposal
+	err := row.Scan(
+		&i.ID,
+		&i.ParadigmKey,
+		&i.ParadigmVersion,
+		&i.Parameters,
+		&i.Frame,
+		&i.FrameType,
+		&i.Status,
+		&i.Attempt,
+		&i.WorkerID,
+		&i.LeaseExpiresAt,
+		&i.Result,
+		&i.FailureReason,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.FinishedAt,
+	)
+	return i, err
+}
+
+const insertProposal = `-- name: InsertProposal :one
+INSERT INTO misko.calibration_proposals (paradigm_key, paradigm_version, parameters, frame, frame_type, status, created_by)
+VALUES ($1, $2, $3, $4, $5, 'QUEUED', $6)
+RETURNING id, paradigm_key, paradigm_version, parameters, frame, frame_type, status, attempt, worker_id, lease_expires_at, result, failure_reason, created_by, created_at, finished_at
+`
+
+type InsertProposalParams struct {
+	ParadigmKey     string
+	ParadigmVersion int32
+	Parameters      []byte
+	Frame           []byte
+	FrameType       string
+	CreatedBy       string
+}
+
+func (q *Queries) InsertProposal(ctx context.Context, arg InsertProposalParams) (MiskoCalibrationProposal, error) {
+	row := q.db.QueryRow(ctx, insertProposal,
+		arg.ParadigmKey,
+		arg.ParadigmVersion,
+		arg.Parameters,
+		arg.Frame,
+		arg.FrameType,
+		arg.CreatedBy,
+	)
+	var i MiskoCalibrationProposal
+	err := row.Scan(
+		&i.ID,
+		&i.ParadigmKey,
+		&i.ParadigmVersion,
+		&i.Parameters,
+		&i.Frame,
+		&i.FrameType,
+		&i.Status,
+		&i.Attempt,
+		&i.WorkerID,
+		&i.LeaseExpiresAt,
+		&i.Result,
 		&i.FailureReason,
 		&i.CreatedBy,
 		&i.CreatedAt,
@@ -1120,6 +1250,33 @@ func (q *Queries) LockJob(ctx context.Context, id string) (MiskoAnalysisJob, err
 	return i, err
 }
 
+const lockProposal = `-- name: LockProposal :one
+SELECT id, paradigm_key, paradigm_version, parameters, frame, frame_type, status, attempt, worker_id, lease_expires_at, result, failure_reason, created_by, created_at, finished_at FROM misko.calibration_proposals WHERE id = $1 FOR UPDATE
+`
+
+func (q *Queries) LockProposal(ctx context.Context, id string) (MiskoCalibrationProposal, error) {
+	row := q.db.QueryRow(ctx, lockProposal, id)
+	var i MiskoCalibrationProposal
+	err := row.Scan(
+		&i.ID,
+		&i.ParadigmKey,
+		&i.ParadigmVersion,
+		&i.Parameters,
+		&i.Frame,
+		&i.FrameType,
+		&i.Status,
+		&i.Attempt,
+		&i.WorkerID,
+		&i.LeaseExpiresAt,
+		&i.Result,
+		&i.FailureReason,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.FinishedAt,
+	)
+	return i, err
+}
+
 const outputUploads = `-- name: OutputUploads :many
 SELECT job_id, attempt, object_name, kind, content_type, size_bytes, crc32c
 FROM misko.analysis_job_uploads
@@ -1237,6 +1394,57 @@ func (q *Queries) UpdateJob(ctx context.Context, arg UpdateJobParams) (MiskoAnal
 		&i.LeaseExpiresAt,
 		&i.AvailableAt,
 		&i.ModelVersion,
+		&i.FailureReason,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.FinishedAt,
+	)
+	return i, err
+}
+
+const updateProposal = `-- name: UpdateProposal :one
+UPDATE misko.calibration_proposals
+SET status = $1, attempt = $2, worker_id = $3, lease_expires_at = $4,
+    result = $5, failure_reason = $6, finished_at = $7
+WHERE id = $8
+RETURNING id, paradigm_key, paradigm_version, parameters, frame, frame_type, status, attempt, worker_id, lease_expires_at, result, failure_reason, created_by, created_at, finished_at
+`
+
+type UpdateProposalParams struct {
+	Status         string
+	Attempt        int32
+	WorkerID       *string
+	LeaseExpiresAt *time.Time
+	Result         []byte
+	FailureReason  *string
+	FinishedAt     *time.Time
+	ID             string
+}
+
+func (q *Queries) UpdateProposal(ctx context.Context, arg UpdateProposalParams) (MiskoCalibrationProposal, error) {
+	row := q.db.QueryRow(ctx, updateProposal,
+		arg.Status,
+		arg.Attempt,
+		arg.WorkerID,
+		arg.LeaseExpiresAt,
+		arg.Result,
+		arg.FailureReason,
+		arg.FinishedAt,
+		arg.ID,
+	)
+	var i MiskoCalibrationProposal
+	err := row.Scan(
+		&i.ID,
+		&i.ParadigmKey,
+		&i.ParadigmVersion,
+		&i.Parameters,
+		&i.Frame,
+		&i.FrameType,
+		&i.Status,
+		&i.Attempt,
+		&i.WorkerID,
+		&i.LeaseExpiresAt,
+		&i.Result,
 		&i.FailureReason,
 		&i.CreatedBy,
 		&i.CreatedAt,

@@ -64,6 +64,7 @@ func TestUserOperationsRequireTheirPermission(t *testing.T) {
 		{"job detail", access.Read, func(s *Service, a access.Actor) error { return second(s.JobDetail(ctx, a, "job-1")) }},
 		{"video pair", access.Read, func(s *Service, a access.Actor) error { return second(s.VideoPair(ctx, a, "job-1")) }},
 		{"output url", access.Read, func(s *Service, a access.Actor) error { return second(s.OutputURL(ctx, a, "job-1", domain.Trajectory)) }},
+		{"occupancy", access.Read, func(s *Service, a access.Actor) error { return second(s.Occupancy(ctx, a, "job-1")) }},
 	}
 	for _, role := range append(access.Roles(), "ROOT") {
 		for _, op := range operations {
@@ -408,6 +409,25 @@ func TestSignedReadsNeedASucceededJob(t *testing.T) {
 	}
 }
 
+// The occupancy map reads the published trajectory generation with the job's pinned parameters.
+func TestOccupancyReadsThePublishedTrajectory(t *testing.T) {
+	viewer := access.Actor{UserID: "v", Role: access.Viewer}
+	job := running()
+	job.Status = domain.Succeeded
+	_, objects := outputs(job, trajectory(t, job, true, false, true, true), 9)
+	f := newFixture()
+	f.store.job, f.objects = job, objects
+	f.store.stored = map[string]Published{"job-1": {Artifacts: []VerifiedOutput{{OutputUpload: OutputUpload{ObjectName: job.OutputPrefix() + "trajectory.json", Kind: domain.Trajectory}, Generation: 12}}}}
+	o, err := f.service().Occupancy(ctx, viewer, "job-1")
+	if err != nil || len(o.Seconds) != 1 || o.Seconds[0] != 3 || f.objects.lastGeneration != 12 {
+		t.Fatalf("occupancy: %+v %v", o, err)
+	}
+	f.store.stored = map[string]Published{"job-1": {}}
+	if _, err := f.service().Occupancy(ctx, viewer, "job-1"); !errors.Is(err, ErrOutputNotFound) {
+		t.Fatalf("no trajectory: %v", err)
+	}
+}
+
 // fakeCatalog knows MWM and FREE (tracked, FREE without calibration),
 // UNTRACKED (a hypothetical version no trajectory can measure) and ZONED, a
 // tracked paradigm with two required calibrated zones.
@@ -449,6 +469,18 @@ func (f *fakeCatalog) Evaluate(_ string, _ int, parameters map[string]float64, t
 		Metrics:   []domain.MetricValue{{Key: "path_length_cm", Unit: "cm", Value: &tracked}},
 		Intervals: []domain.Interval{{Type: "in_platform", StartUs: 0, EndUs: t.Samples[len(t.Samples)-1].TUs}},
 	}, nil
+}
+
+// Occupancy reports the tracked sample count as one cell.
+func (f *fakeCatalog) Occupancy(_ string, _ int, parameters map[string]float64, t domain.Track) (Occupancy, error) {
+	f.parameters = parameters
+	tracked := 0.0
+	for _, s := range t.Samples {
+		if s.Tracked {
+			tracked++
+		}
+	}
+	return Occupancy{CellCm: 1, Columns: 1, Rows: 1, Seconds: []float64{tracked}}, nil
 }
 
 type fakeSources struct{ missing, pending bool }

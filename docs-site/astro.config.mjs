@@ -9,7 +9,6 @@ export default defineConfig({
   integrations: [
     starlight({
       title: "Mişko",
-      tagline: "Behavioral test management for laboratory mice",
       // The logo is the name, so it stands in for the title text.
       logo: {
         light: "./src/assets/misko-logo-light.svg",
