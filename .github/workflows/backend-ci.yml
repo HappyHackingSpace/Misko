@@ -35,7 +35,7 @@ jobs:
       TEST_DATABASE_URL: postgres://misko:misko_ci_only@localhost:5432/misko_foundation_test?sslmode=disable
     steps:
       - uses: actions/checkout@v7.0.1
-      - uses: actions/setup-go@v7.0.0
+      - uses: actions/setup-go@v7.1.0
         with:
           go-version-file: backend/go.mod
           cache-dependency-path: backend/go.sum
