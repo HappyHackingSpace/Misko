@@ -6,7 +6,7 @@ name: Workflows CI
 # arrives. That happened in #154, where an unquoted ": " inside a `run:` value
 # made worker-ci.yml invalid and Worker CI never ran.
 #
-# deploy-gcp.yml is the reason this matters most: it only runs on manual
+# deploy.yml is the reason this matters most: it only runs on manual
 # dispatch, so nothing else would ever parse it.
 
 on:

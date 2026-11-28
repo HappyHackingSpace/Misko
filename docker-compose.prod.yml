@@ -87,11 +87,13 @@ services:
       HTTP_ADDR: :4000
       JWT_SECRET: ${JWT_SECRET:?set a strong JWT_SECRET in .env}
       TOKEN_TTL: ${TOKEN_TTL:-12h}
-    # GCS_BUCKET/GCS_SIGNER_EMAIL live in storage.env, not here: like the
-    # worker's token, they're safe to overwrite on every deploy (unlike the
-    # database password and JWT secret), so the workflow renders them fresh
-    # each run instead of leaving them alone like it does `.env`. Video routes
-    # answer 503 until this file names a real bucket.
+      # Videos and analysis outputs are kept on the `videos` volume and served
+      # by the API under /api/local-storage.
+      LOCAL_STORAGE_DIR: /data/videos
+    volumes:
+      - videos:/data/videos
+    # Optional: a storage.env that names a GCS bucket takes precedence over the
+    # local directory (see storage.env.example).
     env_file:
       - path: storage.env
         required: false
@@ -176,5 +178,6 @@ services:
 
 volumes:
   db-data:
+  videos:
   caddy-data:
   caddy-config:
